@@ -80,6 +80,11 @@ pub(crate) enum TypeScriptRelationKind {
     ModuleValueReference,
     ReceiverOwnerCall,
     ClassMethodCall,
+    /// Test imports a name from an intermediate file that re-exports it from
+    /// the owner file via a single `export { N } from './owner'` hop.
+    /// The import chain is explicit in-source; only ONE hop is followed
+    /// (fail-closed on deeper transitive chains).
+    ReExportChainFollowed,
     SameFileProximity,
     DescribeName,
     TestName,
@@ -93,6 +98,9 @@ impl TypeScriptRelationKind {
             Self::ModuleValueReference => 4,
             Self::ReceiverOwnerCall => 4,
             Self::ClassMethodCall => 4,
+            // Re-export chain: same rank as other imported calls — the test
+            // genuinely exercises the owner, just via an intermediate file.
+            Self::ReExportChainFollowed => 4,
             Self::SameFileProximity => 3,
             Self::DescribeName => 2,
             Self::TestName => 1,
@@ -107,6 +115,7 @@ impl TypeScriptRelationKind {
                 | Self::ModuleValueReference
                 | Self::ReceiverOwnerCall
                 | Self::ClassMethodCall
+                | Self::ReExportChainFollowed
         )
     }
 
@@ -121,6 +130,7 @@ impl TypeScriptRelationKind {
             Self::ModuleValueReference => "module_value_reference",
             Self::ReceiverOwnerCall => "receiver_owner_call",
             Self::ClassMethodCall => "class_method_call",
+            Self::ReExportChainFollowed => "re_export_chain_followed",
             Self::SameFileProximity => "same_file_proximity",
             Self::DescribeName => "describe_name",
             Self::TestName => "test_name",

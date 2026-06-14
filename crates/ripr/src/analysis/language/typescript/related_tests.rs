@@ -1,6 +1,138 @@
 //! Related test candidate discovery for the TypeScript preview adapter.
 
 use super::*;
+use std::collections::HashMap;
+
+// ── Re-export index ───────────────────────────────────────────────────────────
+
+/// Single-hop re-export index built during Phase 1 of the adapter.
+///
+/// Maps `(intermediate_normalized_module, exported_name)` to
+/// `(original_name, owner_normalized_module)`.
+///
+/// A test that imports `N` from intermediate file B is credited when:
+/// 1. `(b_module, N)` resolves in the index to `(orig, owner_module)`, AND
+/// 2. `owner_module` matches the normalized owner file, AND
+/// 3. `orig` matches the owner function name.
+///
+/// Only ONE hop is followed; deeper transitive chains stay uncredited
+/// (fail-closed). The index is empty when no re-exports are present, which
+/// makes all callers that pass `ReExportIndex::empty()` behave identically
+/// to the pre-fix behaviour.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ReExportIndex {
+    /// key: (intermediate_module_norm, exported_name)
+    /// value: (original_name, source_module_norm)
+    entries: HashMap<(String, String), (String, String)>,
+}
+
+impl ReExportIndex {
+    /// Construct an empty index (no re-export tracing).
+    /// Used by unit-test callers that do not exercise the re-export path.
+    pub(crate) fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Build a re-export index from all non-test source files in the workspace.
+    ///
+    /// For each file that contains `export { N [as M] } from './A'` statements,
+    /// records the single hop from `(intermediate_file, M)` → `(N, A_module)`.
+    /// Only explicit named re-exports from relative paths are indexed;
+    /// star-re-exports (`export * from`) and non-relative sources are ignored
+    /// (fail-closed).
+    pub(crate) fn build(
+        workspace_files: &[PathBuf],
+        workspace_root: &Path,
+        is_test: impl Fn(&Path) -> bool,
+    ) -> Self {
+        use oxc_allocator::Allocator;
+        use oxc_parser::Parser;
+
+        let mut entries: HashMap<(String, String), (String, String)> = HashMap::new();
+        for relative in workspace_files {
+            if is_test(relative) {
+                continue;
+            }
+            let absolute = workspace_root.join(relative);
+            let Ok(source) = std::fs::read_to_string(&absolute) else {
+                continue;
+            };
+            let allocator = Allocator::default();
+            let ret = Parser::new(&allocator, &source, source_type_for(relative)).parse();
+            if !ret.errors.is_empty() {
+                continue;
+            }
+            // intermediate module path (normalized, no extension)
+            let intermediate_module = normalized_module_path(relative);
+            for stmt in &ret.program.body {
+                let Statement::ExportNamedDeclaration(export) = stmt else {
+                    continue;
+                };
+                if export.declaration.is_some() {
+                    continue;
+                }
+                let Some(re_source) = &export.source else {
+                    continue;
+                };
+                let source_str = re_source.value.to_string();
+                // Only relative paths — never follow node_modules
+                if !source_str.starts_with("./") && !source_str.starts_with("../") {
+                    continue;
+                }
+                // Resolve the source module relative to the intermediate file's dir
+                let Some(resolved) = normalized_relative_import_module(relative, &source_str)
+                else {
+                    continue;
+                };
+                for specifier in &export.specifiers {
+                    if specifier.export_kind == ImportOrExportKind::Type {
+                        continue;
+                    }
+                    let Some(original_name) = module_export_name_text(&specifier.local) else {
+                        continue;
+                    };
+                    let exported_name = module_export_name_text(&specifier.exported)
+                        .unwrap_or_else(|| original_name.clone());
+                    // key: what the test would import from the intermediate file
+                    let key = (intermediate_module.clone(), exported_name);
+                    // value: what the owner file exports under its original name
+                    entries
+                        .entry(key)
+                        .or_insert_with(|| (original_name, resolved.clone()));
+                }
+            }
+        }
+        Self { entries }
+    }
+
+    /// If `test_file` imports `imported_name` from `intermediate_module` and
+    /// the index resolves that to the owner, return the original name in the
+    /// owner file.  Returns `None` when no single-hop chain leads to the owner.
+    fn resolve_to_owner(
+        &self,
+        test_file: &Path,
+        import_source: &str,
+        imported_name: &str,
+        owner: &TypeScriptOwner,
+    ) -> bool {
+        // Resolve the import source to a normalized module path.
+        let Some(intermediate_module) = normalized_relative_import_module(test_file, import_source)
+        else {
+            return false;
+        };
+        let owner_module = normalized_module_path(&owner.file);
+        // Quick check: if the intermediate IS the owner, no re-export hop needed.
+        if intermediate_module == owner_module {
+            return false;
+        }
+        let key = (intermediate_module, imported_name.to_string());
+        let Some((original_name, source_module)) = self.entries.get(&key) else {
+            return false;
+        };
+        // The chain must resolve to the owner's file and the owner's name.
+        source_module == &owner_module && original_name == &owner.name
+    }
+}
 
 /// Resolve the nearest `package.json` root for `file` by walking up to
 /// `workspace_root`.  Returns the package root path (relative to
@@ -73,10 +205,16 @@ pub(crate) fn same_package_root(
 /// test in `packages/b/` cannot be selected as an owner relation for a source
 /// file in `packages/a/`.  Pass `None` to preserve the previous behaviour
 /// (used in unit tests that do not have a real filesystem).
+///
+/// `reexport_index` enables single-hop re-export tracing: tests that import
+/// the owner through an intermediate barrel file are credited when the chain
+/// can be resolved in-source in a single hop.  Pass `&ReExportIndex::empty()`
+/// to disable re-export tracing (backward-compatible default for unit tests).
 pub(crate) fn related_test_candidates<'a>(
     owner: &TypeScriptOwner,
     all_tests: &'a [TypeScriptTest],
     workspace_root: Option<&Path>,
+    reexport_index: &ReExportIndex,
 ) -> Vec<TypeScriptRelatedCandidate<'a>> {
     let mut candidates: Vec<TypeScriptRelatedCandidate<'a>> = all_tests
         .iter()
@@ -86,7 +224,7 @@ pub(crate) fn related_test_candidates<'a>(
                 .unwrap_or(true)
         })
         .filter_map(|test| {
-            owner_call_relation(test, owner)
+            owner_call_relation(test, owner, reexport_index)
                 .map(|relation| TypeScriptRelatedCandidate { test, relation })
         })
         .collect();
@@ -132,6 +270,7 @@ pub(crate) fn sort_related_candidates(candidates: &mut [TypeScriptRelatedCandida
 pub(crate) fn owner_call_relation(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
+    reexport_index: &ReExportIndex,
 ) -> Option<TypeScriptRelationKind> {
     if owner.owner_kind == OwnerKind::ModuleFunction {
         return module_initializer_observer_relation(test, owner)
@@ -155,6 +294,29 @@ pub(crate) fn owner_call_relation(
             && import_references_owner_call(import, &test.body_text, owner)
     }) {
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
+    }
+    // Single-hop re-export tracing (RIPR-SPEC-0095):
+    // If the test imports a name from an intermediate file that re-exports it
+    // from the owner file, credit the test via re_export_chain_followed.
+    // Only one hop is followed; deeper chains stay uncredited (fail-closed).
+    if test.imports_in_file.iter().any(|import| {
+        if import.namespace {
+            return false; // namespace imports don't map cleanly to a single exported name
+        }
+        let Some(imported_name) = import.imported.as_deref() else {
+            return false;
+        };
+        if imported_name == "default" {
+            return false; // default imports are out of scope for single-hop re-export
+        }
+        // The local alias in the test is what gets called; check the call site.
+        let local = &import.local;
+        if !contains_call_name(&test.body_text, local) {
+            return false;
+        }
+        reexport_index.resolve_to_owner(&test.file, &import.source, imported_name, owner)
+    }) {
+        return Some(TypeScriptRelationKind::ReExportChainFollowed);
     }
     None
 }
@@ -355,12 +517,16 @@ fn heuristic_owner_supported(owner: &TypeScriptOwner) -> bool {
 /// `workspace_root` enables package-local ownership filtering when `Some`:
 /// tests in different packages are excluded from the candidate set.
 /// Pass `None` to preserve the previous behaviour (used in unit tests).
+///
+/// `reexport_index` enables single-hop re-export tracing.
+/// Pass `&ReExportIndex::empty()` to disable (backward-compatible default).
 pub(crate) fn find_related_tests(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
     workspace_root: Option<&Path>,
+    reexport_index: &ReExportIndex,
 ) -> Vec<RelatedTest> {
-    related_test_candidates(owner, all_tests, workspace_root)
+    related_test_candidates(owner, all_tests, workspace_root, reexport_index)
         .into_iter()
         .map(|candidate| {
             let strongest = candidate
@@ -376,6 +542,8 @@ pub(crate) fn find_related_tests(
                 ),
                 None => (OracleKind::Unknown, OracleStrength::Unknown, None),
             };
+            // Map TypeScriptRelationKind to domain RelationReason for disclosure.
+            let (relation_reason, relation_confidence) = ts_relation_to_domain(candidate.relation);
             RelatedTest {
                 name: candidate.test.name.clone(),
                 file: candidate.test.file.clone(),
@@ -383,11 +551,51 @@ pub(crate) fn find_related_tests(
                 oracle: oracle_text,
                 oracle_kind,
                 oracle_strength,
-                relation_reason: None,
-                relation_confidence: None,
+                relation_reason,
+                relation_confidence,
             }
         })
         .collect()
+}
+
+/// Map a `TypeScriptRelationKind` to the domain `(RelationReason, RelationConfidence)`.
+///
+/// Populates the `relation_reason` and `relation_confidence` fields of
+/// `RelatedTest` for disclosure in the JSON output.  Returns `(None, None)`
+/// for heuristic relations that don't have a clear domain mapping (those stay
+/// legacy-style with `relation_reason: null`).
+fn ts_relation_to_domain(
+    kind: TypeScriptRelationKind,
+) -> (
+    Option<crate::domain::RelationReason>,
+    Option<crate::domain::RelationConfidence>,
+) {
+    use crate::domain::{RelationConfidence, RelationReason};
+    let reason = match kind {
+        TypeScriptRelationKind::DirectOwnerCall => RelationReason::DirectOwnerCall,
+        TypeScriptRelationKind::ImportedOwnerCall => RelationReason::ImportPathAffinity,
+        TypeScriptRelationKind::ModuleValueReference => RelationReason::DirectOwnerCall,
+        TypeScriptRelationKind::ReceiverOwnerCall => RelationReason::DirectOwnerCall,
+        TypeScriptRelationKind::ClassMethodCall => RelationReason::DirectOwnerCall,
+        TypeScriptRelationKind::ReExportChainFollowed => RelationReason::ReExportChainFollowed,
+        // Heuristic relations: no strong domain mapping — emit None to preserve
+        // the existing behaviour for these lower-confidence relation kinds.
+        TypeScriptRelationKind::SameFileProximity
+        | TypeScriptRelationKind::DescribeName
+        | TypeScriptRelationKind::TestName => return (None, None),
+    };
+    let confidence = match kind {
+        TypeScriptRelationKind::DirectOwnerCall
+        | TypeScriptRelationKind::ModuleValueReference
+        | TypeScriptRelationKind::ReceiverOwnerCall
+        | TypeScriptRelationKind::ClassMethodCall => RelationConfidence::High,
+        TypeScriptRelationKind::ImportedOwnerCall
+        | TypeScriptRelationKind::ReExportChainFollowed => RelationConfidence::Medium,
+        TypeScriptRelationKind::SameFileProximity
+        | TypeScriptRelationKind::DescribeName
+        | TypeScriptRelationKind::TestName => RelationConfidence::Low,
+    };
+    (Some(reason), Some(confidence))
 }
 
 fn heuristic_relation_allowed(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {

@@ -8,6 +8,9 @@ use super::*;
 /// `packages/b/` will not be selected as an owner relation for a source file in
 /// `packages/a/`.  Pass `None` to preserve the previous single-package
 /// behaviour (used in unit tests).
+///
+/// `reexport_index` enables single-hop re-export tracing for test discovery.
+/// Pass `&ReExportIndex::empty()` to disable (backward-compatible for unit tests).
 pub(crate) fn classify_change(
     file: &Path,
     line: usize,
@@ -15,14 +18,16 @@ pub(crate) fn classify_change(
     owners: &[TypeScriptOwner],
     all_tests: &[TypeScriptTest],
     workspace_root: Option<&Path>,
+    reexport_index: &ReExportIndex,
 ) -> Option<Finding> {
     let changed_file = normalized_path(file);
     let owner = owners
         .iter()
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
-    let related_candidates = related_test_candidates(owner, all_tests, workspace_root);
-    let related = find_related_tests(owner, all_tests, workspace_root);
+    let related_candidates =
+        related_test_candidates(owner, all_tests, workspace_root, reexport_index);
+    let related = find_related_tests(owner, all_tests, workspace_root, reexport_index);
     let bun_array_buffer_facts = collect_related_bun_array_buffer_facts(&related_candidates);
     let bun_bridge_hints = collect_related_bun_bridge_hints(&bun_array_buffer_facts);
     let mock_paths = collect_related_mock_paths(owner, all_tests);

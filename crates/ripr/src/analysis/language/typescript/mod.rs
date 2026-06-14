@@ -123,6 +123,10 @@ impl LanguageAdapter for TypeScriptAdapter {
                 all_owners.extend(extract_owners(relative, &source));
             }
         }
+        // Build the single-hop re-export index from all non-test workspace files
+        // (RIPR-SPEC-0095). The index enables crediting tests that reach the owner
+        // via an explicit `export { N } from './owner'` barrel-file re-export.
+        let reexport_index = ReExportIndex::build(&workspace_files, &options.root, is_test_file);
 
         // Phase 2: for each accepted changed file, classify each changed
         // line that falls inside an owner.
@@ -175,6 +179,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                     &all_owners,
                     &all_tests,
                     Some(&options.root),
+                    &reexport_index,
                 ) {
                     finding.evidence.extend(discovery_evidence.clone());
                     // Inject verify-command evidence derived from the strongest

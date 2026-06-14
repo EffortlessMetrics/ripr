@@ -63,7 +63,9 @@
           "line": 1,
           "oracle_strength": "weak",
           "oracle_kind": "broad_error",
-          "oracle": "expect(...).toThrow()"
+          "oracle": "expect(...).toThrow()",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -189,7 +191,9 @@
           "line": 5,
           "oracle_strength": "strong",
           "oracle_kind": "exact_error_variant",
-          "oracle": "await expect(...).rejects.toThrow(\"missing id\")"
+          "oracle": "await expect(...).rejects.toThrow(\"missing id\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

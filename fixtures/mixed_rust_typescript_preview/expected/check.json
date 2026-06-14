@@ -192,7 +192,9 @@
           "line": 1,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

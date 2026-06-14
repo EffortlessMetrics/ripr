@@ -5599,3 +5599,35 @@ outputs = [
 metrics = [
   "observation_unverified_downgrades_non_match_arm_to_weakly_exposed"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0095"
+name = "TypeScript single-hop re-export test discovery"
+spec = "docs/specs/RIPR-SPEC-0095-typescript-reexport-test-discovery.md"
+tests = [
+  "crates/ripr/src/analysis/language/typescript/tests.rs",
+  "crates/ripr/src/domain/evidence.rs"
+]
+fixtures = [
+  "fixtures/typescript_reexport_single_hop",
+  "fixtures/typescript_reexport_no_false_credit",
+  "fixtures/typescript_reexport_two_hop_limit"
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs",
+  "crates/ripr/src/analysis/language/typescript/types.rs",
+  "crates/ripr/src/analysis/language/typescript/classifier.rs",
+  "crates/ripr/src/analysis/language/typescript/mod.rs",
+  "crates/ripr/src/domain/evidence.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0095-typescript-reexport-test-discovery.md",
+  "fixtures/typescript_reexport_single_hop/expected/check.json",
+  "fixtures/typescript_reexport_no_false_credit/expected/check.json",
+  "fixtures/typescript_reexport_two_hop_limit/expected/check.json"
+]
+metrics = [
+  "typescript_reexport_single_hop_credits_via_barrel",
+  "typescript_reexport_no_false_credit_stays_no_path",
+  "typescript_reexport_two_hop_stays_no_path"
+]

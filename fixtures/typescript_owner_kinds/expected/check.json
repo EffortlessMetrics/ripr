@@ -53,7 +53,9 @@
           "line": 3,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -179,7 +181,9 @@
           "line": 7,
           "oracle_strength": "smoke",
           "oracle_kind": "smoke_only",
-          "oracle": "expect(...).toBeDefined(...)"
+          "oracle": "expect(...).toBeDefined(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -315,7 +319,9 @@
           "line": 12,
           "oracle_strength": "smoke",
           "oracle_kind": "smoke_only",
-          "oracle": "expect(...).toBeDefined(...)"
+          "oracle": "expect(...).toBeDefined(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -440,7 +446,9 @@
           "line": 16,
           "oracle_strength": "weak",
           "oracle_kind": "relational_check",
-          "oracle": "expect(...).toBeGreaterThan(...)"
+          "oracle": "expect(...).toBeGreaterThan(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

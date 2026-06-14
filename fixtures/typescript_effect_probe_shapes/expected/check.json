@@ -63,7 +63,9 @@
           "line": 1,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": ""
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -199,7 +201,9 @@
           "line": 1,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": ""
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

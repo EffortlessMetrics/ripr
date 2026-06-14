@@ -52,7 +52,9 @@
           "line": 13,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toStrictEqual(...)"
+          "oracle": "expect(...).toStrictEqual(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         },
         {
           "name": "discount table %#",
@@ -60,7 +62,9 @@
           "line": 19,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -186,7 +190,9 @@
           "line": 25,
           "oracle_strength": "medium",
           "oracle_kind": "snapshot",
-          "oracle": "expect(...).toMatchSnapshot(...)"
+          "oracle": "expect(...).toMatchSnapshot(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -322,7 +328,9 @@
           "line": 29,
           "oracle_strength": "smoke",
           "oracle_kind": "smoke_only",
-          "oracle": "expect(...).toBeTruthy(...)"
+          "oracle": "expect(...).toBeTruthy(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -458,7 +466,9 @@
           "line": 33,
           "oracle_strength": "medium",
           "oracle_kind": "mock_expectation",
-          "oracle": "expect(...).toHaveBeenCalledWith(...)"
+          "oracle": "expect(...).toHaveBeenCalledWith(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -594,7 +604,9 @@
           "line": 41,
           "oracle_strength": "medium",
           "oracle_kind": "mock_expectation",
-          "oracle": "expect(sink.record).toHaveBeenCalledWith(\"ready\")"
+          "oracle": "expect(sink.record).toHaveBeenCalledWith(\"ready\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {
@@ -720,7 +732,9 @@
           "line": 47,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

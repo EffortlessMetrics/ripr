@@ -52,7 +52,9 @@
           "line": 7,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "import_path_affinity",
+          "relation_confidence": "medium"
         },
         {
           "name": "namespace import observes threshold",
@@ -60,7 +62,9 @@
           "line": 11,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toBe(...)"
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "import_path_affinity",
+          "relation_confidence": "medium"
         }
       ],
       "typescript_preview_card": {

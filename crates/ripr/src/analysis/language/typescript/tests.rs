@@ -171,6 +171,7 @@ fn classify_weak_direct_line(line_text: &str) -> Result<Finding, String> {
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())
 }
@@ -733,6 +734,7 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -1547,7 +1549,7 @@ fn find_related_tests_matches_by_call_name() {
             imports_in_file: Vec::new(),
         },
     ];
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alpha");
 }
@@ -1576,7 +1578,7 @@ fn find_related_tests_ignores_object_method_calls_for_function_owners() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1604,8 +1606,8 @@ test("cart total observes receiver", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None);
-    let related = find_related_tests(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1641,7 +1643,7 @@ test("cart total through factory stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1670,7 +1672,7 @@ test("cart total through dynamic method stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1700,7 +1702,7 @@ test("mocked cart total stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1727,8 +1729,8 @@ test("static build observes class method", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None);
-    let related = find_related_tests(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1764,7 +1766,7 @@ test("shadowed static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1789,8 +1791,8 @@ fn find_related_tests_matches_same_file_class_method_calls() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None);
-    let related = find_related_tests(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1826,7 +1828,7 @@ test("namespace static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1855,7 +1857,7 @@ test("mocked static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1882,7 +1884,7 @@ test("unknown class static build stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -1909,8 +1911,8 @@ test("rate value observes initializer", () => {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None);
-    let related = find_related_tests(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(candidates.len(), 1);
     assert_eq!(
@@ -1945,7 +1947,7 @@ test("rate value observes namespace initializer", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "rate value observes namespace initializer");
@@ -1984,7 +1986,7 @@ test("string mention stays ambiguous", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -2011,7 +2013,7 @@ test("alias import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "alias import observes threshold");
@@ -2039,7 +2041,7 @@ test("namespace import observes threshold", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert_eq!(related.len(), 1);
     assert_eq!(related[0].name, "namespace import observes threshold");
@@ -2077,7 +2079,7 @@ test("type only import", () => {
 "#,
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -2106,7 +2108,7 @@ fn find_related_tests_ignores_call_shaped_string_mentions() {
         imports_in_file: Vec::new(),
     }];
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -2148,7 +2150,7 @@ fn find_related_tests_ignores_call_shaped_comment_mentions() {
         },
     ];
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(related.is_empty());
 }
@@ -2189,7 +2191,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
 "#,
     ));
 
-    let candidates = related_test_candidates(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
     let relations: Vec<_> = candidates
         .iter()
         .map(|candidate| candidate.relation)
@@ -2209,7 +2211,7 @@ fn related_test_candidates_use_name_and_proximity_links_as_uncertain_relations()
             .all(|candidate| candidate.relation.is_uncertain())
     );
 
-    let related = find_related_tests(&owner, &tests, None);
+    let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty());
     assert_eq!(related.len(), 3);
     assert!(
         related
@@ -2240,7 +2242,7 @@ fn related_test_name_proximity_ignores_partial_tokens() {
 "#,
     );
 
-    let candidates = related_test_candidates(&owner, &tests, None);
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty());
 
     assert!(candidates.is_empty());
 }
@@ -2272,6 +2274,7 @@ fn classify_change_uses_heuristic_links_as_weak_uncertain_proximity() -> Result<
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
 
@@ -2322,6 +2325,7 @@ fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
@@ -2394,6 +2398,7 @@ fn typescript_preview_weak_oracle_guidance_names_snapshot_exact_value_shape() ->
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2465,6 +2470,7 @@ fn typescript_preview_weak_oracle_guidance_keeps_broad_error_advisory() -> Resul
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2508,6 +2514,7 @@ fn typescript_preview_weak_oracle_guidance_distinguishes_mock_payload_limits() -
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2565,6 +2572,7 @@ fn typescript_preview_mock_payload_guidance_names_literal_payload_without_repair
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected TypeScript preview finding".to_string())?;
 
@@ -2640,6 +2648,7 @@ fn classify_change_labels_javascript_sources_separately() -> Result<(), String> 
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a JavaScript preview finding".to_string())?;
 
@@ -2704,6 +2713,7 @@ fn classify_change_matches_owner_file_before_line_range() -> Result<(), String> 
         &owners,
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
 
@@ -3232,6 +3242,7 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::Exposed));
@@ -3270,6 +3281,7 @@ fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), S
         &[owner],
         &[],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
     assert!(matches!(finding.class, ExposureClass::NoStaticPath));
@@ -3300,6 +3312,7 @@ fn classify_change_returns_none_when_line_is_outside_any_owner() {
         &[owner],
         &[],
         None,
+        &ReExportIndex::empty(),
     );
     assert!(finding.is_none());
 }
@@ -3713,6 +3726,7 @@ fn classify_change_surfaces_decorator_indirection_static_limit() -> Result<(), S
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected decorated owner finding".to_string())?;
 
@@ -3761,6 +3775,7 @@ export function discountedTotal(amount: number): number {
         &owners,
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected imported-symbol finding".to_string())?;
 
@@ -3799,6 +3814,7 @@ fn classify_change_omits_probe_facts_for_heuristic_only_related_test() -> Result
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected heuristic TypeScript preview finding".to_string())?;
 
@@ -3981,6 +3997,7 @@ fn classify_change_surfaces_mocked_module_static_limit_in_missing_and_evidence()
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding for the changed line".to_string())?;
     assert!(
@@ -4057,6 +4074,7 @@ fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() 
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4138,6 +4156,7 @@ fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4187,6 +4206,7 @@ test("renders summary snapshot", () => {
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4238,6 +4258,7 @@ test("price is in expected range", () => {
         &[owner],
         &tests,
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4278,6 +4299,7 @@ fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Resul
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4327,6 +4349,7 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4475,6 +4498,7 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4533,6 +4557,7 @@ fn named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation() 
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4631,13 +4656,15 @@ fn package_local_filter_selects_same_package_test() {
     };
 
     let tests_slice = [test.clone()];
-    let candidates = related_test_candidates(&owner, &tests_slice, Some(&root));
+    let candidates =
+        related_test_candidates(&owner, &tests_slice, Some(&root), &ReExportIndex::empty());
     // The package-local filter must NOT exclude same-package tests.
     // (candidates may still be empty if body_text has no call — that's tested
     // elsewhere; here we only verify the package filter is not the bottleneck.)
     // Use workspace_root=None to check the unfiltered count equals
     // workspace_root=Some count (filter didn't discard it).
-    let candidates_no_filter = related_test_candidates(&owner, &tests_slice, None);
+    let candidates_no_filter =
+        related_test_candidates(&owner, &tests_slice, None, &ReExportIndex::empty());
     assert_eq!(
         candidates.len(),
         candidates_no_filter.len(),
@@ -4685,7 +4712,8 @@ fn package_local_filter_rejects_cross_package_test() {
     };
 
     let tests_slice = [test.clone()];
-    let candidates = related_test_candidates(&owner, &tests_slice, Some(&root));
+    let candidates =
+        related_test_candidates(&owner, &tests_slice, Some(&root), &ReExportIndex::empty());
     assert!(
         candidates.is_empty(),
         "cross-package test must NOT be selected, got {candidates:?}"
@@ -4856,6 +4884,7 @@ fn named_limitation_target_unresolved_emitted_for_cross_package_reference() -> R
         &all_owners,
         &all_tests,
         Some(&root),
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 
@@ -4903,6 +4932,7 @@ fn named_limitation_target_unresolved_not_emitted_for_same_package() -> Result<(
         &[owner],
         &[test],
         None,
+        &ReExportIndex::empty(),
     )
     .ok_or_else(|| "expected a finding".to_string())?;
 

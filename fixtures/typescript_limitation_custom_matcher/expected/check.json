@@ -62,7 +62,9 @@
           "line": 15,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": "expect(...).toBeWithinRange(...)"
+          "oracle": "expect(...).toBeWithinRange(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "typescript_preview_card": {

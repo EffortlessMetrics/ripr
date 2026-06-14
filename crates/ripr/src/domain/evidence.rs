@@ -155,6 +155,12 @@ pub enum RelationReason {
     /// unrelated tests. Consumers should treat `relation_confidence: low`
     /// as advisory only.
     WeakTokenSubstring,
+    /// Matched through a single-hop explicit re-export chain resolved
+    /// entirely from in-source `export { N } from './A'` statements.
+    /// The test imports the name from an intermediate re-exporting file;
+    /// one hop was followed to verify the chain leads to the changed owner.
+    /// Two-hop and deeper chains are NOT followed (fail-closed).
+    ReExportChainFollowed,
 }
 
 impl RelationReason {
@@ -169,6 +175,7 @@ impl RelationReason {
             Self::ImportPathAffinity => "import_path_affinity",
             Self::FixtureOwnerAffinity => "fixture_owner_affinity",
             Self::WeakTokenSubstring => "weak_token_substring",
+            Self::ReExportChainFollowed => "re_export_chain_followed",
         }
     }
 
@@ -182,6 +189,9 @@ impl RelationReason {
             Self::SameModule => 4,
             Self::OwnerNamedTest => 5,
             Self::ImportPathAffinity => 6,
+            // Re-export chain follows: same priority as import-path affinity —
+            // the inference is explicit in-source but involves one hop of indirection.
+            Self::ReExportChainFollowed => 6,
             Self::FixtureOwnerAffinity => 7,
             Self::WeakTokenSubstring => 8,
         }
@@ -195,7 +205,10 @@ impl RelationReason {
             | Self::SameTestFile
             | Self::SameModule
             | Self::OwnerNamedTest
-            | Self::ImportPathAffinity => RelationConfidence::Medium,
+            | Self::ImportPathAffinity
+            // Re-export tracing is medium confidence: it is explicit in-source but
+            // one hop of indirection means ripr cannot see deeper aliasing.
+            | Self::ReExportChainFollowed => RelationConfidence::Medium,
             Self::FixtureOwnerAffinity | Self::WeakTokenSubstring => RelationConfidence::Low,
         }
     }
@@ -327,6 +340,10 @@ mod tests {
                 "fixture_owner_affinity",
             ),
             (RelationReason::WeakTokenSubstring, "weak_token_substring"),
+            (
+                RelationReason::ReExportChainFollowed,
+                "re_export_chain_followed",
+            ),
         ];
         for (reason, label) in cases {
             assert_eq!(reason.as_str(), label);
