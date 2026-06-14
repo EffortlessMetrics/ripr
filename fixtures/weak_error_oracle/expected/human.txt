@@ -23,7 +23,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
   - related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate("").is_err());
   - observed function argument value token = "" at line 5
@@ -85,7 +85,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
   - related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate("").is_err());
   - observed function argument value token = "" at line 5

@@ -1,0 +1,168 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_verified_return_value/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:bc806f88",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:bc806f88",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/observation_verified_return_value/input/src/lib.rs",
+        "line": 4,
+        "expression": "x * SCALE_FACTOR"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach compute_score: score_uses_scale_factor"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: x * SCALE_FACTOR"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach compute_score: score_uses_scale_factor", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence returned value: x * SCALE_FACTOR", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: x * SCALE_FACTOR (line 4)", "related test tests/score_tests.rs:4 score_uses_scale_factor uses strong exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);", "observed assertion argument value 3 at line 5", "observed function argument value x = 3 at line 5"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"x * SCALE_FACTOR","line":4}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: x * SCALE_FACTOR", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach compute_score: score_uses_scale_factor", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "5": "assert_eq!(compute_score(3), 3 * SCALE_FACTOR);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "x = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "x = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "score_uses_scale_factor",
+          "file": "tests/score_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(compute_score(3), 3 * SCALE_FACTOR);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:35a08f71",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.61,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:35a08f71",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/observation_verified_return_value/input/src/lib.rs",
+        "line": 4,
+        "expression": "x + 1"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach compute_score: score_uses_scale_factor"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach compute_score: score_uses_scale_factor", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 4)", "related test tests/score_tests.rs:4 score_uses_scale_factor uses unknown exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);", "observed assertion argument value 3 at line 5", "observed function argument value x = 3 at line 5"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":4}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach compute_score: score_uses_scale_factor"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "assert_eq!(compute_score(3), 3 * SCALE_FACTOR);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "x = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "x = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "score_uses_scale_factor",
+          "file": "tests/score_tests.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(compute_score(3), 3 * SCALE_FACTOR);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}

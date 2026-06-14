@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_unverified_call_deletion/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:09dd1431",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:09dd1431",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/observation_unverified_call_deletion/input/src/lib.rs",
+        "line": 10,
+        "expression": "cache.insert(\"result_key\", result);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_runs_without_panic"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence state write: cache.insert(\"result_key\", result)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach store_result: store_result_runs_without_panic", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches state write: cache.insert(\"result_key\", result) (line 10)", "related test tests/store_tests.rs:4 store_result_runs_without_panic uses weak relational check oracle: assert!(true);", "observed function argument value result = 42 at line 6"],
+      "flow_sinks": [
+        {"kind":"state_write","text":"cache.insert(\"result_key\", result)","line":10}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach store_result: store_result_runs_without_panic"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "store_result(&cache, 42);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "result = 42",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "result = 42",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "store_result_runs_without_panic",
+          "file": "tests/store_tests.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:side_effect:827549d9",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:side_effect:827549d9",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "fixtures/observation_unverified_call_deletion/input/src/lib.rs",
+        "line": 10,
+        "expression": "cache.insert(\"result_key\", result);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_runs_without_panic"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence state write: cache.insert(\"result_key\", result)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach store_result: store_result_runs_without_panic", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches state write: cache.insert(\"result_key\", result) (line 10)", "related test tests/store_tests.rs:4 store_result_runs_without_panic uses weak relational check oracle: assert!(true);", "observed function argument value result = 42 at line 6"],
+      "flow_sinks": [
+        {"kind":"state_write","text":"cache.insert(\"result_key\", result)","line":10}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach store_result: store_result_runs_without_panic"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "store_result(&cache, 42);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "result = 42",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "result = 42",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "store_result_runs_without_panic",
+          "file": "tests/store_tests.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.",
+      "suggested_next_action": "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.",
+      "language": "rust"
+    }
+  ]
+}

@@ -28,7 +28,7 @@ pub(in crate::analysis) fn reveal_evidence(
         &analysis.strongest,
         &analysis.strongest_kind,
         &probe.family,
-        analysis.arm_observation_unverified,
+        analysis.observation_unverified,
     );
 
     (observe, discriminate, related)
@@ -39,15 +39,105 @@ struct RevealAssertionAnalysis {
     strongest: OracleStrength,
     strongest_kind: OracleKind,
     matched_any: bool,
-    /// True when this is a `MatchArm` probe whose discrimination was matched
-    /// only via `family_match` or the `assertion_count == 1` escape hatch, with
-    /// no assertion text containing a token from the arm's pattern or variant.
+    /// True when this probe's family requires a `token_match` to confirm that
+    /// an assertion actually references the specific changed sub-expression, and
+    /// no such match has fired yet.
     ///
-    /// `token_match` is the only static signal that an assertion actually
-    /// references this specific arm (e.g. `None`, `State::Ready`). Without it,
-    /// `family_match` only tells us an equality oracle exists — it cannot confirm
-    /// which arm the test exercises. Cleared as soon as any `token_match` fires.
-    arm_observation_unverified: bool,
+    /// Applies to: `MatchArm`, `ReturnValue`, `FieldConstruction`, `SideEffect`,
+    /// `CallDeletion`. For each of these families, the broad `family_match` or
+    /// `assertion_count == 1` matcher alone is insufficient: it tells us an
+    /// oracle of the right shape exists in a reachable test, but cannot confirm
+    /// it observes *this particular* changed expression (vs. a sibling, an
+    /// unrelated field, or a different call site).
+    ///
+    /// Confirmation differs by family:
+    /// - **Value** families (MatchArm, ReturnValue, FieldConstruction): the only
+    ///   static signal of specificity is a `token_match` — an assertion whose
+    ///   text contains an identifier token from the probe expression.
+    /// - **Effect** families (SideEffect, CallDeletion): the canonical observer
+    ///   is a mock/expectation/snapshot that kind-matches the seam without
+    ///   sharing a token, so a genuine effect observer (`effect_observer_confirms`)
+    ///   confirms in addition to `token_match`.
+    ///
+    /// Cleared as soon as a confirming assertion fires.
+    observation_unverified: bool,
+}
+
+/// Returns true for families where an assertion must specifically reference the
+/// changed sub-expression to confirm observation. For **value** families
+/// (MatchArm, ReturnValue, FieldConstruction) the only static confirmation
+/// signal is a `token_match`. For **effect** families (SideEffect, CallDeletion)
+/// the legitimate observer is often a mock/expectation that **kind-matches the
+/// seam** without sharing any probe token; for those, a seam-kind match also
+/// confirms observation (see `effect_observer_confirms`).
+fn needs_token_confirmation(family: &ProbeFamily) -> bool {
+    matches!(
+        family,
+        ProbeFamily::MatchArm
+            | ProbeFamily::ReturnValue
+            | ProbeFamily::FieldConstruction
+            | ProbeFamily::SideEffect
+            | ProbeFamily::CallDeletion
+    )
+}
+
+/// Returns true for the **effect** families (SideEffect, CallDeletion) whose
+/// changed behavior is a side effect or outbound call. For these, the canonical
+/// observer is a mock/expectation that kind-matches the seam rather than a
+/// value assertion that names a token from the changed expression. A genuine
+/// effect observer therefore confirms observation even without a `token_match`.
+fn is_effect_family(family: &ProbeFamily) -> bool {
+    matches!(family, ProbeFamily::SideEffect | ProbeFamily::CallDeletion)
+}
+
+/// Returns true when `assertion` is a genuine **effect observer** that
+/// kind-matches an effect seam: a mock/expectation, a snapshot, or a
+/// whole-object equality capturing the resulting state. This is intentionally
+/// narrower than `oracle_matches_family` for effect families — it excludes the
+/// broad `text.contains("assert")` / `text.contains("expect")` substring
+/// matches, so a plain non-observing assertion (e.g. `assert!(result)`) does
+/// **not** clear `observation_unverified`. Only a real expectation/snapshot
+/// observer does.
+fn effect_observer_confirms(assertion: &OracleFact) -> bool {
+    matches!(
+        assertion.kind,
+        OracleKind::MockExpectation | OracleKind::Snapshot | OracleKind::WholeObjectEquality
+    )
+}
+
+/// For a `MatchArm` probe expression, extract only the "variant" tokens —
+/// the identifier segments that appear immediately after a `::` separator.
+/// These are the arm-specific tokens that can confirm an assertion targets
+/// this arm rather than a sibling sharing the same enum qualifier.
+///
+/// Example: `"Mode::Frozen => -1,"` → `["Frozen"]`.
+/// Example: `"Status::Active | Status::Idle => 0,"` → `["Active", "Idle"]`.
+/// Example: `"None => 0,"` → `[]` (no `::` in expression).
+fn match_arm_variant_tokens(expression: &str) -> Vec<String> {
+    let mut variants = Vec::new();
+    let bytes = expression.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i + 1 < len {
+        if bytes[i] == b':' && bytes[i + 1] == b':' {
+            // skip "::"
+            i += 2;
+            // collect the identifier that follows
+            let start = i;
+            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            if i > start {
+                let variant = &expression[start..i];
+                if extract_identifier_tokens(variant).contains(&variant.to_string()) {
+                    variants.push(variant.to_string());
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    variants
 }
 
 fn analyze_related_assertions(
@@ -55,13 +145,23 @@ fn analyze_related_assertions(
     related_tests: &[(&TestSummary, RelationReason)],
 ) -> RevealAssertionAnalysis {
     let probe_tokens = extract_identifier_tokens(&probe.expression);
-    let is_match_arm = matches!(probe.family, ProbeFamily::MatchArm);
+    // For MatchArm: collect variant-only tokens (post-`::`) for the specificity
+    // check. Qualifier tokens (e.g. the type name before `::`) are excluded so
+    // that a sibling-arm assertion sharing the qualifier cannot spuriously
+    // confirm observation of this arm.
+    let match_arm_variants = if matches!(probe.family, ProbeFamily::MatchArm) {
+        match_arm_variant_tokens(&probe.expression)
+    } else {
+        Vec::new()
+    };
+    let confirm_required = needs_token_confirmation(&probe.family);
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
     let mut strongest_kind = OracleKind::Unknown;
     let mut matched_any = false;
-    // For MatchArm probes: start pessimistic and clear once a token_match fires.
-    let mut arm_observation_unverified = false;
+    // For families that need token confirmation: start pessimistic and clear
+    // once a token_match fires.
+    let mut observation_unverified = false;
 
     for (test, reason) in related_tests {
         let relation_reason = Some(*reason);
@@ -82,19 +182,33 @@ fn analyze_related_assertions(
         for assertion in &test.assertions {
             let (matched, has_token_match) = assertion_matches_probe_detail(
                 &probe_tokens,
+                &match_arm_variants,
                 &probe.family,
                 assertion,
                 test.assertions.len(),
             );
             if matched {
-                if is_match_arm {
+                if confirm_required {
+                    // Observation is confirmed when the assertion specifically
+                    // references the changed sub-expression. For value families
+                    // (MatchArm/ReturnValue/FieldConstruction) the only static
+                    // signal is a `token_match`. For effect families
+                    // (SideEffect/CallDeletion) the canonical observer is a
+                    // mock/expectation/snapshot that kind-matches the seam
+                    // without sharing a token, so a genuine effect observer also
+                    // confirms. This prevents a real mock from being wrongly
+                    // flagged `observation_unverified`, while a plain
+                    // non-observing assertion (no token, no effect observer)
+                    // stays unverified.
+                    let observation_confirmed = has_token_match
+                        || (is_effect_family(&probe.family) && effect_observer_confirms(assertion));
                     if !matched_any {
-                        // First matching assertion: arm is unverified unless a
-                        // token_match confirms it observes this arm's pattern.
-                        arm_observation_unverified = !has_token_match;
-                    } else if has_token_match {
-                        // A confirmed arm-token match clears the unverified flag.
-                        arm_observation_unverified = false;
+                        // First matching assertion: observation is unverified
+                        // unless confirmed.
+                        observation_unverified = !observation_confirmed;
+                    } else if observation_confirmed {
+                        // A later confirmed assertion clears the unverified flag.
+                        observation_unverified = false;
                     }
                 }
                 matched_any = true;
@@ -122,7 +236,7 @@ fn analyze_related_assertions(
         strongest,
         strongest_kind,
         matched_any,
-        arm_observation_unverified,
+        observation_unverified,
     }
 }
 
@@ -131,10 +245,20 @@ fn analyze_related_assertions(
 /// `matched` is true when the assertion should be associated with this probe
 /// (via token text, family kind, or single-assertion escape hatch).
 /// `has_token_match` is true when the assertion text contains an identifier
-/// token from the probe expression — the only static signal that an assertion
-/// directly references this probe's specific pattern or variant.
+/// token from the probe expression that is specific enough to confirm this
+/// particular sub-expression is being observed.
+///
+/// For `MatchArm` probes, `has_token_match` uses only the **variant** tokens
+/// (`match_arm_variants`, the identifiers immediately after `::` in the probe
+/// expression). This prevents a sibling-arm assertion like `Mode::Warm` from
+/// clearing `observation_unverified` for a probe on `Mode::Frozen`, because
+/// the shared qualifier token `Mode` is excluded from the confirmation set.
+/// When the expression contains no `::` (e.g. `None => 0,`), the variant
+/// token list is empty and `has_token_match` is always false, reflecting that
+/// the probe has no arm-specific identifier.
 fn assertion_matches_probe_detail(
     probe_tokens: &[String],
+    match_arm_variants: &[String],
     family: &ProbeFamily,
     assertion: &OracleFact,
     assertion_count: usize,
@@ -142,9 +266,19 @@ fn assertion_matches_probe_detail(
     let token_match = probe_tokens
         .iter()
         .any(|token| token.len() > 3 && assertion.text.contains(token));
+    // For MatchArm probes, restrict the confirmation check to variant-only
+    // tokens (post-`::`). The qualifier ("Mode" in "Mode::Frozen") is shared
+    // across all arms and therefore cannot confirm this specific arm.
+    let has_token_match = if matches!(family, ProbeFamily::MatchArm) {
+        match_arm_variants
+            .iter()
+            .any(|v| v.len() > 3 && assertion.text.contains(v.as_str()))
+    } else {
+        token_match
+    };
     let family_match = oracle_matches_family(family, assertion);
     let matched = token_match || family_match || assertion_count == 1;
-    (matched, token_match)
+    (matched, has_token_match)
 }
 
 fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
@@ -173,19 +307,19 @@ fn build_discriminate_evidence(
     strongest: &OracleStrength,
     strongest_kind: &OracleKind,
     family: &ProbeFamily,
-    arm_observation_unverified: bool,
+    observation_unverified: bool,
 ) -> StageEvidence {
-    // For MatchArm probes, token_match is the only static signal that an
-    // assertion references this specific arm's pattern or variant. Without it,
-    // we cannot confirm the test exercises this arm even if it has an exact
-    // oracle. Downgrade to Weak so classify() emits weakly_exposed rather than
-    // exposed (arm_observation_unverified). A probe with a token_match stays
-    // exposed.
-    if arm_observation_unverified {
+    // For families that require token confirmation (MatchArm, ReturnValue,
+    // FieldConstruction, SideEffect, CallDeletion), a family_match or
+    // assertion_count==1 alone cannot confirm that an assertion observes *this*
+    // specific changed sub-expression. Without a token_match, downgrade to Weak
+    // so classify() emits weakly_exposed (observation_unverified). A probe
+    // with a token_match stays exposed.
+    if observation_unverified {
         return StageEvidence::new(
             StageState::Weak,
             Confidence::Medium,
-            "Discriminator unconfirmed: no assertion text references this arm's pattern or variant (arm_observation_unverified)",
+            "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)",
         );
     }
     match strongest {
@@ -442,6 +576,7 @@ mod tests {
         );
         let (matched, has_token) = assertion_matches_probe_detail(
             &["score".to_string()],
+            &[],
             &ProbeFamily::StaticUnknown,
             &token_assertion,
             2,
@@ -456,6 +591,7 @@ mod tests {
         );
         let (matched, has_token) = assertion_matches_probe_detail(
             &["err".to_string()],
+            &[],
             &ProbeFamily::ErrorPath,
             &family_assertion,
             2,
@@ -470,6 +606,7 @@ mod tests {
         );
         let (matched, has_token) = assertion_matches_probe_detail(
             &["run".to_string()],
+            &[],
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
             1,
@@ -482,6 +619,7 @@ mod tests {
 
         let (matched, _) = assertion_matches_probe_detail(
             &["run".to_string()],
+            &[],
             &ProbeFamily::StaticUnknown,
             &fallback_assertion,
             2,
@@ -884,7 +1022,7 @@ mod tests {
 
     /// A MatchArm probe whose expression has no extractable tokens (e.g. `None`
     /// is filtered) and whose single related test has an ExactValue oracle for a
-    /// DIFFERENT arm must emit weakly_exposed with arm_observation_unverified.
+    /// DIFFERENT arm must emit weakly_exposed with observation_unverified.
     #[test]
     fn match_arm_probe_without_token_match_downgrades_discriminate_to_weak() {
         // probe expression "None => 0," — None is filtered, 0 is not alpha
@@ -904,10 +1042,10 @@ mod tests {
         assert_eq!(
             discriminate.state,
             StageState::Weak,
-            "discriminate must be downgraded to Weak (arm_observation_unverified)"
+            "discriminate must be downgraded to Weak (observation_unverified)"
         );
         assert!(
-            discriminate.summary.contains("arm_observation_unverified"),
+            discriminate.summary.contains("observation_unverified"),
             "summary must name the reason: got `{}`",
             discriminate.summary
         );
@@ -938,12 +1076,14 @@ mod tests {
         );
     }
 
-    /// Non-MatchArm probes must not be affected by the arm_observation_unverified
-    /// logic even when they have no token_match.
+    /// A ReturnValue probe whose single related test has a family-matching assertion
+    /// but NO token referencing the changed expression must downgrade to Weak.
+    /// This inverts the former bug-locking test
+    /// `non_match_arm_probe_family_match_only_keeps_discriminate_yes`.
     #[test]
-    fn non_match_arm_probe_family_match_only_keeps_discriminate_yes() {
-        // ReturnValue probe with a single ExactValue assertion, no token match.
-        // The existing behavior (discriminate Yes via family_match) must be unchanged.
+    fn return_value_family_match_only_without_token_downgrades_discriminate_to_weak() {
+        // "value + 1" — tokens: ["value"] (len 5). Assertion "assert_eq!(compute(), 42);"
+        // has no occurrence of "value", so has_token_match=false.
         let probe = probe(ProbeFamily::ReturnValue, "value + 1");
         let test = test_with_assertions(
             "returns_incremented",
@@ -958,8 +1098,401 @@ mod tests {
 
         assert_eq!(
             discriminate.state,
+            StageState::Weak,
+            "ReturnValue probe with no token_match must downgrade to Weak (observation_unverified)"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "summary must name the reason: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// A ReturnValue probe whose assertion text CONTAINS a token from the probe
+    /// expression must stay exposed (StageState::Yes) — no over-correction.
+    #[test]
+    fn return_value_with_token_match_keeps_discriminate_yes() {
+        // "score + 1" — tokens: ["score"] (len 5). Assertion contains "score".
+        let probe = probe(ProbeFamily::ReturnValue, "score + 1");
+        let test = test_with_assertions(
+            "score_incremented",
+            vec![oracle(
+                "assert_eq!(score(), 6);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
             StageState::Yes,
-            "ReturnValue probe must not be affected by arm_observation_unverified"
+            "ReturnValue probe with token_match must stay Yes (no over-correction)"
+        );
+    }
+
+    /// A FieldConstruction probe whose single assertion has a dot (family_match)
+    /// but no token referencing the specific changed field must downgrade to Weak.
+    #[test]
+    fn field_construction_family_match_only_without_token_downgrades_to_weak() {
+        // "priority: 3" — tokens: ["priority"] (len 8). Assertion "assert_eq!(item.id, 3);"
+        // does not contain "priority".
+        let probe = probe(ProbeFamily::FieldConstruction, "priority: 3");
+        let test = test_with_assertions(
+            "item_has_id",
+            vec![oracle(
+                "assert_eq!(item.id, 3);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "FieldConstruction probe with no token_match must downgrade to Weak"
+        );
+    }
+
+    /// A FieldConstruction probe whose assertion references the exact changed field
+    /// must stay exposed (StageState::Yes).
+    #[test]
+    fn field_construction_with_token_match_keeps_discriminate_yes() {
+        // "priority: 3" — tokens: ["priority"]. Assertion "assert_eq!(item.priority, 3);"
+        // contains "priority".
+        let probe = probe(ProbeFamily::FieldConstruction, "priority: 3");
+        let test = test_with_assertions(
+            "item_has_priority",
+            vec![oracle(
+                "assert_eq!(item.priority, 3);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "FieldConstruction probe with token_match on priority must stay Yes"
+        );
+    }
+
+    /// A SideEffect probe whose single PLAIN assertion has neither a token
+    /// referencing the changed effect NOR an effect-observer kind (no mock,
+    /// snapshot, or whole-object) must emit observation_unverified. This is the
+    /// genuinely-blind case: the assertion only fired via the single-assertion
+    /// escape hatch.
+    #[test]
+    fn side_effect_plain_assertion_without_token_or_observer_emits_observation_unverified() {
+        // "send_notification(user_id)" — tokens: ["send", "notification", "user"].
+        // Assertion "assert!(ran);" contains none of those, and is not a mock,
+        // snapshot, or whole-object observer.
+        let probe = probe(ProbeFamily::SideEffect, "send_notification(user_id)");
+        let test = test_with_assertions(
+            "ran",
+            vec![oracle(
+                "assert!(ran);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "SideEffect probe with no token and no effect observer must downgrade to Weak"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "plain non-observing assertion must emit observation_unverified: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// REGRESSION LOCK (#1216 second-pass): a SideEffect probe whose single
+    /// matched assertion is a genuine MOCK EXPECTATION that kind-matches the seam
+    /// but shares NO token with the probe expression must NOT emit
+    /// observation_unverified. The mock observes the effect; downgrading it to
+    /// observation_unverified would be a false weakening. (It may still be Weak
+    /// via the Medium-strength path, but never via observation_unverified.)
+    #[test]
+    fn side_effect_mock_observer_without_token_clears_observation_unverified() {
+        // "send_notification(user_id)" — tokens: ["send", "notification", "user"].
+        // Assertion "mock.verify();" shares no token but is a MockExpectation,
+        // i.e. a genuine effect observer.
+        let probe = probe(ProbeFamily::SideEffect, "send_notification(user_id)");
+        let test = test_with_assertions(
+            "notification_checked",
+            vec![oracle(
+                "mock.verify();",
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "a genuine mock observer must clear observation_unverified even without a token: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// REGRESSION LOCK (#1216 second-pass): a CallDeletion probe whose single
+    /// matched assertion is a whole-object equality (a genuine effect observer)
+    /// sharing no token must NOT emit observation_unverified. Whole-object
+    /// equality captures the resulting persisted state, so it observes the
+    /// effect even without naming the changed call token.
+    #[test]
+    fn call_deletion_whole_object_observer_without_token_clears_observation_unverified() {
+        // "persist_audit(record)" — tokens: ["persist", "audit", "record"].
+        // Assertion "assert_eq!(store, expected);" shares no token but is a
+        // WholeObjectEquality effect observer (Strong).
+        let probe = probe(ProbeFamily::CallDeletion, "persist_audit(record)");
+        let test = test_with_assertions(
+            "store_matches_expected",
+            vec![oracle(
+                "assert_eq!(store, expected);",
+                OracleKind::WholeObjectEquality,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "a whole-object effect observer must clear observation_unverified even without a token: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// A VALUE family (ReturnValue) must NOT treat a mock/whole-object as an
+    /// observation confirmation — only a token_match confirms value families.
+    /// This guards against the effect-family relaxation leaking into value
+    /// families (the point of #1200/#1216: an ExactValue/whole-object oracle
+    /// does not kind-match a value seam's specific sub-expression).
+    #[test]
+    fn return_value_whole_object_without_token_still_emits_observation_unverified() {
+        // "base * SCALE" — tokens: ["base", "SCALE"]. Assertion
+        // "assert_eq!(result, expected);" is WholeObjectEquality but shares no
+        // token; for a VALUE family this must NOT clear observation_unverified.
+        let probe = probe(ProbeFamily::ReturnValue, "base * SCALE");
+        let test = test_with_assertions(
+            "result_matches_expected",
+            vec![oracle(
+                "assert_eq!(result, expected);",
+                OracleKind::WholeObjectEquality,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "ReturnValue (value family) with no token must stay observation_unverified"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "value family must not be cleared by an effect-observer kind: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// A SideEffect probe whose assertion references a specific token from the
+    /// changed expression must not be downgraded by observation_unverified.
+    #[test]
+    fn side_effect_with_token_match_keeps_discriminate_not_unverified() {
+        // "emit_payment_event(tx)" — tokens: ["emit_payment_event", "tx"] but
+        // only "emit_payment_event" (len > 3, well, len 17) would match.
+        // Assertion "mock.expect_emit_payment_event();" contains "emit_payment_event".
+        let probe = probe(ProbeFamily::SideEffect, "emit_payment_event(tx)");
+        let test = test_with_assertions(
+            "payment_event_emitted",
+            vec![oracle(
+                "mock.expect_emit_payment_event();",
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        // MockExpectation yields OracleStrength::Medium → StageState::Weak via
+        // the existing Medium oracle path, NOT via observation_unverified.
+        // The key invariant: observation_unverified must NOT fire when there IS
+        // a token_match — so the summary must not contain "observation_unverified".
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "token-matched SideEffect must not emit observation_unverified: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// A CallDeletion probe whose single assertion fires family_match via
+    /// `text.contains("assert")` but contains no token from the changed call
+    /// expression must downgrade to Weak.
+    #[test]
+    fn call_deletion_family_match_only_without_token_downgrades_to_weak() {
+        // "log_audit_event(record)" — tokens: ["audit", "event", "record"] (all len > 3).
+        // Assertion "assert!(result.is_ok());" does not contain any of those.
+        let probe = probe(ProbeFamily::CallDeletion, "log_audit_event(record)");
+        let test = test_with_assertions(
+            "result_ok",
+            vec![oracle(
+                "assert!(result.is_ok());",
+                OracleKind::BroadError,
+                OracleStrength::Weak,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "CallDeletion probe with no token_match must downgrade to Weak"
+        );
+    }
+
+    /// A CallDeletion probe whose assertion text contains the full call token
+    /// must not be downgraded by observation_unverified.
+    #[test]
+    fn call_deletion_with_token_match_does_not_emit_observation_unverified() {
+        // "log_audit_event(record)" — tokens: ["log_audit_event", "record"].
+        // Assertion "assert!(log_audit_event_was_called);" contains
+        // "log_audit_event" (the full call token).
+        let probe = probe(ProbeFamily::CallDeletion, "log_audit_event(record)");
+        let test = test_with_assertions(
+            "audit_event_logged",
+            vec![oracle(
+                "assert!(log_audit_event_was_called);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "token-matched CallDeletion must not emit observation_unverified: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// MatchArm: type-blind token match — `Mode::Warm` assertion must NOT clear
+    /// observation_unverified for a `Mode::Frozen` probe (Part B regression lock).
+    #[test]
+    fn match_arm_sibling_qualifier_does_not_clear_observation_unverified() {
+        // probe expression "Mode::Frozen => -1," — tokens: ["Mode", "Frozen"].
+        // Assertion "assert_eq!(classify(Mode::Warm), 1);" contains "Mode" (len 4)
+        // but NOT "Frozen" (the variant token). With variant-scoped token_match,
+        // "Mode" alone must not clear observation_unverified.
+        let probe = probe(ProbeFamily::MatchArm, "Mode::Frozen => -1,");
+        let test = test_with_assertions(
+            "warm_arm_returns_one",
+            vec![oracle(
+                "assert_eq!(classify(Mode::Warm), 1);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Weak,
+            "Mode::Warm assertion must not confirm Mode::Frozen arm (sibling-qualifier hole)"
+        );
+        assert!(
+            discriminate.summary.contains("observation_unverified"),
+            "summary must name the reason: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// MatchArm: assertion containing the specific VARIANT token confirms the arm.
+    #[test]
+    fn match_arm_variant_token_match_keeps_discriminate_yes() {
+        // probe expression "Mode::Frozen => -1," — variant "Frozen" appears in assertion.
+        let probe = probe(ProbeFamily::MatchArm, "Mode::Frozen => -1,");
+        let test = test_with_assertions(
+            "frozen_arm_returns_minus_one",
+            vec![oracle(
+                "assert_eq!(classify(Mode::Frozen), -1);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "Frozen variant in assertion must confirm observation (no over-correction)"
+        );
+    }
+
+    // --- Predicate and ErrorPath must NOT be affected ---
+
+    /// Predicate probes do not require token confirmation and must not be
+    /// affected by the observation_unverified logic.
+    #[test]
+    fn predicate_probe_family_match_only_keeps_discriminate_yes() {
+        let probe = probe(ProbeFamily::Predicate, "x > 0");
+        let test = test_with_assertions(
+            "check_positive",
+            vec![oracle(
+                "assert!(value >= 3);",
+                OracleKind::RelationalCheck,
+                OracleStrength::Weak,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        // RelationalCheck → OracleStrength::Weak → StageState::Weak, but NOT
+        // via observation_unverified.
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "Predicate probe must not emit observation_unverified: got `{}`",
+            discriminate.summary
+        );
+    }
+
+    /// ErrorPath probes do not require token confirmation and must not be
+    /// affected by the observation_unverified logic.
+    #[test]
+    fn error_path_probe_family_match_only_keeps_discriminate_yes() {
+        let probe = probe(ProbeFamily::ErrorPath, "Err(AuthError::RevokedToken)");
+        let test = test_with_assertions(
+            "revoked_token_fails",
+            vec![oracle(
+                "assert!(result.is_err());",
+                OracleKind::BroadError,
+                OracleStrength::Weak,
+            )],
+        );
+        let (_observe, discriminate, _related) =
+            reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "ErrorPath probe must not emit observation_unverified: got `{}`",
+            discriminate.summary
         );
     }
 }

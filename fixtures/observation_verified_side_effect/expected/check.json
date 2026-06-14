@@ -1,0 +1,170 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_verified_side_effect/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:934aa430",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:934aa430",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/observation_verified_side_effect/input/src/lib.rs",
+        "line": 17,
+        "expression": "notifier.send(order_id)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process_order: process_order_sends_exact_order_id"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence event or outbound call: notifier.send(order_id)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach process_order: process_order_sends_exact_order_id", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches event or outbound call: notifier.send(order_id) (line 17)", "related test tests/process_tests.rs:4 process_order_sends_exact_order_id uses strong exact value oracle: assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);", "observed function argument value order_id = \"order-42\" at line 6", "observed assertion argument value \"order-42\" at line 7"],
+      "flow_sinks": [
+        {"kind":"event_call","text":"notifier.send(order_id)","line":17}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence event or outbound call: notifier.send(order_id)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach process_order: process_order_sends_exact_order_id", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "process_order(&notifier, \"order-42\");",
+        "7": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "order_id = \"order-42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"order-42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "order_id = \"order-42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"order-42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "process_order_sends_exact_order_id",
+          "file": "tests/process_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:side_effect:95da2a37",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:side_effect:95da2a37",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "fixtures/observation_verified_side_effect/input/src/lib.rs",
+        "line": 17,
+        "expression": "notifier.send(order_id)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process_order: process_order_sends_exact_order_id"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence event or outbound call: notifier.send(order_id)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach process_order: process_order_sends_exact_order_id", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches event or outbound call: notifier.send(order_id) (line 17)", "related test tests/process_tests.rs:4 process_order_sends_exact_order_id uses strong exact value oracle: assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);", "observed function argument value order_id = \"order-42\" at line 6", "observed assertion argument value \"order-42\" at line 7"],
+      "flow_sinks": [
+        {"kind":"event_call","text":"notifier.send(order_id)","line":17}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence event or outbound call: notifier.send(order_id)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach process_order: process_order_sends_exact_order_id", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "process_order(&notifier, \"order-42\");",
+        "7": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "order_id = \"order-42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"order-42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "order_id = \"order-42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"order-42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "process_order_sends_exact_order_id",
+          "file": "tests/process_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    }
+  ]
+}

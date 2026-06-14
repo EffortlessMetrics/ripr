@@ -179,3 +179,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0094: call_deletion and return_value probes now correctly emit observation_unverified when no assertion token references the changed expression (was: broad-error message); classification stays weakly_exposed, genuine honesty fix per issue #1216
+
+Command:
+`cargo xtask goldens bless weak_error_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

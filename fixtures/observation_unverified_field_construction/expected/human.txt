@@ -1,0 +1,69 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_unverified_field_construction/input
+
+Summary: 2 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 1 unknown
+
+WARNING fixtures/observation_unverified_field_construction/input/src/lib.rs:9
+
+Changed
+  before: retries: 1,
+  expr:   retries: 1,
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  src/lib.rs::default_config
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach default_config: config_exists
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence constructed field: retries: 1
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches constructed field: retries: 1 (line 9)
+  - related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);
+  - observed assertion argument value 0 at line 6
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+NOTE fixtures/observation_unverified_field_construction/input/src/lib.rs:9
+
+Changed
+  before: retries: 1,
+  after:  retries,
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::default_config
+
+Static exposure
+  propagation_unknown (note, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach default_config: config_exists
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches unknown sink: unknown sink (line 9)
+  - related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);
+  - observed assertion argument value 0 at line 6
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - No strong discriminator was detected
+
+Stop reasons:
+  - propagation_evidence_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.

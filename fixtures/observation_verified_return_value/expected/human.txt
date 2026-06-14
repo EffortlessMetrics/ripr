@@ -1,0 +1,65 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_verified_return_value/input
+
+Summary: 2 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+INFO fixtures/observation_verified_return_value/input/src/lib.rs:4
+
+Changed
+  before: x + 1
+  after:  x * SCALE_FACTOR
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::compute_score
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence returned value: x * SCALE_FACTOR
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: x * SCALE_FACTOR (line 4)
+  - related test tests/score_tests.rs:4 score_uses_scale_factor uses strong exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);
+  - observed assertion argument value 3 at line 5
+  - observed function argument value x = 3 at line 5
+
+NOTE fixtures/observation_verified_return_value/input/src/lib.rs:4
+
+Changed
+  before: x + 1
+  expr:   x + 1
+
+Probe
+  family: static_unknown
+  delta:  unknown
+  owner:  src/lib.rs::compute_score
+
+Static exposure
+  static_unknown (note, confidence 0.61)
+
+Evidence
+  - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
+  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+  - propagation unknown: No propagation model is available for this changed syntax
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator unknown: Assertions exist, but oracle strength is unknown
+  - local flow reaches unknown sink: unknown sink (line 4)
+  - related test tests/score_tests.rs:4 score_uses_scale_factor uses unknown exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);
+  - observed assertion argument value 3 at line 5
+  - observed function argument value x = 3 at line 5
+
+Weakness
+  - No strong discriminator was detected
+  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
+
+Stop reasons:
+  - static_probe_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.

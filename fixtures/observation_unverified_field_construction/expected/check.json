@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_unverified_field_construction/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:field_construction:66b24106",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:field_construction:66b24106",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "fixtures/observation_unverified_field_construction/input/src/lib.rs",
+        "line": 9,
+        "expression": "retries: 1,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach default_config: config_exists"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence constructed field: retries: 1"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "observed assertion argument value 0 at line 6"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"retries: 1","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence constructed field: retries: 1", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach default_config: config_exists"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "assert!(cfg.timeout_secs > 0);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "0",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "0",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "config_exists",
+          "file": "tests/item_tests.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(cfg.timeout_secs > 0);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:8ed284d1",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.79,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:8ed284d1",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/observation_unverified_field_construction/input/src/lib.rs",
+        "line": 9,
+        "expression": "retries,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach default_config: config_exists"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "observed assertion argument value 0 at line 6"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach default_config: config_exists"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "assert!(cfg.timeout_secs > 0);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "0",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "0",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "config_exists",
+          "file": "tests/item_tests.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(cfg.timeout_secs > 0);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}

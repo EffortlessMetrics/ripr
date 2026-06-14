@@ -1,0 +1,170 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_verified_call_deletion/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:09dd1431",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:09dd1431",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/observation_verified_call_deletion/input/src/lib.rs",
+        "line": 15,
+        "expression": "cache.insert(\"result_key\", result);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_inserts_result_key_with_value"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence state write: cache.insert(\"result_key\", result)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach store_result: store_result_inserts_result_key_with_value", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches state write: cache.insert(\"result_key\", result) (line 15)", "related test tests/store_tests.rs:4 store_result_inserts_result_key_with_value uses strong exact value oracle: assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);", "observed function argument value result = 42 at line 6", "observed assertion argument value \"result_key=42\" at line 7"],
+      "flow_sinks": [
+        {"kind":"state_write","text":"cache.insert(\"result_key\", result)","line":15}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach store_result: store_result_inserts_result_key_with_value", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "store_result(&mut cache, 42);",
+        "7": "assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "result = 42",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"result_key=42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "result = 42",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"result_key=42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "store_result_inserts_result_key_with_value",
+          "file": "tests/store_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:side_effect:827549d9",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:side_effect:827549d9",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "fixtures/observation_verified_call_deletion/input/src/lib.rs",
+        "line": 15,
+        "expression": "cache.insert(\"result_key\", result);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_inserts_result_key_with_value"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence state write: cache.insert(\"result_key\", result)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach store_result: store_result_inserts_result_key_with_value", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches state write: cache.insert(\"result_key\", result) (line 15)", "related test tests/store_tests.rs:4 store_result_inserts_result_key_with_value uses strong exact value oracle: assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);", "observed function argument value result = 42 at line 6", "observed assertion argument value \"result_key=42\" at line 7"],
+      "flow_sinks": [
+        {"kind":"state_write","text":"cache.insert(\"result_key\", result)","line":15}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence state write: cache.insert(\"result_key\", result)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach store_result: store_result_inserts_result_key_with_value", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "store_result(&mut cache, 42);",
+        "7": "assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "result = 42",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"result_key=42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "result = 42",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"result_key=42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "store_result_inserts_result_key_with_value",
+          "file": "tests/store_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(cache.inserted, vec![\"result_key=42\".to_string()]);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/observation_verified_field_construction/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:field_construction:66b24106",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:field_construction:66b24106",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "fixtures/observation_verified_field_construction/input/src/lib.rs",
+        "line": 9,
+        "expression": "retries: 1,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach default_config: config_has_three_retries"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence constructed field: retries: 1"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"retries: 1","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence constructed field: retries: 1", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach default_config: config_has_three_retries", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "assert_eq!(cfg.retries, 3);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "config_has_three_retries",
+          "file": "tests/item_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(cfg.retries, 3);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:8ed284d1",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.87,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:8ed284d1",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/observation_verified_field_construction/input/src/lib.rs",
+        "line": 9,
+        "expression": "retries,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach default_config: config_has_three_retries"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach default_config: config_has_three_retries", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "6": "assert_eq!(cfg.retries, 3);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "config_has_three_retries",
+          "file": "tests/item_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(cfg.retries, 3);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}

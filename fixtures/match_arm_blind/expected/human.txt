@@ -22,7 +22,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Changed behavior appears to influence match arm result: 0
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this arm's pattern or variant (arm_observation_unverified)
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches match arm result: 0 (line 4)
   - related test tests/reason.rs:4 some_arm_returns_incremented_value uses strong exact value oracle: assert_eq!(reason(Some(5)), 6);
   - observed assertion argument value 6 at line 5

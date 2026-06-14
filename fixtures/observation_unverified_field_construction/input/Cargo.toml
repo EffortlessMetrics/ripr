@@ -1,0 +1,8 @@
+[package]
+name = "observation_unverified_field_construction_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "observation_unverified_field_construction_fixture"
+path = "src/lib.rs"

@@ -1,0 +1,89 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/match_arm_type_token_blind/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:match_arm:a6087841",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:match_arm:a6087841",
+        "family": "match_arm",
+        "delta": "control",
+        "file": "fixtures/match_arm_type_token_blind/input/src/lib.rs",
+        "line": 8,
+        "expression": "Mode::Frozen => -1,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify: warm_arm_returns_one"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence match arm result: -1"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify: warm_arm_returns_one", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence match arm result: -1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches match arm result: -1 (line 8)", "related test tests/classify_tests.rs:4 warm_arm_returns_one uses strong exact value oracle: assert_eq!(classify(Mode::Warm), 1);", "observed assertion argument value 1 at line 5", "observed enum variant value Mode::Warm at line 5"],
+      "flow_sinks": [
+        {"kind":"match_arm","text":"-1","line":8}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence match arm result: -1", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach classify: warm_arm_returns_one"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert_eq!(classify(Mode::Warm), 1);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "Mode::Warm",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "Mode::Warm",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "warm_arm_returns_one",
+          "file": "tests/classify_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(Mode::Warm), 1);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
+    }
+  ]
+}

@@ -406,9 +406,18 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only smoke oracle found, such as unwrap/expect or execution without a discriminator"
+        // The smoke-only assertion score(1).unwrap() contains no token from the
+        // probe expression "return Ok(input + 1)" — observation_unverified fires
+        // before the smoke oracle path, so the summary reflects the honesty fix.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "ReturnValue with no token_match must emit observation_unverified: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert_eq!(
             finding.related_tests[0].oracle_strength,
@@ -448,9 +457,18 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only broad error oracle found; it may not discriminate the changed behavior exactly"
+        // The broad error assertion "assert!(score(1).is_err())" contains no
+        // token from the CallDeletion probe "client.send(input)" — observation_unverified
+        // fires before the broad-error oracle path, reflecting the honesty fix.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "CallDeletion with no token_match must emit observation_unverified: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert!(
             finding
