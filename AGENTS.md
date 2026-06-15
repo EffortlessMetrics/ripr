@@ -229,6 +229,18 @@ Prefer small, high-signal changes:
   across every surface; do not fork a parallel validator. Reconcile derived
   messaging in the layer that owns the final decision so all surfaces agree
   (see `docs/adr/0019-language-adapters-reuse-shared-packet-contract.md`).
+- Graduate every confirmed false-promotion into the evidence-promotion corpus
+  (`fixtures/evidence-promotion-honesty-corpus/corpus.json` +
+  `cargo xtask check-evidence-promotion-honesty`, RIPR-SPEC-0108), not just a unit
+  test. The gate pins the non-promotion expectation *independent of the golden*,
+  so it catches a dishonest re-bless that `goldens check` would accept — goldens
+  can encode dishonesty. Share the invariant + corpus across languages; do **not**
+  unify the per-language matchers (different taxonomies, different edge policies).
+- Performance is part of honesty: an interactive path that is too slow, or that
+  defers expensive analysis off the keystroke path, must **disclose** its state
+  (e.g. `run_status: "seams_deferred"`, RIPR-SPEC-0105) and never present a
+  partial/deferred run as complete. A fast path may be partial only if the status
+  says so.
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
@@ -259,6 +271,15 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   not a hand-picked subset. A partial list silently skips `check-network-policy`,
   `check-dependencies`, and `check-generated`; CI will fail what local guessing
   missed.
+- Verify with the *right* harness — "verify the artifact" cuts both ways, since a
+  wrong harness manufactures false **negatives**. Run the **absolute** worktree
+  binary (`<worktree>/target/debug/ripr.exe`, not a long `../` that escapes to the
+  main checkout's stale binary) and `cargo fmt --check` under the pinned 1.95.0 /
+  rustfmt 1.9.0 toolchain. When a fix "doesn't work" but the builder insists it
+  does, suspect your own harness before the builder — inject a unique marker string
+  into the output to confirm your edits are even in the binary you are running. And
+  terminate any `ripr lsp --stdio` you spawn for an LSP behavioral test; an
+  orphaned server holds a Windows file lock and breaks the next build.
 
 ## PR Scope Doctrine
 

@@ -1443,3 +1443,57 @@ require the owner's class token / a receiver bound to it. When you touch one
 token-matching site, audit the others; they share the disease. Prefer downgrading
 token-only credit to a *visible* `weakly_exposed` over a *silent* `exposed` —
 visible over-suggestion is the recoverable error.
+
+## 2026-06-14: The fake-`exposed` is one cross-language class — now a standing gate, not whack-a-mole
+
+The token-coincidence family above (Python identity vs string) and the oracle/seam
+mismatches fixed across the fleet this run are **the same disease in different
+taxonomies**: *evidence may not promote a finding to `exposed`/`strongly_gripped`/
+`strong_oracle_observed` unless it **structurally matches the seam**.* The
+instances:
+
+- **Identity, not token** (Python): a strong oracle whose text merely *contains*
+  the owner's bare name credits `exposed` (#1244/#1247).
+- **Oracle kind, not just strength** (TS RIPR-SPEC-0104 #1248; Rust exemplar
+  RIPR-SPEC-0103 #1243): an `exact_error_variant` oracle promotes a value/predicate
+  seam, or a sibling `exact_value` oracle promotes an error seam — the kind must
+  match the seam family.
+- **Variant, not just family** (Rust RIPR-SPEC-0106 #1252, RIPR-SPEC-0107 #1254): an
+  `unwrap_err` test credits only the seam whose parsed `Err(Variant)` it pins; a
+  sibling variant or a generic `is_err()` stays `weakly_exposed`.
+- **Stage confidence caps the headline** (Rust RIPR-SPEC-0109 #1219-D): an
+  unproven infect/propagate stage caps the reported confidence; it can never read
+  as certain.
+
+**The capstone: RIPR-SPEC-0108 (`cargo xtask check-evidence-promotion-honesty`).**
+Each confirmed fake-`exposed` graduates into a cross-language corpus
+(`fixtures/evidence-promotion-honesty-corpus/corpus.json`) as a
+`must_remain_non_promoted` case (plus `control` cases that must stay `exposed`).
+The gate reads each charter fixture's **pinned golden** and asserts the class —
+so it pins the *semantic* expectation **independent of the golden itself**, which
+is the point: `goldens check` only asserts `binary == golden`, so a regression
+that makes a charter fixture produce `exposed` **and** re-blesses the golden to
+match would pass `goldens check`. **Goldens can encode dishonesty; the meta-gate
+catches the dishonest re-bless.** Design rule: **share the invariant + the
+adversarial corpus + the gate; do *not* unify the per-language matcher functions**
+— Rust/TS/Python have legitimately different taxonomies and edge policies. A new
+fix ADDS a `cases[]` entry; it never forks a matcher.
+
+**Performance is part of honesty.** The LSP first-open ran the full-repo seam
+inventory (~336s vs the CLI's ~14s diff pass), so every cockpit feature was
+dead-on-arrival and agents would act on no state at all. The fix (RIPR-SPEC-0105)
+defers the seam inventory off the interactive path — but it must **disclose** the
+deferral (`run_status: "seams_deferred"`, a `limited`-family value) and never
+present a partial/deferred run as complete. A fast path may be partial only if the
+status says so.
+
+**Verification harness can lie too.** "Verify the artifact, not the report" cuts
+*both* ways: a wrong harness manufactures false **negatives**. Twice this run a
+correct fix read as broken because (a) the behavioral run used a long relative
+path (`../../../../../target/debug/ripr.exe`) that escaped the worktree and ran the
+*main* checkout's stale binary, and (b) a local `cargo fmt --check` used a
+non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
+**absolute** worktree binary (`<worktree>/target/debug/ripr.exe`) and `cargo fmt
+--check` under the pinned toolchain. When a fix "doesn't work" but the builder
+insists it does, suspect your own harness before the builder — inject a unique
+string into the output to confirm your edits are even in the binary you're running.
