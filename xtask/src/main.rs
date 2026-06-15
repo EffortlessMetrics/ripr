@@ -1950,23 +1950,35 @@ fn check_pr() -> Result<(), String> {
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
-    ci_fast_with_envs(&temp_env_refs)?;
-    run_with_envs(
-        "cargo",
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        &temp_env_refs,
+    label_check_pr_gate(
+        "ci-fast",
+        "cargo xtask ci-fast",
+        ci_fast_with_envs(&temp_env_refs),
     )?;
-    run_with_envs(
-        "cargo",
-        &["doc", "--workspace", "--no-deps"],
-        &temp_env_refs,
+    label_check_pr_gate(
+        "clippy",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        run_with_envs(
+            "cargo",
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            &temp_env_refs,
+        ),
+    )?;
+    label_check_pr_gate(
+        "doc",
+        "cargo doc --workspace --no-deps",
+        run_with_envs(
+            "cargo",
+            &["doc", "--workspace", "--no-deps"],
+            &temp_env_refs,
+        ),
     )?;
     pr_summary()?;
     let body = check_pr_report_body();
@@ -1975,6 +1987,22 @@ fn check_pr() -> Result<(), String> {
     receipts_write()?;
     pr_summary()?;
     reports_index()
+}
+
+/// Attribute a `check-pr` sub-gate failure to the gate that produced it, with the
+/// command that reproduces *just* that gate and a pointer to the reports. Without
+/// this, a clippy or doc failure surfaces a bare tool error with no indication it
+/// came from `check-pr` or how to re-run only the failing step.
+fn label_check_pr_gate<T>(
+    name: &str,
+    reproduce: &str,
+    result: Result<T, String>,
+) -> Result<T, String> {
+    result.map_err(|err| {
+        format!(
+            "check-pr gate `{name}` failed\nreproduce: {reproduce}\nreports: target/ripr/reports/check-pr.md\n{err}"
+        )
+    })
 }
 
 fn check_pr_temp_env() -> Result<Vec<(String, String)>, String> {
@@ -5308,17 +5336,52 @@ pub(crate) fn goldens_impl(args: &[String]) -> Result<(), String> {
 
 fn goldens_check() -> Result<(), String> {
     let run_set = collect_golden_runs()?;
-    write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
+    let entries = write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
     let body = goldens_check_report_body(&run_set.fixtures, &run_set.runs, &run_set.violations);
     write_report("goldens.md", &body)?;
     if run_set.violations.is_empty() {
         Ok(())
     } else {
-        Err(format!(
-            "goldens check failed; see target/ripr/reports/goldens.md\n{}",
-            run_set.violations.join("\n")
-        ))
+        Err(goldens_check_failure_message(&entries, &run_set.violations))
     }
+}
+
+/// Build an actionable `goldens check` failure: each drifted fixture gets its
+/// semantic drift type (the discriminator from [`golden_drift_type`]) and a
+/// blessing-state note, non-drift violations (contract/run errors) are listed
+/// verbatim, and the message ends with the reproduce + next-action commands. The
+/// gate emits its own repair card instead of "failed; see report".
+fn goldens_check_failure_message(entries: &[GoldenDriftEntry], violations: &[String]) -> String {
+    let mut message = String::from(
+        "goldens check failed; semantic drift detail in target/ripr/reports/golden-drift.md\n",
+    );
+    for entry in entries {
+        let blessing = if entry.blessing_reason_present {
+            "blessing CHANGELOG present"
+        } else {
+            "no blessing CHANGELOG — re-bless if the flip is intended"
+        };
+        message.push_str(&format!(
+            "  drift: fixture `{}` [{}]: {} ({})\n",
+            entry.fixture,
+            entry.surface,
+            golden_drift_type(&entry.semantics),
+            blessing,
+        ));
+    }
+    // Violations that are not per-fixture output drift (contract or run errors)
+    // are not represented in `entries`; surface them verbatim so nothing is lost.
+    for violation in violations
+        .iter()
+        .filter(|violation| !violation.contains("drift for fixture"))
+    {
+        message.push_str(&format!("  error: {violation}\n"));
+    }
+    message.push_str("reproduce: cargo xtask goldens check\n");
+    message.push_str(
+        "next: inspect target/ripr/reports/golden-drift.md; if a flip is intended, run `cargo xtask goldens bless <fixture> --reason <reason>`",
+    );
+    message
 }
 
 pub(crate) fn golden_drift_impl() -> Result<(), String> {
@@ -5824,13 +5887,73 @@ fn goldens_check_report_body(
     body
 }
 
-fn write_golden_drift_reports(runs: &[FixtureRun], violations: &[String]) -> Result<(), String> {
+fn write_golden_drift_reports(
+    runs: &[FixtureRun],
+    violations: &[String],
+) -> Result<Vec<GoldenDriftEntry>, String> {
     let changed_paths = collect_changed_paths_set().unwrap_or_default();
     let entries = golden_drift_entries(runs, &changed_paths)?;
     let markdown = golden_drift_markdown(&entries, violations);
     let json = golden_drift_json(&entries, violations);
     write_report("golden-drift.md", &markdown)?;
-    write_report("golden-drift.json", &json)
+    write_report("golden-drift.json", &json)?;
+    Ok(entries)
+}
+
+/// Summarize a single golden drift as a semantic category, so a `goldens check`
+/// failure says *what kind* of drift happened (classification flip, added/removed
+/// finding, oracle change, banned static-language term, or formatting-only) rather
+/// than only pointing at a report file. Reuses the already-computed
+/// [`GoldenDriftSemantics`]; this is the discriminator a reviewer needs to decide
+/// whether a flip is intended (re-bless) or a regression.
+fn golden_drift_type(semantics: &GoldenDriftSemantics) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if !semantics.changed_exposure_classes.is_empty() {
+        parts.push(format!(
+            "classification_changed [{}]",
+            semantics.changed_exposure_classes.join("; ")
+        ));
+    }
+    if !semantics.added_finding_ids.is_empty() {
+        parts.push(format!(
+            "finding_added x{}",
+            semantics.added_finding_ids.len()
+        ));
+    }
+    if !semantics.removed_finding_ids.is_empty() {
+        parts.push(format!(
+            "finding_removed x{}",
+            semantics.removed_finding_ids.len()
+        ));
+    }
+    if !semantics.changed_oracle_strengths.is_empty() {
+        parts.push("oracle_strength_changed".to_string());
+    }
+    if !semantics.changed_oracle_kinds.is_empty() {
+        parts.push("oracle_kind_changed".to_string());
+    }
+    if !semantics.changed_probe_families.is_empty() {
+        parts.push("probe_family_changed".to_string());
+    }
+    if !semantics.changed_stop_reasons.is_empty() {
+        parts.push("stop_reason_changed".to_string());
+    }
+    if !semantics.changed_recommendations.is_empty() {
+        parts.push("recommendation_changed".to_string());
+    }
+    if !semantics.static_language_terms.is_empty() {
+        parts.push(format!(
+            "banned_static_language [{}]",
+            semantics.static_language_terms.join(", ")
+        ));
+    }
+    if parts.is_empty() {
+        parts.push(format!(
+            "formatting_only ({} line(s))",
+            semantics.changed_line_count
+        ));
+    }
+    parts.join(", ")
 }
 
 fn golden_drift_entries(
@@ -59707,7 +59830,7 @@ fn validate_support_tier_spec_links(
             && !text.contains("SUPPORT_TIERS.md")
         {
             violations.push(format!(
-                "{} has support-tier impact but does not reference docs/status/SUPPORT_TIERS.md",
+                "{}: spec declares `Support-tier impact:` but does not reference docs/status/SUPPORT_TIERS.md\n    reason: spec_support_tier_reference_missing\n    next: add a docs/status/SUPPORT_TIERS.md link in the Support-tier impact section, or set the impact to `None` if the spec has none",
                 display_repo_path(root, &path)
             ));
         }
@@ -61661,9 +61784,13 @@ fn validate_campaign_manifest(
                 }
             }
             Some(status) => violations.push(format!(
-                "{item_id} has unsupported status `{status}`; use done, active, ready, or blocked"
+                "{item_id} (line {}) has unsupported status `{status}`; expected one of done, active, ready, blocked",
+                item.line
             )),
-            None => violations.push(format!("{item_id} is missing `status`")),
+            None => violations.push(format!(
+                "{item_id} (line {}) is missing `status`",
+                item.line
+            )),
         }
 
         if item
@@ -61671,20 +61798,32 @@ fn validate_campaign_manifest(
             .as_ref()
             .is_none_or(|value| value.trim().is_empty())
         {
-            violations.push(format!("{item_id} is missing `branch`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `branch`",
+                item.line
+            ));
         }
         if item.stackable.is_none() {
-            violations.push(format!("{item_id} is missing `stackable`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `stackable`",
+                item.line
+            ));
         }
         if item
             .acceptance
             .as_ref()
             .is_none_or(|value| value.trim().is_empty())
         {
-            violations.push(format!("{item_id} is missing `acceptance`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `acceptance`",
+                item.line
+            ));
         }
         if item.status.as_deref() != Some("blocked") && item.commands.is_empty() {
-            violations.push(format!("{item_id} is missing command entries"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing command entries",
+                item.line
+            ));
         }
         for command in &item.commands {
             if !is_known_campaign_command(command) {
@@ -78678,6 +78817,68 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
     }
 
     #[test]
+    fn golden_drift_type_names_classification_flip() {
+        // Gate-feedback contract: a goldens-check failure must say WHAT KIND of
+        // drift happened. A classification flip is the highest-stakes case and
+        // must be named explicitly with its before/after.
+        let semantics = super::GoldenDriftSemantics {
+            changed_exposure_classes: vec![
+                "expected [exposed] -> actual [weakly_exposed]".to_string(),
+            ],
+            ..super::GoldenDriftSemantics::default()
+        };
+        let summary = super::golden_drift_type(&semantics);
+        assert!(summary.contains("classification_changed"), "{summary}");
+        assert!(summary.contains("exposed"), "{summary}");
+        assert!(summary.contains("weakly_exposed"), "{summary}");
+    }
+
+    #[test]
+    fn golden_drift_type_falls_back_to_formatting_only() {
+        // A whitespace/format-only drift must not masquerade as a semantic change.
+        let semantics = super::GoldenDriftSemantics {
+            changed_line_count: 3,
+            ..super::GoldenDriftSemantics::default()
+        };
+        let summary = super::golden_drift_type(&semantics);
+        assert!(summary.contains("formatting_only"), "{summary}");
+        assert!(summary.contains('3'), "{summary}");
+    }
+
+    #[test]
+    fn goldens_check_failure_message_is_a_repair_card() {
+        // The failure message must point at the semantic report, carry the
+        // reproduce command, and tell the reader how to re-bless an intended flip.
+        let entries = vec![super::GoldenDriftEntry {
+            fixture: "python_field_assignment_shape".to_string(),
+            surface: "check.json".to_string(),
+            expected: "fixtures/x/expected/check.json".to_string(),
+            actual: "target/x/actual/check.json".to_string(),
+            blessing_reason_required: true,
+            blessing_reason_present: false,
+            semantics: super::GoldenDriftSemantics {
+                changed_exposure_classes: vec![
+                    "expected [exposed] -> actual [weakly_exposed]".to_string(),
+                ],
+                ..super::GoldenDriftSemantics::default()
+            },
+        }];
+        let violations = vec!["drift for fixture `python_field_assignment_shape`".to_string()];
+        let message = super::goldens_check_failure_message(&entries, &violations);
+        assert!(message.contains("golden-drift.md"), "{message}");
+        assert!(
+            message.contains("python_field_assignment_shape"),
+            "{message}"
+        );
+        assert!(message.contains("classification_changed"), "{message}");
+        assert!(message.contains("re-bless"), "{message}");
+        assert!(
+            message.contains("reproduce: cargo xtask goldens check"),
+            "{message}"
+        );
+    }
+
+    #[test]
     fn json_string_values_for_key_reads_multiline_arrays() {
         let text = r#"{
   "stop_reasons": [
@@ -89854,10 +90055,14 @@ metric = "language_adapter_python_repair_routing_quality_metrics"
             );
 
             let violations = super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
+            // Gate-feedback contract: the violation names the offending spec, the
+            // missing SUPPORT_TIERS.md reference, a reason code, and a next action.
             assert!(
                 violations.iter().any(|violation| {
-                    violation.contains("has support-tier impact")
-                        && violation.contains("SUPPORT_TIERS.md")
+                    violation.contains("RIPR-SPEC-0001")
+                        && violation.contains("docs/status/SUPPORT_TIERS.md")
+                        && violation.contains("spec_support_tier_reference_missing")
+                        && violation.contains("next:")
                 }),
                 "{violations:#?}"
             );
@@ -90855,10 +91060,15 @@ acceptance = "Closed proof exists."
             let validation = super::validate_campaign_manifest(&manifest, &mut violations);
             assert!(validation.is_ok(), "{validation:?}");
 
+            // Gate-feedback contract: the violation names the work_item id, the
+            // exact line, and the missing field so an agent can jump straight to
+            // the offending row instead of re-deriving it.
             assert!(
-                violations
-                    .iter()
-                    .any(|violation| violation.contains("docs/test is missing command entries")),
+                violations.iter().any(|violation| {
+                    violation.contains("docs/test")
+                        && violation.contains("(line ")
+                        && violation.contains("is missing command entries")
+                }),
                 "{violations:?}"
             );
         });

@@ -249,6 +249,12 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   output before claiming it works. Gates passing, tests passing, and a builder's
   own "all gates pass" are weak oracles for behavior. Never merge on a
   sub-agent's or builder's self-report.
+- Do not hide a gate's exit code behind a pipeline. `cargo test … | grep … ;
+  echo done` reports the exit status of `echo` (always 0), so a real failure
+  reads as success. Run the gate directly, or capture `${PIPESTATUS[0]}` (bash)
+  before the pipe. Likewise, a green required check is not proof an analyzer fix
+  is correct — CI can pass on a fix the adversarial review knows is partial;
+  judge the fix on its semantics, not its exit code.
 - Run the full `routed-rust.yml` `cargo xtask check-*` list, not `precommit` and
   not a hand-picked subset. A partial list silently skips `check-network-policy`,
   `check-dependencies`, and `check-generated`; CI will fail what local guessing
