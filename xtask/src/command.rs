@@ -98,6 +98,7 @@ pub(crate) enum XtaskCommand {
     CheckPrShape,
     CheckGenerated,
     CheckCommandCatalog,
+    CheckEvidencePromotionHonesty,
     CheckBadgeDiffPolicy,
     CheckGeneratedClean,
     CheckVerificationContracts(Vec<String>),
@@ -215,6 +216,7 @@ impl XtaskCommand {
             "check-spec-format" => Self::CheckSpecFormat,
             "check-spec-numbering" => Self::CheckSpecNumbering,
             "check-fixture-contracts" => Self::CheckFixtureContracts,
+            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty,
             "check-traceability" | "check-spec-ids" | "check-behavior-manifest" => {
                 Self::CheckTraceability
             }
@@ -384,6 +386,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-spec-format",
         "check-spec-numbering",
         "check-fixture-contracts",
+        "check-evidence-promotion-honesty",
         "check-traceability",
         "check-spec-ids",
         "check-behavior-manifest",
@@ -1092,6 +1095,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/fixture-contracts.md",
             false,
             "Checks fixture contracts.",
+        ),
+        command_entry(
+            "check-evidence-promotion-honesty",
+            "non_mutating_check",
+            "target/ripr/reports/evidence-promotion-honesty.md",
+            false,
+            "Reads byte-pinned golden check.json files for each charter member and asserts that must_remain_non_promoted cases show no `exposed` finding and control cases retain at least one `exposed` finding; catches a dishonest golden re-bless that would bypass goldens check.",
         ),
         command_entry(
             "check-traceability",

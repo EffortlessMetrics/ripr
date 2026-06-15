@@ -5509,6 +5509,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "editor_first_pr_bridge"
                     | "editor_adoption_assurance"
                     | "editor_actionable_gap_queue"
+                    | "evidence-promotion-honesty-corpus"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
@@ -8026,6 +8027,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_bun_ub_cross_language_dogfood_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_typescript_preview_false_actionable_audit_fixture_corpus(&mut violations)?;
+    validate_evidence_promotion_honesty_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
     validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
@@ -8446,6 +8448,8 @@ const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
     "fixtures/typescript-preview-repair-loop/corpus.json";
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS: &str =
     "fixtures/typescript-preview-false-actionable-audit/corpus.json";
+const EVIDENCE_PROMOTION_HONESTY_CORPUS: &str =
+    "fixtures/evidence-promotion-honesty-corpus/corpus.json";
 const USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/user-surface-projection-alignment/corpus.json";
 
@@ -10426,6 +10430,274 @@ fn validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
         if !dispositions.contains(required) {
             violations.push(format!(
                 "TypeScript preview false-actionable audit corpus must include disposition {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_evidence_promotion_honesty() -> Result<(), String> {
+    let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
+    let mut violations = Vec::new();
+    validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
+
+    let report = if violations.is_empty() {
+        "pass: all charter members at expected class; no promoted case carries exposed; all controls retain exposed".to_string()
+    } else {
+        format!("FAIL: {}", violations.join("; "))
+    };
+    ensure_reports_dir()?;
+    let mut body = format!(
+        "# check-evidence-promotion-honesty\n\nStatus: {}\n\n",
+        if violations.is_empty() {
+            "pass"
+        } else {
+            "fail"
+        }
+    );
+    body.push_str("## Why This Matters\n\n");
+    body.push_str(
+        "A finding may not be promoted to `exposed` unless its evidence STRUCTURALLY \
+         matches the seam. Each confirmed fake-clean is pinned as a charter member that \
+         must stay non-promoted. Honest re-bless of a charter fixture to `exposed` in the \
+         golden would bypass `goldens check`; this gate reads the byte-pinned golden and \
+         asserts the semantic expectation independently.\n\n",
+    );
+    if violations.is_empty() {
+        body.push_str("## Violations\n\nNone detected.\n\n");
+    } else {
+        body.push_str("## Violations\n\n");
+        for v in &violations {
+            body.push_str("```text\n");
+            body.push_str(v);
+            body.push_str("\n```\n\n");
+        }
+        body.push_str("## Fix Kind\n\n```text\nAuthorDecisionRequired\n```\n\n");
+        body.push_str("## Recommended Fixes\n\n");
+        body.push_str(
+            "1. If a non-promoted case now shows `exposed`, the classifier changed — \
+               revert the production change or add a stricter corpus entry.\n\
+             2. If a control case lost `exposed`, the gate has over-corrected — revert \
+               the production change or update the control.\n\
+             3. To register a new fake-clean, add a `must_remain_non_promoted` case to \
+               fixtures/evidence-promotion-honesty-corpus/corpus.json.\n",
+        );
+    }
+    body.push_str(&format!("\n## Detail\n\n{report}\n\n"));
+    body.push_str("## Rerun\n\n```bash\ncargo xtask check-evidence-promotion-honesty\n```\n");
+    write_report("evidence-promotion-honesty.md", &body)?;
+
+    if violations.is_empty() {
+        println!("{}", report);
+        Ok(())
+    } else {
+        Err(format!(
+            "check-evidence-promotion-honesty failed; see target/ripr/reports/evidence-promotion-honesty.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn validate_evidence_promotion_honesty_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
+    if !corpus_path.exists() {
+        violations.push(format!(
+            "evidence promotion honesty corpus is missing {}",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    }
+    validate_evidence_promotion_honesty_corpus_at(corpus_path, violations)
+}
+
+/// Classification severity ordering: exposed > weakly_exposed > reachable_unrevealed/no_static_path/*_unknown
+fn evidence_class_severity(class: &str) -> u8 {
+    match class {
+        "exposed" => 3,
+        "weakly_exposed" => 2,
+        "reachable_unrevealed" | "no_static_path" => 1,
+        _ => 0, // infection_unknown, propagation_unknown, static_unknown
+    }
+}
+
+fn validate_evidence_promotion_honesty_corpus_at(
+    corpus_path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !corpus_path.exists() {
+        violations.push(format!(
+            "evidence promotion honesty corpus is missing {}",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    }
+
+    let corpus_text = read_text_lossy(corpus_path)?;
+    let corpus_value: Value = serde_json::from_str(&corpus_text)
+        .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
+
+    let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
+        violations.push(format!(
+            "{} has no `cases` array",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    };
+
+    // Parity: track languages with non-promoted cases and control cases
+    let mut non_promoted_languages: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut control_languages: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut seen_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+    for case in cases {
+        let id = case
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing-id>");
+
+        // Duplicate id check
+        if !seen_ids.insert(id.to_string()) {
+            violations.push(format!(
+                "evidence promotion honesty corpus has duplicate case id `{id}`"
+            ));
+        }
+
+        let language = case
+            .get("language")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let source_fixture = case
+            .get("source_fixture")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        // Parity: source fixture must exist
+        let fixture_dir = Path::new(source_fixture);
+        if !fixture_dir.exists() {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` does not exist"
+            ));
+            continue;
+        }
+
+        // Parity: source fixture must have expected/check.json
+        let check_json_path = fixture_dir.join("expected/check.json");
+        if !check_json_path.exists() {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: `{}` is missing expected/check.json",
+                normalize_path(fixture_dir)
+            ));
+            continue;
+        }
+
+        // Parity: source fixture must NOT be in the manifest-only denylist
+        // (it must stay covered by `goldens check`)
+        if is_manifest_only_fixture_dir(fixture_dir) {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` is a manifest-only fixture dir; only regular fixtures with golden check.json may be charter members"
+            ));
+            continue;
+        }
+
+        // Read the golden check.json (byte-pinned source of truth)
+        let check_json_text = read_text_lossy(&check_json_path)?;
+        let check_json: Value = serde_json::from_str(&check_json_text).map_err(|err| {
+            format!(
+                "failed to parse {}: {err}",
+                normalize_path(&check_json_path)
+            )
+        })?;
+        let findings = check_json
+            .get("findings")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let must_remain_non_promoted = case
+            .get("must_remain_non_promoted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let expected_promoted = case
+            .get("expected_promoted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        if must_remain_non_promoted {
+            non_promoted_languages.insert(language.to_string());
+
+            let expected_max_class = case
+                .get("expected_max_class")
+                .and_then(Value::as_str)
+                .unwrap_or("weakly_exposed");
+            let max_severity = evidence_class_severity(expected_max_class);
+
+            for finding in &findings {
+                let class = finding
+                    .get("classification")
+                    .and_then(Value::as_str)
+                    .unwrap_or("static_unknown");
+                let finding_id = finding
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<no-id>");
+
+                // Hard invariant: no finding may be promoted to `exposed`
+                if class == "exposed" {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                         finding `{finding_id}` has classification `exposed` but \
+                         `must_remain_non_promoted` is true — dishonest re-bless detected; \
+                         revert the golden or remove this charter member"
+                    ));
+                }
+
+                // Soft invariant: respect expected_max_class
+                if evidence_class_severity(class) > max_severity {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                         finding `{finding_id}` has classification `{class}` which exceeds \
+                         expected_max_class `{expected_max_class}`"
+                    ));
+                }
+            }
+        } else if expected_promoted {
+            control_languages.insert(language.to_string());
+
+            // Control: at least one finding must be `exposed`
+            let has_exposed = findings
+                .iter()
+                .any(|f| f.get("classification").and_then(Value::as_str) == Some("exposed"));
+            if !has_exposed {
+                violations.push(format!(
+                    "evidence promotion honesty control case `{id}` (fixture `{source_fixture}`): \
+                     `expected_promoted` is true but no finding has classification `exposed` — \
+                     the gate has over-corrected or the fixture needs re-blessing"
+                ));
+            }
+        }
+    }
+
+    // Parity: each of {python, typescript, rust} must have >= 1 non-promoted case
+    for lang in ["python", "typescript", "rust"] {
+        if !non_promoted_languages.contains(lang) {
+            violations.push(format!(
+                "evidence promotion honesty corpus must include at least one \
+                 `must_remain_non_promoted` case for language `{lang}`"
+            ));
+        }
+    }
+
+    // Parity: each of {python, typescript, rust} must have >= 1 control case
+    // Note: python may not have a positive control yet, so we only require rust+typescript.
+    // The requirement from the spec is rust and typescript.
+    for lang in ["rust", "typescript"] {
+        if !control_languages.contains(lang) {
+            violations.push(format!(
+                "evidence promotion honesty corpus must include at least one \
+                 `expected_promoted` control case for language `{lang}`"
             ));
         }
     }

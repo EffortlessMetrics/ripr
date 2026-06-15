@@ -47,6 +47,7 @@ jobs:
       - run: cargo xtask check-spec-format
       - run: cargo xtask check-spec-numbering
       - run: cargo xtask check-fixture-contracts
+      - run: cargo xtask check-evidence-promotion-honesty
       - run: cargo xtask check-generated
       - run: cargo xtask check-badge-diff-policy
       - run: cargo xtask check-generated-clean

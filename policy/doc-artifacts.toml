@@ -465,3 +465,11 @@ path = "docs/specs/RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.m
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Honesty fix: add ErrorPath to needs_token_confirmation in classify/reveal.rs so sibling ExactValue and broad is_err() oracles no longer promote error_path seams to exposed via observation_unverified; genuine variant-pinning ExactErrorVariant oracle (matching token) still clears guard and keeps seam exposed; reuses RIPR-SPEC-0094 + RIPR-SPEC-0106 machinery; one-line production delta; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0108"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (5 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."

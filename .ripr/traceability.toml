@@ -5981,3 +5981,35 @@ metrics = [
   "error_path_variant_confirmation_required",
   "error_path_variant_positive_unchanged",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0108"
+name = "evidence-promotion honesty meta-gate"
+spec = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
+tests = [
+  "xtask/src/main.rs::check_evidence_promotion_honesty",
+  "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
+]
+fixtures = [
+  "fixtures/evidence-promotion-honesty-corpus",
+  "fixtures/python_adversarial_buffer_token",
+  "fixtures/python_adversarial_mock_call_not_value",
+  "fixtures/typescript_broad_tothrow",
+  "fixtures/weak_error_oracle",
+  "fixtures/error_path_sibling_oracle_fake_clean",
+  "fixtures/strong_error_oracle",
+  "fixtures/unwrap_err_variant_positive",
+  "fixtures/typescript_strong_oracle",
+]
+code = [
+  "xtask/src/main.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md",
+]
+metrics = [
+  "evidence_promotion_honesty_charter_members",
+  "evidence_promotion_honesty_control_cases",
+]
