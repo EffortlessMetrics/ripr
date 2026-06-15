@@ -4457,6 +4457,101 @@ fn is_control_flow_change_line(line_text: &str) -> bool {
         || (trimmed.starts_with("with ") && trimmed.contains("raises("))
 }
 
+/// Parse a dict-literal line (a `return {...}` or `lhs = {...}`) into its top-level
+/// `(key, value)` pairs. Keys are unquoted; values keep their source text. Returns
+/// `None` if the line has no `{...}` body or no parseable fields.
+fn parse_dict_literal_fields(line: &str) -> Option<Vec<(String, String)>> {
+    let trimmed = line.trim();
+    let open = trimmed.find('{')?;
+    let close = trimmed.rfind('}')?;
+    if close <= open {
+        return None;
+    }
+    let body = &trimmed[open + 1..close];
+    let mut fields = Vec::new();
+    for segment in top_level_python_segments(body) {
+        if let Some((key, value)) = python_dict_field_segment_parts(segment) {
+            fields.push((key.to_string(), value.trim().to_string()));
+        }
+    }
+    if fields.is_empty() {
+        None
+    } else {
+        Some(fields)
+    }
+}
+
+/// For a dict-literal field-construction change, the keys whose value differs
+/// between the old and new line (added / removed / re-valued), plus the NEW values
+/// of those keys. Returns `None` when the change is not a dict-literal change on
+/// both sides, or when nothing localizable changed — in which case the #1290
+/// dict-element gate is a pass-through.
+fn dict_changed_keys_and_values(
+    old_line: Option<&str>,
+    new_line: &str,
+) -> Option<(Vec<String>, Vec<String>)> {
+    let old = parse_dict_literal_fields(old_line?)?;
+    let new = parse_dict_literal_fields(new_line)?;
+    let mut changed_keys = Vec::new();
+    let mut changed_values = Vec::new();
+    for (key, value) in &new {
+        let old_value = old.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+        if old_value != Some(value) {
+            changed_keys.push(key.clone());
+            changed_values.push(value.clone());
+        }
+    }
+    // A key present in the old line but removed in the new line is also a change.
+    for (key, _) in &old {
+        if !new.iter().any(|(k, _)| k == key) {
+            changed_keys.push(key.clone());
+        }
+    }
+    if changed_keys.is_empty() {
+        None
+    } else {
+        Some((changed_keys, changed_values))
+    }
+}
+
+/// Whether a strong oracle observes the CHANGED dict element (#1290): a subscript or
+/// `.get(...)` of a changed key, the changed value literal, or a whole-collection
+/// comparison. Conservative — when in doubt it returns `true` (credit stands) so a
+/// genuine discriminator is never dropped; it only returns `false` for an oracle
+/// that observes purely a sibling key or an aggregate.
+fn oracle_observes_changed_dict_element(
+    oracle: &str,
+    changed_keys: &[String],
+    changed_values: &[String],
+) -> bool {
+    // A whole-collection comparison (`== {...}` / `== [...]`) observes every element.
+    if oracle.contains("=={")
+        || oracle.contains("== {")
+        || oracle.contains("==[")
+        || oracle.contains("== [")
+    {
+        return true;
+    }
+    // Observes a changed value literal (e.g. the new `9090` / `"failure"`).
+    for value in changed_values {
+        let literal = value.trim().trim_matches('"').trim_matches('\'');
+        if literal.len() >= 2 && oracle.contains(literal) {
+            return true;
+        }
+    }
+    // Subscripts a changed key by literal (`["port"]`, `['port']`, `.get("port")`).
+    for key in changed_keys {
+        if oracle.contains(&format!("[\"{key}\"]"))
+            || oracle.contains(&format!("['{key}']"))
+            || oracle.contains(&format!(".get(\"{key}\")"))
+            || oracle.contains(&format!(".get('{key}')"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn classify_sink_alignment_with_old(
     owner: &PythonOwner,
     line_text: &str,
@@ -4689,31 +4784,59 @@ fn classify_sink_alignment_with_old(
                     && any_strong_observes(&attr_token))
         }
     };
-    let (oracle_alignment, alignment_reason) =
-        if any_strong_observes(&identity_tokens) && (is_method_owner || free_fn_module_identity) {
-            ("direct", "strong_oracle_observes_owner_name")
-        } else if method_name_observed && strong_test_binds_method_receiver {
-            (
-                "direct",
-                "strong_oracle_observes_owner_method_on_bound_receiver",
-            )
-        } else if any_strong_observes(&alias_tokens) {
-            ("alias", "strong_oracle_observes_import_alias")
-        } else if any_strong_observes(&delta_tokens)
-            && change_only_credit_ok
-            && (is_method_owner || free_fn_module_identity)
-        {
-            // Gate the changed-sink-token path with the same free-function module
-            // identity as the direct/alias paths: a same-named free function from a
-            // different module must not credit `exposed` via this sibling branch
-            // either (the #1249 every-branch lesson). Method owners are unaffected.
-            (
-                "changed_sink_token",
-                "strong_oracle_observes_changed_sink_token",
-            )
-        } else {
-            ("orthogonal", "strong_oracle_observes_different_sink")
-        };
+    // Changed-element identity for a dict-literal field-construction change (#1290).
+    // A dict-literal change is localized to specific key(s) (`{"port": 8080}` ->
+    // `9090` changes only `port`), but a strong oracle that merely calls the owner
+    // and observes a SIBLING key (`build_config()["host"]`) or an aggregate
+    // (`len(...)`) does not discriminate the change. Credit only when a strong
+    // oracle observes the CHANGED element: its changed value, a subscript of the
+    // changed key, or a whole-collection comparison. Non-dict changes (and changes
+    // whose changed keys cannot be localized from the paired old line) are not gated
+    // and keep prior behavior (pass-through `true`).
+    let field_construction_credit_ok = match dict_changed_keys_and_values(old_line_text, line_text)
+    {
+        None => true,
+        Some((changed_keys, changed_values)) => strong_tests.iter().any(|test| {
+            test.oracle.as_deref().is_some_and(|text| {
+                oracle_observes_changed_dict_element(text, &changed_keys, &changed_values)
+            })
+        }),
+    };
+    // The dict-element gate (#1290) applies to EVERY credit branch — like the #1249
+    // every-branch lesson — so a sibling-key oracle cannot sneak `exposed` through
+    // the direct/alias/changed_sink_token path of a localized dict-literal change.
+    // It is a pass-through `true` for any non-dict change.
+    let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens)
+        && (is_method_owner || free_fn_module_identity)
+        && field_construction_credit_ok
+    {
+        ("direct", "strong_oracle_observes_owner_name")
+    } else if method_name_observed
+        && strong_test_binds_method_receiver
+        && field_construction_credit_ok
+    {
+        (
+            "direct",
+            "strong_oracle_observes_owner_method_on_bound_receiver",
+        )
+    } else if any_strong_observes(&alias_tokens) && field_construction_credit_ok {
+        ("alias", "strong_oracle_observes_import_alias")
+    } else if any_strong_observes(&delta_tokens)
+        && change_only_credit_ok
+        && field_construction_credit_ok
+        && (is_method_owner || free_fn_module_identity)
+    {
+        // Gate the changed-sink-token path with the same free-function module
+        // identity as the direct/alias paths: a same-named free function from a
+        // different module must not credit `exposed` via this sibling branch
+        // either (the #1249 every-branch lesson). Method owners are unaffected.
+        (
+            "changed_sink_token",
+            "strong_oracle_observes_changed_sink_token",
+        )
+    } else {
+        ("orthogonal", "strong_oracle_observes_different_sink")
+    };
     SinkAlignment {
         changed_sink,
         observed_sink,
@@ -7082,6 +7205,90 @@ def test_build_user_smoke():
             "    return x + 1",
             "    return x - 1"
         )); // not a def
+    }
+
+    #[test]
+    fn dict_changed_element_sibling_key_oracle_not_exposed() -> Result<(), String> {
+        // #1290: the changed key is `port`, but the only strong oracle observes the
+        // unchanged SIBLING key `host`, so it does not discriminate the change.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_host():\n    assert build_config()[\"host\"] == \"localhost\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle observing a sibling dict key does not discriminate the changed key"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dict_changed_element_observed_value_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: the oracle observes the CHANGED key's new value, so it
+        // genuinely discriminates the change.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_port():\n    assert build_config()[\"port\"] == 9090\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed key's value discriminates the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dict_changed_element_whole_comparison_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: a whole-collection comparison observes every element,
+        // including the changed one.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_cfg():\n    assert build_config() == {\"host\": \"localhost\", \"port\": 9090}\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a whole-collection comparison observes the changed element"
+        );
+        Ok(())
     }
 
     #[test]

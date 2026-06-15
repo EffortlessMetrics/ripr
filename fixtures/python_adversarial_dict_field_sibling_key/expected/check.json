@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_dict_field_sibling_key/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_conf.py:python_preview:932c667d",
+      "canonical_gap_id": "gap:python:src/conf.py:build_config:field_value:field_construction:return_host_localhost_port_9090",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/conf.py:build_config:field_value:field_construction:return_host_localhost_port_9090",
+        "language": "python",
+        "file": "src/conf.py",
+        "owner": "build_config",
+        "behavior_kind": "field_value",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "return_host_localhost_port_9090"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_conf.py:python_preview:932c667d",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "src/conf.py",
+        "line": 2,
+        "expression": "    return {\"host\": \"localhost\", \"port\": 9090}",
+        "owner": "python:src/conf.py::build_config"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `build_config`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python field or attribute construction can alter object state: `return {\"host\": \"localhost\", \"port\": 9090}`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `build_config`", "infection yes: Changed Python field or attribute construction can alter object state: `return {\"host\": \"localhost\", \"port\": 9090}`", "propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches constructed field: return {\"host\": \"localhost\", \"port\": 9090} (line 2)", "related test tests/test_conf.py:4 test_host uses strong exact value oracle: assert build_config()[\"host\"] == \"localhost\"", "missing discriminator host == \"localhost\": changed Python field/object value at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"return {\"host\": \"localhost\", \"port\": 9090}","line":2}
+      ],
+      "evidence": ["owner: build_config", "owner_kind: function", "missing_discriminator: host == \"localhost\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_conf.py", "suggested_test_name: test_host", "suggested_test_node_id: tests/test_conf.py::test_host", "suggested_verify_command: pytest tests/test_conf.py::test_host", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_host)", "test_verify_command: pytest tests/test_conf.py::test_host (test_host)", "related_test_relation: syntactic_call (test_host)", "test_oracle: exact_value strong (test_host)", "test_oracle_shape: field_assertion (test_host)"],
+      "missing": ["A strong Python oracle reaches `build_config`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "host == \"localhost\"",
+            "reason": "changed Python field/object value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"struct_field","text":"return {\"host\": \"localhost\", \"port\": 9090}","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "host == \"localhost\"",
+          "reason": "changed Python field/object value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"struct_field","text":"return {\"host\": \"localhost\", \"port\": 9090}","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_host",
+          "file": "tests/test_conf.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert build_config()[\"host\"] == \"localhost\""
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_conf.py",
+        "suggested_test_name": "test_host",
+        "suggested_test_node_id": "tests/test_conf.py::test_host",
+        "verify_command": "pytest tests/test_conf.py::test_host",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/conf.py:build_config:field_value:field_construction:return_host_localhost_port_9090",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "build_config",
+        "changed_behavior": "field_value changed at src/conf.py:2: `return {\"host\": \"localhost\", \"port\": 9090}`",
+        "current_test_evidence": "tests/test_conf.py:4 test_host currently has oracle_strength=strong, oracle_kind=exact_value: assert build_config()[\"host\"] == \"localhost\"",
+        "missing_discriminator": "host == \"localhost\"",
+        "recommended_test_shape": "Strengthen the existing pytest returned mapping field assertion for `host == \"localhost\"`.",
+        "suggested_assertion": "Assert the returned mapping field directly, e.g. `assert result[\"host\"] == \"localhost\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_conf.py",
+          "test_name": "test_host",
+          "pytest_node_id": "tests/test_conf.py::test_host"
+         },
+        "verify": {
+          "command": "pytest tests/test_conf.py::test_host",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `host == \"localhost\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `host == \"localhost\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "host, localhost, port",
+      "observed_sink": "assert build_config()[\"host\"] == \"localhost\"",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/conf.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}
