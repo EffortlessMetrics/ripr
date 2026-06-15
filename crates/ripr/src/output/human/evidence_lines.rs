@@ -1,4 +1,5 @@
 use crate::domain::Finding;
+use crate::output::path::display_path;
 use crate::output::preview_actionability::{
     is_preview_actionability_evidence_line, is_preview_actionability_missing_summary,
 };
@@ -45,7 +46,7 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
         let oracle_kind = display_label(test.oracle_kind.as_str());
         let mut line = format!(
             "related test {}:{} {} uses {} {} oracle",
-            test.file.display(),
+            display_path(&test.file),
             test.line,
             test.name,
             test.oracle_strength.as_str(),

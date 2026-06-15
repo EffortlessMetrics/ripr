@@ -12,7 +12,8 @@ pub(crate) use super::extract::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, classify_assertion, extract_assertions, extract_call_facts,
     extract_identifier_tokens, extract_line_scanned_oracles, extract_literal_facts,
-    extract_literals, extract_return_facts,
+    extract_literals, extract_return_facts, is_unwrap_err_bound_error_assertion,
+    unwrap_err_bound_variables,
 };
 pub(crate) use super::facts::build_index_from_loaded_files_with_cache;
 #[cfg(test)]

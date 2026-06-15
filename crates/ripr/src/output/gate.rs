@@ -37,7 +37,26 @@ pub(crate) fn build_gate_decision_report(
         Some(path) => {
             let pr_guidance_path = resolve_root_path(&input.root, path);
             match read_json_value_with_display(&pr_guidance_path, path) {
-                Ok(value) => value,
+                Ok(value) => {
+                    if let Some(defect) = pr_guidance_document_defect(&value) {
+                        config_errors.push(format!(
+                            "pr-guidance {} is not a recognized review-comments guidance document: {defect}",
+                            display_path(path)
+                        ));
+                        Value::Null
+                    } else if let Some(producer_error) = pr_guidance_producer_error(&value, path) {
+                        // The document is structurally valid but the producer
+                        // disclosed it did not complete (status=error/incomplete/
+                        // timeout, or a tool_error/timeout warning kind).  Treat
+                        // as config_error so the gate fails-closed — exactly as
+                        // malformed JSON does — rather than deriving `pass` from
+                        // zero candidates.
+                        config_errors.push(producer_error);
+                        Value::Null
+                    } else {
+                        value
+                    }
+                }
                 Err(error) => {
                     config_errors.push(format!(
                         "required PR guidance input {} is invalid: {error}",
@@ -114,6 +133,7 @@ pub(crate) fn build_gate_decision_report(
         .collect::<Vec<_>>();
     decisions.sort_by(|left, right| left.id.cmp(&right.id));
     let summary = summarize_decisions(&decisions);
+    let new_unsuppressed = compute_new_unsuppressed(&decisions, &config_errors, input.mode);
     let status = top_level_status(&summary, &warnings, &config_errors, input.mode).to_string();
     Ok(GateDecisionReport {
         status,
@@ -140,6 +160,7 @@ pub(crate) fn build_gate_decision_report(
         },
         policy,
         summary,
+        new_unsuppressed,
         decisions,
         warnings,
         config_errors,
@@ -271,6 +292,7 @@ fn candidate_from_guidance_item(
         .and_then(Value::as_str)
         .or_else(|| item.get("suppression_reason").and_then(Value::as_str))
         .map(ToOwned::to_owned);
+    let summary_reason = string_field(item.get("summary_reason"));
     GateCandidate {
         source: source.to_string(),
         source_id,
@@ -302,6 +324,7 @@ fn candidate_from_guidance_item(
         suppressed,
         configured_off: suppression_reason.as_deref() == Some("severity_off"),
         suppression_reason,
+        summary_reason,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -366,6 +389,7 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
                 .is_some_and(|predicate| predicate.suppressed),
         configured_off: record.policy_state == "not_policy_targeted",
         suppression_reason: (record.policy_state == "suppressed").then(|| "suppressed".to_string()),
+        summary_reason: None,
         gap_ledger_gate_candidate: gate_candidate,
         gap_ledger_gate_reason: gate_reason,
         gap_ledger_safe_gate_predicate: gap_decision_ledger::safe_gate_predicate_satisfied(record),
@@ -462,6 +486,7 @@ fn gate_decision(
             recommendation_calibration,
             mutation_calibration,
         },
+        is_baseline_new,
     }
 }
 
@@ -493,6 +518,16 @@ fn candidate_is_policy_eligible(candidate: &GateCandidate) -> bool {
             && candidate.placement.path.is_some()
             && candidate.placement.line.is_some();
     }
+    // A `summary_only` item demoted solely because the inline display cap was
+    // reached (`summary_reason=inline_comment_cap_reached`) retains a valid
+    // changed-line placement and concrete guidance — it is block-eligible just
+    // as it would be if it had landed in the `comments` array.  Items demoted
+    // for `no_safe_changed_line_placement` or
+    // `navigation_only_cross_language_target` lack a safe placement anchor and
+    // remain advisory-only.
+    let demoted_by_cap = candidate.source == "summary_only"
+        && candidate.summary_reason.as_deref() == Some("inline_comment_cap_reached");
+    let placement_excluded = candidate.source == "summary_only" && !demoted_by_cap;
     !candidate.suppressed
         && !candidate.configured_off
         && candidate_class_is_policy_eligible(candidate.static_class.as_deref())
@@ -500,7 +535,7 @@ fn candidate_is_policy_eligible(candidate: &GateCandidate) -> bool {
         && !candidate.nearby_test_changed
         && candidate.placement.path.is_some()
         && candidate.placement.line.is_some()
-        && candidate.source != "summary_only"
+        && !placement_excluded
 }
 
 fn candidate_class_is_policy_eligible(class: Option<&str>) -> bool {
@@ -707,6 +742,53 @@ fn summarize_decisions(decisions: &[GateDecision]) -> GateSummary {
     summary
 }
 
+/// Compute the `new_unsuppressed` receipt field: a canonical count of
+/// policy-eligible, unhandled decisions that a downstream thresholder can use
+/// as a single stable number (`max_new_unsuppressed=0`).
+///
+/// Fail-closed: when `config_errors` is non-empty, analysis did not run and we
+/// return `basis=None, count=0, reason=<first error>` rather than a zero that
+/// looks like a clean pass.
+fn compute_new_unsuppressed(
+    decisions: &[GateDecision],
+    config_errors: &[String],
+    mode: GateMode,
+) -> NewUnsuppressed {
+    // Fail-closed: analysis did not run.
+    if let Some(first_error) = config_errors.first() {
+        return NewUnsuppressed {
+            basis: None,
+            count: 0,
+            reason: Some(format!("analysis did not run: {first_error}")),
+        };
+    }
+    // Determine basis: baseline-aware modes that actually have a baseline use
+    // "baseline"; everything else is "diff" (all surviving candidates are new).
+    let use_baseline_basis = matches!(mode, GateMode::BaselineCheck | GateMode::CalibratedGate);
+    let basis = if use_baseline_basis {
+        "baseline"
+    } else {
+        "diff"
+    };
+    // Count: decisions d where:
+    //   - candidate_class_is_policy_eligible(d.static_class) is true, AND
+    //   - d.decision ∈ {"blocking", "advisory"} (suppressed/acknowledged/not_applicable excluded), AND
+    //   - if basis=="baseline": d.is_baseline_new is true.
+    let count = decisions
+        .iter()
+        .filter(|d| {
+            candidate_class_is_policy_eligible(d.static_class.as_deref())
+                && matches!(d.decision.as_str(), "blocking" | "advisory")
+                && (!use_baseline_basis || d.is_baseline_new)
+        })
+        .count();
+    NewUnsuppressed {
+        basis: Some(basis.to_string()),
+        count: count as u64,
+        reason: None,
+    }
+}
+
 fn top_level_status(
     summary: &GateSummary,
     warnings: &[String],
@@ -766,6 +848,82 @@ fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
     string_field(value.get("canonical_gap_id"))
         .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
         .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
+}
+
+/// Returns `Some(defect_description)` if `value` is not a recognized
+/// `ripr review-comments` guidance document, or `None` if it is valid.
+///
+/// A valid guidance document must have:
+/// - `schema_version`: a non-empty string (the ripr schema marker)
+/// - `comments`: a JSON array (the primary findings list consumed by the gate)
+///
+/// A valid document with an empty `comments` array is accepted — that is a
+/// legitimate "zero findings" result and must still produce `status=advisory`.
+fn pr_guidance_document_defect(value: &Value) -> Option<String> {
+    let has_schema_version = value
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty());
+    let has_comments_array = value.get("comments").is_some_and(|v| v.is_array());
+    match (has_schema_version, has_comments_array) {
+        (false, false) => {
+            Some("missing required fields `schema_version` and `comments`".to_string())
+        }
+        (false, true) => Some("missing required field `schema_version`".to_string()),
+        (true, false) => {
+            Some("missing required field `comments` (expected a JSON array)".to_string())
+        }
+        (true, true) => None,
+    }
+}
+
+/// Returns `Some(error_message)` when a structurally-valid guidance document
+/// discloses that the producer did not complete successfully.
+///
+/// The producer writes `status: "error"` (or `"incomplete"` / `"timeout"`) and
+/// populates `warnings` with a `tool_error` or `timeout` entry when it crashes
+/// or times out.  The document is schema-valid (has `schema_version` + `comments`
+/// array) but its `comments` array is empty *because the producer failed*, not
+/// because there genuinely are no gaps.  If the gate consumed it without
+/// inspecting `status` it would derive `pass` from zero candidates — a
+/// fake-clean.
+///
+/// Matching any one of these signals is sufficient to fail-close:
+/// - top-level `status` ∈ { "error", "incomplete", "timeout" }
+/// - any entry in top-level `warnings` array with `kind` ∈ { "tool_error", "timeout" }
+///
+/// A `status` of `"advisory"` or `"complete"` with no error-kind warnings is
+/// treated as a healthy producer run and returns `None`.
+fn pr_guidance_producer_error(value: &Value, path: &Path) -> Option<String> {
+    let status = value.get("status").and_then(Value::as_str).unwrap_or("");
+    let error_status = matches!(status, "error" | "incomplete" | "timeout");
+
+    let warning_error = value
+        .get("warnings")
+        .and_then(Value::as_array)
+        .is_some_and(|warnings| {
+            warnings.iter().any(|w| {
+                matches!(
+                    w.get("kind").and_then(Value::as_str),
+                    Some("tool_error" | "timeout")
+                )
+            })
+        });
+
+    if error_status || warning_error {
+        let reason = if error_status {
+            format!("producer status={status:?}")
+        } else {
+            "producer warnings contain tool_error or timeout".to_string()
+        };
+        Some(format!(
+            "pr-guidance {} discloses producer did not complete ({reason}); \
+             gate fails-closed to prevent a fake-clean pass on zero candidates",
+            display_path(path)
+        ))
+    } else {
+        None
+    }
 }
 
 fn resolve_root_path(root: &Path, path: &Path) -> PathBuf {
@@ -1990,6 +2148,7 @@ mod tests {
             suppressed: false,
             configured_off: false,
             suppression_reason: None,
+            summary_reason: None,
             gap_ledger_gate_candidate: false,
             gap_ledger_gate_reason: None,
             gap_ledger_safe_gate_predicate: false,
@@ -2363,6 +2522,383 @@ mod tests {
             "expected non-not-found read error, got {error}",
         );
         let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- #1037 regression: structurally-invalid pr-guidance must be config_error --
+
+    #[test]
+    fn given_non_guidance_json_object_when_gate_evaluated_then_config_error_not_advisory()
+    -> Result<(), String> {
+        let dir = temp_dir("gate-invalid-guidance-schema")?;
+        let bad = write_temp_json(&dir, "bad.json", r#"{"not":"guidance"}"#)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                bad.strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(
+            report.status, "config_error",
+            "a non-guidance JSON object must produce config_error, not advisory; got {:?}",
+            report.status,
+        );
+        assert!(
+            gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be true for config_error",
+        );
+        assert!(
+            report.config_errors.iter().any(|error| {
+                error.contains("bad.json")
+                    && error.contains("not a recognized review-comments guidance document")
+            }),
+            "config_errors must name the defect and the file path, got {:?}",
+            report.config_errors,
+        );
+        assert!(
+            report.decisions.is_empty(),
+            "no decisions must be emitted for a config_error guidance doc",
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory_not_config_error()
+    -> Result<(), String> {
+        let dir = temp_dir("gate-empty-guidance")?;
+        let guidance = write_temp_json(
+            &dir,
+            "comments.json",
+            r#"{
+              "schema_version": "0.1",
+              "summary": {"unchanged_tests": true},
+              "comments": [],
+              "summary_only": [],
+              "suppressed": []
+            }"#,
+        )?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                guidance
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert!(
+            report.config_errors.is_empty(),
+            "a valid empty guidance doc must produce no config_errors, got {:?}",
+            report.config_errors,
+        );
+        assert!(
+            report.status == "pass" || report.status == "advisory",
+            "a valid empty guidance doc must yield pass or advisory, got {:?}",
+            report.status,
+        );
+        assert!(
+            !gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be false for a genuinely clean guidance doc",
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- #1217 GAP 1 regression: well-formed error packet must fail-closed --
+
+    #[test]
+    fn given_well_formed_error_status_packet_when_gate_evaluated_then_config_error_not_pass()
+    -> Result<(), String> {
+        // Repro: `ripr review-comments` crashes → xtask writes a structurally-valid
+        // packet with `status:"error"` and `warnings:[{kind:"tool_error"}]`.
+        // Before the fix, gate evaluate read the empty `comments` array, found
+        // zero candidates, and returned exit 0 / status=pass — a fake-clean.
+        let dir = temp_dir("gate-error-packet")?;
+        let packet = write_temp_json(
+            &dir,
+            "error-packet.json",
+            r#"{
+              "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "error",
+              "root": ".",
+              "base": "origin/main",
+              "head": "HEAD",
+              "mode": "fast",
+              "rendering_limits": {"max_inline_comments": 0, "max_summary_items": 0},
+              "summary": {"comments": 0, "summary_only": 0, "suppressed": 0, "unchanged_tests": true},
+              "comments": [],
+              "summary_only": [],
+              "suppressed": [],
+              "warnings": [{"kind": "tool_error", "message": "ripr exited with status 1", "path": null}],
+              "limits_note": "Review guidance generation is advisory. The producer did not complete, so no comments are emitted."
+            }"#,
+        )?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                packet
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(
+            report.status, "config_error",
+            "a well-formed error-status packet must produce config_error, not pass; got {:?}",
+            report.status,
+        );
+        assert!(
+            gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be true for a crashed-producer error packet",
+        );
+        assert!(
+            report.config_errors.iter().any(|e| {
+                e.contains("error-packet.json") && e.contains("producer did not complete")
+            }),
+            "config_errors must name the file and the producer-incomplete reason, got {:?}",
+            report.config_errors,
+        );
+        assert!(
+            report.decisions.is_empty(),
+            "no decisions must be emitted for a crashed-producer config_error",
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- #1217 GAP 2 regression: cap-demoted weakly_exposed/warning stays blocking --
+
+    #[test]
+    fn given_cap_demoted_summary_only_gap_when_gate_evaluated_then_blocking_not_advisory()
+    -> Result<(), String> {
+        // Repro: 3 exposed/info items fill the inline-comment cap; a genuine
+        // weakly_exposed/warning gap lands in summary_only with
+        // summary_reason=inline_comment_cap_reached.  Before the fix the gate
+        // excluded ALL summary_only items via `source != "summary_only"`, so the
+        // fourth gap was advisory (exit 0) even though the identical item in an
+        // inline slot would have been blocking (exit 2).
+        let dir = temp_dir("gate-cap-demoted")?;
+        let guidance = write_temp_json(
+            &dir,
+            "cap-demoted.json",
+            r#"{
+              "schema_version": "0.1",
+              "summary": {"unchanged_tests": true},
+              "comments": [
+                {
+                  "id": "inline-1",
+                  "seam_id": "inline-seam-1",
+                  "grip_class": "weakly_exposed",
+                  "severity": "info",
+                  "missing_discriminator": "boundary_a",
+                  "placement": {"path": "src/a.rs", "line": 10}
+                },
+                {
+                  "id": "inline-2",
+                  "seam_id": "inline-seam-2",
+                  "grip_class": "weakly_exposed",
+                  "severity": "info",
+                  "missing_discriminator": "boundary_b",
+                  "placement": {"path": "src/b.rs", "line": 20}
+                },
+                {
+                  "id": "inline-3",
+                  "seam_id": "inline-seam-3",
+                  "grip_class": "weakly_exposed",
+                  "severity": "info",
+                  "missing_discriminator": "boundary_c",
+                  "placement": {"path": "src/c.rs", "line": 30}
+                }
+              ],
+              "summary_only": [
+                {
+                  "id": "cap-demoted-gap",
+                  "seam_id": "cap-demoted-seam",
+                  "grip_class": "weakly_exposed",
+                  "severity": "warning",
+                  "missing_discriminator": "real_blocker_value",
+                  "placement": {"path": "src/d.rs", "line": 40},
+                  "summary_reason": "inline_comment_cap_reached"
+                }
+              ],
+              "suppressed": []
+            }"#,
+        )?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                guidance
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert!(
+            report.summary.blocking >= 1,
+            "cap-demoted weakly_exposed/warning gap must count as blocking (>=1), got summary {:?}",
+            report.summary,
+        );
+        assert_eq!(
+            report.status, "blocked",
+            "gate status must be 'blocked' when a cap-demoted block-eligible gap is present; got {:?}",
+            report.status,
+        );
+        assert!(
+            gate_decision_should_fail(&report),
+            "gate_decision_should_fail must be true when a cap-demoted gap is block-eligible",
+        );
+        // The cap-demoted item must be the blocking decision.
+        let cap_decision = report
+            .decisions
+            .iter()
+            .find(|d| d.source_id == "cap-demoted-gap")
+            .ok_or_else(|| "cap-demoted-gap decision not found".to_string())?;
+        assert_eq!(
+            cap_decision.decision, "blocking",
+            "the cap-demoted gap must resolve to 'blocking', got {:?}",
+            cap_decision.decision,
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- RIPR-SPEC-0111: new_unsuppressed receipt field --
+
+    /// Advisory candidates ARE counted in `new_unsuppressed.count` even when
+    /// `summary.blocking == 0`. In visible-only mode every policy-eligible
+    /// candidate is advisory (never blocking), so if the count equalled
+    /// `summary.blocking` it would always be 0 — a broken invariant.
+    #[test]
+    fn new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking()
+    -> Result<(), String> {
+        // visible-only: the standard fixture has 1 policy-eligible candidate
+        // that will become "advisory" (not "blocking").
+        let input = fixture_input(GateMode::VisibleOnly);
+        let report = build_gate_decision_report(&input)?;
+        // Baseline assertion: blocking is 0 (visible-only never blocks).
+        assert_eq!(
+            report.summary.blocking, 0,
+            "visible-only must have blocking=0; got {:?}",
+            report.summary,
+        );
+        // The honesty check: count > blocking because advisory items are included.
+        assert!(
+            report.new_unsuppressed.count > report.summary.blocking as u64,
+            "new_unsuppressed.count ({}) must be > summary.blocking ({}) in visible-only because advisory items are included",
+            report.new_unsuppressed.count,
+            report.summary.blocking,
+        );
+        assert_eq!(
+            report.new_unsuppressed.basis.as_deref(),
+            Some("diff"),
+            "visible-only mode must use basis=diff",
+        );
+        assert!(
+            report.new_unsuppressed.reason.is_none(),
+            "no reason expected for clean diff run",
+        );
+        Ok(())
+    }
+
+    /// `config_error` MUST produce `basis=null, count=0, reason=<disclosure>`.
+    /// This is the fail-closed sentinel: count=0 on analysis failure must NOT
+    /// look like a clean pass to a downstream thresholder.
+    #[test]
+    fn new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason()
+    -> Result<(), String> {
+        // Use calibrated-gate mode without a baseline: guaranteed config_error.
+        let input = fixture_input(GateMode::CalibratedGate);
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(
+            report.status, "config_error",
+            "expected config_error status, got {:?}",
+            report.status,
+        );
+        // Fail-closed check.
+        assert!(
+            report.new_unsuppressed.basis.is_none(),
+            "config_error must produce basis=null (fail-closed), got {:?}",
+            report.new_unsuppressed.basis,
+        );
+        assert_eq!(
+            report.new_unsuppressed.count, 0,
+            "config_error must produce count=0 (fail-closed), got {}",
+            report.new_unsuppressed.count,
+        );
+        assert!(
+            report.new_unsuppressed.reason.is_some(),
+            "config_error must disclose reason (not a fake-zero clean), got None",
+        );
+        let reason = report.new_unsuppressed.reason.as_deref().unwrap_or("");
+        assert!(
+            reason.contains("analysis did not run"),
+            "reason must start with 'analysis did not run', got {:?}",
+            reason,
+        );
         Ok(())
     }
 

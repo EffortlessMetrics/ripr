@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_field_assignment_shape/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_invoice.py:6:python_preview",
+      "id": "probe:src_invoice.py:python_preview:5473c8e6",
       "canonical_gap_id": "gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_invoice.py:6:python_preview",
+        "id": "probe:src_invoice.py:python_preview:5473c8e6",
         "family": "field_construction",
         "delta": "value",
         "file": "src/invoice.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_verify_command: pytest tests/test_invoice.py::test_mark_paid_sets_status (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)", "test_oracle_shape: status_code_assertion (test_mark_paid_sets_status)"],
       "missing": ["Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_mark_paid_sets_status",
@@ -72,7 +75,22 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "method"
+      "owner_kind": "method",
+      "changed_sink": "status, paid",
+      "observed_sink": "assert invoice.status == \"paid\"",
+      "oracle_alignment": "changed_sink_token",
+      "alignment_reason": "strong_oracle_observes_changed_sink_token"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/invoice.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

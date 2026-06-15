@@ -1,0 +1,35 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_unverified_return_value/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/observation_unverified_return_value/input/src/lib.rs:2
+
+Changed
+  before: base + 1
+  after:  base * 2
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::compute_score
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach compute_score: result_is_positive
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence returned value: base * 2
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: base * 2 (line 2)
+  - related test tests/score_tests.rs:4 result_is_positive uses weak relational check oracle: assert!(compute_score(3) > 0);
+  - observed function argument value base = 3 at line 5
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.

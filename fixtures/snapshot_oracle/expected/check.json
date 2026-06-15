@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/snapshot_oracle/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:2:predicate",
+      "id": "probe:src_lib.rs:predicate:7f019e84",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.84,
       "probe": {
-        "id": "probe:src_lib.rs:2:predicate",
+        "id": "probe:src_lib.rs:predicate:7f019e84",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/snapshot_oracle/input/src/lib.rs",
@@ -32,11 +32,13 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"ok\".to_string()", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Related tests contain input values, but the equality-boundary discriminator is missing"],
       "missing": ["Missing discriminator value: code == 299", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "let rendered = render_status(404);"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 5,
-            "text": "let rendered = render_status(404);",
             "value": "code = 404",
             "context": "function_argument"
           }
@@ -52,7 +54,6 @@
       "observed_values": [
         {
           "line": 5,
-          "text": "let rendered = render_status(404);",
           "value": "code = 404",
           "context": "function_argument"
         }
@@ -64,6 +65,7 @@
           "flow_sink": {"kind":"return_value","text":"\"ok\".to_string()","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "renders_error_status_snapshot",
@@ -71,7 +73,9 @@
           "line": 4,
           "oracle_strength": "medium",
           "oracle_kind": "snapshot",
-          "oracle": "insta::assert_snapshot!(rendered);"
+          "oracle": "insta::assert_snapshot!(rendered);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

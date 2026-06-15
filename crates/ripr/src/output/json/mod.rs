@@ -85,6 +85,8 @@ mod tests {
             oracle: Some("assert_eq!(discounted_total(50, 100), 50);".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         });
 
         let mut out = String::new();
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -148,6 +150,8 @@ mod tests {
                     "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
                 ),
             ],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -217,9 +221,11 @@ mod tests {
             oracle: None,
             oracle_kind: OracleKind::Snapshot,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         };
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -263,6 +269,8 @@ mod tests {
                     vec![],
                 ),
             ],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -342,9 +350,11 @@ mod tests {
             oracle: None,
             oracle_kind: OracleKind::Snapshot,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         };
         let output = CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
@@ -424,6 +434,8 @@ mod tests {
                     vec![],
                 ),
             ],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -506,6 +518,8 @@ mod tests {
                 oracle: Some("assert!(ok())".to_string()),
                 oracle_kind: OracleKind::RelationalCheck,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             },
             RelatedTest {
                 name: "strict_check".to_string(),
@@ -514,6 +528,8 @@ mod tests {
                 oracle: Some("assert_eq!(value, 42)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             },
         ];
 
@@ -562,6 +578,8 @@ mod tests {
                 oracle: Some(format!("assert_eq!(actual, {index});")),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             })
             .collect();
         let mut out = String::new();
@@ -571,6 +589,99 @@ mod tests {
         assert!(out.contains("test_case_0 uses strong exact value oracle"));
         assert!(out.contains("test_case_4 uses strong exact value oracle"));
         assert!(!out.contains("test_case_5 uses strong exact value oracle"));
+    }
+
+    #[test]
+    fn finding_json_emits_related_tests_total_and_caps_array_at_eight() {
+        // Behavioral proof of the related_tests_total cap fix:
+        //   - `related_tests_total` always reflects the PRE-cap count.
+        //   - `related_tests` array is bounded to MAX_RELATED_TESTS_PER_FINDING_JSON (8).
+        //   - Tests beyond the cap are elided from the serialized array (size fix).
+        //   - Classification and finding count are untouched (fail-closed-safe).
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..12)
+            .map(|index| RelatedTest {
+                name: format!("test_over_cap_{index}"),
+                file: PathBuf::from("tests/big_suite.rs"),
+                line: 200 + index,
+                oracle: Some(format!("assert_eq!(val, {index});")),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+            })
+            .collect();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        // Total count must reflect all 12 (pre-cap).
+        assert!(
+            out.contains("\"related_tests_total\": 12"),
+            "related_tests_total must be 12 (pre-cap): {out}"
+        );
+        // First 8 tests must be serialized (tests 0-7).
+        assert!(
+            out.contains("\"name\": \"test_over_cap_7\""),
+            "test 7 must be present (within cap): {out}"
+        );
+        // Tests 8-11 must be elided (beyond cap).
+        assert!(
+            !out.contains("\"name\": \"test_over_cap_8\""),
+            "test 8 must be elided (beyond cap=8): {out}"
+        );
+        assert!(
+            !out.contains("\"name\": \"test_over_cap_11\""),
+            "test 11 must be elided (beyond cap=8): {out}"
+        );
+        // Classification must be unaffected.
+        assert!(
+            out.contains("\"classification\": \"static_unknown\""),
+            "classification must be unchanged: {out}"
+        );
+    }
+
+    #[test]
+    fn finding_json_emits_related_tests_total_zero_when_no_related_tests() {
+        let finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(
+            out.contains("\"related_tests_total\": 0"),
+            "related_tests_total must be 0 when no related tests: {out}"
+        );
+        assert!(
+            out.contains("\"related_tests\": ["),
+            "related_tests array must still be present: {out}"
+        );
+    }
+
+    #[test]
+    fn finding_json_emits_related_tests_total_matching_count_when_under_cap() {
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..3)
+            .map(|index| RelatedTest {
+                name: format!("small_suite_{index}"),
+                file: PathBuf::from("tests/small.rs"),
+                line: 10 + index,
+                oracle: None,
+                oracle_kind: OracleKind::SmokeOnly,
+                oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+            })
+            .collect();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        // When under the cap, total == array length.
+        assert!(
+            out.contains("\"related_tests_total\": 3"),
+            "related_tests_total must equal actual count when under cap: {out}"
+        );
     }
 
     #[test]
@@ -860,6 +971,8 @@ mod tests {
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -904,6 +1017,10 @@ mod tests {
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 
@@ -913,13 +1030,15 @@ mod tests {
 
     fn sample_output(base: Option<String>) -> CheckOutput {
         CheckOutput {
-            schema_version: "0.1".to_string(),
+            schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
             root: PathBuf::from("."),
             base,
             summary: Summary::default(),
             findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 
@@ -961,5 +1080,173 @@ mod tests {
         finding.related_tests = related_tests;
         finding.recommended_next_step = None;
         finding
+    }
+
+    /// Schema 0.2 size-budget guard: 500 ValueFacts sharing the same line+text
+    /// should produce a rendered JSON well under 500 KB.  Under the old schema
+    /// (0.1) each object repeated the full assertion source text verbatim, so
+    /// the same payload would have been ~50 MB+.
+    #[test]
+    fn json_size_budget_for_many_shared_line_text_value_facts() {
+        let long_text = "a".repeat(100);
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = (0..500)
+            .map(|i| ValueFact {
+                line: 42,
+                text: long_text.clone(),
+                value: format!("arg_{i} = {i}"),
+                context: ValueContext::FunctionArgument,
+            })
+            .collect();
+
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+        // Each value entry is small (no text). The assertion_texts map has one
+        // entry with 100 chars.  Total JSON must be well under 500 KB.
+        assert!(
+            rendered.len() < 500_000,
+            "schema 0.2 output should be under 500 KB for 500 shared-line facts; got {} bytes",
+            rendered.len()
+        );
+        // The text appears exactly once in the output (in assertion_texts), not 500 times.
+        assert_eq!(
+            rendered.matches(&long_text).count(),
+            1,
+            "long assertion text should appear exactly once in the output (in assertion_texts)"
+        );
+        // Each per-value object must not contain the text field.
+        assert!(
+            !rendered.contains("\"text\":"),
+            "per-value objects must not contain a 'text' field in schema 0.2"
+        );
+        // assertion_texts map must be present.
+        assert!(
+            rendered.contains("\"assertion_texts\""),
+            "schema 0.2 output must include the finding-level assertion_texts map"
+        );
+    }
+
+    // RIPR-SPEC-0083 tests: no-scope JSON disclosure
+
+    #[test]
+    fn json_render_emits_scope_disclosures_when_no_scope_provided() {
+        // When no_scope_provided=true the JSON output must include the
+        // scope_disclosures additive field with scope_status=no_scope_provided.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("\"scope_disclosures\""),
+            "expected scope_disclosures field; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"no_scope_provided\""),
+            "expected scope_status=no_scope_provided; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"no_scope_disclosure\""),
+            "expected category=no_scope_disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("diff-first"),
+            "expected diff-first guidance in why; got:\n{rendered}"
+        );
+        // Bug 2 regression guard: the why field must recommend --format repo-exposure-md,
+        // not --mode fast (which is a speed tier, not a scope provider).
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "json why must recommend --format repo-exposure-md; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "json why must NOT recommend --mode fast as a full-repo-scan command; got:\n{rendered}"
+        );
+        // Must still be valid JSON.
+        let parse_result = serde_json::from_str::<serde_json::Value>(&rendered);
+        assert!(
+            parse_result.is_ok(),
+            "JSON must be valid when scope_disclosures is present; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn json_render_omits_scope_disclosures_when_scope_provided() {
+        // When no_scope_provided=false (scope was provided) the scope_disclosures
+        // field must be absent — this is a real analyzed-empty result.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("\"scope_disclosures\""),
+            "scope_disclosures must be absent when scope was provided; got:\n{rendered}"
+        );
+        // Still valid JSON.
+        let parse_result = serde_json::from_str::<serde_json::Value>(&rendered);
+        assert!(
+            parse_result.is_ok(),
+            "JSON must be valid when scope_disclosures is absent; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn json_guidance_recommends_format_repo_exposure_md_not_mode_fast() {
+        // Bug 2 regression guard: the JSON why string must contain
+        // --format repo-exposure-md and NOT --mode fast.
+        // --mode is a speed tier; --format repo-exposure-md is the real full-repo scope.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "json why must recommend --format repo-exposure-md; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "json why must NOT recommend --mode fast; got:\n{rendered}"
+        );
     }
 }

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_parse_error_unsupported_syntax/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+      "id": "probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+        "id": "probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0",
         "family": "static_unknown",
         "delta": "unknown",
         "file": "src/broken.ts",
@@ -29,8 +29,10 @@
       "evidence_path": ["reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "propagation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "observation unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)", "discriminator unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)"],
       "flow_sinks": [
       ],
-      "evidence": ["static_limit unsupported_syntax: 1 parser error(s)", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:2:typescript_preview_unsupported_syntax"],
+      "evidence": ["static_limit unsupported_syntax: 1 parser error(s)", "gap_state: static_limitation", "actionability_category: unsupported_syntax", "why_not_actionable: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s)", "repair_route: fix or isolate the unsupported syntax before relying on repair guidance", "evidence_needed_to_promote: resolve the named static limit and re-run TypeScript preview evidence extraction", "raw_evidence_ref: file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved"],
       "missing": ["Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the unsupported syntax before relying on repair guidance.", "TypeScript preview actionability `static_limitation` / `unsupported_syntax`: static limit `unsupported_syntax` prevents bounded TypeScript repair guidance: 1 parser error(s). Repair route: fix or isolate the unsupported syntax before relying on repair guidance"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -41,6 +43,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 0,
       "related_tests": [
       ],
       "typescript_preview_card": {
@@ -88,9 +91,9 @@
             "leg": null,
             "line": 2,
             "owner": null,
-            "raw": "file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:2:typescript_preview_unsupported_syntax",
+            "raw": "file=src/broken.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0",
             "sample": null,
-            "source_id": "probe:src_broken.ts:2:typescript_preview_unsupported_syntax"
+            "source_id": "probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0"
           }
         ],
         "repair_packet_ready": false,
@@ -106,6 +109,17 @@
       "language": "typescript",
       "language_status": "preview",
       "static_limit_kind": "unsupported_syntax"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 1,
+      "sample_paths": ["src/broken.ts"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

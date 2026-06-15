@@ -5,12 +5,12 @@
       "data": {
         "classification": "exposed",
         "confidence": 0.6,
-        "finding_id": "probe:src_totals.py:4:python_preview",
+        "finding_id": "probe:src_totals.py:python_preview:1274639f",
         "language": "python",
         "language_status": "preview",
         "owner_kind": "function",
         "probe_family": "return_value",
-        "probe_id": "probe:src_totals.py:4:python_preview",
+        "probe_id": "probe:src_totals.py:python_preview:1274639f",
         "schema_version": "0.1",
         "source_range": {
           "column": 1,

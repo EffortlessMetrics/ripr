@@ -353,6 +353,38 @@
         },
         "llm_guidance": {
           "$ref": "#/$defs/llm_guidance"
+        },
+        "gap_state": {
+          "description": "RIPR actionability state per RIPR-SPEC-0061 / RIPR-SPEC-0068. Present on every card.",
+          "type": "string",
+          "enum": [
+            "actionable",
+            "static_limitation",
+            "already_observed",
+            "internal_only",
+            "unknown"
+          ]
+        },
+        "receipt_command": {
+          "description": "Copyable ripr agent receipt command. Present when gap_state == actionable.",
+          "type": "string",
+          "minLength": 1
+        },
+        "why_not_actionable": {
+          "description": "Human-readable sentence from the first static limitation reason. Present when gap_state == static_limitation.",
+          "type": "string",
+          "minLength": 1
+        },
+        "non_claims": {
+          "description": "Advisory-only boundary declarations. Present when gap_state == static_limitation.",
+          "$ref": "#/$defs/non_claims"
+        },
+        "canonical_gap_id": {
+          "description": "Stable gap identity from the gap-ledger (gap-ledger path only; deferred on working-set path).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
@@ -555,6 +587,23 @@
         "message": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "non_claims": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "language_status",
+        "authority_boundary"
+      ],
+      "properties": {
+        "language_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_boundary": {
+          "const": "advisory_static_evidence_only"
         }
       }
     },

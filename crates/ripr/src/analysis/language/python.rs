@@ -19,14 +19,16 @@
 //! related-test oracles produce `weakly_exposed`; missing related tests produce
 //! `no_static_path`.
 
-use super::super::{AnalysisOptions, diff::ChangedFile};
+use super::super::{
+    AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
+};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
     LanguageId as DomainLanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, RelatedTest, RevealEvidence, RiprEvidence,
+    SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
 };
 use rustpython_parser::{
     Mode,
@@ -145,6 +147,10 @@ struct PythonTest {
 struct PythonImport {
     imported: String,
     alias: String,
+    /// The dotted source module of a `from M import Y` statement (e.g. `src.handler`).
+    /// Empty for a plain `import X` and for relative imports (`from . import Y`),
+    /// which therefore fail closed — they cannot lend free-function module identity.
+    source_module: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1537,10 +1543,20 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
                             .map(|name| name.to_string())
                             .unwrap_or_else(|| imported.clone()),
                         imported,
+                        // A plain `import X` has no `from` module source.
+                        source_module: String::new(),
                     });
                 }
             }
             Stmt::ImportFrom(import) => {
+                // `from src.handler import validate [as v]` — the source module
+                // (`src.handler`) is the free-function identity evidence. `None`
+                // here is a relative import (`from . import y`); leave it empty.
+                let source_module = import
+                    .module
+                    .as_ref()
+                    .map(|module| module.to_string())
+                    .unwrap_or_default();
                 for alias in &import.names {
                     let imported = alias.name.to_string();
                     imports.push(PythonImport {
@@ -1550,6 +1566,7 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
                             .map(|name| name.to_string())
                             .unwrap_or_else(|| imported.clone()),
                         imported,
+                        source_module: source_module.clone(),
                     });
                 }
             }
@@ -1986,6 +2003,8 @@ enum PythonRelationKind {
     SyntacticCall,
     ImportAliasCall,
     ApiClientRouteCall,
+    ConstructCall,
+    LocalBinding,
     SameStem,
     TestNameSimilarity,
     FixtureName,
@@ -1997,6 +2016,8 @@ impl PythonRelationKind {
             Self::SyntacticCall => 5,
             Self::ImportAliasCall => 4,
             Self::ApiClientRouteCall => 4,
+            Self::ConstructCall => 4,
+            Self::LocalBinding => 4,
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
@@ -2006,7 +2027,11 @@ impl PythonRelationKind {
     fn uses_oracle(self) -> bool {
         matches!(
             self,
-            Self::SyntacticCall | Self::ImportAliasCall | Self::ApiClientRouteCall
+            Self::SyntacticCall
+                | Self::ImportAliasCall
+                | Self::ApiClientRouteCall
+                | Self::ConstructCall
+                | Self::LocalBinding
         )
     }
 
@@ -2019,6 +2044,8 @@ impl PythonRelationKind {
             Self::SyntacticCall => "syntactic_call",
             Self::ImportAliasCall => "import_alias_call",
             Self::ApiClientRouteCall => "api_client_route_call",
+            Self::ConstructCall => "construct_call",
+            Self::LocalBinding => "local_binding",
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
@@ -2103,6 +2130,8 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
                 oracle,
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }
         })
         .collect()
@@ -2198,6 +2227,12 @@ fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<Pytho
     if api_client_route_calls_owner(test, owner) {
         return Some(PythonRelationKind::ApiClientRouteCall);
     }
+    if construct_call_invokes_owner(test, owner) {
+        return Some(PythonRelationKind::ConstructCall);
+    }
+    if local_binding_calls_owner(test, owner) {
+        return Some(PythonRelationKind::LocalBinding);
+    }
     if same_stem_related(test, owner) {
         return Some(PythonRelationKind::SameStem);
     }
@@ -2220,9 +2255,209 @@ fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
         ) && contains_any_attribute_call(body_text, &owner.name))
 }
 
+/// Detects an inline construct-call `OwnerClass(...)(...)` that invokes a changed
+/// `__call__` owner directly (e.g. `LogfmtRenderer()(None, None, event_dict)`), a
+/// cross-file shape the name/attribute and import-alias heuristics miss — the
+/// changed sink is the class's `__call__`, but the test never names `__call__`.
+/// Strictly gated so it never over-links: the changed owner must be a `__call__`
+/// method (Guard A); the test must import the owner's class by name or alias
+/// (Guard B), which blocks a same-named class from an unrelated module; and the
+/// constructed instance must be *immediately* called (the balanced-paren check),
+/// which distinguishes the inline `C()(...)` from a bound local `x = C(); x(...)`
+/// (the latter stays uncertain, consistent with the local-callable limitation).
+fn construct_call_invokes_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    // Guard A: only callable-class `__call__` owners.
+    if owner.name != "__call__"
+        || !matches!(
+            owner.owner_kind,
+            Some(OwnerKind::Method | OwnerKind::ClassMethod)
+        )
+    {
+        return false;
+    }
+    let Some((class_name, _)) = owner.qualified_name.rsplit_once('.') else {
+        return false;
+    };
+    if class_name.is_empty() || !class_name.chars().all(is_python_identifier_char) {
+        return false;
+    }
+    // Guard B: the test must import the owner's class — blocks same-named classes
+    // in unrelated modules from cross-linking.
+    let imports_class = test
+        .imports
+        .iter()
+        .any(|import| import.imported == class_name || import.alias == class_name);
+    if !imports_class {
+        return false;
+    }
+    let needle = format!("{class_name}(");
+    test.body_text.match_indices(&needle).any(|(idx, _)| {
+        has_call_boundary(&test.body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(&test.body_text, idx)
+            && construct_result_is_called(&test.body_text, idx + needle.len() - 1)
+    })
+}
+
+/// Given the byte index of the `(` that opens a constructor call, returns whether
+/// its matching `)` is immediately followed (skipping spaces/tabs) by another `(`
+/// — i.e. the constructed instance is called inline, `C(...)(...)`.
+fn construct_result_is_called(text: &str, open_paren_idx: usize) -> bool {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open_paren_idx;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let mut next = index + 1;
+                    while matches!(bytes.get(next), Some(b' ' | b'\t')) {
+                        next += 1;
+                    }
+                    return bytes.get(next) == Some(&b'(');
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    false
+}
+
+/// Detects a single unambiguous local binding `local = OwnerClass(...)` whose
+/// bound local is then called `local(...)`, invoking a changed `__call__` owner
+/// indirectly — the tenacity `stop = stop_after_attempt(3); assertTrue(stop(3))`
+/// shape that the Tier B judging measured as a false-actionable (#1160). The test
+/// genuinely reaches the owner, so the relation is *direct*: surfacing it lets the
+/// existing oracle on the bound call (here a broad-boolean smoke `assertTrue`) be
+/// reported instead of dropped, correcting the misleading "no direct test exists"
+/// diagnosis. This NEVER credits `exposed` — a smoke oracle stays below `Strong`,
+/// so the classification remains `weakly_exposed` (matching the sibling
+/// `python_broad_boolean_assertion` golden), only the relation/oracle/card change.
+///
+/// Strictly gated so it never over-links and never collides with `ConstructCall`
+/// (the inline `C()(...)` shape, which is checked first):
+///   A. the owner is a `__call__` method;
+///   B. the test imports the owner's class by name or alias (blocks a same-named
+///      class in an unrelated module);
+///   C. exactly one real `Class(` construction appears (call boundary, not a
+///      comment/string) and it is *not* called inline (inline is `ConstructCall`);
+///   D. that construction is a direct assignment `local = Class(` on its line —
+///      keyword-arg / wrapper shapes like `Retrying(stop=stop_after_attempt(3))`
+///      fail here and stay uncertain;
+///   E. the bound `local` is itself called `local(`, and it is assigned exactly
+///      once (a reassigned / rebound local is ambiguous and is rejected).
+fn local_binding_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    // Guard A: only callable-class `__call__` owners.
+    if owner.name != "__call__"
+        || !matches!(
+            owner.owner_kind,
+            Some(OwnerKind::Method | OwnerKind::ClassMethod)
+        )
+    {
+        return false;
+    }
+    let Some((class_name, _)) = owner.qualified_name.rsplit_once('.') else {
+        return false;
+    };
+    if class_name.is_empty() || !class_name.chars().all(is_python_identifier_char) {
+        return false;
+    }
+    // Guard B: the test must import the owner's class.
+    let imports_class = test
+        .imports
+        .iter()
+        .any(|import| import.imported == class_name || import.alias == class_name);
+    if !imports_class {
+        return false;
+    }
+    let body = &test.body_text;
+    let needle = format!("{class_name}(");
+    // Guard C: exactly one real, non-inline `Class(` construction.
+    let mut constructions = body.match_indices(&needle).filter(|(idx, _)| {
+        has_call_boundary(body, *idx) && !line_prefix_looks_like_comment_or_string(body, *idx)
+    });
+    let Some((idx, _)) = constructions.next() else {
+        return false;
+    };
+    if constructions.next().is_some() {
+        // More than one construction of the class — ambiguous; stay conservative.
+        return false;
+    }
+    // An inline `Class()(...)` is `ConstructCall` territory, not a bound local.
+    if construct_result_is_called(body, idx + needle.len() - 1) {
+        return false;
+    }
+    // Guard D: the construction is a direct assignment `local = Class(` on its line.
+    let Some(local_var) = binding_target_for_construction(body, idx) else {
+        return false;
+    };
+    // Guard E: the bound local is called, and assigned exactly once.
+    contains_call_name(body, &local_var) && assignment_count(body, &local_var) == 1
+}
+
+/// Given the byte index of a `Class(` construction, returns the single local
+/// variable it is directly assigned to on the same line — `local = Class(` yields
+/// `Some("local")`. Returns `None` for keyword-argument (`stop=Class(`), chained
+/// (`a = b = Class(`), augmented, attribute-target (`self.x = Class(`), or any
+/// non-bare-identifier assignment, so wrapper/dispatch shapes stay uncertain.
+fn binding_target_for_construction(body_text: &str, construction_idx: usize) -> Option<String> {
+    let line_start = body_text[..construction_idx]
+        .rfind('\n')
+        .map_or(0, |offset| offset + 1);
+    let prefix = body_text[line_start..construction_idx].trim();
+    // Require the line to be exactly `<identifier> =` immediately before `Class(`.
+    let assign = prefix.strip_suffix('=')?;
+    // Reject compound/comparison/augmented operators (`==`, `!=`, `<=`, `+=`, ...).
+    if assign.ends_with([
+        '=', '!', '<', '>', '+', '-', '*', '/', '%', '&', '|', '^', '~', ':',
+    ]) {
+        return None;
+    }
+    let name = assign.trim();
+    if name.is_empty()
+        || name.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+        || !name.chars().all(is_python_identifier_char)
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Counts direct assignments `name = ...` (whole-token target, not `==`, not an
+/// augmented assignment, not a substring of a longer identifier or an attribute
+/// like `self.name`) across the test body, so a reassigned binding is rejected.
+fn assignment_count(body_text: &str, name: &str) -> usize {
+    body_text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            let Some(rest) = trimmed.strip_prefix(name) else {
+                return false;
+            };
+            // Whole-token boundary: the char after `name` ends the identifier.
+            if rest.chars().next().is_some_and(is_python_identifier_char) {
+                return false;
+            }
+            let rest = rest.trim_start();
+            rest.starts_with('=') && !rest.starts_with("==")
+        })
+        .count()
+}
+
 fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    // A method/classmethod cannot be imported directly by its bare name, so the
+    // `import.imported == owner.name` branch would only ever match a same-named
+    // free function in an unrelated module — a false relation that then feeds a
+    // false-`exposed`. Restrict that branch to non-method owners.
+    let is_method_owner = matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    );
     test.imports.iter().any(|import| {
-        (import.imported == owner.name
+        (!is_method_owner
+            && import.imported == owner.name
             && import.alias != owner.name
             && contains_call_name(&test.body_text, &import.alias))
             || (imported_module_matches_owner(import, owner)
@@ -2236,6 +2471,44 @@ fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> 
         .file_stem()
         .and_then(|stem| stem.to_str())
         .is_some_and(|stem| import.imported.rsplit('.').next() == Some(stem))
+}
+
+/// Whether a `from M import Y` statement's source module `M` points at the owner's
+/// module. Compares the import's `source_module` last segment against the owner
+/// file stem (`from src.handler import validate` and `from handler import validate`
+/// both match an owner in `src/handler.py`). A plain `import X` or a relative
+/// import has an empty `source_module` and so never matches — fail closed.
+fn import_source_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> bool {
+    if import.source_module.is_empty() {
+        return false;
+    }
+    owner
+        .file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| import.source_module.rsplit('.').next() == Some(stem))
+}
+
+/// Free-function module-identity evidence: a strong observing test imports the
+/// owner's function *from the owner's module*. This is what distinguishes a
+/// genuine `from src.handler import validate` from a same-named function pulled in
+/// via `from src.checker import validate` — the bare function-name token alone is
+/// not identity-bearing for a free-function owner.
+fn strong_test_imports_owner_from_module(
+    strong_tests: &[&RelatedTest],
+    all_tests: &[PythonTest],
+    owner: &PythonOwner,
+) -> bool {
+    strong_tests.iter().any(|related_test| {
+        all_tests.iter().any(|test| {
+            test.name == related_test.name
+                && test.file == related_test.file
+                && test.imports.iter().any(|import| {
+                    import.imported == owner.name
+                        && import_source_module_matches_owner(import, owner)
+                })
+        })
+    })
 }
 
 fn api_client_route_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -2310,6 +2583,120 @@ fn contains_any_attribute_call(body_text: &str, attr: &str) -> bool {
     body_text
         .match_indices(&needle)
         .any(|(idx, _)| !line_prefix_looks_like_comment_or_string(body_text, idx))
+}
+
+/// Given the byte index of the `(` that opens a `Class(` construction, returns
+/// whether its matching `)` is immediately followed (skipping spaces/tabs) by
+/// `.method(` — i.e. the constructed instance's method is called inline,
+/// `Class(...).method(...)`. Companion to [`construct_result_is_called`] (which
+/// detects the `Class()()` callable-instance shape).
+fn construct_result_calls_method(text: &str, open_paren_idx: usize, method: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut index = open_paren_idx;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let mut next = index + 1;
+                    while matches!(bytes.get(next), Some(b' ' | b'\t')) {
+                        next += 1;
+                    }
+                    return text[next..].starts_with(&format!(".{method}("));
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    false
+}
+
+/// Local names the owner class is known by in `test`: its imported name plus any
+/// `as` alias. Empty when the class is not imported — conservative by design, so a
+/// class defined elsewhere and never imported cannot lend its identity. Only the
+/// `imported == class` form is identity-bearing: a different class aliased *to* the
+/// owner's name (`from m import Other as OwnerClass`) refers to `Other`, not the
+/// owner, so it must not contribute a local.
+fn owner_class_locals(test: &PythonTest, class: &str) -> Vec<String> {
+    let mut locals = Vec::new();
+    for import in &test.imports {
+        if import.imported == class && !import.alias.is_empty() && !locals.contains(&import.alias) {
+            locals.push(import.alias.clone());
+        }
+    }
+    locals
+}
+
+/// Whether `body` calls `method` on a receiver statically bound to the owner class
+/// (known locally as `local`). Three bound-receiver shapes, all excluding
+/// comment/string occurrences:
+///   * `Local.method(...)`         — classmethod / direct call on the class;
+///   * `Local(...).method(...)`    — inline construct then method call;
+///   * `v = Local(...); v.method(...)` — single local binding then method call.
+///
+/// A bare `.method(` on an unrelated or unresolved receiver is NOT matched: that
+/// is the false-`exposed` guard — importing or merely mentioning the owner class
+/// is not evidence the asserted method ran on an instance of it.
+fn body_calls_method_on_owner_bound_receiver(body: &str, local: &str, method: &str) -> bool {
+    // Pattern 1: `Local.method(` — classmethod / direct call on the class itself.
+    if contains_attribute_call(body, local, method) {
+        return true;
+    }
+    let construct = format!("{local}(");
+    let constructions: Vec<usize> = body
+        .match_indices(&construct)
+        .filter(|(idx, _)| {
+            has_call_boundary(body, *idx) && !line_prefix_looks_like_comment_or_string(body, *idx)
+        })
+        .map(|(idx, _)| idx)
+        .collect();
+    // Pattern 2: `Local(...).method(` — inline construct then method call.
+    if constructions
+        .iter()
+        .any(|&idx| construct_result_calls_method(body, idx + construct.len() - 1, method))
+    {
+        return true;
+    }
+    // Pattern 3: `v = Local(...); v.method(` — a single unambiguous local binding
+    // (reuses the LocalBinding guards: one construction, direct assignment, one
+    // assignment of the bound local) then a method call on that local.
+    if constructions.len() == 1
+        && let Some(var) = binding_target_for_construction(body, constructions[0])
+        && assignment_count(body, &var) == 1
+        && contains_attribute_call(body, &var, method)
+    {
+        return true;
+    }
+    false
+}
+
+/// Relation-layer receiver-identity evidence for a method/classmethod owner: a
+/// strong observing test calls the owner's method on a receiver statically bound
+/// to the owner class (see [`body_calls_method_on_owner_bound_receiver`]). This
+/// supersedes the weaker "imports + mentions the owner class" gate, which credited
+/// `exposed` whenever the class name merely appeared in the test — even as a dead
+/// reference or while the asserted `.method(` ran on an unrelated receiver.
+fn strong_test_calls_owner_method_on_bound_receiver(
+    owner_class_token: Option<&String>,
+    method_name: Option<&String>,
+    strong_tests: &[&RelatedTest],
+    all_tests: &[PythonTest],
+) -> bool {
+    let (Some(class), Some(method)) = (owner_class_token, method_name) else {
+        return false;
+    };
+    strong_tests.iter().any(|related_test| {
+        all_tests.iter().any(|test| {
+            test.name == related_test.name
+                && test.file == related_test.file
+                && owner_class_locals(test, class).iter().any(|local| {
+                    body_calls_method_on_owner_bound_receiver(&test.body_text, local, method)
+                })
+        })
+    })
 }
 
 fn has_call_boundary(body_text: &str, idx: usize) -> bool {
@@ -3732,6 +4119,27 @@ fn split_python_assignment(text: &str) -> Option<(&str, &str)> {
     Some((lhs.trim(), rhs.trim()))
 }
 
+/// Parse an attribute-assignment changed line `recv.attr = value` into
+/// `(receiver, attr, rhs)`. Returns `None` for non-attribute assignments — a bare
+/// local assign (`status = 0`, no `.`), an augmented assign (`x.n += 1`, whose LHS
+/// keeps the operator and fails the identifier check), a comparison, or any line
+/// without `=`. Used to scope the changed-sink receiver/value identity gate to
+/// attribute writes only; everything else keeps the existing alignment behavior.
+fn parse_attribute_assignment(line_text: &str) -> Option<(&str, &str, &str)> {
+    let (lhs, rhs) = split_python_assignment(line_text)?;
+    let (receiver, attr) = lhs.rsplit_once('.')?;
+    let receiver = receiver.trim();
+    let attr = attr.trim();
+    if receiver.is_empty()
+        || attr.is_empty()
+        || !receiver.chars().all(is_python_identifier_char)
+        || !attr.chars().all(is_python_identifier_char)
+    {
+        return None;
+    }
+    Some((receiver, attr, rhs))
+}
+
 fn first_python_string_literal(text: &str) -> Option<String> {
     let mut start = None;
     let mut escaped = false;
@@ -3907,6 +4315,340 @@ fn python_recommended_next_step(
     }
 }
 
+/// Significant identifier and string-literal tokens from a changed source line.
+/// These approximate the *changed sink* — the attribute/field/value the change
+/// touches — so an oracle that asserts on them is observing the change.
+fn significant_change_tokens(line_text: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "self", "cls", "return", "if", "elif", "else", "while", "for", "def", "none", "true",
+        "false", "and", "or", "not", "in", "is", "raise", "assert", "yield", "await", "async",
+        "class", "import", "from", "as", "with", "try", "except", "lambda",
+    ];
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for ch in line_text.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            current.push(ch);
+        } else {
+            push_identifier(&mut out, &mut current, STOP);
+        }
+    }
+    push_identifier(&mut out, &mut current, STOP);
+    for quote in ['"', '\''] {
+        for (index, part) in line_text.split(quote).enumerate() {
+            if index % 2 == 1 && part.len() >= 2 {
+                out.push(part.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn push_identifier(out: &mut Vec<String>, current: &mut String, stop: &[&str]) {
+    if current.len() >= 3
+        && !stop.contains(&current.to_ascii_lowercase().as_str())
+        && !current.chars().all(|c| c.is_ascii_digit())
+    {
+        out.push(current.clone());
+    }
+    current.clear();
+}
+
+/// The visible read-out of the sink-alignment decision. `ripr`'s value over
+/// coverage is that a strong oracle credits `exposed` only when it *observes the
+/// changed sink*, not merely reaches the owner. This carries which token
+/// category the strongest oracle matched so a consumer can see *why* a strong
+/// oracle did or did not credit `exposed`. It is a pure read-out: the boolean
+/// the classifier uses is derived from `oracle_alignment` (see
+/// [`SinkAlignment::observes`]), so the surfaced value can never disagree with
+/// the decision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SinkAlignment {
+    changed_sink: Option<String>,
+    observed_sink: Option<String>,
+    /// One of `direct | alias | changed_sink_token | orthogonal | unknown`.
+    oracle_alignment: String,
+    alignment_reason: String,
+}
+
+impl SinkAlignment {
+    /// The decision the classifier uses, derived from the alignment so the two
+    /// can never drift. A strong oracle observes the owner when the alignment is
+    /// `direct`/`alias`/`changed_sink_token`, OR in the legacy module-owner /
+    /// empty-token case (alignment `unknown`, reason `module_owner_no_sink_token`)
+    /// which historically returned `true` — the one place where `unknown` does
+    /// not imply not-observed, preserved to keep the prior decision unchanged.
+    fn observes(&self) -> bool {
+        matches!(
+            self.oracle_alignment.as_str(),
+            "direct" | "alias" | "changed_sink_token"
+        ) || self.alignment_reason == "module_owner_no_sink_token"
+    }
+
+    /// The alignment surfaced when the classifier did not reach a strong-oracle
+    /// branch (no-static-path, static-limit, heuristic-only, or weak-oracle
+    /// findings never compute owner alignment). `changed_sink` is retained
+    /// because it describes the changed line regardless of the test side.
+    fn unknown(changed_sink: Option<String>) -> Self {
+        SinkAlignment {
+            changed_sink,
+            observed_sink: None,
+            oracle_alignment: "unknown".to_string(),
+            alignment_reason: "no_strong_oracle".to_string(),
+        }
+    }
+}
+
+/// Whether `token` appears in `text` as a whole Python identifier rather than a
+/// substring of a larger one. Without this, a common changed-sink token like
+/// `buffer` would spuriously "observe" an unrelated oracle that merely contains
+/// it (e.g. `buffered_stream` from a different class), over-crediting `exposed` —
+/// a confirmed false-exposed vector. Mirrors the identifier-boundary rule of
+/// [`has_identifier_boundary`]; whole words such as `key` in `Invalid key` still
+/// match, so genuine sink observation is preserved.
+fn oracle_text_observes_token(text: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    text.match_indices(token)
+        .any(|(idx, _)| has_identifier_boundary(text, idx, token.len()))
+}
+
+/// Classify whether a strong related-test oracle actually observes the changed
+/// behavior's sink — and *which* token category matched. Reach-plus-strong-oracle
+/// is not enough: a strong oracle that asserts a *different* value (e.g. a
+/// wrapper's return) does not discriminate the change. The three token groups
+/// (owner name, import alias, changed-sink tokens) are probed in order against
+/// the strongest related oracles, mirroring the prior boolean exactly so the
+/// derived decision is unchanged.
+fn classify_sink_alignment(
+    owner: &PythonOwner,
+    line_text: &str,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> SinkAlignment {
+    // `changed_sink` describes the changed line; deduped, joined for display.
+    let change_tokens = significant_change_tokens(line_text);
+    let mut change_display: Vec<String> = Vec::new();
+    for token in &change_tokens {
+        if !change_display.contains(token) {
+            change_display.push(token.clone());
+        }
+    }
+    let changed_sink = if change_display.is_empty() {
+        None
+    } else {
+        Some(change_display.join(", "))
+    };
+
+    // The strongest strong-rank related oracle is the one the decision inspects.
+    let strong_tests: Vec<&RelatedTest> = related
+        .iter()
+        .filter(|test| test.oracle_strength.rank() >= OracleStrength::Strong.rank())
+        .collect();
+    if strong_tests.is_empty() {
+        return SinkAlignment::unknown(changed_sink);
+    }
+    let observed_sink = strong_tests
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+        .and_then(|test| test.oracle.clone());
+
+    // Owner-name tokens, split for identity-aware crediting. For a method /
+    // classmethod owner the bare method name is collision-prone: a same-named
+    // method on an unrelated class (`PaymentProcessor.validate` vs owner
+    // `TokenValidator.validate`) shares the token `validate` yet is a different
+    // entity. Crediting `direct` from the bare method name alone is a silent
+    // false-`exposed`, so it requires owner-class identity (the class token is
+    // observed, or a strong observing test imports the owner's class). Class
+    // tokens and free-function names are unambiguous and credit directly.
+    let is_method_owner = matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    );
+    let owner_class_token: Option<String> = if is_method_owner {
+        owner
+            .qualified_name
+            .rsplit_once('.')
+            .map(|(class, _)| class)
+            .filter(|class| !class.is_empty() && *class != "<module>")
+            .map(str::to_string)
+    } else {
+        None
+    };
+    // Unambiguous identity tokens: every qualified-name segment except the bare
+    // method name of a method owner. For non-method owners this is the full set
+    // (a free-function name is its own identity).
+    let mut identity_tokens: Vec<String> = owner
+        .qualified_name
+        .split('.')
+        .filter(|token| !token.is_empty() && *token != "<module>")
+        .filter(|token| !(is_method_owner && *token == owner.name))
+        .map(str::to_string)
+        .collect();
+    if !is_method_owner && !owner.name.is_empty() && owner.name != "<module>" {
+        identity_tokens.push(owner.name.clone());
+    }
+    // The collision-prone bare method name of a method owner, gated on identity.
+    let method_name_token: Option<String> =
+        if is_method_owner && !owner.name.is_empty() && owner.name != "<module>" {
+            Some(owner.name.clone())
+        } else {
+            None
+        };
+    // Import aliases of the owner: `from m import owner as alias` makes the test
+    // assert on `alias(...)`, which still observes the owner's output.
+    let owner_simple = owner
+        .qualified_name
+        .rsplit('.')
+        .next()
+        .unwrap_or(owner.name.as_str());
+    let mut alias_tokens: Vec<String> = Vec::new();
+    for test in all_tests {
+        for import in &test.imports {
+            // For a method/classmethod owner the bare method name is not directly
+            // importable, so only the owner's CLASS alias is identity-bearing.
+            // Matching the bare method name here would credit any same-named free
+            // function aliased in an unrelated module (a false-`exposed`).
+            let imported_matches = if is_method_owner {
+                owner_class_token.as_deref() == Some(import.imported.as_str())
+            } else {
+                // Free-function alias: require module identity, else a same-named
+                // function aliased from an unrelated module credits a false-`exposed`.
+                (import.imported == owner_simple || import.imported == owner.name)
+                    && import_source_module_matches_owner(import, owner)
+            };
+            if imported_matches && !import.alias.is_empty() {
+                alias_tokens.push(import.alias.clone());
+            }
+        }
+    }
+    let mut change_only = change_tokens.clone();
+    identity_tokens.retain(|token| token.len() >= 2);
+    let method_name_token = method_name_token.filter(|token| token.len() >= 2);
+    alias_tokens.retain(|token| token.len() >= 2);
+    change_only.retain(|token| token.len() >= 2);
+
+    // Module owner / no usable token: the prior boolean returned `true` here, so
+    // the decision must stay `observes`. Map to `unknown` with the reason that
+    // `observes()` special-cases back to true.
+    if identity_tokens.is_empty()
+        && method_name_token.is_none()
+        && alias_tokens.is_empty()
+        && change_only.is_empty()
+    {
+        return SinkAlignment {
+            changed_sink,
+            observed_sink,
+            oracle_alignment: "unknown".to_string(),
+            alignment_reason: "module_owner_no_sink_token".to_string(),
+        };
+    }
+
+    let any_strong_observes = |group: &[String]| -> bool {
+        strong_tests.iter().any(|test| {
+            test.oracle.as_deref().is_some_and(|text| {
+                group
+                    .iter()
+                    .any(|token| oracle_text_observes_token(text, token))
+            })
+        })
+    };
+    // Receiver identity for a method owner: a strong observing test must call the
+    // owner's method on a receiver statically bound to the owner class (inline
+    // construct, local binding, or a classmethod/direct call on the class). A bare
+    // method-name match — even with the owner class imported and mentioned — is not
+    // identity-bearing, because the asserted `.method(` may run on an unrelated
+    // receiver while the class is referenced (or merely named) elsewhere. This is
+    // the false-`exposed` guard at the relation layer.
+    let strong_test_binds_method_receiver = strong_test_calls_owner_method_on_bound_receiver(
+        owner_class_token.as_ref(),
+        method_name_token.as_ref(),
+        &strong_tests,
+        all_tests,
+    );
+    let method_name_observed = method_name_token
+        .as_ref()
+        .is_some_and(|token| any_strong_observes(std::slice::from_ref(token)));
+    // Free-function module identity: a non-method owner's bare function-name token
+    // credits `direct` only when a strong observing test imports it from the
+    // owner's module. A same-named free function imported from a different module
+    // (`from src.checker import validate` for owner `src.handler.validate`) is not
+    // identity-bearing — the false-`exposed` guard for free functions.
+    let free_fn_module_identity =
+        !is_method_owner && strong_test_imports_owner_from_module(&strong_tests, all_tests, owner);
+    // Receiver/value identity for an attribute-assignment changed sink. The bare
+    // attribute token (`status`) is collision-prone: a same-named field on an
+    // unrelated receiver (`session.status` changed, oracle `conn.status == ...`)
+    // would otherwise credit `changed_sink_token` on token coincidence. For an
+    // attribute write `recv.attr = value`, credit only when a strong oracle
+    // observes the receiver-qualified `recv.attr`, OR observes the assigned VALUE
+    // together with the attribute name (co-observation defeats a common-literal
+    // value coinciding in an unrelated oracle, while keeping legitimate
+    // `obj.attr == value` field assertions). Non-attribute changed lines (returns,
+    // method calls, comparisons) are not gated and keep prior behavior.
+    let change_only_credit_ok = match parse_attribute_assignment(line_text) {
+        None => true,
+        Some((receiver, attr, rhs)) => {
+            let qualified = [format!("{receiver}.{attr}")];
+            let mut value_tokens = significant_change_tokens(rhs);
+            value_tokens.retain(|token| token.len() >= 2);
+            let attr_token = [attr.to_string()];
+            any_strong_observes(&qualified)
+                || (!value_tokens.is_empty()
+                    && any_strong_observes(&value_tokens)
+                    && any_strong_observes(&attr_token))
+        }
+    };
+    let (oracle_alignment, alignment_reason) =
+        if any_strong_observes(&identity_tokens) && (is_method_owner || free_fn_module_identity) {
+            ("direct", "strong_oracle_observes_owner_name")
+        } else if method_name_observed && strong_test_binds_method_receiver {
+            (
+                "direct",
+                "strong_oracle_observes_owner_method_on_bound_receiver",
+            )
+        } else if any_strong_observes(&alias_tokens) {
+            ("alias", "strong_oracle_observes_import_alias")
+        } else if any_strong_observes(&change_only)
+            && change_only_credit_ok
+            && (is_method_owner || free_fn_module_identity)
+        {
+            // Gate the changed-sink-token path with the same free-function module
+            // identity as the direct/alias paths: a same-named free function from a
+            // different module must not credit `exposed` via this sibling branch
+            // either (the #1249 every-branch lesson). Method owners are unaffected.
+            (
+                "changed_sink_token",
+                "strong_oracle_observes_changed_sink_token",
+            )
+        } else {
+            ("orthogonal", "strong_oracle_observes_different_sink")
+        };
+    SinkAlignment {
+        changed_sink,
+        observed_sink,
+        oracle_alignment: oracle_alignment.to_string(),
+        alignment_reason: alignment_reason.to_string(),
+    }
+}
+
+/// Whether a strong related-test oracle actually observes the changed behavior's
+/// sink — not merely reaches the owner. Derived from [`classify_sink_alignment`]
+/// so the boolean and the surfaced `oracle_alignment` can never disagree. Now a
+/// `#[cfg(test)]` regression helper: production code reads the alignment directly
+/// via [`SinkAlignment::observes`], and the existing boolean tests pin that the
+/// derivation stays equivalent to the prior decision.
+#[cfg(test)]
+fn strong_oracle_observes_owner(
+    owner: &PythonOwner,
+    line_text: &str,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> bool {
+    classify_sink_alignment(owner, line_text, related, all_tests).observes()
+}
+
 fn classify_change(
     file: &Path,
     line: usize,
@@ -3917,6 +4659,7 @@ fn classify_change(
     let owner = owner_for_changed_line(file, line, owners)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
+    let alignment = classify_sink_alignment(owner, line_text, &related, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
@@ -3981,7 +4724,7 @@ fn classify_change(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank() {
+    } else if strongest_strength >= OracleStrength::Strong.rank() && alignment.observes() {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -3991,6 +4734,22 @@ fn classify_change(
                 "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
                 owner.name,
                 strongest_kind.as_str()
+            )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        // A strong oracle reaches the owner, but its assertion observes a value
+        // other than the changed owner's output, so static evidence cannot
+        // confirm the changed behavior is discriminated. Fail closed to
+        // weakly_exposed rather than crediting reach-plus-strong-oracle as
+        // discrimination (which would degrade `exposed` back into coverage).
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![format!(
+                "A strong Python oracle reaches `{}`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.",
+                owner.name
             )],
         )
     } else {
@@ -4006,6 +4765,22 @@ fn classify_change(
         missing.push(limit.missing.clone());
     }
 
+    // Surface the sink alignment only where the classifier actually consulted a
+    // strong oracle: the `exposed` branch and the strong-but-orthogonal
+    // `weakly_exposed` branch. No-static-path, static-limit, heuristic-only, and
+    // weak-oracle findings never computed owner alignment, so they read
+    // `unknown` (the `changed_sink` of the changed line is still retained).
+    let surfaced_alignment = if matches!(class, ExposureClass::Exposed)
+        || (matches!(class, ExposureClass::WeaklyExposed)
+            && static_limit.is_none()
+            && has_oracle_eligible_relation
+            && strongest_strength >= OracleStrength::Strong.rank())
+    {
+        alignment
+    } else {
+        SinkAlignment::unknown(alignment.changed_sink.clone())
+    };
+
     let id_path: String = file
         .display()
         .to_string()
@@ -4015,8 +4790,17 @@ fn classify_change(
     let canonical_gap = static_limit
         .is_none()
         .then(|| canonical_python_gap_for(file, owner, &family, line_text));
+    let owner_id = owner.symbol_id();
+    let probe_id = fingerprint_probe_id(
+        "probe",
+        &id_path,
+        "python_preview",
+        owner_id.0.as_str(),
+        &normalize_expression(line_text),
+        1,
+    );
     let probe = Probe {
-        id: ProbeId(format!("probe:{id_path}:{line}:python_preview")),
+        id: probe_id,
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: Some(owner.symbol_id()),
         family: family.clone(),
@@ -4249,6 +5033,10 @@ fn classify_change(
         language_status: Some(LanguageStatus::Preview),
         owner_kind: owner.owner_kind,
         static_limit_kind: static_limit.map(|limit| limit.kind),
+        changed_sink: surfaced_alignment.changed_sink,
+        observed_sink: surfaced_alignment.observed_sink,
+        oracle_alignment: Some(surfaced_alignment.oracle_alignment),
+        alignment_reason: Some(surfaced_alignment.alignment_reason),
     })
 }
 
@@ -5051,6 +5839,179 @@ def test_build_user_smoke():
     }
 
     #[test]
+    fn construct_result_is_called_distinguishes_inline_from_bound() {
+        // open-paren index of the first `(` in each fixture string (always present).
+        let at = |s: &str| s.find('(').unwrap_or(0);
+        // Inline construct-call `C(...)(...)`: the constructed instance is called.
+        let inline = "Renderer()(None, event)";
+        assert!(construct_result_is_called(inline, at(inline)));
+        let inline_args = "Renderer(sort=True)(event)";
+        assert!(construct_result_is_called(inline_args, at(inline_args)));
+        // Bound local `x = C(...)` then a separate `x(...)`: NOT an inline call —
+        // the constructor's `)` is followed by a newline, not `(`. Keeps the
+        // local-callable case uncertain (consistent with #1221).
+        let bound = "stop = stop_after_attempt(3)\n    stop(3)";
+        assert!(!construct_result_is_called(bound, at(bound)));
+        // Plain construction with no following call.
+        let plain = "r = Renderer()";
+        assert!(!construct_result_is_called(plain, at(plain)));
+    }
+
+    fn call_owner(owners: &[PythonOwner]) -> Result<&PythonOwner, String> {
+        owners
+            .iter()
+            .find(|owner| owner.name == "__call__")
+            .ok_or_else(|| "fixture defines a __call__ owner".to_string())
+    }
+
+    const STOP_SOURCE: &str = "class stop_after_attempt:\n    def __init__(self, max_attempt_number):\n        self.max_attempt_number = max_attempt_number\n\n    def __call__(self, attempt_number):\n        return attempt_number >= self.max_attempt_number\n";
+
+    #[test]
+    fn local_binding_relation_links_direct_and_surfaces_smoke_oracle() -> Result<(), String> {
+        // The tenacity false-actionable shape: `stop = stop_after_attempt(3)`
+        // bound once and called via `stop(3)` under a broad-boolean smoke oracle.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "import unittest\n\nfrom src.stop import stop_after_attempt\n\n\nclass StopTest(unittest.TestCase):\n    def test_stop_after_attempt(self):\n        stop = stop_after_attempt(3)\n        self.assertTrue(stop(3))\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert_eq!(
+            related_test_relation(&tests[0], owner),
+            Some(PythonRelationKind::LocalBinding),
+            "single bound local called as `stop(3)` should link directly via local_binding"
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/stop.py"),
+            6,
+            "        return attempt_number >= self.max_attempt_number",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside __call__ should classify".to_string());
+        };
+        // Must STAY weakly_exposed — a smoke oracle never credits `exposed`.
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Smoke,
+            "the assertTrue(stop(3)) smoke oracle must be surfaced, not dropped to unknown"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_inline_construct_call() -> Result<(), String> {
+        // Inline `C()(...)` is ConstructCall territory, not a bound local.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\n\n\ndef test_inline():\n    assert stop_after_attempt(3)(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert_eq!(
+            related_test_relation(&tests[0], owner),
+            Some(PythonRelationKind::ConstructCall),
+            "inline construct-call must stay ConstructCall, not LocalBinding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_reassigned_binding() -> Result<(), String> {
+        // A rebound local is ambiguous: which construction is called is unclear.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\n\n\ndef test_reassigned():\n    stop = stop_after_attempt(3)\n    stop = stop_after_attempt(4)\n    assert stop(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "two constructions / reassigned binding must not link via local_binding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_does_not_fire_for_wrapper_keyword_argument() -> Result<(), String> {
+        // `Retrying(stop=stop_after_attempt(3))` binds a wrapper, not the class —
+        // the assignment target is `retrying`, not `stop_after_attempt(...)`.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "from src.stop import stop_after_attempt\nimport tenacity\n\n\ndef test_wrapper():\n    retrying = tenacity.Retrying(stop=stop_after_attempt(3))\n    assert retrying(lambda: None)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "a keyword-argument construction inside a wrapper must not link via local_binding"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_binding_requires_importing_the_owner_class() -> Result<(), String> {
+        // Guard B: a same-named local without importing the class must not link.
+        let owners = extract_owners(Path::new("src/stop.py"), STOP_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_stop.py"),
+            "def test_no_import():\n    stop = stop_after_attempt(3)\n    assert stop(3)\n",
+        );
+        let owner = call_owner(&owners)?;
+        assert!(
+            !local_binding_calls_owner(&tests[0], owner),
+            "without importing the owner class, local_binding must not fire (Guard B)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn binding_target_extracts_only_direct_identifier_assignment() {
+        // Direct `local = Class(` extracts the bare identifier.
+        let direct = "    stop = stop_after_attempt(3)\n";
+        let idx = direct.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(
+            binding_target_for_construction(direct, idx).as_deref(),
+            Some("stop")
+        );
+        // Keyword argument is not an assignment target.
+        let kwarg = "    retrying = Retrying(stop=stop_after_attempt(3))\n";
+        let kidx = kwarg.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(binding_target_for_construction(kwarg, kidx), None);
+        // Attribute target `self.x = Class(` is not a bare local.
+        let attr = "    self.stop = stop_after_attempt(3)\n";
+        let aidx = attr.find("stop_after_attempt(").unwrap_or(0);
+        assert_eq!(binding_target_for_construction(attr, aidx), None);
+    }
+
+    #[test]
+    fn oracle_text_observes_token_requires_identifier_boundary() {
+        // Whole-word matches still observe (preserves genuine sink alignment).
+        assert!(oracle_text_observes_token(
+            "assert raises(ValueError, match='Invalid key: x')",
+            "key"
+        ));
+        assert!(oracle_text_observes_token("assert stop(3)", "stop"));
+        assert!(oracle_text_observes_token(
+            "assert x.max_buffer_size == 2",
+            "max_buffer_size"
+        ));
+        // Substring co-occurrence must NOT observe: the confirmed false-exposed
+        // vector — `buffer` (a changed-sink token) inside an unrelated
+        // `buffered_stream` oracle from a different class.
+        assert!(!oracle_text_observes_token(
+            "assert buffered_stream.receive_exactly(10) == b\"x\"",
+            "buffer"
+        ));
+        assert!(!oracle_text_observes_token("assert client.send()", "len"));
+        assert!(!oracle_text_observes_token("assert keys() == []", "key"));
+        assert!(!oracle_text_observes_token("anything", ""));
+    }
+
+    #[test]
     fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -5058,7 +6019,7 @@ def test_build_user_smoke():
         );
         let tests = extract_tests(
             Path::new("tests/test_pricing.py"),
-            "def test_apply_discount():\n    assert apply_discount(100) == 90\n",
+            "from src.pricing import apply_discount\n\n\ndef test_apply_discount():\n    assert apply_discount(100) == 90\n",
         );
 
         let Some(finding) = classify_change(
@@ -5088,6 +6049,422 @@ def test_build_user_smoke():
                 .evidence
                 .iter()
                 .all(|entry| !entry.starts_with("missing_discriminator:"))
+        );
+        Ok(())
+    }
+
+    const AUTH_SOURCE: &str = "class TokenValidator:\n    def __init__(self, valid):\n        self._valid = valid\n\n    def validate(self, token):\n        return token.strip() in self._valid\n";
+    const AUTH_CHANGED_LINE: &str = "        return token.strip() in self._valid";
+
+    #[test]
+    fn method_name_without_class_identity_stays_orthogonal() -> Result<(), String> {
+        // False-`exposed` guard: the only related test exercises a DIFFERENT
+        // class's same-named method (`PaymentProcessor.validate`) and never
+        // imports the owner's class. The bare method-name token `validate` must
+        // not credit `direct` alignment without owner-class identity.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_billing.py"),
+            "from src.billing import PaymentProcessor\n\n\ndef test_billing_validate():\n    proc = PaymentProcessor()\n    assert proc.validate(\"card1234 \") == True\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside validate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "a same-named method on an unrelated class must not credit exposed"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("orthogonal"));
+        Ok(())
+    }
+
+    #[test]
+    fn method_name_with_class_import_identity_credits_exposed() -> Result<(), String> {
+        // Identity preserved: the test imports and constructs the owner's class,
+        // then observes its method under an exact-value oracle. The bare
+        // method-name match is legitimate here, so `direct`/`exposed` stands.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_auth.py"),
+            "from src.auth import TokenValidator\n\n\ndef test_auth_validate():\n    validator = TokenValidator([\"card1234\"])\n    assert validator.validate(\"card1234\") == True\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside validate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a test that imports and exercises the owner class keeps exposed credit"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn method_name_dead_import_does_not_credit_exposed() -> Result<(), String> {
+        // Bypass guard: a DEAD import of the owner class (never used in the test
+        // body) is not identity evidence. The test exercises a different class's
+        // same-named method, so it must stay conservative.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_billing.py"),
+            "from src.billing import PaymentProcessor\nfrom src.auth import TokenValidator\n\n\ndef test_billing_validate():\n    proc = PaymentProcessor()\n    assert proc.validate(\"card1234 \") == True\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside validate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "a dead import of the owner class must not credit exposed"
+        );
+        assert_ne!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn method_owner_free_function_alias_does_not_credit_exposed() -> Result<(), String> {
+        // Bypass guard: a same-named FREE function aliased from an unrelated
+        // module must not credit `exposed`/`alias` for a method owner. The test
+        // never imports or exercises the owner's class.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_helpers.py"),
+            "from src.helpers import validate as run_check\n\n\ndef test_helpers_run_check():\n    assert run_check(\"data\") == True\n",
+        );
+        if let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) {
+            assert_ne!(
+                finding.class,
+                ExposureClass::Exposed,
+                "a same-named free-function alias must not credit exposed for a method owner"
+            );
+            assert_ne!(finding.oracle_alignment.as_deref(), Some("alias"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn method_name_class_constructed_but_method_on_other_receiver_does_not_credit_exposed()
+    -> Result<(), String> {
+        // Receiver-identity guard (the residual leak the #1253 class-import gate
+        // left open): the owner class is imported AND constructed in real code, but
+        // the strong oracle's `.validate(` runs on an UNRELATED receiver. Class
+        // identity is present; receiver identity is not, so it must stay
+        // conservative.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_billing.py"),
+            "from src.auth import TokenValidator\nfrom src.billing import PaymentProcessor\n\n\ndef test_billing_validate():\n    reference = TokenValidator([\"card1234\"])\n    proc = PaymentProcessor()\n    assert proc.validate(\"card1234 \") == True\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside validate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "constructing the owner class is not enough; the asserted method ran on a different receiver"
+        );
+        assert_ne!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn method_name_inline_construct_call_credits_exposed() -> Result<(), String> {
+        // Positive control: an inline `OwnerClass(...).method(...)` binds the
+        // receiver to the owner class, and a strong exact-value oracle observes it.
+        let owners = extract_owners(Path::new("src/auth.py"), AUTH_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_auth.py"),
+            "from src.auth import TokenValidator\n\n\ndef test_auth_inline():\n    assert TokenValidator([\"card1234\"]).validate(\"card1234\") == True\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/auth.py"),
+            6,
+            AUTH_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside validate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "inline construct-call binds the receiver to the owner class"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn method_name_classmethod_direct_call_credits_exposed() -> Result<(), String> {
+        // Positive control: a classmethod called directly on the owner class
+        // (`OwnerClass.method(...)`) is receiver-bound by construction.
+        let source = "class TokenRegistry:\n    @classmethod\n    def lookup(cls, token):\n        return token.strip()\n";
+        let owners = extract_owners(Path::new("src/registry.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_registry.py"),
+            "from src.registry import TokenRegistry\n\n\ndef test_registry_lookup():\n    assert TokenRegistry.lookup(\"abc \") == \"abc\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/registry.py"),
+            4,
+            "        return token.strip()",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside lookup should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a classmethod called on the owner class is receiver-bound"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    const SESSION_SOURCE: &str =
+        "class Session:\n    def refresh(self):\n        self.status = \"active\"\n";
+    const SESSION_CHANGED_LINE: &str = "        self.status = \"active\"";
+
+    #[test]
+    fn attribute_sink_different_receiver_and_value_does_not_credit_exposed() -> Result<(), String> {
+        // Cluster A guard: a changed attribute write `self.status = "active"` must
+        // not credit `changed_sink_token` when the strong oracle observes a
+        // DIFFERENT receiver's same-named attribute with a different value
+        // (`conn.status == "closed"`) — pure attribute-name token coincidence.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh(conn):\n    Session().refresh()\n    assert conn.status == \"closed\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a different receiver AND different value must not credit exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_sink_value_and_attr_observed_credits_exposed() -> Result<(), String> {
+        // Positive control: observing the assigned VALUE together with the
+        // attribute name (`assert s.status == "active"`) is change-specific
+        // evidence, so the changed-sink token credit stands.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh_status():\n    s = Session()\n    s.refresh()\n    assert s.status == \"active\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the assigned value and the attribute name keeps exposed"
+        );
+        assert_eq!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_sink_common_value_without_attr_does_not_credit_exposed() -> Result<(), String> {
+        // Common-literal guard: the assigned value "active" is ubiquitous;
+        // observing it on a DIFFERENT attribute (`widget.state == "active"`) must
+        // not credit, because the changed attribute name `status` is not
+        // co-observed.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh_widget(widget):\n    Session().refresh()\n    assert widget.state == \"active\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a common assigned value on a different attribute must not credit exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    const HANDLER_SOURCE: &str = "def normalize(payload):\n    return payload.strip()\n";
+    const HANDLER_CHANGED_LINE: &str = "    return payload.strip()";
+
+    #[test]
+    fn free_function_imported_from_other_module_does_not_credit_exposed() -> Result<(), String> {
+        // Cluster B guard: the changed free function is src.handler.normalize, but
+        // the only related test imports a same-named normalize from src.checker.
+        // The bare function-name token is not identity-bearing across modules.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_checker.py"),
+            "from src.checker import normalize\n\n\ndef test_checker_normalize():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a same-named free function imported from a different module is not identity-bearing"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_imported_from_owner_module_credits_exposed() -> Result<(), String> {
+        // Positive control: same-module import + a strong exact-value oracle.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_handler.py"),
+            "from src.handler import normalize\n\n\ndef test_handler_normalize():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "importing the function from the owner's module is identity-bearing"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_aliased_import_from_owner_module_credits_exposed() -> Result<(), String> {
+        // Positive control: aliased same-module import (`as norm`) keeps identity.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_handler.py"),
+            "from src.handler import normalize as norm\n\n\ndef test_handler_normalize_alias():\n    assert norm(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an aliased same-module import is identity-bearing"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("alias"));
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_changed_value_token_from_other_module_does_not_credit_exposed()
+    -> Result<(), String> {
+        // Sibling-branch guard (#1249 lesson): even when a wrong-module test's
+        // strong oracle observes the changed VALUE token ("ok"), the
+        // changed_sink_token path must require free-function module identity too —
+        // not just the direct/alias paths.
+        let source = "def classify(payload):\n    return payload.strip() == \"ok\"\n";
+        let owners = extract_owners(Path::new("src/handler.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_checker.py"),
+            "from src.checker import classify\n\n\ndef test_checker_classify():\n    assert classify(\"ok\") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            "    return payload.strip() == \"ok\"",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside classify should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a changed-value token observed by a different-module test is not identity-bearing"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
         );
         Ok(())
     }
@@ -5664,7 +7041,12 @@ def test_build_user_smoke():
         .ok_or_else(|| "after owner should classify".to_string())?;
 
         assert_eq!(before_finding.probe.owner, after_finding.probe.owner);
-        assert_ne!(before_finding.probe.id, after_finding.probe.id);
+        // With content-addressed ids, moving the owner to a different line
+        // (without changing the expression) must NOT change the probe id.
+        assert_eq!(
+            before_finding.probe.id, after_finding.probe.id,
+            "content-addressed id must be stable across line movement"
+        );
         Ok(())
     }
 
@@ -6292,6 +7674,7 @@ def test_build_user_smoke():
             diff_file: None,
             mode: crate::analysis::AnalysisMode::Draft,
             include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
         };
         let policy = OraclePolicy::default();
         let changed_files = vec![
@@ -6316,6 +7699,7 @@ def test_build_user_smoke():
             diff_file: None,
             mode: crate::analysis::AnalysisMode::Deep,
             include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
         };
         let policy = OraclePolicy::default();
         let result = adapter.analyze_repo(&options, &policy)?;

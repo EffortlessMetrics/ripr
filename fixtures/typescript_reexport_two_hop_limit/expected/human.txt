@@ -1,0 +1,74 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_reexport_two_hop_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
+
+WARNING src/util.ts:4
+
+Changed
+  after:          return false;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/util.ts::isRawNetworkError
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: missing_context
+  repair packet ready: false
+  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  missing fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+  raw evidence: src/util.ts:4 (typescript_preview_probe) source=probe:src_util.ts:typescript_preview:5a933676 owner=isRawNetworkError
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related test(s) found for owner `isRawNetworkError`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - local flow reaches returned value: return false; (line 4)
+
+Weakness
+  - No test references `isRawNetworkError(` — add a test that calls the changed owner.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: isRawNetworkError
+  owner kind: function
+  changed behavior: return_value changed at src/util.ts:4: `return false;`
+  oracle: unknown (none)
+  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  repair packet ready: false
+  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  next capability needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+
+Next step
+  TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

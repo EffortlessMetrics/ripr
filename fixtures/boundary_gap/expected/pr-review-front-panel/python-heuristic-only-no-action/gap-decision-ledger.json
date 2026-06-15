@@ -44,7 +44,7 @@
         "dedupe_fingerprint": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10"
       },
       "evidence_ids": [
-        "probe:src_pricing.py:2:python_preview",
+        "probe:src_pricing.py:python_preview:5511809e",
         "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10"
       ],
       "projection_eligibility": {

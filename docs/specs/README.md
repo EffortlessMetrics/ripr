@@ -78,9 +78,47 @@ observable behavior.
 | [RIPR-SPEC-0065](RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md) | proposed | Evidence-to-repair use-case roadmap |
 | [RIPR-SPEC-0066](RIPR-SPEC-0066-repo-badge-use-case.md) | proposed | Repo badge use case |
 | [RIPR-SPEC-0067](RIPR-SPEC-0067-pr-gate-use-case.md) | proposed | PR gate use case |
-| [RIPR-SPEC-0068](RIPR-SPEC-0068-pr-review-card-use-case.md) | proposed | PR review-card use case |
+| [RIPR-SPEC-0068](RIPR-SPEC-0068-pr-review-card-use-case.md) | accepted | PR review-card use case |
 | [RIPR-SPEC-0069](RIPR-SPEC-0069-lsp-agent-feedback-use-case.md) | proposed | LSP agent feedback use case |
 | [RIPR-SPEC-0070](RIPR-SPEC-0070-downstream-review-consumer-use-case.md) | proposed | Downstream review consumer use case |
 | [RIPR-SPEC-0071](RIPR-SPEC-0071-typescript-bun-evidence-use-case.md) | proposed | TypeScript/Bun evidence use case |
 | [RIPR-SPEC-0072](RIPR-SPEC-0072-large-repo-diff-first-use-case.md) | proposed | Large-repo diff-first use case |
 | [RIPR-SPEC-0073](RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md) | proposed | Receipts, outcomes, and route quality use case |
+| [RIPR-SPEC-0074](RIPR-SPEC-0074-repo-exposure-run-status.md) | proposed | Repo exposure run status |
+| [RIPR-SPEC-0075](RIPR-SPEC-0075-pr-evidence-summary.md) | proposed | PR evidence summary |
+| [RIPR-SPEC-0076](RIPR-SPEC-0076-lsp-diagnostics-policy.md) | accepted | LSP diagnostics severity policy |
+| [RIPR-SPEC-0077](RIPR-SPEC-0077-lsp-repair-packet-command.md) | proposed | LSP repair packet command |
+| [RIPR-SPEC-0078](RIPR-SPEC-0078-lsp-top-limitation-command.md) | proposed | LSP top-limitation command |
+| [RIPR-SPEC-0079](RIPR-SPEC-0079-canonical-receipt-command-contract.md) | proposed | Canonical receipt command contract |
+| [RIPR-SPEC-0080](RIPR-SPEC-0080-route-quality-standalone-report.md) | proposed | Route-quality standalone report |
+| [RIPR-SPEC-0081](RIPR-SPEC-0081-lsp-receipt-status-command.md) | proposed | LSP receipt-status command |
+| [RIPR-SPEC-0082](RIPR-SPEC-0082-preview-language-disclosure.md) | proposed | Preview-language disclosure |
+| [RIPR-SPEC-0083](RIPR-SPEC-0083-check-no-scope-disclosure.md) | proposed | Check no-scope disclosure |
+| [RIPR-SPEC-0084](RIPR-SPEC-0084-default-base-resolution.md) | proposed | Default base resolution |
+| [RIPR-SPEC-0085](RIPR-SPEC-0085-typescript-evidence-adapter-contract.md) | proposed | TypeScript evidence adapter contract |
+| [RIPR-SPEC-0086](RIPR-SPEC-0086-python-eval-sweep.md) | proposed | Python Tier A eval sweep |
+| [RIPR-SPEC-0087](RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md) | proposed | TypeScript preview→actionable repair-packet contract (0085 §PR7) |
+| [RIPR-SPEC-0088](RIPR-SPEC-0088-typescript-repair-packet-projection.md) | proposed | TypeScript repair-packet surface projection (0085 §PR8) |
+| [RIPR-SPEC-0089](RIPR-SPEC-0089-ts-full-repo-guidance.md) | proposed | TypeScript full-repo scan guidance disclosure |
+| [RIPR-SPEC-0090](RIPR-SPEC-0090-all-no-path-disclosure.md) | proposed | All-no-path aggregate disclosure |
+| [RIPR-SPEC-0091](RIPR-SPEC-0091-pilot-artifact-size-bound.md) | proposed | Pilot artifact size bound (DEFAULT_PILOT_SEAM_BUDGET=2000) |
+| [RIPR-SPEC-0092](RIPR-SPEC-0092-python-judged-pr-panel.md) | proposed | Python Tier B judged-diff panel schema |
+| [RIPR-SPEC-0093](RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md) | proposed | Match-arm blind-reach downgrade (arm_observation_unverified) |
+| [RIPR-SPEC-0094](RIPR-SPEC-0094-observation-unverified-guard-generalization.md) | proposed | observation_unverified guard generalization to ReturnValue/FieldConstruction/SideEffect/CallDeletion + MatchArm variant-scope fix |
+| [RIPR-SPEC-0095](RIPR-SPEC-0095-typescript-reexport-test-discovery.md) | accepted | TypeScript single-hop re-export test discovery |
+| [RIPR-SPEC-0096](RIPR-SPEC-0096-infect-propagate-fail-closed.md) | proposed | INFECT/PROPAGATE fail-closed: wildcard discard, swallowed tails, stdout macros (parts A/B/C of #1219) |
+| [RIPR-SPEC-0097](RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md) | accepted | TypeScript toThrow exact-payload oracle upgrade: string/object/class → ExactErrorVariant/strong; bare toThrow stays weak |
+| [RIPR-SPEC-0098](RIPR-SPEC-0098-typescript-exposed-observation-guard.md) | accepted | TypeScript exposed observation guard: downgrade exposed→weakly_exposed when no strong assertion's observed_expression flows from the changed sub-expression (console.log repro fix) |
+| [RIPR-SPEC-0099](RIPR-SPEC-0099-typescript-tsconfig-path-aliases.md) | accepted | TypeScript tsconfig.json path-alias resolution: opt-in `resolve_tsconfig_paths` credits aliased imports; always-on `typescript_path_alias_unresolved` disclosure when name-matched non-relative import not credited |
+| [RIPR-SPEC-0100](RIPR-SPEC-0100-lsp-related-test-codelens.md) | accepted | LSP advisory codeLens above changed symbols citing the cached related-test count; display-only, never a gate; honesty rules: snapshot==None→empty, N==0→"no related tests found", preview prefix for TS/Python |
+| [RIPR-SPEC-0101](RIPR-SPEC-0101-typescript-package-manager-unresolved-disclosure.md) | accepted | TypeScript honesty-clarity fix: reword misleading `typescript_runner_hint_unresolved` to `typescript_package_manager_unresolved` when framework is known and a verify command IS derivable; preserve strong fail-closed limitation for genuinely-unactionable case (no framework AND no runner) |
+| [RIPR-SPEC-0102](RIPR-SPEC-0102-typescript-import-alias-owner-call.md) | accepted | TypeScript under-emit fix (gap 1): alias-rename import (`import { X as local }`) + verified body call upgraded from `import_path_affinity`/Medium to `direct_owner_call`/High; shadow guard prevents over-claim |
+| [RIPR-SPEC-0103](RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md) | accepted | Error-seam exemplar kind-gate: withdraw wrong-kind nominations, emit null when no ExactErrorVariant Strong test found for ErrorVariant seam; fail-closed, credits nothing, grip unchanged |
+| [RIPR-SPEC-0104](RIPR-SPEC-0104-typescript-oracle-seam-family-match.md) | accepted | TypeScript honesty fix: assertion-level family↔oracle-kind filter so cross-family Strong oracle (e.g. ExactErrorVariant) cannot promote a ReturnValue/Predicate seam to Exposed; 4 controls including single-test-both-assertions over-correction guard |
+| [RIPR-SPEC-0105](RIPR-SPEC-0105-lsp-defer-seam-inventory.md) | accepted | LSP seam-inventory deferral: defer expensive 336s full-repo walk off interactive did_open/did_save; diff findings (33ms–11s) always complete; seams run on explicit ripr.refreshDiagnostics; disclose via seams_deferred run_status + limited policy |
+| [RIPR-SPEC-0106](RIPR-SPEC-0106-error-seam-unwrap-err-variant-binding.md) | accepted | Error-seam unwrap_err/expect_err variant binding: recognize unwrap_err()-bound variables and upgrade exact-variant assertions to ExactErrorVariant/strong; sibling-variant guard prevents over-credit (fail-closed) |
+| [RIPR-SPEC-0107](RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.md) | accepted | ErrorPath requires a variant-observing oracle: add ErrorPath to needs_token_confirmation so sibling/broad oracles no longer promote error_path seams to exposed; genuine variant-pinning oracle (ExactErrorVariant with matching token) still clears guard |
+| [RIPR-SPEC-0108](RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md) | accepted | Evidence-promotion honesty meta-gate: cross-language pinned adversarial corpus + xtask gate that reads byte-pinned goldens and asserts non-promoted charter members stay non-promoted; catches dishonest re-bless that would bypass goldens check; shares invariant+corpus, not per-language matchers |
+| [RIPR-SPEC-0109](RIPR-SPEC-0109-confidence-min-cap.md) | accepted | Confidence min-cap by weakest stage: cap headline confidence_score by the weakest contributing stage's per-stage Confidence ceiling (Low=0.66, Unknown=0.50); can only lower, never raise; classify untouched; seven fixture goldens re-blessed (confidence numbers only, classification unchanged); closes #1219 part D |
+| [RIPR-SPEC-0110](RIPR-SPEC-0110-receipt-gap-cross-reference.md) | accepted | Receipt-gap cross-reference: `ripr receipt check --ledger` cross-references receipt's canonical_gap_id against the live gap set; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed); real producer for #1130-deferred labels; closes #1123 PR 4 |
+| [RIPR-SPEC-0111](RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md) | accepted | Gate new_unsuppressed receipt field: additive top-level object in gate-decision.json for downstream thresholding (max_new_unsuppressed=0); count = policy-eligible blocking+advisory decisions (NOT just blocking); basis=diff/baseline/null; null+reason = fail-closed when config_errors non-empty; schema_version stays 0.1; closes #1038 |

@@ -1,8 +1,9 @@
 use super::super::rust_index::{RustIndex, find_owner_function};
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::family_for_probe_shape;
-use super::ids::repo_probe_id;
+use super::ids::{normalize_expression, repo_probe_id};
 use crate::domain::{DeltaKind, Probe, SourceLocation};
+use std::collections::HashMap;
 use std::path::Path;
 
 pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<Probe> {
@@ -17,8 +18,9 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
         };
 
         let owner = find_owner_function(index, path, shape.start_line).map(|f| f.id.clone());
-
-        let id = repo_probe_id(path, shape.start_line, &family);
+        let norm_expr = normalize_expression(&shape.text);
+        // Ordinal 1 here; post-hoc dedup below handles collisions.
+        let id = repo_probe_id(path, &family, owner.as_ref(), &norm_expr, 1);
 
         let expected_sinks = expected_sinks(&shape.text, &family);
         let required_oracles = required_oracles(&shape.text, &family);
@@ -35,6 +37,17 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
             expected_sinks,
             required_oracles,
         });
+    }
+
+    // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
+    // to the 2nd+ occurrences.
+    let mut seen: HashMap<String, u32> = HashMap::new();
+    for probe in probes.iter_mut() {
+        let count = seen.entry(probe.id.0.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            probe.id.0 = format!("{}.{}", probe.id.0, count);
+        }
     }
 
     probes
@@ -99,7 +112,7 @@ mod tests {
 
         assert_eq!(probes.len(), 1);
         let probe = &probes[0];
-        assert_eq!(probe.id.0, "repo-probe:src_lib.rs:4:error_path");
+        assert_eq!(probe.id.0, "repo-probe:src_lib.rs:error_path:3bf8c64c");
         assert_eq!(probe.family, ProbeFamily::ErrorPath);
         assert_eq!(probe.delta, DeltaKind::Unknown);
         assert_eq!(

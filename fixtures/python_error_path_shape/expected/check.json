@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_error_path_shape/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_validation.py:3:python_preview",
+      "id": "probe:src_validation.py:python_preview:82db397b",
       "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_validation.py:3:python_preview",
+        "id": "probe:src_validation.py:python_preview:82db397b",
         "family": "error_path",
         "delta": "control",
         "file": "src/validation.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_rejects_zero_value", "suggested_test_node_id: tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command: pytest tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_value)", "test_verify_command: pytest tests/test_validation.py::test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
       "missing": ["Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -65,6 +67,7 @@
           "flow_sink": {"kind":"error_variant","text":"raise ValueError(\"positive required\")","line":3}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_rejects_zero_value",
@@ -120,7 +123,21 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching \"positive required\"`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "ValueError, positive, required, positive required",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/validation.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

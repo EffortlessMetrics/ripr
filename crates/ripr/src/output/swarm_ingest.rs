@@ -4,6 +4,33 @@ use serde_json::Value;
 
 pub(crate) const SWARM_INGEST_SCHEMA_VERSION: &str = "0.1";
 
+/// Closed set of machine-readable `reason` strings emitted by the outcome
+/// classifier.  Every `unknown` outcome MUST carry one of these values.
+/// Do not extend this set without updating `policy/output_contracts.txt` and
+/// `docs/OUTPUT_SCHEMA.md`.
+pub(crate) mod ingest_reason {
+    /// The receipt claims a movement (improved / unchanged / regressed /
+    /// resolved) but the before-artifact or after-artifact sha256 is absent
+    /// from the provenance block.  Without snapshot provenance the movement
+    /// claim cannot be validated; the classifier fails closed.
+    pub(crate) const MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE: &str =
+        "movement_without_snapshot_provenance";
+
+    /// Verify evidence is absent or inconclusive.  The classifier cannot
+    /// reach an improvement outcome without a passing verify signal.
+    pub(crate) const MISSING_VERIFY: &str = "missing_verify";
+
+    /// The input packet is marked stale.  Evidence from a stale packet is
+    /// unreliable; the classifier fails closed rather than reporting any
+    /// movement outcome.
+    pub(crate) const STALE_PACKET: &str = "stale_packet";
+
+    /// The agent edited at least one file on the packet's forbidden list.
+    /// All movement claims are discarded regardless of verify or receipt
+    /// evidence.
+    pub(crate) const FORBIDDEN_EDIT: &str = "forbidden_edit";
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SwarmIngestFacts {
     gap_id: Option<String>,
@@ -23,6 +50,13 @@ struct SwarmIngestFacts {
     receipt_present: bool,
     receipt_path: Option<String>,
     receipt_movement: Option<String>,
+    /// sha256 of the before-artifact recorded in the receipt provenance block.
+    /// Required before any movement claim (improved/unchanged/regressed/resolved)
+    /// can be accepted.
+    receipt_before_sha256: Option<String>,
+    /// sha256 of the after-artifact recorded in the receipt provenance block.
+    /// Required before any movement claim can be accepted.
+    receipt_after_sha256: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -78,6 +112,11 @@ pub(crate) fn render_swarm_ingest_json(
                 "present": facts.receipt_present,
                 "path": facts.receipt_path.as_ref(),
                 "movement": facts.receipt_movement.as_ref(),
+                "provenance": {
+                    "before_sha256": facts.receipt_before_sha256.as_ref(),
+                    "after_sha256": facts.receipt_after_sha256.as_ref(),
+                    "snapshot_provenance_present": has_snapshot_provenance(&facts),
+                },
             },
         },
         "safety": {
@@ -190,6 +229,26 @@ fn swarm_ingest_facts(value: &Value) -> SwarmIngestFacts {
         ],
     );
     let receipt_present = receipt_path.is_some() || receipt_movement.is_some();
+    let receipt_before_sha256 = first_string(
+        value,
+        &[
+            &["receipt", "provenance", "before_artifact", "sha256"],
+            &["receipt", "provenance", "before", "sha256"],
+            &["agent_receipt", "provenance", "before_artifact", "sha256"],
+            &["agent_receipt", "provenance", "before", "sha256"],
+            &["provenance", "before_artifact", "sha256"],
+        ],
+    );
+    let receipt_after_sha256 = first_string(
+        value,
+        &[
+            &["receipt", "provenance", "after_artifact", "sha256"],
+            &["receipt", "provenance", "after", "sha256"],
+            &["agent_receipt", "provenance", "after_artifact", "sha256"],
+            &["agent_receipt", "provenance", "after", "sha256"],
+            &["provenance", "after_artifact", "sha256"],
+        ],
+    );
     SwarmIngestFacts {
         gap_id: first_string(
             value,
@@ -263,6 +322,8 @@ fn swarm_ingest_facts(value: &Value) -> SwarmIngestFacts {
         receipt_present,
         receipt_path,
         receipt_movement,
+        receipt_before_sha256,
+        receipt_after_sha256,
     }
 }
 
@@ -271,7 +332,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "edited_forbidden_file",
             outcome: "unknown",
-            reason: "Agent result reports edits to files forbidden by the packet.",
+            reason: ingest_reason::FORBIDDEN_EDIT,
             next_action: "Reject or manually review the attempt before using any test repair.",
         };
     }
@@ -283,7 +344,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "stale_packet",
             outcome: "unknown",
-            reason: "Agent result refers to a packet marked stale.",
+            reason: ingest_reason::STALE_PACKET,
             next_action: "Refresh the queue and reroute the gap before trusting the attempt.",
         };
     }
@@ -291,7 +352,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "stopped_by_agent",
             outcome: receipt_presence_outcome(facts),
-            reason: "Agent stopped before claiming a completed repair.",
+            reason: ingest_reason::MISSING_VERIFY,
             next_action: "Record the stop reason and reroute only if the packet remains actionable.",
         };
     }
@@ -299,7 +360,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "verify_failed",
             outcome: receipt_presence_outcome(facts),
-            reason: "Verify evidence reports a failing command or non-zero exit code.",
+            reason: ingest_reason::MISSING_VERIFY,
             next_action: "Inspect verify output before retrying or accepting the repair.",
         };
     }
@@ -307,7 +368,7 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "uncertain",
             outcome: receipt_presence_outcome(facts),
-            reason: "Agent result did not include verify evidence.",
+            reason: ingest_reason::MISSING_VERIFY,
             next_action: "Run the packet verify command and attach the result before judging closure.",
         };
     }
@@ -315,16 +376,43 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
         return SwarmIngestClassification {
             state: "uncertain",
             outcome: receipt_presence_outcome(facts),
-            reason: "Verify evidence is present but does not prove a passing command.",
+            reason: ingest_reason::MISSING_VERIFY,
             next_action: "Normalize the verify result or rerun the packet verify command.",
         };
     }
-    match facts
-        .receipt_movement
-        .as_deref()
-        .map(normalize_state)
-        .as_deref()
-    {
+    // Verify passed.  Before accepting any movement claim (improved / unchanged /
+    // regressed / resolved), require that the receipt provenance includes a
+    // non-empty sha256 for both the before-artifact and the after-artifact.
+    // Missing snapshot provenance means the movement cannot be validated; fail
+    // closed rather than claiming an outcome from unverifiable evidence.
+    // (RIPR-SPEC-0073 outcome-resolution rule 5; "resolved" / "new" movements
+    // that represent one-sided changes still require at least the relevant
+    // artifact sha256 — we enforce both here to be consistent and conservative.)
+    let movement_normalized = facts.receipt_movement.as_deref().map(normalize_state);
+    let movement_is_claimed = movement_normalized.as_deref().is_some_and(|m| {
+        matches!(
+            m,
+            "closed"
+                | "resolved"
+                | "receipt_movement_resolved"
+                | "improved"
+                | "receipt_movement_improved"
+                | "unchanged"
+                | "receipt_movement_unchanged"
+                | "unchanged_after_attempt"
+                | "regressed"
+                | "receipt_movement_regressed"
+        )
+    });
+    if movement_is_claimed && !has_snapshot_provenance(facts) {
+        return SwarmIngestClassification {
+            state: "uncertain",
+            outcome: "unknown",
+            reason: ingest_reason::MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE,
+            next_action: "Produce a receipt with before/after artifact sha256 provenance before judging movement.",
+        };
+    }
+    match movement_normalized.as_deref() {
         Some("closed" | "resolved" | "receipt_movement_resolved") => SwarmIngestClassification {
             state: "closed",
             outcome: "resolved",
@@ -358,6 +446,21 @@ fn classify_swarm_result(facts: &SwarmIngestFacts) -> SwarmIngestClassification 
             next_action: "Produce a before/after receipt before judging closure.",
         },
     }
+}
+
+/// Return `true` if the receipt provenance block contains non-empty sha256
+/// values for both the before-artifact and the after-artifact.  This is the
+/// minimum provenance required before a movement claim is trusted.
+fn has_snapshot_provenance(facts: &SwarmIngestFacts) -> bool {
+    let before_ok = facts
+        .receipt_before_sha256
+        .as_deref()
+        .is_some_and(|s| !s.is_empty());
+    let after_ok = facts
+        .receipt_after_sha256
+        .as_deref()
+        .is_some_and(|s| !s.is_empty());
+    before_ok && after_ok
 }
 
 fn receipt_presence_outcome(facts: &SwarmIngestFacts) -> &'static str {
@@ -537,10 +640,10 @@ mod tests {
         assert_eq!(value["classification"]["outcome"], "receipt_present");
         assert_eq!(value["evidence"]["verify"]["present"], false);
         assert_eq!(value["evidence"]["receipt"]["present"], true);
-        assert!(
-            value["classification"]["reason"]
-                .as_str()
-                .is_some_and(|reason| reason.contains("verify evidence"))
+        // Verify-absent guard fires before the provenance check; reason is missing_verify.
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::MISSING_VERIFY)
         );
         Ok(())
     }
@@ -565,11 +668,19 @@ mod tests {
         assert_eq!(failed["classification"]["state"], "verify_failed");
         assert_eq!(failed["classification"]["outcome"], "attempted_no_receipt");
 
+        // Complete-evidence cases: verify passed + movement + before/after sha256 provenance.
+        // These must still surface the correct positive outcome (no false suppression).
         let improved = render_value(
             r#"{
               "packet": {"gap_id": "gap:python:improved"},
               "attempt": {"verify": {"status": "passed", "exit_code": 0}},
-              "receipt": {"provenance": {"movement": "improved"}}
+              "receipt": {
+                "provenance": {
+                  "movement": "improved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
             }"#,
         )?;
         assert_eq!(improved["classification"]["state"], "partially_improved");
@@ -579,7 +690,13 @@ mod tests {
             r#"{
               "packet": {"gap_id": "gap:python:closed", "staleness_status": "not_evaluated"},
               "attempt": {"verify": {"status": "passed", "exit_code": 0}},
-              "receipt": {"provenance": {"movement": "resolved"}}
+              "receipt": {
+                "provenance": {
+                  "movement": "resolved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
             }"#,
         )?;
         assert_eq!(closed["classification"]["state"], "closed");
@@ -589,7 +706,13 @@ mod tests {
             r#"{
               "packet": {"gap_id": "gap:python:unchanged"},
               "attempt": {"verify": {"status": "passed", "exit_code": 0}},
-              "receipt": {"provenance": {"movement": "unchanged"}}
+              "receipt": {
+                "provenance": {
+                  "movement": "unchanged",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"}
+                }
+              }
             }"#,
         )?;
         assert_eq!(unchanged["classification"]["state"], "uncertain");
@@ -599,12 +722,19 @@ mod tests {
             r#"{
               "packet": {"gap_id": "gap:python:regressed"},
               "attempt": {"verify": {"status": "passed", "exit_code": 0}},
-              "receipt": {"provenance": {"movement": "regressed"}}
+              "receipt": {
+                "provenance": {
+                  "movement": "regressed",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
             }"#,
         )?;
         assert_eq!(regressed["classification"]["state"], "uncertain");
         assert_eq!(regressed["classification"]["outcome"], "evidence_regressed");
 
+        // Stale packet guard fires before the provenance check.
         let stale = render_value(
             r#"{
               "packet": {"gap_id": "gap:python:stale", "staleness_status": "stale"},
@@ -614,8 +744,224 @@ mod tests {
         )?;
         assert_eq!(stale["classification"]["state"], "stale_packet");
         assert_eq!(stale["classification"]["outcome"], "unknown");
+        assert_eq!(
+            stale["classification"]["reason"].as_str(),
+            Some(ingest_reason::STALE_PACKET)
+        );
         Ok(())
     }
+
+    // --- Fail-closed tests (RIPR-SPEC-0073 rule 5) -------------------------
+
+    #[test]
+    fn fail_closed_movement_claimed_without_before_sha256() -> Result<(), String> {
+        // After sha256 present, before sha256 absent → fail closed.
+        let value = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:no-before-sha"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {
+                "provenance": {
+                  "movement": "resolved",
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
+            }"#,
+        )?;
+        assert_eq!(value["attempt_outcome"], "unknown");
+        assert_eq!(value["classification"]["outcome"], "unknown");
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE)
+        );
+        assert_eq!(
+            value["evidence"]["receipt"]["provenance"]["snapshot_provenance_present"],
+            false
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fail_closed_movement_claimed_without_after_sha256() -> Result<(), String> {
+        // Before sha256 present, after sha256 absent → fail closed.
+        let value = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:no-after-sha"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {
+                "provenance": {
+                  "movement": "improved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"}
+                }
+              }
+            }"#,
+        )?;
+        assert_eq!(value["attempt_outcome"], "unknown");
+        assert_eq!(value["classification"]["outcome"], "unknown");
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fail_closed_movement_claimed_without_any_sha256() -> Result<(), String> {
+        // Both sha256 absent (existing fixture shape) → fail closed for any movement claim.
+        for movement in &["resolved", "improved", "unchanged", "regressed"] {
+            let json = format!(
+                r#"{{
+                  "packet": {{"gap_id": "gap:python:no-sha-{movement}"}},
+                  "attempt": {{"verify": {{"status": "passed", "exit_code": 0}}}},
+                  "receipt": {{"provenance": {{"movement": "{movement}"}}}}
+                }}"#
+            );
+            let value = render_value(&json)?;
+            assert_eq!(
+                value["attempt_outcome"], "unknown",
+                "movement={movement}: expected unknown outcome when sha256 absent"
+            );
+            assert_eq!(
+                value["classification"]["reason"].as_str(),
+                Some(ingest_reason::MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE),
+                "movement={movement}: expected movement_without_snapshot_provenance reason"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fail_closed_verify_missing_but_movement_claimed() -> Result<(), String> {
+        // Verify absent; movement claimed with full sha256 provenance → capped at
+        // presence-based outcome (missing_verify fires before provenance check).
+        let value = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:no-verify"},
+              "receipt": {
+                "provenance": {
+                  "movement": "resolved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
+            }"#,
+        )?;
+        assert_ne!(value["attempt_outcome"], "resolved");
+        assert_ne!(value["attempt_outcome"], "evidence_improved");
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::MISSING_VERIFY)
+        );
+        // Receipt is present, so presence-based outcome is receipt_present, not unknown.
+        assert_eq!(value["attempt_outcome"], "receipt_present");
+        Ok(())
+    }
+
+    #[test]
+    fn fail_closed_verify_failed_but_movement_claimed() -> Result<(), String> {
+        // Verify failed; movement claimed with full sha256 provenance → capped at
+        // presence-based outcome (verify_failed guard fires before provenance check).
+        let value = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:verify-fail"},
+              "attempt": {"verify": {"status": "failed", "exit_code": 1}},
+              "receipt": {
+                "provenance": {
+                  "movement": "improved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
+            }"#,
+        )?;
+        assert_ne!(value["attempt_outcome"], "evidence_improved");
+        assert_ne!(value["attempt_outcome"], "resolved");
+        assert_eq!(value["classification"]["state"], "verify_failed");
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::MISSING_VERIFY)
+        );
+        assert_eq!(value["attempt_outcome"], "receipt_present");
+        Ok(())
+    }
+
+    #[test]
+    fn fail_closed_forbidden_edit_with_resolved_claim_and_full_provenance() -> Result<(), String> {
+        // Forbidden-edit guard fires first; resolved + full sha256 still → unknown.
+        let value = render_value(
+            r#"{
+              "packet": {
+                "gap_id": "gap:python:forbidden-resolved",
+                "allowed_files": ["tests/test_pricing.py"],
+                "forbidden_files": ["app/pricing.py"]
+              },
+              "attempt": {
+                "status": "completed",
+                "edited_files": ["tests/test_pricing.py", "app/pricing.py"],
+                "verify": {"status": "passed", "exit_code": 0}
+              },
+              "receipt": {
+                "provenance": {
+                  "movement": "resolved",
+                  "before_artifact": {"sha256": "aabbcc0011223344aabbcc0011223344aabbcc0011223344aabbcc0011223344"},
+                  "after_artifact": {"sha256": "ddee55667788aaddddee55667788aaddddee55667788aaddddee55667788aadd"}
+                }
+              }
+            }"#,
+        )?;
+        assert_eq!(value["attempt_outcome"], "unknown");
+        assert_eq!(value["classification"]["state"], "edited_forbidden_file");
+        assert_eq!(
+            value["classification"]["reason"].as_str(),
+            Some(ingest_reason::FORBIDDEN_EDIT)
+        );
+        assert_eq!(value["safety"]["forbidden_edit_flagged"], true);
+        Ok(())
+    }
+
+    #[test]
+    fn complete_evidence_unchanged_and_regressed_still_surface() -> Result<(), String> {
+        // Verify that unchanged/regressed with full provenance still surface
+        // their correct outcomes (no false suppression).
+        let unchanged = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:unchanged-complete"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {
+                "provenance": {
+                  "movement": "unchanged",
+                  "before_artifact": {"sha256": "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011"},
+                  "after_artifact": {"sha256": "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011"}
+                }
+              }
+            }"#,
+        )?;
+        assert_eq!(unchanged["attempt_outcome"], "evidence_unchanged");
+        assert_eq!(unchanged["classification"]["outcome"], "evidence_unchanged");
+        assert_eq!(
+            unchanged["evidence"]["receipt"]["provenance"]["snapshot_provenance_present"],
+            true
+        );
+
+        let regressed = render_value(
+            r#"{
+              "packet": {"gap_id": "gap:python:regressed-complete"},
+              "attempt": {"verify": {"status": "passed", "exit_code": 0}},
+              "receipt": {
+                "provenance": {
+                  "movement": "regressed",
+                  "before_artifact": {"sha256": "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011"},
+                  "after_artifact": {"sha256": "ccdd2233ccdd2233ccdd2233ccdd2233ccdd2233ccdd2233ccdd2233ccdd2233"}
+                }
+              }
+            }"#,
+        )?;
+        assert_eq!(regressed["attempt_outcome"], "evidence_regressed");
+        assert_eq!(regressed["classification"]["outcome"], "evidence_regressed");
+        Ok(())
+    }
+
+    // --- End fail-closed tests -----------------------------------------------
 
     #[test]
     fn python_preview_closed_agent_result_fixture_matches_expected_json() -> Result<(), String> {
@@ -635,6 +981,40 @@ mod tests {
         assert_eq!(rendered["classification"]["state"], "closed");
         assert_eq!(rendered["attempt_outcome"], "resolved");
         assert_eq!(rendered["safety"]["forbidden_edit_flagged"], false);
+        assert_eq!(
+            rendered["evidence"]["receipt"]["provenance"]["snapshot_provenance_present"],
+            true
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn movement_without_provenance_fixture_matches_expected_json() -> Result<(), String> {
+        let input = include_str!(
+            "../../../../fixtures/first_successful_pr/python-preview-gap/inputs/agent-results/movement_without_provenance.json"
+        );
+        let expected = include_str!(
+            "../../../../fixtures/first_successful_pr/python-preview-gap/expected/swarm-ingest/movement_without_provenance.json"
+        );
+        let rendered = render_swarm_ingest_json(
+            input,
+            "inputs/agent-results/movement_without_provenance.json",
+        )?;
+        let rendered: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("rendered ingest JSON should parse: {err}"))?;
+        let expected: Value = serde_json::from_str(expected)
+            .map_err(|err| format!("expected ingest JSON should parse: {err}"))?;
+
+        assert_eq!(rendered, expected);
+        assert_eq!(rendered["attempt_outcome"], "unknown");
+        assert_eq!(
+            rendered["classification"]["reason"].as_str(),
+            Some(ingest_reason::MOVEMENT_WITHOUT_SNAPSHOT_PROVENANCE)
+        );
+        assert_eq!(
+            rendered["evidence"]["receipt"]["provenance"]["snapshot_provenance_present"],
+            false
+        );
         Ok(())
     }
 }

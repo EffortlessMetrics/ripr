@@ -1,9 +1,13 @@
 use super::uri::path_from_file_uri;
-use super::{COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, REFRESH_COMMAND};
+use super::{
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
+};
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
-    CodeActionProviderCapability, ExecuteCommandOptions, HoverProviderCapability, InitializeParams,
-    InitializeResult, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    CodeActionProviderCapability, CodeLensOptions, ExecuteCommandOptions, HoverProviderCapability,
+    InitializeParams, InitializeResult, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
     TextDocumentSyncKind,
 };
 
@@ -13,11 +17,21 @@ pub(super) fn initialize_result() -> InitializeResult {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            // Advisory codeLens: resolve is disabled; lenses are display-only
+            // text hints citing the cached related-test count. No resolve
+            // round-trip is needed (RIPR-SPEC-0099).
+            code_lens_provider: Some(CodeLensOptions {
+                resolve_provider: Some(false),
+            }),
             execute_command_provider: Some(ExecuteCommandOptions {
                 commands: vec![
                     REFRESH_COMMAND.to_string(),
                     COLLECT_CONTEXT_COMMAND.to_string(),
                     COLLECT_EVIDENCE_CONTEXT_COMMAND.to_string(),
+                    COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                    COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                    COLLECT_TOP_LIMITATION_COMMAND.to_string(),
+                    COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
                 ],
                 ..ExecuteCommandOptions::default()
             }),

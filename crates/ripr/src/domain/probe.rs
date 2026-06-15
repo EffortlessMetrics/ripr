@@ -189,6 +189,14 @@ impl ValueContext {
     }
 }
 
+/// A single observed value extracted from a test assertion.
+///
+/// The `text` field holds the full assertion source text; it is used by the
+/// human renderer.  The JSON renderer (schema 0.2+) **deduplicates** it into a
+/// finding-level `assertion_texts` map keyed by line number, so `text` does
+/// **not** appear in per-value objects in the JSON output.  Downstream JSON
+/// consumers should recover the assertion source via
+/// `finding.assertion_texts[line.to_string()]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValueFact {
     pub line: usize,
@@ -229,6 +237,13 @@ pub struct RelatedTest {
     pub oracle: Option<String>,
     pub oracle_kind: OracleKind,
     pub oracle_strength: OracleStrength,
+    /// Why this test was related to the probe. `None` when the match origin
+    /// is unknown (legacy callers). `Some` for all diff-check findings that
+    /// go through `classify/related_tests.rs`.
+    pub relation_reason: Option<crate::domain::RelationReason>,
+    /// Confidence that this test grips the changed behavior. `None` when
+    /// `relation_reason` is `None`. Derived from `relation_reason` when set.
+    pub relation_confidence: Option<crate::domain::RelationConfidence>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -261,7 +276,34 @@ pub struct Finding {
     /// Structured static limitation kind for preview evidence when the
     /// adapter can name one. Omitted when no static limit is known.
     pub static_limit_kind: Option<crate::domain::StaticLimitKind>,
+    /// Significant tokens of the changed line — the *changed sink* the change
+    /// touches. Additive optional per RIPR-SPEC-0028; populated by the Python
+    /// preview adapter so a consumer can see what an oracle would need to
+    /// observe. Omitted by adapters that do not compute it.
+    pub changed_sink: Option<String>,
+    /// Assertion text of the strongest related-test oracle the adapter
+    /// inspected when deciding sink alignment. Additive optional per
+    /// RIPR-SPEC-0028; omitted when no strong oracle was observed.
+    pub observed_sink: Option<String>,
+    /// Which token category the strongest oracle matched, surfacing *why* a
+    /// strong oracle did or did not credit `exposed`. One of
+    /// [`ORACLE_ALIGNMENT_VALUES`]. Additive optional per RIPR-SPEC-0028;
+    /// omitted by adapters that do not compute sink alignment.
+    pub oracle_alignment: Option<String>,
+    /// Stable snake_case reason token explaining the `oracle_alignment` value.
+    /// Additive optional per RIPR-SPEC-0028.
+    pub alignment_reason: Option<String>,
 }
+
+/// Controlled enum values for [`Finding::oracle_alignment`]. Registered in
+/// `policy/output_contracts.txt` and documented in `docs/OUTPUT_SCHEMA.md`.
+pub const ORACLE_ALIGNMENT_VALUES: [&str; 5] = [
+    "direct",
+    "alias",
+    "changed_sink_token",
+    "orthogonal",
+    "unknown",
+];
 
 impl Finding {
     pub fn unknown_has_stop_reason(&self) -> bool {

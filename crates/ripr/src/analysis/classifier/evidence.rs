@@ -19,15 +19,16 @@ pub(in crate::analysis) struct ClassifiedProbeEvidence {
 
 impl ClassifiedProbeEvidence {
     pub(in crate::analysis) fn gather(context: &ProbeContext<'_>) -> Self {
-        let reach = reach_evidence(&context.related_tests, context.owner_fn);
+        let test_summaries = context.related_test_summaries();
+        let reach = reach_evidence(&test_summaries, context.owner_fn);
         let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
         let activation = activation_evidence(
             context.probe,
             context.owner_fn,
-            &context.related_tests,
+            &test_summaries,
             &flow_sinks,
         );
-        let infect = infection_evidence(context.probe, &context.related_tests, &activation);
+        let infect = infection_evidence(context.probe, &test_summaries, &activation);
         let propagate = propagation_evidence(context.probe, &flow_sinks);
         let (observe, discriminate, related_tests) =
             reveal_evidence(context.probe, &context.related_tests);

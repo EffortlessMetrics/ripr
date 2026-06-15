@@ -17,7 +17,8 @@ pub(in crate::analysis) fn build_finding(
         &evidence.discriminate,
         &evidence.activation,
     );
-    let mut stop_reasons = stop_reasons(context.probe, context.owner_fn, &context.related_tests);
+    let test_summaries = context.related_test_summaries();
+    let mut stop_reasons = stop_reasons(context.probe, context.owner_fn, &test_summaries);
     ensure_unknown_stop_reason(&class, &mut stop_reasons);
     let recommended_next_step = recommended_next_step(context.probe, &class);
     let confidence = evidence.confidence(&class);
@@ -43,5 +44,9 @@ pub(in crate::analysis) fn build_finding(
         language_status: None,
         owner_kind: None,
         static_limit_kind: None,
+        changed_sink: None,
+        observed_sink: None,
+        oracle_alignment: None,
+        alignment_reason: None,
     }
 }

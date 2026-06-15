@@ -15,6 +15,7 @@ use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig,
     apply_to_check_input, load_for_root,
 };
+use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,6 +34,8 @@ mod agent_dispatch;
 mod agent_gap_packet;
 #[path = "commands/policy.rs"]
 mod policy_commands;
+#[path = "commands/receipt.rs"]
+mod receipt_command;
 #[path = "commands/swarm/mod.rs"]
 mod swarm_command;
 
@@ -75,6 +78,10 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn receipt(args: &[String]) -> Result<(), String> {
+    receipt_command::run_receipt(args)
+}
+
 pub(super) fn swarm(args: &[String]) -> Result<(), String> {
     swarm_command::run(args)
 }
@@ -84,7 +91,8 @@ fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
     let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
     let selection = select_agent_brief_seams(
         &classified,
         &working_set,
@@ -141,7 +149,8 @@ fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
     let (input, config) = load_root_input_and_config(&options.root)?;
 
     let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
     let selection = select_agent_brief_seams(
         &classified,
         &working_set,
@@ -172,7 +181,8 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
         "agent packet requires --seam-id or --gap-ledger with --gap-id".to_string()
     })?;
     let config = load_for_root(&options.root)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let entry = classified
         .iter()
         .find(|entry| entry.seam.id().as_str() == seam_id)
@@ -385,7 +395,8 @@ pub(super) fn evidence_health(args: &[String]) -> Result<(), String> {
     }
 
     let config = load_for_root(&options.root)?;
-    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let (classified, _) =
+        analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let calibration = match &options.mutation_calibration {
         Some(path) => {
             let contents = std::fs::read_to_string(path).map_err(|err| {
@@ -3322,6 +3333,18 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
+    // RIPR-SPEC-0083: track whether the user provided any analysis scope.
+    // Starts false; set true when --diff or --base is parsed from argv.
+    // --mode is a SPEED TIER on the diff path, NOT a scope provider — a bare
+    // `ripr check --mode fast` analyzes nothing and must still show the no-scope
+    // disclosure. When still false at analysis time, the output discloses that
+    // nothing was analyzed, preventing an empty result from being read as clean.
+    let mut scope_explicitly_provided = false;
+    // RIPR-SPEC-0084: track whether --base was explicitly given by the user.
+    // When false, the CLI resolves the repo's real default branch before
+    // running analysis. An explicit bad --base keeps its error; only the
+    // default path triggers auto-resolution.
+    let mut base_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3332,15 +3355,22 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
             "--base" => {
                 i += 1;
                 input.base = Some(expect_value(args, i, "--base")?.to_string());
+                scope_explicitly_provided = true;
+                base_explicitly_provided = true;
             }
             "--diff" => {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
+                scope_explicitly_provided = true;
             }
             "--mode" => {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
                 explicit.mode = true;
+                // NOTE: do NOT set scope_explicitly_provided here.
+                // --mode is a speed tier on the diff path, not a scope provider.
+                // `ripr check --mode fast` with no --diff/--base analyzes nothing
+                // and must still trigger the no-scope disclosure (RIPR-SPEC-0083).
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {
@@ -3363,25 +3393,43 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
+    // RIPR-SPEC-0084: when no --base was explicitly given AND no --diff file
+    // was provided, resolve the repo's real default branch instead of
+    // hardcoding origin/main. Setting base to None here triggers
+    // `load_diff` → `resolve_default_base`, which tries (in order):
+    // symbolic-ref origin/HEAD → origin/main → origin/master → main → master.
+    // When --diff is given, input.base is kept as-is (it appears in output for
+    // informational purposes but is not used for the diff itself). When --base
+    // is explicitly given, base_explicitly_provided is true and we preserve it.
+    if !base_explicitly_provided && input.diff_file.is_none() {
+        input.base = None;
+    }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
     if let Some(gap_ledger) = gap_ledger.as_ref() {
-        print!(
-            "{}",
-            render_check_gap_ledger_badge(gap_ledger, &format, &config)?
-        );
+        write_stdout_chunked(&render_check_gap_ledger_badge(
+            gap_ledger, &format, &config,
+        )?)?;
         return Ok(());
     }
     if matches!(format, OutputFormat::RepoExposureJson) {
-        let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let (classified, limit_info) =
+            analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let ts_guidance =
+            output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
-        output::repo_exposure::write_repo_exposure_json(&classified, &mut handle)
-            .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        output::repo_exposure::write_repo_exposure_json(
+            &classified,
+            limit_info.as_ref(),
+            ts_guidance.as_ref(),
+            &mut handle,
+        )
+        .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
-    let output = if format.is_repo_seam_inventory() {
+    let mut output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
@@ -3392,10 +3440,36 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     } else {
         app::check_workspace_with_config(input, &config)?
     };
-    print!(
-        "{}",
-        app::render_check_with_config(&output, &format, &config)?
-    );
+    // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
+    // The guidance fires only when scope was NOT explicitly provided — it must
+    // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
+    if !scope_explicitly_provided && output.findings.is_empty() {
+        output.no_scope_provided = true;
+    }
+    write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
+    Ok(())
+}
+
+/// Write `text` to stdout in bounded chunks.
+///
+/// A single large write to a Windows console or pipe can fail with
+/// `os error 87` ("the parameter is incorrect"); chunking keeps every
+/// underlying write small enough to avoid that limit. Write errors are
+/// returned as `Err` rather than panicking, so a failed write surfaces as
+/// a normal CLI error instead of aborting the process.
+fn write_stdout_chunked(text: &str) -> Result<(), String> {
+    use std::io::Write;
+    const CHUNK: usize = 16 * 1024;
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    for chunk in text.as_bytes().chunks(CHUNK) {
+        handle
+            .write_all(chunk)
+            .map_err(|err| format!("write to stdout failed: {err}"))?;
+    }
+    handle
+        .flush()
+        .map_err(|err| format!("flush stdout failed: {err}"))?;
     Ok(())
 }
 
@@ -3757,6 +3831,11 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     }
 
     report_config_status(&root, &mut ok);
+    report_cache_status(&root);
+    report_detected_languages(&root);
+    suggest_preview_language_enablement(&root);
+    report_detected_test_surfaces(&root);
+    report_known_limitations();
 
     for (tool, args) in [
         ("git", vec!["--version"]),
@@ -3797,6 +3876,327 @@ fn print_doctor_start_here_guidance(root: &Path) {
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
+    println!("- Recommended first command: ripr check --base origin/main");
+}
+
+/// Language-to-status mapping used by the doctor first-run diagnosis.
+///
+/// Only Rust is `Stable`. All preview surfaces (TypeScript, JavaScript,
+/// Python, Perl) carry `Preview` per `LanguageStatus::as_str()` and
+/// RIPR-SPEC-0026.
+fn language_status(id: LanguageId) -> LanguageStatus {
+    match id {
+        LanguageId::Rust => LanguageStatus::Stable,
+        LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Python | LanguageId::Perl => {
+            LanguageStatus::Preview
+        }
+    }
+}
+
+/// Shallow marker scan: look for files/dirs that indicate a language is
+/// present. Only inspects `root`, `root/src/`, and immediate child dirs of
+/// `root` — no recursion, no AST parsing, no workspace pipeline.
+///
+/// Returns `false` (no marker found) when any `read_dir` call fails; doctor
+/// must never panic or OOM on a scan error.
+fn shallow_has_extension(root: &Path, extension: &str) -> bool {
+    let dirs_to_scan: [&Path; 2] = [root, &root.join("src")];
+    for dir in dirs_to_scan {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some(extension) {
+                    return true;
+                }
+            }
+        }
+    }
+    // Also scan one level of child dirs of root.
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                let sub_entries = std::fs::read_dir(&child).into_iter().flatten().flatten();
+                for sub in sub_entries {
+                    let path = sub.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some(extension) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn shallow_has_file(root: &Path, name: &str) -> bool {
+    root.join(name).exists() || root.join("src").join(name).exists()
+}
+
+/// Detect which languages have concrete file markers in this workspace.
+/// Returns detected `LanguageId`s in a stable order (Rust first, then
+/// TypeScript, JavaScript, Python, Perl).
+fn detect_languages(root: &Path) -> Vec<LanguageId> {
+    let mut found = Vec::new();
+
+    // Rust: Cargo.toml at root OR .rs files in root/src
+    if root.join("Cargo.toml").exists() || shallow_has_extension(root, "rs") {
+        found.push(LanguageId::Rust);
+    }
+
+    // TypeScript: package.json, tsconfig.json, .ts or .tsx files
+    if shallow_has_file(root, "package.json")
+        || shallow_has_file(root, "tsconfig.json")
+        || shallow_has_extension(root, "ts")
+        || shallow_has_extension(root, "tsx")
+    {
+        found.push(LanguageId::TypeScript);
+    }
+
+    // JavaScript: .js or .jsx files (only when no TS markers already found)
+    if !found.contains(&LanguageId::TypeScript)
+        && (shallow_has_extension(root, "js") || shallow_has_extension(root, "jsx"))
+    {
+        found.push(LanguageId::JavaScript);
+    }
+
+    // Python: pyproject.toml, setup.py, setup.cfg, pytest.ini, or .py files
+    if shallow_has_file(root, "pyproject.toml")
+        || shallow_has_file(root, "setup.py")
+        || shallow_has_file(root, "setup.cfg")
+        || shallow_has_file(root, "pytest.ini")
+        || shallow_has_extension(root, "py")
+    {
+        found.push(LanguageId::Python);
+    }
+
+    // Perl: .pl or .pm files
+    if shallow_has_extension(root, "pl") || shallow_has_extension(root, "pm") {
+        found.push(LanguageId::Perl);
+    }
+
+    found
+}
+
+/// Print `- Detected languages: rust (stable), typescript (preview), …`
+///
+/// Each entry shows its canonical `LanguageStatus` tier in parentheses.
+/// Appends `[adapter not compiled]` when `LanguageId::is_available()` is
+/// false for the detected language. If no markers are found, prints
+/// `none detected` rather than claiming any language.
+fn report_detected_languages(root: &Path) {
+    let detected = detect_languages(root);
+    if detected.is_empty() {
+        println!("- Detected languages: none detected");
+        return;
+    }
+    let entries: Vec<String> = detected
+        .iter()
+        .map(|id| {
+            let tier = language_status(*id).as_str().to_string();
+            let available = id.is_available();
+            if available {
+                format!("{} ({})", id.as_str(), tier)
+            } else {
+                format!("{} ({}) [adapter not compiled]", id.as_str(), tier)
+            }
+        })
+        .collect();
+    println!("- Detected languages: {}", entries.join(", "));
+}
+
+/// When a preview language is detected in `root` but is not yet enabled in
+/// `ripr.toml`, print a copy-paste-ready TOML block so the user can enable
+/// it in a single edit.
+///
+/// Gated on BOTH conditions to stay fail-closed:
+/// 1. `LanguageId::is_available()` — the adapter was compiled into this binary
+///    (`cfg!(feature = "lang-<x>")`). If the feature was not compiled in, a
+///    user cannot enable the adapter regardless of `ripr.toml`.
+/// 2. The language is NOT already in `config.languages().enabled()`.
+///
+/// Emits nothing when either condition fails, when the root has no config
+/// file, or when the config cannot be loaded.
+fn suggest_preview_language_enablement(root: &Path) {
+    for line in preview_language_enable_suggestions(root) {
+        println!("{line}");
+    }
+}
+
+/// Pure computation for `suggest_preview_language_enablement` — returns the
+/// tip lines (ready to print) for each preview language that is detected,
+/// available (compiled in), and not yet enabled in `ripr.toml`.
+///
+/// Returns an empty vec when there is nothing to suggest. Separated from the
+/// printing logic so it can be covered by unit tests without stdout capture.
+fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
+    let detected = detect_languages(root);
+    let preview_detected: Vec<LanguageId> = detected
+        .into_iter()
+        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
+        .collect();
+    if preview_detected.is_empty() {
+        return Vec::new();
+    }
+    let config = match load_for_root(root) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let enabled = config.languages().enabled();
+    let mut suggestions = Vec::new();
+    for id in &preview_detected {
+        if id.is_available() && !enabled.contains(id) {
+            suggestions.push(format!(
+                "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
+                id.as_str(),
+                id.as_str(),
+            ));
+        }
+    }
+    suggestions
+}
+
+/// Detect test-framework markers per detected language.
+///
+/// Reports `<lang>: test framework not detected` rather than guessing when
+/// no clear marker is found — the function never claims a framework it cannot
+/// confirm.
+fn report_detected_test_surfaces(root: &Path) {
+    let detected = detect_languages(root);
+    if detected.is_empty() {
+        return;
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for id in &detected {
+        match id {
+            LanguageId::Rust => {
+                // Cargo.toml presence is the Rust test surface marker
+                // (`cargo test` and `#[cfg(test)]` are available in any
+                // Cargo workspace).
+                if root.join("Cargo.toml").exists() {
+                    lines.push("rust: cargo test (#[cfg(test)])".to_string());
+                } else {
+                    lines.push("rust: test framework not detected".to_string());
+                }
+            }
+            LanguageId::Python => {
+                if root.join("pytest.ini").exists() || root.join("pyproject.toml").exists() {
+                    lines.push("python: pytest".to_string());
+                } else {
+                    lines.push("python: test framework not detected".to_string());
+                }
+            }
+            LanguageId::TypeScript | LanguageId::JavaScript => {
+                // Only report a framework when a clear config marker exists.
+                let lang = id.as_str();
+                if root.join("jest.config.js").exists()
+                    || root.join("jest.config.ts").exists()
+                    || root.join("jest.config.mjs").exists()
+                    || root.join("jest.config.cjs").exists()
+                {
+                    lines.push(format!("{lang}: jest"));
+                } else if root.join("vitest.config.ts").exists()
+                    || root.join("vitest.config.js").exists()
+                    || root.join("vitest.config.mjs").exists()
+                {
+                    lines.push(format!("{lang}: vitest"));
+                } else if root.join("bun.lockb").exists() {
+                    lines.push(format!("{lang}: bun"));
+                } else {
+                    lines.push(format!("{lang}: test framework not detected"));
+                }
+            }
+            LanguageId::Perl => {
+                lines.push("perl: test framework not detected".to_string());
+            }
+        }
+    }
+    if !lines.is_empty() {
+        println!("- Detected test surfaces: {}", lines.join("; "));
+    }
+}
+
+/// Print static limitation notes for the doctor first-run diagnosis.
+///
+/// Every statement is conservative: no claim is made beyond what the static
+/// analysis layer can actually determine. Wording sources:
+///   - `language.rs` doc comment: TypeScript/JavaScript/Python/Perl are
+///     preview surfaces.
+///   - `StaticLimitKind::CrossLanguageOracleVisibilityUnresolved` wire string
+///     and its doc comment.
+///   - 0.9.0 CHANGELOG non-claims.
+fn report_known_limitations() {
+    println!("- Known limitations:");
+    println!(
+        "  TypeScript/JavaScript/Bun analysis is preview (advisory only); \
+        not stable support — findings are additive, not gating"
+    );
+    println!(
+        "  Cross-language oracle visibility is fail-closed: an FFI/binding seam tested \
+        from another language reads as cross_language_oracle_visibility_unresolved, \
+        not a Rust gap — verify the external oracle directly"
+    );
+    println!(
+        "  Full-repo repo-exposure analysis applies a default cap of {} seams; \
+        set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams.",
+        analysis::DEFAULT_REPO_EXPOSURE_SEAM_LIMIT
+    );
+    println!(
+        "  Preview-language evidence does not emit public repair packets and \
+        does not block by default"
+    );
+}
+
+fn report_cache_status(root: &Path) {
+    let cache_dir = analysis::seam_cache::cache_base_dir(root);
+    let relocated =
+        std::env::var(analysis::seam_cache::CACHE_DIR_ENV).is_ok_and(|v| !v.trim().is_empty());
+    let size_bytes = dir_size_bytes(&cache_dir);
+    let size_display = format_bytes(size_bytes);
+    if relocated {
+        println!(
+            "- Cache location: {} (RIPR_CACHE_DIR active)",
+            cache_dir.display()
+        );
+    } else {
+        println!("- Cache location: {}", cache_dir.display());
+    }
+    println!("- Cache size: {size_display}");
+}
+
+/// Recursively sum file sizes under `dir`. Returns 0 when the directory
+/// does not exist or cannot be read — cache absence is not a problem.
+fn dir_size_bytes(dir: &Path) -> u64 {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return 0,
+    };
+    let mut total: u64 = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&path));
+        } else if let Ok(meta) = std::fs::metadata(&path) {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    total
+}
+
+/// Format a byte count in human-readable form (B, KB, MB, GB).
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1_024;
+    const MB: u64 = 1_024 * KB;
+    const GB: u64 = 1_024 * MB;
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn report_config_status(root: &Path, ok: &mut bool) {
@@ -8910,6 +9310,104 @@ language = "rust"
     #[test]
     fn doctor_accepts_default_root() {
         assert_eq!(doctor(&args(&[])), Ok(()));
+    }
+
+    // --- preview_language_enable_suggestions tests ---
+
+    /// When TypeScript files are detected in a directory that has no ripr.toml
+    /// (so the config defaults to `["rust"]`) AND the `lang-typescript` feature
+    /// was compiled in, we expect a suggestion line containing the copy-paste
+    /// TOML block.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_suggests_typescript_when_detected_and_not_enabled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-detected");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        // Drop a .ts file so TypeScript is detected.
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // No ripr.toml → defaults to enabled = ["rust"] only.
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            !suggestions.is_empty(),
+            "expected a suggestion when TS detected and not enabled"
+        );
+        let joined = suggestions.join("\n");
+        assert!(
+            joined.contains("typescript"),
+            "suggestion must name the language; got:\n{joined}"
+        );
+        assert!(
+            joined.contains(r#"enabled = ["rust", "typescript"]"#),
+            "suggestion must contain copy-paste TOML block; got:\n{joined}"
+        );
+        Ok(())
+    }
+
+    /// When TypeScript is explicitly listed in ripr.toml `enabled`, no
+    /// suggestion should appear even if .ts files are present.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_no_suggestion_when_typescript_already_enabled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-already-enabled");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // ripr.toml explicitly enables typescript.
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions when typescript already enabled; got: {suggestions:?}"
+        );
+        Ok(())
+    }
+
+    /// When no preview-language files are detected (only Rust), the suggestion
+    /// list must be empty regardless of config.
+    #[test]
+    fn doctor_no_suggestion_when_no_preview_language_detected() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-no-preview");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        // Only a Cargo.toml → Rust only, no preview language detected.
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions for Rust-only dir; got: {suggestions:?}"
+        );
+        Ok(())
+    }
+
+    /// When the binary was built WITHOUT the `lang-typescript` feature (adapter
+    /// not compiled in), the suggestion must be suppressed even if .ts files are
+    /// present. The user cannot enable an adapter that isn't in the binary.
+    #[cfg(not(feature = "lang-typescript"))]
+    #[test]
+    fn doctor_no_suggestion_when_typescript_adapter_not_compiled() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-ts-not-compiled");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        // No ripr.toml → defaults to enabled = ["rust"] only.
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            suggestions.is_empty(),
+            "expected no suggestions when lang-typescript feature is not compiled; got: {suggestions:?}"
+        );
+        Ok(())
     }
 
     #[test]

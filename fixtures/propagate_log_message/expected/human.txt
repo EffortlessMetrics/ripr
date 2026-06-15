@@ -1,0 +1,75 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/propagate_log_message/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 2 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/propagate_log_message/input/src/lib.rs:2
+
+Changed
+  before: log::info!("amount is {}", amount);
+  after:  log::info!("amount is {}", amount * 9);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::report
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach report: report_does_not_panic
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence log message: log::info!("amount is {}", amount * 9)
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches log message: log::info!("amount is {}", amount * 9) (line 2)
+  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
+  - observed function argument value amount = 5 at line 5
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+
+Stop reasons:
+  - proc_macro_opaque
+
+Next step
+  Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+
+WARNING fixtures/propagate_log_message/input/src/lib.rs:2
+
+Changed
+  before: log::info!("amount is {}", amount);
+  after:  log::info!("amount is {}", amount * 9);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  src/lib.rs::report
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach report: report_does_not_panic
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence log message: log::info!("amount is {}", amount * 9)
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches log message: log::info!("amount is {}", amount * 9) (line 2)
+  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
+  - observed function argument value amount = 5 at line 5
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+
+Stop reasons:
+  - proc_macro_opaque
+
+Next step
+  Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.

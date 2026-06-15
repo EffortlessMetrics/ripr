@@ -17,6 +17,11 @@
   },
   "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
   "mode": "baseline-check",
+  "new_unsuppressed": {
+    "basis": null,
+    "count": 0,
+    "reason": "analysis did not run: required PR guidance input fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json is invalid: read fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json failed: not found"
+  },
   "policy": {
     "acknowledgement_labels": [
       "ripr-waive"

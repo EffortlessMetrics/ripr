@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_mixed_language_no_cross_route/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_pricing.py:2:python_preview",
+      "id": "probe:src_pricing.py:python_preview:7f816e83",
       "canonical_gap_id": "gap:python:src/pricing.py:calculate_total:return_value:return_value:amount+7",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_pricing.py:2:python_preview",
+        "id": "probe:src_pricing.py:python_preview:7f816e83",
         "family": "return_value",
         "delta": "value",
         "file": "src/pricing.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_total", "owner_kind: function"],
       "missing": ["No Python test references `calculate_total(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 0,
       "related_tests": [
       ],
       "stop_reasons": [],
@@ -64,7 +67,21 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/pricing.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

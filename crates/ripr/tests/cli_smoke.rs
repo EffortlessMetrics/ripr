@@ -253,10 +253,11 @@ fn check_json_output_has_stable_contract_fields() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""classification": "weakly_exposed""#));
     assert!(stdout.contains(r#""evidence_path""#));
     assert!(stdout.contains(r#""flow_sinks""#));
+    assert!(stdout.contains(r#""assertion_texts""#));
     assert!(stdout.contains(r#""activation""#));
     assert!(stdout.contains(r#""missing_discriminators""#));
     assert!(stdout.contains(r#""oracle_kind""#));
@@ -592,7 +593,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         "Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
     ));
     assert!(stdout.contains("Verify command: `cargo xtask fixtures boundary_gap`"));
-    assert!(stdout.contains("Receipt command: `ripr outcome --before"));
+    assert!(stdout.contains("Receipt command: `ripr receipt write --gap "));
     assert!(stdout.contains("Receipt path: `target/ripr/receipts/"));
     assert!(stdout.contains("Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."));
 
@@ -643,7 +644,7 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         )
     );
     assert!(markdown.contains("- Missing discriminator: Equality-boundary assertion"));
-    assert!(markdown.contains("- Receipt command: `ripr outcome --before"));
+    assert!(markdown.contains("- Receipt command: `ripr receipt write --gap "));
     assert!(markdown.contains("- Receipt path: `target/ripr/receipts/"));
     assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
     let check_output = run_ripr_in_workspace(&[
@@ -1404,7 +1405,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.5""#));
+    assert!(stdout.contains(r#""schema_version": "0.6""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -1556,6 +1557,68 @@ fn doctor_reports_malformed_config_error() -> Result<(), String> {
     assert!(stdout.contains("ripr.toml"));
     assert!(stdout.contains("analysis.mode `slow` is not supported"));
     assert!(!stdout.contains("mode = \"slow\""));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
+    // A workspace with only Rust markers (Cargo.toml + src/lib.rs).
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Section 1: Detected languages — rust present with (stable) tier.
+    assert!(
+        stdout.contains("Detected languages:"),
+        "expected 'Detected languages:' in stdout:\n{stdout}"
+    );
+    // The line that contains "Detected languages:" must also contain "rust"
+    // and "(stable)".
+    let detected_line = stdout
+        .lines()
+        .find(|l| l.contains("Detected languages:"))
+        .unwrap_or("");
+    assert!(
+        detected_line.contains("rust"),
+        "expected 'rust' on the Detected languages line:\n{detected_line}"
+    );
+    assert!(
+        detected_line.contains("(stable)"),
+        "expected '(stable)' on the Detected languages line:\n{detected_line}"
+    );
+
+    // Anti-overclaim: a Rust-only workspace must NOT list typescript as detected.
+    assert!(
+        !detected_line.contains("typescript"),
+        "must not list typescript when no TS markers are present:\n{detected_line}"
+    );
+
+    // Section 3: Known limitations.
+    assert!(
+        stdout.contains("Known limitations:"),
+        "expected 'Known limitations:' in stdout:\n{stdout}"
+    );
+    // TypeScript preview line.
+    assert!(
+        stdout.contains("TypeScript/JavaScript/Bun analysis is preview"),
+        "expected TypeScript/JavaScript/Bun preview line in stdout:\n{stdout}"
+    );
+    // Cross-language fail-closed line.
+    assert!(
+        stdout.contains("cross_language_oracle_visibility_unresolved"),
+        "expected cross_language_oracle_visibility_unresolved in stdout:\n{stdout}"
+    );
+
+    // Section 4: Recommended first command.
+    assert!(
+        stdout.contains("Recommended first command: ripr check --base origin/main"),
+        "expected 'Recommended first command: ripr check --base origin/main' in stdout:\n{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -2741,7 +2804,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.5""#));
+    assert!(stdout.contains(r#""schema_version": "0.6""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2840,7 +2903,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.5""#));
+    assert!(stdout.contains(r#""schema_version": "0.6""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2910,7 +2973,7 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.5""#));
+    assert!(stdout.contains(r#""schema_version": "0.6""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
     assert!(stdout.contains(r#""message": "1""#));
     assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
@@ -2963,7 +3026,7 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.5""#));
+    assert!(stdout.contains(r#""schema_version": "0.6""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -3115,7 +3178,7 @@ fn explain_returns_targeted_probe_details() {
         &root,
         "--diff",
         &diff,
-        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250",
     ]);
     assert_success(&output);
 
@@ -3137,14 +3200,16 @@ fn context_json_returns_probe_and_discriminator_guidance() {
         "--diff",
         &diff,
         "--at",
-        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250",
         "--json",
     ]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#)
+        stdout.contains(
+            r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250""#
+        )
     );
     assert!(stdout.contains(r#""discriminate": "weak""#));
     assert!(stdout.contains(r#""missing""#));
@@ -3426,4 +3491,616 @@ fn check_repo_badge_plus_does_not_count_unlifted_repo_wide_test_efficiency() -> 
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
+}
+
+/// Helper: run the ripr binary with extra env vars set.
+fn run_ripr_with_env(args: &[&str], env: &[(&str, &str)]) -> std::process::Output {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let mut cmd = std::process::Command::new(bin);
+    cmd.args(args);
+    for (key, val) in env {
+        cmd.env(key, val);
+    }
+    cmd.output().unwrap()
+}
+
+/// Create a temp workspace with exactly two production functions so that
+/// `RIPR_REPO_EXPOSURE_SEAM_LIMIT=1` produces real truncation (analyzed < total).
+fn make_two_seam_workspace() -> Result<PathBuf, String> {
+    let dir = unique_temp_workspace("seam-limit-smoke");
+    std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname=\"ripr-seam-limit-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+    )
+    .map_err(|e| format!("write Cargo.toml: {e}"))?;
+    // Two predicate-boundary functions -> at least 2 seams.
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        "pub fn above_min(value: i32, min: i32) -> bool {\n    value >= min\n}\n\npub fn below_max(value: i32, max: i32) -> bool {\n    value <= max\n}\n",
+    )
+    .map_err(|e| format!("write src/lib.rs: {e}"))?;
+    Ok(dir)
+}
+
+#[test]
+fn check_repo_exposure_json_run_status_seam_limit_applied_and_complete() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    // --- Limited run (RIPR_REPO_EXPOSURE_SEAM_LIMIT=1) ---
+    let limited = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !limited.status.success() {
+        return Err(format!(
+            "limited run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&limited.stdout),
+            String::from_utf8_lossy(&limited.stderr)
+        ));
+    }
+    let limited_stdout = String::from_utf8_lossy(&limited.stdout);
+    let limited_json: serde_json::Value = serde_json::from_str(&limited_stdout)
+        .map_err(|e| format!("parse limited run JSON: {e}\n{limited_stdout}"))?;
+
+    if limited_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "expected run_status=seam_limit_applied, got: {:?}\n{limited_stdout}",
+            limited_json.pointer("/run_status")
+        ));
+    }
+    let category = limited_json
+        .pointer("/limitations/0/category")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].category in:\n{limited_stdout}"))?;
+    if category != "repo_seam_limit_applied" {
+        return Err(format!(
+            "expected category=repo_seam_limit_applied, got: {category}"
+        ));
+    }
+    let seams_analyzed = limited_json
+        .pointer("/limitations/0/seams_analyzed")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("expected limitations[0].seams_analyzed in:\n{limited_stdout}"))?;
+    if seams_analyzed != 1 {
+        return Err(format!("expected seams_analyzed=1, got: {seams_analyzed}"));
+    }
+    let seams_total = limited_json
+        .pointer("/limitations/0/seams_total")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("expected limitations[0].seams_total in:\n{limited_stdout}"))?;
+    if seams_total < 2 {
+        return Err(format!(
+            "expected seams_total>=2 for truncation to be real, got: {seams_total}"
+        ));
+    }
+    let control = limited_json
+        .pointer("/limitations/0/control")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].control in:\n{limited_stdout}"))?;
+    if control != "RIPR_REPO_EXPOSURE_SEAM_LIMIT" {
+        return Err(format!(
+            "expected control=RIPR_REPO_EXPOSURE_SEAM_LIMIT, got: {control}"
+        ));
+    }
+
+    // --- Complete run (env var absent) ---
+    let complete = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[],
+    );
+    if !complete.status.success() {
+        return Err(format!(
+            "complete run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&complete.stdout),
+            String::from_utf8_lossy(&complete.stderr)
+        ));
+    }
+    let complete_stdout = String::from_utf8_lossy(&complete.stdout);
+    let complete_json: serde_json::Value = serde_json::from_str(&complete_stdout)
+        .map_err(|e| format!("parse complete run JSON: {e}\n{complete_stdout}"))?;
+
+    if complete_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("complete")
+    {
+        return Err(format!(
+            "expected run_status=complete, got: {:?}\n{complete_stdout}",
+            complete_json.pointer("/run_status")
+        ));
+    }
+    if complete_json.pointer("/limitations").is_some() {
+        return Err(format!(
+            "expected no limitations key on complete run:\n{complete_stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_exposure_json_limit_source_configured_when_env_set() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    let limited = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !limited.status.success() {
+        return Err(format!(
+            "limited run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&limited.stdout),
+            String::from_utf8_lossy(&limited.stderr)
+        ));
+    }
+    let limited_stdout = String::from_utf8_lossy(&limited.stdout);
+    let limited_json: serde_json::Value = serde_json::from_str(&limited_stdout)
+        .map_err(|e| format!("parse limited run JSON: {e}\n{limited_stdout}"))?;
+
+    let limit_source = limited_json
+        .pointer("/limitations/0/limit_source")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected limitations[0].limit_source in:\n{limited_stdout}"))?;
+    if limit_source != "configured" {
+        return Err(format!(
+            "expected limit_source=configured when env is set, got: {limit_source}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied() -> Result<(), String> {
+    let workspace = make_two_seam_workspace()?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    // First run (cold) — warms the cache.
+    let first = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !first.status.success() {
+        return Err(format!(
+            "first (cold) run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&first.stdout),
+            String::from_utf8_lossy(&first.stderr)
+        ));
+    }
+    let first_stdout = String::from_utf8_lossy(&first.stdout);
+    let first_json: serde_json::Value = serde_json::from_str(&first_stdout)
+        .map_err(|e| format!("parse first run JSON: {e}\n{first_stdout}"))?;
+
+    if first_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "first (cold) run must report seam_limit_applied, got: {:?}\n{first_stdout}",
+            first_json.pointer("/run_status")
+        ));
+    }
+
+    // Second run (warm — cache hit) — MUST also report seam_limit_applied.
+    let second = run_ripr_with_env(
+        &["check", "--root", root, "--format", "repo-exposure-json"],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    if !second.status.success() {
+        return Err(format!(
+            "second (warm) run failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&second.stdout),
+            String::from_utf8_lossy(&second.stderr)
+        ));
+    }
+    let second_stdout = String::from_utf8_lossy(&second.stdout);
+    let second_json: serde_json::Value = serde_json::from_str(&second_stdout)
+        .map_err(|e| format!("parse second run JSON: {e}\n{second_stdout}"))?;
+
+    if second_json
+        .pointer("/run_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("seam_limit_applied")
+    {
+        return Err(format!(
+            "second (warm/cache-hit) run must also report seam_limit_applied (NOT complete); \
+             a cache hit must NOT erase the seam-limit status.\n\
+             Got: {:?}\n{second_stdout}",
+            second_json.pointer("/run_status")
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+// ── ripr receipt write / check smoke tests (RIPR-SPEC-0079) ──────────────────
+
+/// Smoke: `ripr receipt write` with valid args writes a receipt JSON and
+/// `ripr receipt check <path>` validates it, both exit 0.
+#[test]
+fn receipt_write_then_check_exits_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-write-check");
+    std::fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join("r.json");
+    let out_path_str = out_path.to_str().ok_or("out_path is not valid UTF-8")?;
+
+    // Write the receipt.
+    let write_output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "passed",
+        "--out",
+        out_path_str,
+        "--json",
+    ]);
+    assert_success(&write_output);
+    let write_stdout = String::from_utf8_lossy(&write_output.stdout);
+    assert!(
+        write_stdout.contains("\"schema_version\""),
+        "receipt write should print JSON, got: {write_stdout}"
+    );
+
+    // Parse and validate required fields.
+    let value: serde_json::Value = serde_json::from_str(&write_stdout)
+        .map_err(|e| format!("receipt JSON did not parse: {e}\nstdout: {write_stdout}"))?;
+    assert_eq!(value["schema_version"], "0.1", "schema_version mismatch");
+    assert_eq!(value["kind"], "receipt", "kind mismatch");
+    assert_eq!(
+        value["canonical_gap_id"], "demo:gap:1",
+        "canonical_gap_id mismatch"
+    );
+    assert_eq!(value["verify_status"], "passed", "verify_status mismatch");
+    assert_eq!(
+        value["verify_command"], "cargo test",
+        "verify_command mismatch"
+    );
+    assert_eq!(
+        value["packet_id"],
+        serde_json::Value::Null,
+        "packet_id should be null"
+    );
+    assert_eq!(
+        value["packet_id_available"], false,
+        "packet_id_available should be false"
+    );
+    assert!(
+        value["written_at"].as_str().unwrap_or("").contains('T'),
+        "written_at should be RFC3339"
+    );
+
+    // Check the receipt using positional path argument.
+    let check_output = run_ripr(&["receipt", "check", out_path_str]);
+    assert_success(&check_output);
+    let check_stdout = String::from_utf8_lossy(&check_output.stdout);
+    assert!(
+        check_stdout.contains("structurally valid"),
+        "receipt check should report valid, got: {check_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+/// Smoke: `ripr receipt write` with `--packet` records packet_id correctly.
+#[test]
+fn receipt_write_with_packet_id_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-with-packet");
+    std::fs::create_dir_all(&out_dir)?;
+    let out_path = out_dir.join("r.json");
+    let out_path_str = out_path.to_str().ok_or("out_path is not valid UTF-8")?;
+
+    let write_output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--packet",
+        "packet-abc123",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "not_run",
+        "--out",
+        out_path_str,
+    ]);
+    assert_success(&write_output);
+    let stdout = String::from_utf8_lossy(&write_output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("receipt JSON did not parse: {e}\nstdout: {stdout}"))?;
+    assert_eq!(
+        value["packet_id"], "packet-abc123",
+        "packet_id should be set"
+    );
+    assert_eq!(
+        value["packet_id_available"], true,
+        "packet_id_available should be true"
+    );
+    assert_eq!(value["verify_status"], "not_run");
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+/// Smoke: `ripr receipt write` with missing `--gap` exits non-zero with a
+/// clear error message.
+#[test]
+fn receipt_write_missing_gap_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "write",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "passed",
+    ]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("canonical_gap_id"),
+        "error should mention canonical_gap_id; got stderr={stderr} stdout={stdout}"
+    );
+}
+
+/// Smoke: `ripr receipt write` with invalid `--status` exits non-zero with
+/// a clear message listing valid values.
+#[test]
+fn receipt_write_invalid_status_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "write",
+        "--gap",
+        "demo:gap:1",
+        "--verify-command",
+        "cargo test",
+        "--status",
+        "bogus",
+    ]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("bogus"),
+        "error should echo bad status; got stderr={stderr} stdout={stdout}"
+    );
+    assert!(
+        combined.contains("passed"),
+        "error should list valid values; got stderr={stderr} stdout={stdout}"
+    );
+}
+
+/// Smoke: `ripr receipt check` on a missing file exits non-zero.
+#[test]
+fn receipt_check_missing_file_exits_nonzero_smoke() {
+    let output = run_ripr(&[
+        "receipt",
+        "check",
+        "--path",
+        "target/ripr/receipts/completely-nonexistent-12345.json",
+    ]);
+    assert_failure(&output);
+}
+
+/// Smoke: `ripr receipt --help` exits 0 and mentions expected content.
+#[test]
+fn receipt_help_exits_zero_smoke() {
+    let output = run_ripr(&["receipt", "--help"]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("ripr receipt write"),
+        "help should mention write"
+    );
+    assert!(
+        stdout.contains("ripr receipt check"),
+        "help should mention check"
+    );
+    assert!(
+        stdout.contains("RIPR-SPEC-0079"),
+        "help should reference spec"
+    );
+}
+
+/// Smoke (RIPR-SPEC-0110 control 4): `ripr receipt check --ledger` where the
+/// receipt's canonical_gap_id is NOT in the ledger exits non-zero with
+/// `orphan_receipt`.
+#[test]
+fn receipt_check_orphan_exits_nonzero() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-check-orphan");
+    std::fs::create_dir_all(&out_dir)?;
+
+    // Write a receipt for a gap that will NOT appear in the ledger.
+    let receipt_path = out_dir.join("receipt.json");
+    let receipt_json = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "receipt",
+        "canonical_gap_id": "gap:orphan:aabbccdd",
+        "verify_command": "cargo test",
+        "verify_status": "passed",
+        "written_at": "2026-06-14T00:00:00Z"
+    });
+    std::fs::write(&receipt_path, receipt_json.to_string())?;
+
+    // Write a ledger with a DIFFERENT gap — the receipt's gap is absent.
+    let ledger_path = out_dir.join("ledger.json");
+    let ledger_json = serde_json::json!([{
+        "gap_id": "gap:other:12345678",
+        "canonical_gap_id": "gap:other:12345678",
+        "kind": "MissingValueAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "return_value",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "authority_boundary": "gate_decision_artifact_only"
+    }]);
+    std::fs::write(&ledger_path, ledger_json.to_string())?;
+
+    let receipt_path_str = receipt_path.to_str().ok_or("receipt path not UTF-8")?;
+    let ledger_path_str = ledger_path.to_str().ok_or("ledger path not UTF-8")?;
+
+    let output = run_ripr(&[
+        "receipt",
+        "check",
+        "--path",
+        receipt_path_str,
+        "--ledger",
+        ledger_path_str,
+    ]);
+    // Must exit non-zero (orphan_receipt is a real error).
+    assert_failure(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("orphan_receipt"),
+        "output should mention orphan_receipt; got: {combined}"
+    );
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+/// Smoke: `ripr agent receipt` (legacy alias) still exits non-zero with a
+/// parse error rather than panicking or silently succeeding with no args —
+/// which confirms the alias is still wired.
+#[test]
+fn agent_receipt_legacy_alias_still_dispatches_smoke() {
+    // ripr agent receipt without any args should return a parse error, not panic.
+    let output = run_ripr(&["agent", "receipt"]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    // Should say "requires --json" or "requires --verify-json" or similar — any
+    // parse error from the agent receipt handler means the alias is dispatching.
+    assert!(
+        combined.contains("requires") || combined.contains("missing"),
+        "agent receipt should still dispatch and return a parse error; got: {combined}"
+    );
+}
+
+// RIPR-SPEC-0083 regression guards: --mode is a speed tier, not a scope provider.
+
+/// Bug 1 regression guard: `ripr check --mode fast` with no --diff/--base must
+/// show the no-scope disclosure. --mode is a speed tier on the diff path; it does
+/// NOT provide analysis scope. Before the fix, the --mode arm set
+/// scope_explicitly_provided = true, suppressing the disclosure.
+#[test]
+fn check_mode_fast_alone_shows_no_scope_disclosure_smoke() {
+    // Run in a temp git repo with one commit and HEAD up-to-date, so
+    // resolve_default_base succeeds but the diff against HEAD is empty.
+    // With --mode fast and no --diff/--base, the result is empty and the
+    // no-scope disclosure must fire on stdout (Bug 1 regression guard).
+    // Before the fix, the --mode arm set scope_explicitly_provided = true,
+    // suppressing the disclosure.
+    let root = unique_temp_workspace("mode-fast-no-scope");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"mode-fast-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // HEAD is now up-to-date — diff against HEAD is empty.
+    // With --mode fast and no --diff/--base, scope_explicitly_provided is false,
+    // so the no-scope disclosure must fire.
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--mode", "fast"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The output must contain the no-scope disclosure note, not be silently empty.
+    assert!(
+        stdout.contains("no analysis scope was provided"),
+        "check --mode fast alone must show no-scope disclosure (Bug 1); got stdout:\n{stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("--format repo-exposure-md"),
+        "no-scope guidance must recommend --format repo-exposure-md (Bug 2); got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("--mode fast"),
+        "no-scope guidance must NOT recommend --mode fast; got:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Regression guard: `ripr check --base origin/main` (real diff scope) must NOT
+/// show the no-scope disclosure when the result is empty.
+#[test]
+fn check_with_base_scope_does_not_show_no_scope_disclosure_smoke() {
+    // Use the in-repo sample diff workspace which has an origin/main analog.
+    // We just need to confirm the disclosure is absent when scope is provided.
+    // The workspace check may fail (no commits, no origin), but IF it succeeds
+    // with 0 findings, the disclosure must be absent.
+    let root = unique_temp_workspace("base-scope-no-disclosure");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"no-scope-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // With explicit --base, the disclosure must NOT fire even if there are 0 findings.
+    assert!(
+        !stdout.contains("no analysis scope was provided"),
+        "check --base HEAD must NOT show no-scope disclosure; got stdout:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

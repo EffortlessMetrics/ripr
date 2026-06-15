@@ -1,0 +1,10 @@
+diff --git a/src/pack.py b/src/pack.py
+--- a/src/pack.py
++++ b/src/pack.py
+@@ -1,5 +1,5 @@
+ def pack(items, limit):
+     buffer = list(items)
+-    if len(buffer) < limit:
++    if len(buffer) <= limit:
+         return buffer
+     raise ValueError("too many items")

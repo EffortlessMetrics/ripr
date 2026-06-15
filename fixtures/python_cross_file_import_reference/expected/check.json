@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_cross_file_import_reference/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_tax.py:2:python_preview",
+      "id": "probe:src_tax.py:python_preview:edfd1a02",
       "canonical_gap_id": "gap:python:src/tax.py:apply_tax:return_value:return_value:amount+2",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_tax.py:2:python_preview",
+        "id": "probe:src_tax.py:python_preview:edfd1a02",
         "family": "return_value",
         "delta": "value",
         "file": "src/tax.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: apply_tax", "owner_kind: function", "test_framework: pytest (test_checkout_tax_alias_import)", "test_verify_command: pytest tests/test_checkout_tax.py::test_checkout_tax_alias_import (test_checkout_tax_alias_import)", "related_test_relation: import_alias_call (test_checkout_tax_alias_import)", "test_oracle: exact_value strong (test_checkout_tax_alias_import)"],
       "missing": ["Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_checkout_tax_alias_import",
@@ -72,7 +75,22 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "observed_sink": "assert taxed(10) == 12",
+      "oracle_alignment": "alias",
+      "alignment_reason": "strong_oracle_observes_import_alias"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/tax.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

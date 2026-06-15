@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_parametrize_basic/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_tax.py:2:python_preview",
+      "id": "probe:src_tax.py:python_preview:076d8ade",
       "canonical_gap_id": "gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_tax.py:2:python_preview",
+        "id": "probe:src_tax.py:python_preview:076d8ade",
         "family": "predicate",
         "delta": "control",
         "file": "src/tax.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: tax_band", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_tax.py", "suggested_test_name: test_tax_band", "suggested_test_node_id: tests/test_tax.py::test_tax_band", "suggested_verify_command: pytest tests/test_tax.py::test_tax_band", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_tax_band)", "test_fixtures: amount (test_tax_band)", "test_parametrized: pytest (test_tax_band)", "test_verify_command: pytest tests/test_tax.py::test_tax_band (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)", "test_oracle_shape: reach_only (test_tax_band)"],
       "missing": ["Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -65,6 +67,7 @@
           "flow_sink": {"kind":"unknown","text":"if amount >= 100:","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_tax_band",
@@ -120,7 +123,21 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/tax.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

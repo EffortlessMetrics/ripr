@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/unrelated_test_mentions_token/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:2:predicate",
+      "id": "probe:src_lib.rs:predicate:8390dd91",
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.48,
       "probe": {
-        "id": "probe:src_lib.rs:2:predicate",
+        "id": "probe:src_lib.rs:predicate:8390dd91",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/unrelated_test_mentions_token/input/src/lib.rs",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["Changed behavior appears to influence returned value: amount - 10", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated"],
       "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,13 +44,14 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 0,
       "related_tests": [
       ],
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
-      "suggested_next_action": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
+      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
       "language": "rust"
     }
   ]

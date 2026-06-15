@@ -57,6 +57,11 @@
   },
   "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
   "mode": "calibrated-gate",
+  "new_unsuppressed": {
+    "basis": "baseline",
+    "count": 1,
+    "reason": null
+  },
   "policy": {
     "acknowledgement_labels": [
       "ripr-waive"

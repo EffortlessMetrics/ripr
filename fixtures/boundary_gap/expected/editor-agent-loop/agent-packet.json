@@ -1,6 +1,7 @@
 {
   "schema_version": "0.3",
   "scope": "repo",
+  "run_status": "complete",
   "packets_total": 1,
   "packets": [
     {

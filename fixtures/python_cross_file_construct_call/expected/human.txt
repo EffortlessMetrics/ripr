@@ -1,0 +1,42 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_cross_file_construct_call/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/formatter.py:4
+
+Changed
+  after:              if any(c < " " for c in key):
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/formatter.py::Formatter.__call__
+  canonical gap: gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key
+
+Language
+  language: python
+  status: preview
+  owner kind: method
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `__call__`
+  - infection yes: Changed Python predicate can alter branch selection: `if any(c < " " for c in key):`
+  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
+  - observation yes: Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches unknown sink: if any(c < " " for c in key): (line 4)
+  - related test tests/test_render.py:6 test_rejects_space_in_key uses strong exact error variant oracle: pytest.raises(ValueError, match='Invalid key')
+
+Weakness
+  - Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

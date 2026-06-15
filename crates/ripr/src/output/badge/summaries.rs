@@ -18,6 +18,36 @@ use super::model::{
     BadgeSummary,
 };
 
+/// Returns the list of language names (e.g. `"typescript"`) that appear in
+/// `preview_language_advisories` with `enabled == false`. A non-empty list
+/// means preview-language files were detected in the diff but the adapter
+/// was NOT enabled, so the result is NOT a clean Rust-grade result and the
+/// badge must be downgraded from pass/green to a warn state.
+///
+/// Returns an empty `Vec` for clean Rust-only diffs (no advisory present)
+/// and for diffs where the preview adapter was enabled (`enabled == true`).
+fn collect_preview_skipped(output: &CheckOutput) -> Vec<String> {
+    output
+        .preview_language_advisories
+        .iter()
+        .filter(|advisory| !advisory.enabled)
+        .map(|advisory| advisory.language.clone())
+        .collect()
+}
+
+/// Returns `(status, color, message)` for the preview-skip downgrade case.
+///
+/// The caller is responsible for ensuring `preview_skipped` is non-empty
+/// before calling this. The message names each skipped language so the
+/// badge consumer has an actionable signal without reading full JSON.
+fn preview_skip_status_color_message(
+    preview_skipped: &[String],
+) -> (BadgeStatus, &'static str, String) {
+    let names = preview_skipped.join(", ");
+    let message = format!("preview-skipped: {names}");
+    (BadgeStatus::Warn, "yellow", message)
+}
+
 /// Builds the `ripr` badge summary from a `CheckOutput`, applying any
 /// `kind = "exposure_gap"` suppressions whose `finding_id` matches a
 /// currently-counted exposure gap. Expired and unmatched suppressions
@@ -87,17 +117,39 @@ pub fn ripr_badge_summary_with_suppressions(
         };
     let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
 
+    // Check for preview-language files that were detected but NOT analyzed
+    // (adapter disabled). When present the badge cannot read as a clean
+    // Rust-grade result even if `headline == 0`; downgrade from pass/green
+    // to warn/yellow and name the skipped languages in the message so the
+    // consumer has an actionable signal without reading full JSON.
+    let preview_skipped = collect_preview_skipped(output);
+    let (final_status, final_color, final_message) =
+        if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
+            // Only downgrade from Pass; if there are already real findings the
+            // headline already reflects non-pass, and we just annotate the skip.
+            let (ds, dc, dm) = preview_skip_status_color_message(&preview_skipped);
+            (ds, dc, dm)
+        } else if !preview_skipped.is_empty() {
+            // Already not pass (there are real findings). Keep existing
+            // status/color but override message to name the skip.
+            let (_, _, dm) = preview_skip_status_color_message(&preview_skipped);
+            (status, color, dm)
+        } else {
+            (status, color, headline.to_string())
+        };
+
     BadgeSummary {
         kind: BadgeKind::Ripr,
         scope: BadgeScope::Diff,
         basis: BadgeBasis::FindingExposure,
-        message: headline.to_string(),
-        status,
-        color,
+        message: final_message,
+        status: final_status,
+        color: final_color,
         counts,
         reason_counts,
         policy,
         warnings: suppression_app.warnings,
+        preview_skipped,
     }
 }
 
@@ -193,6 +245,7 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         reason_counts,
         policy,
         warnings: Vec::new(),
+        preview_skipped: Vec::new(),
     }
 }
 
@@ -267,6 +320,7 @@ pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
         reason_counts,
         policy,
         warnings: Vec::new(),
+        preview_skipped: Vec::new(),
     }
 }
 
@@ -319,6 +373,7 @@ pub(crate) fn repo_gap_ledger_badge_summary_from_json(
         reason_counts,
         policy,
         warnings: Vec::new(),
+        preview_skipped: Vec::new(),
     })
 }
 

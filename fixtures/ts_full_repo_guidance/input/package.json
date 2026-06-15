@@ -1,0 +1,13 @@
+{
+  "name": "ts-full-repo-guidance-fixture",
+  "version": "1.0.0",
+  "description": "Fixture for RIPR-SPEC-0089: TypeScript-predominant workspace with no Rust.",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  }
+}

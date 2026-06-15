@@ -1,0 +1,98 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/unwrap_err_sibling_variant/input
+
+Summary: 3 probe(s), 1 exposed, 1 weak, 1 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
+
+Changed
+  before: return Err(CalcError::Overflow);
+  after:  return Err(CalcError::TooLarge);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::compute
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::TooLarge)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Medium oracle found: property or partial structural assertion
+  - local flow reaches error variant: Result::Err(CalcError::TooLarge) (line 11)
+  - related test tests/errors.rs:5 negative_input_rejects_with_negative_error uses medium exact error variant oracle: assert_eq!(err, CalcError::Negative);
+  - observed function argument value x = -1 at line 6
+  - observed enum variant value CalcError::Negative at line 7
+
+Weakness
+  - No strong discriminator was detected
+  - missing discriminator CalcError::TooLarge: No exact error variant assertion for CalcError::TooLarge
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+WARNING fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
+
+Changed
+  before: return Err(CalcError::Overflow);
+  after:  return Err(CalcError::TooLarge);
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::compute
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.79)
+
+Evidence
+  - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::TooLarge)
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches error variant: Result::Err(CalcError::TooLarge) (line 11)
+  - observed function argument value x = -1 at line 6
+  - observed enum variant value CalcError::Negative at line 7
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No exact error variant discriminator was detected
+  - No relevant oracle was detected
+  - missing discriminator CalcError::TooLarge: No exact error variant assertion for CalcError::TooLarge
+
+Next step
+  Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+
+INFO fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
+
+Changed
+  before: return Err(CalcError::Overflow);
+  after:  return Err(CalcError::TooLarge);
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::compute
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::TooLarge)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact error variant assertion
+  - local flow reaches error variant: Result::Err(CalcError::TooLarge) (line 11)
+  - related test tests/errors.rs:5 negative_input_rejects_with_negative_error uses strong exact error variant oracle: assert_eq!(err, CalcError::Negative);
+  - observed function argument value x = -1 at line 6
+  - observed enum variant value CalcError::Negative at line 7
+
+Weakness
+  - missing discriminator CalcError::TooLarge: No exact error variant assertion for CalcError::TooLarge

@@ -1,0 +1,95 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_unverified_side_effect/input
+
+Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/observation_unverified_side_effect/input/src/lib.rs:11
+
+Changed
+  before: notifier.send("static_msg")
+  after:  notifier.send(order_id)
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::process_order
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach process_order: process_order_succeeds
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches event or outbound call: notifier.send(order_id) (line 11)
+  - related test tests/process_tests.rs:4 process_order_succeeds uses weak relational check oracle: assert!(result);
+  - observed function argument value order_id = "order-1" at line 6
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+WARNING fixtures/observation_unverified_side_effect/input/src/lib.rs:11
+
+Changed
+  before: notifier.send("static_msg")
+  after:  notifier.send(order_id)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::process_order
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach process_order: process_order_succeeds
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence returned value: notifier.send(order_id)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: notifier.send(order_id) (line 11)
+  - related test tests/process_tests.rs:4 process_order_succeeds uses weak relational check oracle: assert!(result);
+  - observed function argument value order_id = "order-1" at line 6
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+
+WARNING fixtures/observation_unverified_side_effect/input/src/lib.rs:11
+
+Changed
+  before: notifier.send("static_msg")
+  after:  notifier.send(order_id)
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  src/lib.rs::process_order
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach process_order: process_order_succeeds
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches event or outbound call: notifier.send(order_id) (line 11)
+  - related test tests/process_tests.rs:4 process_order_succeeds uses weak relational check oracle: assert!(result);
+  - observed function argument value order_id = "order-1" at line 6
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.

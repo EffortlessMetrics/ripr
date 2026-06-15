@@ -1,0 +1,55 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_verified_side_effect/input
+
+Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO fixtures/observation_verified_side_effect/input/src/lib.rs:17
+
+Changed
+  before: notifier.send("static_msg")
+  after:  notifier.send(order_id)
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::process_order
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach process_order: process_order_sends_exact_order_id
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches event or outbound call: notifier.send(order_id) (line 17)
+  - related test tests/process_tests.rs:4 process_order_sends_exact_order_id uses strong exact value oracle: assert_eq!(*notifier.sent.borrow(), vec!["order-42".to_string()]);
+  - observed function argument value order_id = "order-42" at line 6
+  - observed assertion argument value "order-42" at line 7
+
+INFO fixtures/observation_verified_side_effect/input/src/lib.rs:17
+
+Changed
+  before: notifier.send("static_msg")
+  after:  notifier.send(order_id)
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  src/lib.rs::process_order
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach process_order: process_order_sends_exact_order_id
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence event or outbound call: notifier.send(order_id)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches event or outbound call: notifier.send(order_id) (line 17)
+  - related test tests/process_tests.rs:4 process_order_sends_exact_order_id uses strong exact value oracle: assert_eq!(*notifier.sent.borrow(), vec!["order-42".to_string()]);
+  - observed function argument value order_id = "order-42" at line 6
+  - observed assertion argument value "order-42" at line 7

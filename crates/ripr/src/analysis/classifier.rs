@@ -358,9 +358,19 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only broad error oracle found; is_err() does not discriminate exact error variants"
+        // RIPR-SPEC-0107: ErrorPath now in needs_token_confirmation. A broad
+        // is_err() oracle has no variant token (AuthError/RevokedToken) in its
+        // text, so observation_unverified fires instead of the oracle-strength
+        // "Only broad error oracle found" message.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "broad is_err() oracle must emit observation_unverified for error_path after RIPR-SPEC-0107: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert_eq!(
             finding.related_tests[0].oracle_strength,
@@ -406,9 +416,18 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only smoke oracle found, such as unwrap/expect or execution without a discriminator"
+        // The smoke-only assertion score(1).unwrap() contains no token from the
+        // probe expression "return Ok(input + 1)" — observation_unverified fires
+        // before the smoke oracle path, so the summary reflects the honesty fix.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "ReturnValue with no token_match must emit observation_unverified: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert_eq!(
             finding.related_tests[0].oracle_strength,
@@ -448,9 +467,18 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
-        assert_eq!(
-            finding.ripr.reveal.discriminate.summary,
-            "Only broad error oracle found; it may not discriminate the changed behavior exactly"
+        // The broad error assertion "assert!(score(1).is_err())" contains no
+        // token from the CallDeletion probe "client.send(input)" — observation_unverified
+        // fires before the broad-error oracle path, reflecting the honesty fix.
+        assert!(
+            finding
+                .ripr
+                .reveal
+                .discriminate
+                .summary
+                .contains("observation_unverified"),
+            "CallDeletion with no token_match must emit observation_unverified: got `{}`",
+            finding.ripr.reveal.discriminate.summary
         );
         assert!(
             finding
@@ -1272,7 +1300,7 @@ mod tests {
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
             Some(
-                "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage."
+                "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change."
             )
         );
         assert_eq!(

@@ -13,6 +13,8 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
+        XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
+        XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => super::precommit(),
         XtaskCommand::CheckPr => super::check_pr(),
@@ -47,6 +49,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::agent_seam_packets_report(root.as_ref())
         }
         XtaskCommand::RiprSwarm(args) => super::ripr_swarm(&args),
+        XtaskCommand::RouteQuality(args) => super::ripr_swarm_route_quality_report(&args),
         XtaskCommand::LspCockpitReport => super::reports::lsp_cockpit_report(),
         XtaskCommand::OperatorCockpitReport => super::reports::operator_cockpit_report(),
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),
@@ -95,6 +98,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
         XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
         XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
+        XtaskCommand::CheckEvidencePromotionHonesty => super::check_evidence_promotion_honesty(),
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
         XtaskCommand::CheckWorkspaceShape => super::check_workspace_shape(),

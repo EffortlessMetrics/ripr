@@ -599,3 +599,901 @@ Practical sequencing rule:
 1. ship bounded repair-attempt evidence movement;
 2. then tighten proposal/spec/ADR/closeout templates and validators as a
    separate infra lane.
+
+## 2026-06-11: Verification Discipline And Gate/Cache Gotchas
+
+Hard-won during a multi-PR autonomous campaign. Each item cost a real CI failure
+or a near-miss.
+
+### Verify with the policy-checker facade, not a hand-picked gate subset
+
+Running a few `cargo xtask check-*` gates by hand before pushing missed two
+required gates twice in a row (`check-generated`, then `check-static-language`).
+The required CX43 "Required Rust gates" step runs the whole set. Mirror it
+locally with one command:
+
+```bash
+cargo test -p xtask policy_checker_facade_runs_current_repo_checks
+```
+
+It runs the same gate set CI runs (~70s) and catches what a subset misses.
+Pair it with a behavioral repro of the actual change — gate-pass is necessary,
+not sufficient.
+
+### Subagent builders emit stale diagnostics; `cargo check` is ground truth
+
+Long builder runs leave the IDE diagnostic snapshot mid-edit, so rust-analyzer
+reports E0425/E0308 that are already fixed. Do not trust them and do not trust
+the builder's "all green" self-report. Run `cargo check -p ripr --all-targets`
+(0 errors = clean) and a behavioral repro every time.
+
+### The static-language gate scans all tracked prose, not just output
+
+`check-static-language` walks every tracked `.md/.rs/.txt/.json/.toml/.yml/.yaml`
+file (minus the `docs/*.md` glob exemption and path allowlist) and bans
+`killed/survived/untested/proven/adequate` anywhere — including YAML comments and
+policy-file reasons, where those are innocent English. In output, use the
+exposure vocabulary; in prose, a plain synonym. `xtask/src/main.rs` is
+self-exempt (it must name the forbidden terms).
+
+### Default caps and the cache: a truncated hit must not read as complete
+
+When a full-repo run is bounded by default (`repo-exposure` 10k seam cap), the
+seam-cache key must include the effective limit (`seam_limit_key`) and the cache
+envelope must persist the limit metadata. Otherwise a capped run and an
+unbounded run share a cache file, or a cache hit serves a truncated result as
+`run_status: "complete"` — silently reintroducing the dishonesty the bound was
+meant to fix. `#[serde(default)]` on the new envelope field keeps old (full-run)
+caches readable as "complete".
+
+### Any hash over a path must normalize separators
+
+Content-addressed ids hash a filesystem-walked path; `\` on Windows vs `/` on
+Linux produced different ids and failed Linux CI on Windows-blessed goldens.
+Normalize `\` -> `/` before hashing.
+
+### Strict "up to date branch" serializes merges
+
+Under branch protection requiring up-to-date branches, every merge forces all
+other open PRs behind, each needing `update-branch` + a full re-run on the slow
+self-hosted lane. Merge the higher-cost lane's PR first; a merge queue would
+remove the thrash but is a deliberate settings change.
+
+## 2026-06-11: The Evidence-to-Repair Campaign — Product/Process Isomorphism And Delegability
+
+Synthesis from the wave that built RIPR's PR/LSP/agent surfaces (pr-evidence
+summary, review repair cards, the four LSP cockpit commands + restrained
+diagnostics, the VS Code surface). The durable, transferable lessons — kept here
+because they outlive any single PR.
+
+### The product is the process; that is why it is agent-buildable
+
+RIPR's loop — raw signal -> canonical evidence -> actionability decision ->
+bounded repair packet OR named limitation -> verify -> receipt — is the same
+loop a competent agent runs to build it: scout -> spec -> build -> verify-self
+-> scoped PR -> CI gate -> merge. They are isomorphic. RIPR is not "a tool for
+agents"; it is an externalization of the discipline that makes work safe to
+delegate. The builder and the built share an architecture, which is exactly why
+a fleet could build it. When designing a new surface, design it as that same
+loop.
+
+### Legibility + bounded scope + fenced irreversibility = delegability
+
+The repair packet (edit-cage + verify + receipt + must_not_change), the
+operating model (scoped PR + facade gate + merge, with the crates.io publish as
+the only hard stop), and the repo's own authorship all reduce to one shape:
+bound the task, make the limits legible, fence the irreversible, verify rather
+than trust. Keep new work inside that shape; it is what lets non-authors (other
+agents, or a non-specialist human) own the result.
+
+### Honesty is the product; silence that reads as "clean" is the cardinal sin
+
+The most valuable fixes were all the same shape: a run that did not fully do its
+job *looking* like it did — a bounded full-repo run reporting `complete`, a
+cache hit serving a truncated result as complete, preview-language content
+yielding "no findings" when it was not really analyzed. Fail-closed means the
+tool must self-declare what it could not determine. The honesty primitives
+(`run_status`, `limitations[]`, `source_location_unresolved`,
+`not_actionable_or_incomplete`, `no_limitation`, `no_snapshot`) are one
+"evidence-state" word in different costumes — **unify them into one shared
+vocabulary** rather than re-inventing per surface (the highest-leverage refactor
+left).
+
+### Plausible-but-wrong is the dominant failure mode — verify the claim, not the symptom
+
+Subagent builders report "all green" while live IDE diagnostics show compile
+errors (almost always stale mid-edit snapshots — `cargo check` is ground truth).
+A `doctor` shipped recommending `ripr check --diff origin/main...HEAD`, which
+fails because `--diff` wants a file — the line was verified to *print*, not to
+*run* (textbook weak oracle). A "not fail-closed" bug was nearly filed that was
+actually a `| head` pipe masking the real exit code. The discipline: trust
+`cargo check` + a behavioral repro of the *effect*, never a self-report or an
+IDE diagnostic; mirror the whole CI gate set with
+`cargo test -p xtask policy_checker_facade_runs_current_repo_checks` before
+pushing (cherry-picking gates leaked `check-generated` and a forbidden word);
+and verify the claim, not the pipeline that measured it.
+
+### Adoption breakage is invisible to the people who built the tool
+
+The issue tracker was full of infra/CI/spec items. The genuinely user-facing
+break — the documented `check -> explain/context` drill-down dead in the default
+(human) output mode — had no issue, because maintainers already knew the magic
+incantation. The "easy to adopt" property cannot be assessed from inside; it can
+only be *walked*. Dogfooding the actual user/agent path found more real value
+than grinding the backlog. The unwalked path that matters most next: the full
+agent loop end-to-end (status -> packet -> edit-in-cage -> verify -> receipt ->
+re-status).
+
+### Constraints produced autonomy — the intuition inverts
+
+Conservative-language gates, the scoped-PR contract, traceability, and the
+facade test are what let many PRs ship without a human reading each line: the
+machine-checkable doctrine substitutes for human trust. For autonomous work,
+more well-designed constraints = more delegable autonomy, not less. The gates
+are a feature of the product (they are why it is buildable), not overhead — do
+not erode them to move faster; they are the load-bearing wall.
+
+## 2026-06-12: Closing the receipt → outcome → route-quality loop — the honesty-detection discipline
+
+The "unwalked path that matters most next" from the prior entry — the full agent
+loop `status -> packet -> edit-in-cage -> verify -> receipt -> outcome ->
+route-quality` — was built and closed across ten PRs (#1130–#1139, then surfaced
+through CLI, PR summary, LSP, VS Code, and an agent flow doc). The durable
+lessons are not about the features; they are about how to add a *number* to an
+honest tool without lying.
+
+### `not_available` is better than a fake zero — and a fake zero is the cardinal sin in numeric form
+
+A count reported as a number — *even `0`* — asserts "we inspected this condition
+and here is the result." That assertion is only honest if a real production
+condition can produce a non-zero value. A `verify_failed_receipts: 0` computed
+over a field that no production path ever populates reads as "no receipts failed
+verify" when the truth is "nothing can make this non-zero." That is strictly
+worse than `not_available`, which honestly says "not derivable yet." This bit us
+once for real (#1130: counted `gap-ledger receipt.state`, which the build never
+sets — reverted to `not_available` with regression guards), and the rule then
+caught two later attempts before they shipped.
+
+### Trace the *producer*, not the consumer — and demand an end-to-end proof
+
+For any `not_available -> count` flip, the question is never "does the field
+exist?" but "what *writes* this field in non-test code, and can a real condition
+make it non-zero?" `verify_failed_receipts` became real (#1131) only because
+`verify_result` is genuinely populated by the swarm-ingest verify flow and `fail`
+is a validated, supported value — proven by a fixture flowing a real failed
+verify end-to-end, not a unit test that hand-sets the field. `stale_receipts`
+stayed `not_available` because the honest investigation found the staleness
+signal lives in `swarm-ingest.json`, which the attempt-ledger build never
+consumes — so a non-zero is not producible, and declining to ship a count was
+the correct result. The negative finding is a feature, not a failure.
+
+### Verify the *claim* against the *real* repro, on a *fresh* binary
+
+A builder's green test suite proves the cases it chose to test, which can be
+exactly the cases that miss the bug. #1140's first pass disclosed preview-language
+files only when the adapter was *enabled* — its tests passed, but the issue's
+actual repro (`ripr check --diff ts.diff` with no config) was still silently
+empty, and the builder's own "proof" had run a stale binary built from `main`.
+Only a behavioral repro of the *reported* repro, against a freshly-built binary,
+caught it. Stale IDE/editor diagnostics flagged phantom compile errors ~11 times
+across this campaign; the committed `RUSTFLAGS="-D warnings"` build was clean
+every time. The discipline that held the line: never merge on a report — merge on
+the compiler and a fresh-binary repro of the real thing.
+
+### The analysis usually already exists; the work is honestly *surfacing* it
+
+Route-quality metrics, the attempt ledger, receipt lifecycle states — most were
+already computed deep in the codebase. Each loop-close PR was a *surfacing*
+exercise (a standalone report, an LSP field, a VS Code command), and the only
+real risk at each step was fabricating a field whose producer wasn't actually
+reachable. Cheap adversarial validation caught two such gaps on paper (a VS Code
+command with no LSP producer; an agent doc describing commands that didn't exist
+yet) before any code was written. Plan with cheap agents, surface with stronger
+ones, and put the verification budget on the producer-reachability question.
+
+## 2026-06-12: Release-State Boundary and crates.io Query Honesty
+
+Two operator-grade lessons surfaced from a single stale sign-off phrase
+("published 0.9.x untouched, crates.io the one hard stop") that turned out to be
+wrong in two independent ways. Both are reliability lessons, not release notes.
+
+### The release hard stop is the version bump, not an ad-hoc `cargo publish`
+
+The published-vs-unreleased boundary, stated precisely:
+
+```text
+0.9.0 is published on crates.io.
+ripr-swarm main is ahead of published 0.9.0 (all current campaign work is unreleased).
+crates.io publish is AUTOMATED by the gh version-bump / GitHub release workflow.
+The irreversible trigger is therefore the VERSION BUMP, not a manual `cargo publish`.
+swarm CI only ever runs `cargo publish -p ripr --dry-run` (validation, never a real publish).
+```
+
+So the rule for autonomous work: normal swarm development is fine (PRs, tests,
+dry-runs, docs, changelog drafts, release-candidate prep, source-sync prep), but
+do **not** bump `crates/ripr/Cargo.toml`'s version or trigger the release
+workflow without explicit approval — that lever auto-publishes. Publishing the
+current work is an explicit next-release decision (choose 0.9.1 vs 0.10.0, audit
+what is on main since 0.9.0, draft changelog, source sync, then bump).
+
+### crates.io API errors are not release facts
+
+A crates.io `403` can mean the request *reached* crates.io but failed the API
+data-access policy — most often because no identifying `User-Agent` was sent. Do
+not parse an HTTP error body as crate metadata; check the HTTP status first.
+
+```text
+Bad:  HTTP 403 body parsed as JSON -> max_version = None -> conclusion: "not published"
+Good: HTTP 403 -> status: crates_io_query_failed (data-access / missing user-agent)
+                -> conclusion: UNKNOWN, not "unpublished"
+```
+
+For any release-state check: use an identifying `User-Agent`
+(`curl -H "User-Agent: EffortlessMetrics-ripr-release-check/0.1 (contact: ...)"`),
+treat non-2xx as `unknown`/error rather than absence, and confirm published state
+through a 2xx response or the crates.io UI. This is RIPR's own philosophy turned
+on its own tooling:
+
+```text
+unknown is not zero
+limited is not clean
+failed lookup is not absence
+```
+
+The meta-lesson: the original misread blamed the local *sandbox* for what was
+crates.io's *policy* (the network was wide open — 200s everywhere once a
+User-Agent was sent). That is the exact proxy-for-artifact failure the tool
+exists to catch, aimed at the operating environment instead of the code. Read the
+error the artifact actually returned; do not round it off to the nearest
+convenient cause.
+
+## 2026-06-12: TypeScript repair-packet flip reuses the Rust validator, never a parallel path (RIPR-SPEC-0087)
+
+The TypeScript `repair_packet_ready: false → true` flip (RIPR-SPEC-0087 §PR7)
+calls the **existing shared** `validate_agent_gap_record_packet` in
+`output/agent_seam_packets.rs`. It does NOT introduce a parallel TypeScript
+completeness validator, mirror, or inline re-implementation.
+
+The projection lives in `output/typescript_packet_projection.rs::typescript_gap_record_for`,
+which builds a `GapRecord` from preview evidence. If the shared validator returns
+`Ok(())`, the finding flips; otherwise it stays preview. This architecture means
+there is exactly one source of truth for "what counts as a complete repair packet".
+
+Key constraints for any future change:
+- `analysis/**` must NOT import `crate::output` (architecture gate enforces this).
+- The projection is in `output/`, not `analysis/`, to satisfy this constraint.
+- G-A (category must be `incomplete_repair_packet`) is the most important precondition —
+  it prevents static_limitation, strong_oracle_observed, ambiguous_related_test, and
+  missing_context findings from accidentally flipping.
+- The only flip condition: G-A through G-F ALL hold AND `validate_agent_gap_record_packet`
+  returns `Ok(())`. There is no shortcut.
+- `authority_boundary` stays `"preview_advisory_only"` even when flipped. TypeScript
+  remains preview; the flipped finding is delegatable but not gate authority.
+
+## 2026-06-13: Surface projection for a TypeScript packet goes through the shared renderer, not a parallel TS renderer (RIPR-SPEC-0088)
+
+RIPR-SPEC-0088 (§PR8) projects the GapRecord computed in §PR7 into four surfaces:
+human field-note, JSON `typescript_repair_packet` field, LSP hover section, and
+LSP copy code action. The key architectural lesson is **reuse the shared helpers,
+not a new renderer**.
+
+Concretely:
+- `typescript_gap_record_for(finding)` (in `output/typescript_packet_projection.rs`)
+  returns `Option<GapRecord>`. Call it from each surface. `None` means "not actionable".
+- `allowed_edit_surface_for_gap_route` and `gap_record_packet_do_not_do` from
+  `output/agent_seam_packets.rs` provide the canonical allowed-surface and
+  must-not-change lists. Use them everywhere to avoid drift.
+- Forbidden-files computation was left inline in the JSON renderer (it filters the
+  anchor file against the edit surface) because `forbidden_files_for_gap_record` is
+  private. That is fine; the pattern is tiny.
+- The LSP code action reads from `data.typescript_repair_packet` if present, with
+  fallback to `data.verification_commands[0]`. This is because the JSON field is
+  not yet in `diagnostic.data` — if a future PR adds it there, the action will
+  prefer it.
+
+The "not actionable" case surfaces a named limitation section in human output for ALL
+TypeScript findings (not just specific ones). That drifted ~28 golden fixtures. Bless
+them all: the named limitation section is the correct output for blocked findings.
+
+When bless-count is unexpectedly large: first confirm that every drifted fixture
+really is a TypeScript/JavaScript finding. If yes, bless with a reason that
+cites the spec section. Do not suppress the limitation output.
+
+Authority boundary reminder: `preview_advisory_only` stays in all four surfaces
+even when the packet is actionable. No surface promotes TypeScript to gate or badge
+authority.
+
+### §PR8 follow-up: the flip must also rewrite the evidence strings, not just the boolean
+
+The first §PR8 cut flipped `repair_packet_ready`/`gap_state`/`category` and added
+the new field-note, but left the OLD incomplete-packet evidence strings
+(`why_not_actionable`, `repair_route` = "...only after verify/receipt/edit
+boundaries are available", `evidence_needed_to_promote`, and the analysis-layer
+`recommended_next_step` "no actionable repair packet is emitted until...")
+flowing straight through to the `Preview actionability` block, the preview card,
+and the LSP hover. Result: the flagship actionable output simultaneously said
+"category: complete_repair_packet / repair packet ready: true" AND "why not
+actionable: ... / evidence needed: [the fields it already has] / project ... only
+after [those fields] are available". A direct honesty contradiction.
+
+Root cause: those strings are authored in the analysis layer for the BLOCKED
+cases and are reused verbatim. The flip happens later in `output/` (via the
+shared validator), so the analysis-layer strings never learn about it.
+
+Fix pattern (one place, three consumers):
+- In `output/preview_actionability.rs::preview_actionability_for`, when
+  `repair_packet_ready`, replace `repair_route` with the actual repair action
+  (assertion shape / missing discriminator via `actionable_repair_route`), set
+  `evidence_needed_to_promote` to the empty string, and make
+  `why_not_actionable` an actionable confirmation. JSON keys stay stable for
+  schema compatibility; only content changes.
+- In the three human/hover renderers, branch on `repair_packet_ready`: relabel
+  "why not actionable"→"why actionable", "repair route"→"repair action", and
+  omit the empty "evidence needed" line for the actionable case.
+- The analysis-layer `recommended_next_step` is corrected at RENDER time
+  (`next_step_for_finding`): strip the "; no actionable repair packet is emitted
+  until ..." tail and confirm completeness. The analysis layer can't see the
+  output-layer flip, so the renderer is the right seam.
+
+General lesson: when a downstream layer flips a status, audit EVERY string that
+was authored for the pre-flip status and still rides through. A boolean flip
+without a message rewrite produces output that contradicts itself — the exact
+proxy-for-artifact dishonesty `ripr` exists to catch, turned inward.
+## 2026-06-13: Discrimination vs Coverage — `exposed` requires sink alignment
+
+`ripr`'s value over coverage is one invariant: a strong oracle discriminates a
+change only if it *observes the changed sink*. The Python classifier had drifted
+into the coverage mistake — `reach + strong oracle => exposed` — crediting a
+strong-but-orthogonal assertion (a wrapper's return value) as discrimination.
+`classify_change` now requires the strong oracle's assertion to reference the
+changed owner (by name or import alias) or a changed-sink identifier/literal from
+the changed line before crediting `exposed`; otherwise it downgrades to
+`weakly_exposed` with a typed reason. Protect this invariant on any future
+classifier work — it is the line between a discriminator and coverage with extra
+steps. See `docs/STATIC_EXPOSURE_MODEL.md` (Discrimination vs Coverage),
+`RIPR-SPEC-0028` revealability, and the `strong_oracle_observes_owner` tests.
+
+## 2026-06-13: Two error rates — and the dangerous one is silent
+
+Trust requires tracking both: false-actionable (routed a repair for a behavior
+that is discriminated; visible in emitted output) and false-`exposed` /
+over-credit (called covered when no oracle discriminates; *silent* — emits
+nothing). False-`exposed` is the worse failure: it is what makes a discriminator
+indistinguishable from coverage, and a robustness sweep that counts emitted
+findings is structurally blind to it. Measuring it needs ground-truthed
+should-stay-quiet cases, not gap counts.
+
+## 2026-06-13: External evidence finds blind spots; build the engine first
+
+A saturated in-repo dogfood corpus (e.g. 26/26 all-pass) is necessary but says
+nothing about accuracy — it is authored by the same people who wrote the
+analyzer. Every real accuracy bug this campaign — `not_run` reporting a vacuous
+`pass`, eval-sweep runtime measuring `cargo run` overhead, and the `exposed`
+over-credit — was surfaced by running on external code, not by reasoning about
+it. Build the external eval-sweep before deciding what to fix; the bugs come from
+running it.
+
+## 2026-06-13: Eval diffs must test both directions
+
+Synthetic boundary-flip diffs only exercise the should-gap direction, so a
+maximally over-eager analyzer scores perfectly on them. A trustworthy judged
+panel needs deliberately-constructed should-stay-quiet cases (direct-boundary
+assertions that must read `exposed`) alongside should-gap cases — otherwise the
+eval itself has a weak oracle.
+
+## 2026-06-13: A CI gate that runs but does not block over-credits itself
+
+The `source-of-truth` job runs the policy gates — `check-support-tiers`,
+`check-static-language`, `check-doc-index`, `check-campaign`, and the rest — but
+branch protection on `main` requires only one status check (`Ripr Rust Small
+Result`). Every policy gate is therefore *advisory at merge time*: it appears on
+the PR, but a red result does not block the merge button. A PR merged with its
+`source-of-truth` red (RIPR-SPEC-0088 landing without a `SUPPORT_TIERS.md`
+reference), which silently broke `check-support-tiers` on `main` for every
+subsequent PR until a one-line fix repaired it.
+
+This is the product thesis turned inward. A gate that runs but does not block is
+exactly a test that *reaches* the behavior but does not *discriminate* it: it
+looks green, the run happened, but nothing actually caught the regression — the
+gate over-credited itself the same way `reach + strong oracle` over-credits
+`exposed`. The check executing is not the signal; the check *being able to stop a
+bad merge* is. Verify which checks are genuinely required
+(`gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`),
+not which checks appear to run. Making `source-of-truth` a required check is the
+fix; tracked as hardening issue #1181. This is distinct from the deliberate
+`strict=false` choice recorded in the concurrency entry below — dropping the
+*up-to-date* requirement is orthogonal to requiring `source-of-truth` *to pass*;
+a check can be required-to-pass without being required-to-be-current. Until then,
+every agent and reviewer must read the `source-of-truth` result themselves and
+refuse to merge on red — the self-gate the watcher already enforces. Same
+weak-oracle shape as the adjacent "all gates pass" entry, a different axis: this
+one is about *merge authority* (an advisory gate cannot block), that one is about
+*output honesty* (a well-formed artifact can pass every gate while lying).
+
+## 2026-06-13: Gates and a builder's "all gates pass" are weak oracles — run + read the artifact
+
+The TypeScript actionable wave shipped its sharpest dishonesty bug, the §PR8
+honesty contradiction, *through* a fully green pipeline: `repair_packet_ready:
+true` and "category: complete_repair_packet" were emitted right next to "why not
+actionable: ... / evidence needed: [the very fields it already had]". That output
+passed `cargo fmt`, clippy `-D warnings`, every `check-*` policy gate, and the
+full test suite. Nothing flagged it — a self-contradicting string pair is still
+well-formed Rust that serializes to valid JSON. It was only caught by **running
+`ripr check` on a real TypeScript finding and reading the emitted block**. Tests,
+gates, and a sub-builder's "all gates pass" report are proxies for the artifact,
+not the artifact — exactly the proxy-for-artifact substitution `ripr` exists to
+catch, here turned inward. For any output-shape change: run the binary on a
+finding that reaches the new branch and read the human + JSON output with your
+own eyes before declaring done. The fix lived at the render seam
+(`crates/ripr/src/output/preview_actionability.rs:60-125` makes the flip atomic;
+`crates/ripr/src/output/human/sections.rs:167-209` relabels "why not actionable"
+to "why actionable" and drops the "evidence needed" line only when the packet is
+complete).
+
+### Builders also miss the gates outside their assigned subset
+
+A second failure mode of "all gates pass": a builder runs the gates *it knows
+about* for *its* slice and reports green, while a different `check-*` gate it
+never invoked is red. This wave hit it twice — a goldens slice left
+`check-generated` and `check-dependencies` failing (re-blessed goldens and
+fixture `package.json` / `pnpm-lock.yaml` manifests were not reconciled into
+`policy/generated_allowlist.toml` and `policy/dependency_allowlist.txt`), and the
+projection slice left `check-network-policy` failing (new `curl`/`http`
+references in `typescript_packet_projection.rs` needed allowlisting in
+`policy/network_allowlist.txt`, even though they are comments and
+absence-assertions that never touch the network). The CI definition of done is
+the **full routed-rust `check-*` list**, not the builder's mental subset. Before
+handoff, run every `cargo xtask check-*` gate the route runs, not just the ones
+touched by the diff.
+
+## 2026-06-13: Reuse the shared validator/renderer — a fork is caught by parity, not by review
+
+The TypeScript `repair_packet_ready` flip does not introduce a TypeScript
+validator: it projects a `GapRecord` and calls the same
+`validate_agent_gap_record_packet` that owns the Rust flip
+(`crates/ripr/src/output/preview_actionability.rs:66-68`,
+`crates/ripr/src/output/agent_seam_packets.rs:839`). This is load-bearing and is
+*enforced*, not merely a convention — the `validator_parity_*` tests in
+`crates/ripr/src/output/typescript_packet_projection.rs:382-494` fail the moment
+a fork drifts the TypeScript decision away from the shared authority. If you find
+yourself writing a second validator or a second renderer for a new
+language/surface, stop: wire it to `typescript_gap_record_for` plus the shared
+validator and the shared helpers (`allowed_edit_surface_for_gap_route`,
+`gap_record_packet_do_not_do`) instead. The corollary, learned from §PR8:
+**reconcile derived/relabelled messaging in the layer that owns the final
+decision.** The honesty contradiction happened because the flip lived in
+`output/` but the contradicting strings were authored upstream and rode through
+unchanged. The fix belonged at the output seam (the renderer that can see the
+flip), never by teaching the upstream layer about an output-only status it cannot
+observe. This ADR-anchored rule is recorded in
+`docs/adr/0019-language-adapters-reuse-shared-packet-contract.md`.
+
+## 2026-06-13: Concurrent N-wide campaigns collide on single-writer registries
+
+Running the TypeScript wave alongside the Python eval-sweep campaign, both
+4-wide, both grabbed `RIPR-SPEC-0086` from the single-writer spec registry
+(`policy/doc-artifacts.toml` + `docs/specs/README.md`). The resolution that held:
+**renumber-the-later-claimant** (the TypeScript specs advanced to `0087` and
+`0088`) while keeping *both* registrations intact — do not delete the loser's
+row, advance it. Registries with a single next-free slot (spec numbers, ADR
+numbers, golden bless ledgers) are contention points that no per-PR gate detects
+until merge. When launching concurrent N-wide campaigns, partition or pre-reserve
+the shared-counter ranges up front; treat `check-spec-numbering` as the late net,
+not the plan.
+
+### Branch-protection `strict=true` is a merge livelock under N-wide concurrency
+
+Under 4-wide concurrency, GitHub's "require branches to be up to date before
+merging" (`strict=true`) is a livelock: every merge invalidates the other three
+branches' up-to-date status, forcing a rebase + full re-run, during which another
+merge lands and re-invalidates. With auto-merge already disabled (manual
+`gh pr merge` after CI), `strict=true` adds no safety it does not already have —
+it only serializes the queue into starvation. The fix was a **config change**
+(`strict=false`), not a workflow change. The required check ("Ripr Rust Small
+Result") still gates correctness; dropping strict only drops the up-to-date
+*ordering* requirement that concurrency cannot satisfy.
+
+## 2026-06-13: Escalate when the obstacle is structural, not after N grinds
+
+The `strict=true` livelock above cost **three futile rebase-and-rerun cycles**
+before it was recognized as a configuration property of branch protection rather
+than a transient CI flake or a workflow bug to grind through. The signal that
+should have triggered escalation immediately: the same operation succeeds in
+isolation and fails *only* under concurrency, and each retry is invalidated by an
+event outside the PR (another merge), not by anything in the PR. That is
+structural — a property of the system's configuration — and no number of retries
+fixes a structural obstacle; it is changed by editing the config or the topology.
+Rule: when a retry's failure is caused by state outside the unit you control,
+stop retrying after the first confirmation of the pattern and escalate to the
+structural fix (config, branch protection, serialization policy). Distinguish
+this from a genuinely transient tempfail (e.g. CX43 GC-age races), which *is*
+fixed by an age-aware re-run — the test is whether the failure cause lives inside
+or outside your PR.
+
+## 2026-06-13: Watch for vacuous pass states
+
+The same shape recurred four times this campaign, in four different subsystems:
+
+```text
+eval-sweep with repos_run == 0        -> a green-looking "pass" proving nothing
+a CI gate that runs but isn't required -> green-looking branch protection
+a strong-but-orthogonal oracle         -> exposed-looking discrimination
+a README gate enforcing the old shape  -> docs-looking compliance
+```
+
+All four are one failure: **a system reports success without a discriminator for
+the claim being made.** A pass needs both a denominator (something was actually
+checked) and a discriminator (the check could have failed on the real condition).
+Whenever a state can read "pass" with an empty denominator or a misaligned
+discriminator, give it an explicit honest state instead — `not_run`, `advisory`,
+`weakly_exposed`, or a typed `limitation` — never a silent green. This is the
+unifying name for the eval-sweep `not_run` gate, the required-check gap, the
+`exposed` sink-alignment rule, and the README gate retarget below; treat a new
+"it passed" the way `ripr` treats a strong oracle: ask what it would have caught.
+
+## 2026-06-13: Move the gate when the contract changes
+
+A docs/artifact rewrite is only half-done if the validator still enforces the old
+shape. The README could not actually become a front door while `check_readme_state`
+still required `## Current Scope` / `## Current Capability Snapshot` — the repo's
+own gate was pinning the stale capability-ledger model in place, and any future
+edit would be dragged back to it. The gate is part of the product model: a stale
+gate is a fossilized old decision that outvotes the new one. When changing a
+governed contract, change the artifact, the gate that preserves it, and the docs
+together in the same PR; otherwise the gate quietly wins.
+
+## 2026-06-13: Background workflow agents mutate the shared working directory
+
+A background planning fanout — whose agents were Explore (no Edit/Write tool) and
+prompted as "read-only research" — nonetheless **authored a whole spec plus a
+fixtures directory and edited four tracked files** into the working tree, because
+Explore agents still have shell access (`cat >`, `git apply`, `mkdir`). The
+files landed on whatever branch the main session occupied, and a `git add -A`
+swept them into an unrelated PR; the contamination was caught only by reading
+`git status` before pushing. Orchestration agents are not sandboxed from the
+repo. So: run any workflow whose agents might write with **worktree isolation**,
+not the shared tree; word planning prompts to forbid file creation; never
+`git add -A` while a background workflow is live — stage explicit paths; and
+diff `git status --short` against what *you* authored before every commit,
+reverting foreign tracked files (`git checkout origin/main -- <path>`) and moving
+untracked drafts aside rather than committing them. "Read-only by intent" is not
+"read-only by capability."
+
+## 2026-06-13: The wrong-key recurrence — count what the artifact emits
+
+`eval_sweep::findings_have_parse_failure` reads `finding.get("class")`, but real
+`ripr check --json` emits `"classification"` (`output/json/report.rs`). The
+`"class"` branch is dead; parse-failure detection silently undercounts. Its unit
+test uses `{ "class": "static_unknown" }` — the wrong key — so it stays green
+against a fixture that does not match live output. This is the 2026-05-04 "Live
+Source Beats Paraphrased Schema" learning recurring inside a metric: a parser and
+its test agreed with each other and with neither the producer. When a consumer
+reads another component's output by key, pin the key against a real emitted
+sample (a committed golden `check.json`), not a hand-written fixture — and when a
+new consumer is added (the classification-distribution counter), make it read the
+*verified* key even if a sibling reads a legacy one. Tracked as a fix in #1191.
+
+## 2026-06-13: Measured on real code — `ripr` is safe, and noisy for one reason
+
+The Tier A sweep and Tier B judging across eight real external Python repos
+(recorded on issue #1160) gave the first numbers on the two error directions, and
+they are decisive about where `ripr` actually stands:
+
+- **false-`exposed` (silent over-credit): zero**, on every repo. The conservative
+  `exposed` rule — credit only a strong oracle that observes the changed sink —
+  holds on code we did not author. This is the load-bearing result: `ripr` does
+  not give false confidence.
+- **false-actionable (over-suggestion): common**, and from a single cause. Every
+  one (tenacity, anyio, structlog) was an oracle that *does* discriminate the
+  change but reaches the owner through an **indirect call** the syntax-first
+  analysis cannot trace: a local binding (`r.stop = stop_after_attempt(3)`), a
+  function-result binding (`iterator = repeat(x, 0)`), an inline construct-call
+  (`LogfmtRenderer()(...)`), or framework dispatch (a jinja template filter). The
+  jinja case is genuinely opaque and a defensible limitation; the others are
+  tractable.
+
+So the honest support-tier verdict is **safe but imprecise**: trustworthy not to
+over-credit, but currently low signal-to-noise on idiomatic real-world code. The
+single precision lever is tracing indirect calls in **relation + oracle
+extraction** (not sink-alignment). A `usable` claim must caveat this; the safety
+half — the harder half — is already in hand. The error *shape* is what matters:
+`ripr` errs visible-and-conservative (over-suggest), never silent-and-dangerous
+(over-credit).
+
+## 2026-06-13: Every layer of `ripr` can fail the way `ripr` exists to catch
+
+`ripr` catches "a test that reaches the behavior but does not discriminate it."
+This session that exact shape appeared at every layer of *building* `ripr`: a CI
+gate that runs but is not required (reaches, does not block); a parser keyed on
+`class` while the artifact emits `classification` (green, checks nothing); a
+sweep over zero repos reporting a vacuous pass (no denominator); a worktree-
+isolated implementation plan rated "go" that *assumed* a strong oracle running
+the binary disproved (reached the files, discriminated nothing); and `ripr`'s own
+indirect-call false-actionable. One failure: **a pass without both a denominator
+and a discriminator** — the "vacuous pass" family already in this log. The
+counter-discipline is one rule applied everywhere: **verify the artifact, not the
+proxy.** Run the binary, not the code-reading. Read the required check's result,
+not the merge button. Diff the golden, not "it passed." Treat an agent plan,
+SHA, or diff as a lead, not a fact. Every time it was honored this session it
+paid off; the two times a proxy was trusted (an "infra" failure that was a real
+golden drift; a plan that assumed a non-existent oracle) it cost a cycle. The
+full narrative lives in `docs/STATIC_EXPOSURE_MODEL.md`
+("The discriminator test, turned inward").
+
+## 2026-06-13: Dogfood Honesty-Audit Method — a repeatable playbook
+
+This multi-wave method surfaced and fixed approximately ten real honesty bugs across a single campaign. Record it here so a future agent can re-run it cold.
+
+### The audit question
+
+For every surface and every pipeline stage, ask: can `ripr` emit a **fake-clean** (silence or under-report a real gap) or a **false-actionable** (claim `exposed`/covered when it is not)? Fail-open is the dangerous direction; fail-closed (`*_unknown` / `weakly_exposed` / named limitation) is safe. The product question under audit is the same one `ripr` answers on user diffs: "do the current tests appear to contain a discriminator that would notice if THIS changed behavior were wrong?"
+
+### Two audit axes
+
+**(a) Rendering surfaces.** Every surface that emits a finding — human, JSON, SARIF, GitHub annotation, LSP diagnostic, LSP hover, badge, repo-md, repo-SARIF, `explain`, `context` — must AGREE and must each carry the relevant disclosure. A fix applied on one surface (e.g. `reconcile_next_step`) must reach ALL surfaces via a shared helper plus an all-surface parity test; never fork a per-surface copy of the logic. See the "Reuse the shared validator/renderer" entry above for the parity-test pattern.
+
+**(b) RIPR pipeline stages.** At each stage — Reach → Infect → Propagate → Observe → Discriminate — the classifier must fail-closed to `*_unknown` when it cannot prove its answer. A single fail-open default at any stage inflates the whole finding to `exposed`. Check every stage independently; an `exposed` rating that cannot be traced to a confirmed discriminator at the Discriminate stage is the silent over-credit this audit exists to catch.
+
+### Per-gap discipline (non-negotiable sequence)
+
+1. **Dogfood with adversarial fixtures.** Run `cargo xtask dogfood` and `cargo xtask fixtures`. If a new fix candidate is unclear, add a should-gap fixture and a should-stay-quiet fixture before writing any code.
+2. **Producer-trace first.** For any classification or count change, identify the real production code path that would drive the field. A wrong flip — crediting a heuristic or a hand-set field — creates the inverse bug (a fake-zero or false-`exposed`). See the "not_available is better than a fake zero" and "Detection needs a real producer" entries.
+3. **Fail-closed slice with BEFORE/AFTER fixtures.** The fix must: (a) downgrade the over-claim, AND (b) leave a correctly-discriminated case at `exposed`, proving no over-correction.
+4. **Verify the artifact yourself.** Run the real command on a real finding and read the output. Gates, tests, and a builder's "all gates pass" are weak oracles — this campaign's sharpest honesty contradiction (`repair_packet_ready: true` next to "evidence needed: [the fields it already has]") passed every gate. The required discipline: `cargo check` for compilation, a fresh-binary behavioral repro of the exact reported scenario, and the full `cargo xtask check-*` gate list (not a hand-picked subset) before declaring done.
+
+### Cross-references
+
+This playbook generalizes several earlier entries: the "Detection needs a real producer" rule (fake-zero anti-pattern), the "any hash over a path must normalize separators" rule (content-addressed ids), the "full routed-rust gate list" rule (partial-gate leakage), the "register before launch" rule (spec-number collision under N-wide concurrency), and the "fail-open is the cardinal sin" principle throughout.
+
+## 2026-06-13: The Single-Assertion Escape Hatch — method-level reach is not sub-expression discrimination
+
+### The bug (first fixed in #1200, generalized in #1216)
+
+`analysis/classify/reveal.rs` contained an escape hatch: when `assertion_count == 1`, the classifier credited the test with discriminating the changed sub-expression even when the assertion text referenced **none of the changed tokens**. A test that merely reached the owner method was being credited as observing the specific change, inflating the finding to `exposed` / confidence 1.00.
+
+The fix for `MatchArm` (#1200) revealed the same pattern in `ReturnValue`, `FieldConstruction`, `SideEffect`, and `CallPresence` (#1216). A further variant — the type-blind-token hole — was found where a sibling-arm assertion could clear a guard via a shared enum qualifier without naming the discriminating arm's tokens.
+
+### The durable rule
+
+**Method-level reach must never be credited as sub-expression-level discrimination.** When the only basis for `exposed` is the single-assertion escape hatch with no token match between the assertion text and the changed sub-expression's tokens, downgrade `exposed` → `weakly_exposed`:
+
+- Reach, Infect, and Propagate hold (the test reaches the owner and the change can infect the execution path).
+- Observe and Discriminate are unconfirmed (the single assertion does not reference the specific changed token, so the oracle's discriminating power for this sub-expression is unknown).
+- Emit `arm_observation_unverified` (or the analogous typed reason for the probe family) as the downgrade reason so consumers understand what evidence is missing.
+
+### Why this matters
+
+This is the Observe/Discriminate-stage instance of the general fail-closed rule (see "Discrimination vs Coverage" and "Two error rates" entries above). The escape hatch was intended for the case where a single comprehensive assertion covers the entire changed expression, but it over-fired whenever any assertion existed at all. Because the over-credit is silent — `ripr` emits a clean `exposed` with no caveat — it is the dangerous direction. The fix is to require at least one assertion token to match a changed token before the escape hatch fires; absent that match, `weakly_exposed` with a named reason is the honest answer.
+
+Any future work on `reveal.rs` or the classification heuristics must apply this check per probe family and must be backed by both a should-gap fixture (where the single assertion genuinely does not observe the changed token, producing `weakly_exposed`) and a should-stay-`exposed` fixture (where a direct-token assertion keeps the finding at `exposed`, proving no over-correction).
+## 2026-06-13: The local-callable "flip to exposed" goal was aimed at the wrong case
+
+A multi-agent design pass confidently proposed a ~35-line relation fix to flip
+`fixtures/python_local_callable_binding` (the tenacity
+`stop = stop_after_attempt(3); self.assertTrue(stop(3))` shape) from
+`weakly_exposed` to `exposed`. Reading the actual classifier disproved it twice
+over, and the second disproof reframed the whole work item:
+
+1. **A relation fix alone cannot reach `exposed`.** `classify_change` yields
+   `exposed` only when `strongest_strength >= Strong` **and** `alignment.observes()`.
+   `oracle_for_call` maps `assertTrue`/`assertFalse` to `OracleStrength::Smoke`.
+   So even with a perfect relation, the smoke oracle falls through to
+   `weakly_exposed`; and `classify_sink_alignment` only inspects `Strong`-rank
+   oracles, and the oracle text `stop(3)` carries the local var `stop`, not the
+   owner tokens `stop_after_attempt`/`__call__`, so it would read `orthogonal`
+   anyway. Three coupled barriers, not one.
+2. **`exposed` is the *wrong target*.** The golden
+   `fixtures/python_broad_boolean_assertion` pins `assert is_priority(100)` — a
+   *direct* call to the changed predicate owner under a broad boolean — as
+   `weakly_exposed`/`smoke` **by design**. The tenacity case is that exact shape
+   plus a local binding. Flipping it to `exposed` would contradict the golden and
+   the discrimination-not-coverage contract: `assertTrue(predicate())` is a weak
+   oracle on purpose (a single truthy check does not pin the boundary). The
+   local-callable problem is therefore a **relation-diagnosis bug** (the card
+   falsely implies no direct test exists), not a classification bug; the correct
+   resolved state is `weakly_exposed`/`smoke`/direct-relation, *matching*
+   `broad_boolean`.
+
+The deeper correction is to the Tier B reading itself: the four measured
+false-actionables split by **oracle strength**. tenacity's discriminating
+assertion is `assertTrue(stop(3))` — a *smoke* oracle — so the *correct resolved*
+state is `weakly_exposed`/smoke per `broad_boolean`, not a clean false-actionable.
+(Be precise about cause: today `ripr` reaches `weakly_exposed` for a *different*
+reason than the resolved one — the `same_stem` relation miss means it never links
+the test, so it surfaces `oracle_strength: unknown`, not `smoke`. The relation fix
+*surfaces* the smoke oracle and corrects the misleading "no direct test" card
+without changing the class. Don't conflate "the assertion is smoke" with "`ripr`
+detected smoke" — it currently detects neither the relation nor the oracle.)
+jinja (`tmpl.render() == "exact"`, ExactValue), structlog
+(`pytest.raises(ValueError, match=...)`, ExactErrorVariant) and anyio
+(`pytest.raises(Cancelled)`) are *strong* oracles `ripr` never saw because of
+relation/extraction misses (framework dispatch, cross-file, function-result
+binding) — those are the **true** false-actionables, and the only ones
+legitimately flippable to `exposed` (an empirical grep corroborates the gate: 14
+smoke oracles classify `weakly_exposed`, 7 strong un-limited oracles classify
+`exposed`). So the real precision lever is **linking the
+strong oracle `ripr` is missing**, not crediting the weak smoke oracle it already
+half-sees. The fixture and tracker were built around the weakest example.
+
+**How to apply:** before "fixing" a `weakly_exposed`, check the oracle *strength*
+of the discriminating test against the `broad_boolean` golden. If it is a broad
+boolean / smoke assertion, `weakly_exposed` is correct and the work is a card-text
+fix, not a classification change — chasing `exposed` there would drift `ripr`
+back toward coverage. Reserve `exposed` flips for missed *strong, sink-aligned*
+oracles. See the "verify the artifact, not the proxy" entry above — an agent panel's plausible
+plan was disproved only by reading the classifier and the golden, not the plan.
+
+## 2026-06-13: The first false-`exposed` — substring token alignment over-credits
+
+An adversarial sweep across eight cloned Python repos found `ripr`'s first
+confirmed false-`exposed` (the silent over-credit direction the whole product
+exists to avoid). In anyio, changing `len(buffer) < max_buffer_size` to `<=` in
+`send_nowait` read `exposed`/`changed_sink_token` even though no *strong* oracle
+observes that boundary — because `classify_sink_alignment` matched changed-sink
+tokens by **substring** (`text.contains(token)`), and the changed token `buffer`
+is a substring of an unrelated `buffered_stream` oracle from a *different class*.
+Crediting coincidental co-occurrence as discrimination is exactly the "drift back
+to coverage" this log keeps warning about — and short, common tokens (`buffer`,
+`len`, `key`, `_state`) are the worst offenders. Fix (#1224): match tokens only at
+Python identifier boundaries (`oracle_text_observes_token`). `buffer` no longer
+matches `buffered_stream`; whole words like `key` in `Invalid key` still observe.
+
+Two durable points:
+
+- **Verify an agent's count, not just its claims.** The sweep agents reported "6
+  confirmed false-`exposed`." Reading the actual `ripr` output cut it to **one**:
+  four were conservative classes (`static_unknown`/`weakly_exposed`) the agents
+  mislabeled as over-credit, and one was a *correct* `exposed` they flagged in
+  error. A false-`exposed` is only real when `ripr` actually emits `exposed`;
+  bake that into the adjudication prompt or the agents conflate "the test doesn't
+  discriminate" with "`ripr` over-credited." Re-running the sweep with the strict
+  definition on the fixed binary returned **0** across the corpus, confirming the
+  vector closed with no siblings.
+- **The natural sweep stayed clean; this needed adversarial construction.** The
+  honest claim is "0 false-`exposed` on natural single-diff sweeps; one found
+  under adversarial token-coincidence probing, now closed." Both halves matter:
+  the safety result is real, *and* the heuristic had a reachable hole.
+
+**How to apply:** any token/substring match feeding `exposed` (alignment, escape
+hatches, relation heuristics) must use identifier boundaries, never raw
+`contains`. Guard new alignment code with a should-stay-`weakly_exposed` fixture
+built from a *coincidental* substring (proven `exposed` without the guard,
+`weakly_exposed` with it) — see `fixtures/python_substring_sink_alignment`.
+
+## 2026-06-13: Cross-file inline construct-call — the precision lever that *is* contract-safe
+
+The companion to the smoke-oracle reframing above: the Tier B false-actionables
+that legitimately flip to `exposed` are missed **strong** oracles, and the
+tractable one was a *relation* miss, not an alignment miss. structlog's
+`LogfmtRenderer.__call__` change was discriminated by
+`pytest.raises(ValueError, match='Invalid key…')` calling `LogfmtRenderer()(…)` —
+an exact-error oracle — but `ripr` linked the wrong test file by name proximity
+and never saw it. The fix (#1228) adds a `ConstructCall` relation that recognises
+an **inline** construct-call `OwnerClass(…)(…)` on a `__call__` owner, so the
+strong oracle is found and `key` aligns (post-#1224, as a whole word). structlog
+flips `weakly_exposed → exposed`, correctly.
+
+The discipline that kept it safe is the same boundary thinking: it is gated to
+`__call__` owners (Guard A), requires the test to *import* the class (Guard B,
+blocking same-name cross-module collisions), and an inline-only balanced-paren
+check distinguishes `C()(…)` from the bound local `x = C(); x(…)` — so
+`python_local_callable_binding` and `python_broad_boolean_assertion` stay
+`weakly_exposed`, preserving the contract from the entry above. This is the shape
+of a *good* `exposed` flip: a missed **strong, sink-aligned** oracle, linked
+without widening the net. jinja (framework filter-dispatch) and anyio
+(function-result binding + async non-value oracle) remain defensible limitations,
+not bugs.
+
+## 2026-06-14: Token coincidence is a false-`exposed` *family*, not one bug — and "no siblings" was premature
+
+The substring entry above closed the `buffer ⊂ buffered_stream` vector (#1224)
+and concluded the fixed re-run found "no siblings." Adversarial construction on
+2026-06-14 disproved that: a second, structurally distinct false-`exposed`
+exists, and it is the same disease.
+
+The new vector (found while building the adversarial guard panel, #1244): owner
+`TokenValidator.validate` changes `token` → `token.strip()`; the only related
+test calls `proc.validate(...)` on an **unrelated class** `PaymentProcessor` and
+asserts `== True`. `ripr` reads `exposed`. Two token-only steps compound:
+
+- `body_calls_owner` links a `syntactic_call` via
+  `contains_any_attribute_call(body, owner.name)` — a bare `.validate(` on *any*
+  receiver, no type resolution.
+- `classify_sink_alignment` credits `direct` /
+  `strong_oracle_observes_owner_name` because the strong oracle text contains the
+  owner's **bare method-name** token `validate`.
+
+The unifying root cause is **alignment matches tokens, not entities**.
+`buffer⊂buffered_stream` was a *substring* failure; this is a *whole-word* failure
+where the word matches the *wrong owner*. Identifier-boundary matching (#1224)
+does not help — `validate` is a whole word; it just belongs to a different class.
+So the family is larger than "substring": **every alignment/relation site that
+credits `exposed` on a name match without resolving identity is a latent
+false-`exposed`.** The token-only sites today: `oracle_text_observes_token`
+(owner-name / changed-sink), `contains_any_attribute_call` (bare `.method(`), and
+same-stem relation.
+
+Two durable points:
+
+- **A closed-corpus "no siblings" is a statement about the corpus, not the
+  analyzer.** Silent over-credit is found only by *construction* — engineering an
+  input that *should* stay quiet — never by re-sampling. The first sweep's clean
+  re-run was real; it just could not see a vector no diff in the corpus
+  exercised. Read every "0 false-`exposed`" as conditional on the probe set.
+- **Each confirmed false-`exposed` graduates into a pinned golden fixture.** #1244
+  ships `fixtures/python_adversarial_buffer_token` and
+  `python_adversarial_mock_call_not_value` as end-to-end goldens that fail CI if
+  the coincidence ever credits `exposed` again — the unit test for
+  `oracle_text_observes_token` is not enough; pin it at the *classifier output*.
+  The owner-name vector
+  (`fix/py-false-exposed-attribute-call-owner-name`) has its first guard pinned
+  this way — `python_adversarial_same_method_other_class` is held at
+  `weakly_exposed` — but this is a **partial hardening, not a closure**. The
+  shipped gate requires owner-*class* identity for method owners; oppositional
+  review found the same token-only disease still open on sibling vectors
+  (free-function module identity, changed-sink receiver identity). The proper
+  closure — resolving *receiver* identity at the relation layer — is deferred to
+  `analysis/python-method-owner-receiver-binding-identity`, which supersedes the
+  token-guard approach. Read this family as in-progress, not done.
+
+**How to apply:** before crediting `exposed` from any name/token match, ask "does
+this resolve to the *same entity*, or only the same *string*?" For a method
+owner, the bare method name is too collision-prone to credit `direct` alone —
+require the owner's class token / a receiver bound to it. When you touch one
+token-matching site, audit the others; they share the disease. Prefer downgrading
+token-only credit to a *visible* `weakly_exposed` over a *silent* `exposed` —
+visible over-suggestion is the recoverable error.
+
+## 2026-06-14: The fake-`exposed` is one cross-language class — now a standing gate, not whack-a-mole
+
+The token-coincidence family above (Python identity vs string) and the oracle/seam
+mismatches fixed across the fleet this run are **the same disease in different
+taxonomies**: *evidence may not promote a finding to `exposed`/`strongly_gripped`/
+`strong_oracle_observed` unless it **structurally matches the seam**.* The
+instances:
+
+- **Identity, not token** (Python): a strong oracle whose text merely *contains*
+  the owner's bare name credits `exposed` (#1244/#1247).
+- **Oracle kind, not just strength** (TS RIPR-SPEC-0104 #1248; Rust exemplar
+  RIPR-SPEC-0103 #1243): an `exact_error_variant` oracle promotes a value/predicate
+  seam, or a sibling `exact_value` oracle promotes an error seam — the kind must
+  match the seam family.
+- **Variant, not just family** (Rust RIPR-SPEC-0106 #1252, RIPR-SPEC-0107 #1254): an
+  `unwrap_err` test credits only the seam whose parsed `Err(Variant)` it pins; a
+  sibling variant or a generic `is_err()` stays `weakly_exposed`.
+- **Stage confidence caps the headline** (Rust RIPR-SPEC-0109 #1219-D): an
+  unproven infect/propagate stage caps the reported confidence; it can never read
+  as certain.
+
+**The capstone: RIPR-SPEC-0108 (`cargo xtask check-evidence-promotion-honesty`).**
+Each confirmed fake-`exposed` graduates into a cross-language corpus
+(`fixtures/evidence-promotion-honesty-corpus/corpus.json`) as a
+`must_remain_non_promoted` case (plus `control` cases that must stay `exposed`).
+The gate reads each charter fixture's **pinned golden** and asserts the class —
+so it pins the *semantic* expectation **independent of the golden itself**, which
+is the point: `goldens check` only asserts `binary == golden`, so a regression
+that makes a charter fixture produce `exposed` **and** re-blesses the golden to
+match would pass `goldens check`. **Goldens can encode dishonesty; the meta-gate
+catches the dishonest re-bless.** Design rule: **share the invariant + the
+adversarial corpus + the gate; do *not* unify the per-language matcher functions**
+— Rust/TS/Python have legitimately different taxonomies and edge policies. A new
+fix ADDS a `cases[]` entry; it never forks a matcher.
+
+**Performance is part of honesty.** The LSP first-open ran the full-repo seam
+inventory (~336s vs the CLI's ~14s diff pass), so every cockpit feature was
+dead-on-arrival and agents would act on no state at all. The fix (RIPR-SPEC-0105)
+defers the seam inventory off the interactive path — but it must **disclose** the
+deferral (`run_status: "seams_deferred"`, a `limited`-family value) and never
+present a partial/deferred run as complete. A fast path may be partial only if the
+status says so.
+
+**Verification harness can lie too.** "Verify the artifact, not the report" cuts
+*both* ways: a wrong harness manufactures false **negatives**. Twice this run a
+correct fix read as broken because (a) the behavioral run used a long relative
+path (`../../../../../target/debug/ripr.exe`) that escaped the worktree and ran the
+*main* checkout's stale binary, and (b) a local `cargo fmt --check` used a
+non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
+**absolute** worktree binary (`<worktree>/target/debug/ripr.exe`) and `cargo fmt
+--check` under the pinned toolchain. When a fix "doesn't work" but the builder
+insists it does, suspect your own harness before the builder — inject a unique
+string into the output to confirm your edits are even in the binary you're running.

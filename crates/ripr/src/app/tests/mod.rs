@@ -56,12 +56,18 @@ fn sample_finding(file: &str, line: usize) -> Finding {
             oracle: None,
             oracle_kind: crate::domain::OracleKind::Unknown,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }],
         recommended_next_step: Some("add stronger assertion".to_string()),
         language: None,
         language_status: None,
         owner_kind: None,
         static_limit_kind: None,
+        changed_sink: None,
+        observed_sink: None,
+        oracle_alignment: None,
+        alignment_reason: None,
     }
 }
 
@@ -74,6 +80,8 @@ fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         base: Some("origin/main".to_string()),
         summary: Summary::default(),
         findings,
+        preview_language_advisories: Vec::new(),
+        no_scope_provided: false,
     }
 }
 

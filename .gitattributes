@@ -1,0 +1,16 @@
+# Normalize line endings. Text files use LF in the repository and in the
+# working tree on every platform. This prevents editors/tools on Windows from
+# rewriting a file to CRLF (or mixed) endings, which otherwise shows the entire
+# file as changed in a diff. Binary files are auto-detected and left untouched.
+* text=auto eol=lf
+
+# Explicit binary types (guards against text auto-detection mistakes).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.vsix binary
+*.woff  binary
+*.woff2 binary

@@ -5063,3 +5063,42 @@ Non-claims:
 - no generated tests, provider integration, or autonomous edits;
 - no runtime adequacy-style claims from static evidence;
 - no support-tier promotion from the spec batch.
+
+## Campaign 30: Python Repair-Routing Reliability (eval-sweep-driven)
+
+Campaign ID: `python-repair-routing-reliability`
+
+Status: active
+
+Tracker: `.ripr/goals/python-repair-routing.toml` · issue #1160
+
+Objective:
+
+Drive Python repair routing from usable-alpha proof to a `usable` release claim
+shipped from source `ripr`, using external-repo evidence as the spine. Each PR
+adds one production delta plus its evidence; promotion gates on measured crash
+rate, parse-failure rate, runtime, gap-ID stability, and false-actionability,
+never on assertion. Ruff is a future parser-substrate watchpoint
+(EffortlessMetrics/ripr#1430), not a release gate.
+
+Evidence ladder:
+
+- baseline dogfood (in-repo, saturated 26/26) — done
+- Tier A external robustness sweep (crash / parse-fail / runtime / gap-ID stability)
+- Tier B judged external PR panel (top-1 usefulness, false-actionable rate)
+- Tier C external repair attempts (before/after receipts)
+- rollback / regression proof
+- support-tier promotion (usable)
+- source promotion into ripr
+
+Landed:
+
+- PR #1161 — Tier A `cargo xtask eval-sweep` harness + RIPR-SPEC-0086
+- PR #1163 — empty/no-clone sweeps report `not_run`, never a vacuous `pass`
+
+Non-goals:
+
+- Ruff integration or parser breadth (EffortlessMetrics/ripr#1430).
+- Completeness across all Python constructs or frameworks.
+- A `stable` claim; the target is `usable`.
+- Supporting Django/SQLAlchemy/etc — only failing closed (named limitation) there.

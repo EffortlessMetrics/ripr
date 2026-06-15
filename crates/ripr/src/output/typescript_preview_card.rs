@@ -167,7 +167,7 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
             &static_limits,
         ),
         static_limits,
-        verify_command: evidence_value(finding, "suggested_verify_command: ")
+        verify_command: evidence_value(finding, "typescript_verify_command: ")
             .map(ToString::to_string),
         why_not_actionable: actionability.why_not_actionable,
         repair_route: actionability.repair_route,
@@ -1580,12 +1580,18 @@ mod tests {
                 oracle: Some("expect(discountedTotal(10)).toBeTruthy()".to_string()),
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),
             language_status: Some(LanguageStatus::Preview),
             owner_kind: Some(OwnerKind::Function),
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 

@@ -5,7 +5,7 @@ import {
   RiprContextTarget,
   RiprRelatedTestTarget,
   RiprSuggestedAssertionTarget,
-  RiprTargetedTestBriefTarget
+  RiprTargetedTestBriefTarget,
 } from './client';
 
 let controller: RiprClientController | undefined;
@@ -86,6 +86,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ripr.openSettings', async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');
     }),
+    // Cockpit commands
+    vscode.commands.registerCommand('ripr.copyTopRepairPacket', async () =>
+      controller?.copyTopRepairPacket()
+    ),
+    vscode.commands.registerCommand('ripr.copyTopVerifyCommand', async () =>
+      controller?.copyTopVerifyCommand()
+    ),
+    vscode.commands.registerCommand('ripr.copyTopReceiptCommand', async () =>
+      controller?.copyTopReceiptCommand()
+    ),
+    vscode.commands.registerCommand('ripr.openReport', async () =>
+      controller?.openReport()
+    ),
+    vscode.commands.registerCommand('ripr.showTopLimitation', async () =>
+      controller?.showTopLimitation()
+    ),
+    // Receipt status / route-quality inspection commands
+    vscode.commands.registerCommand('ripr.showReceiptStatus', async () =>
+      controller?.showReceiptStatus()
+    ),
+    vscode.commands.registerCommand('ripr.copyReceiptCommand', async () =>
+      controller?.copyReceiptCommand()
+    ),
+    vscode.commands.registerCommand('ripr.openAttemptLedger', async () =>
+      controller?.openAttemptLedger()
+    ),
+    vscode.commands.registerCommand('ripr.showRouteQuality', async () =>
+      controller?.showRouteQuality()
+    ),
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document.isDirty) {
         controller?.markWorkspaceStale(event.document);

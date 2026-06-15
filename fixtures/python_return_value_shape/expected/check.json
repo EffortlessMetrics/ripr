@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_return_value_shape/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_price.py:2:python_preview",
+      "id": "probe:src_price.py:python_preview:a2282a33",
       "canonical_gap_id": "gap:python:src/price.py:final_price:return_value:return_value:amount-12",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_price.py:2:python_preview",
+        "id": "probe:src_price.py:python_preview:a2282a33",
         "family": "return_value",
         "delta": "value",
         "file": "src/price.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: final_price", "owner_kind: function", "test_framework: pytest (test_final_price_discount)", "test_verify_command: pytest tests/test_price.py::test_final_price_discount (test_final_price_discount)", "related_test_relation: syntactic_call (test_final_price_discount)", "test_oracle: exact_value strong (test_final_price_discount)"],
       "missing": ["Related Python test reaches `final_price` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_final_price_discount",
@@ -72,7 +75,22 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "observed_sink": "assert final_price(100) == 88",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/price.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

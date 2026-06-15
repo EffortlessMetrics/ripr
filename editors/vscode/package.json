@@ -53,7 +53,16 @@
     "onCommand:ripr.copyFirstPrRepairPacket",
     "onCommand:ripr.copyFirstPrVerifyCommand",
     "onCommand:ripr.copyFirstPrReceiptCommand",
-    "onCommand:ripr.copyFirstPrRegenerationGuidance"
+    "onCommand:ripr.copyFirstPrRegenerationGuidance",
+    "onCommand:ripr.copyTopRepairPacket",
+    "onCommand:ripr.copyTopVerifyCommand",
+    "onCommand:ripr.copyTopReceiptCommand",
+    "onCommand:ripr.openReport",
+    "onCommand:ripr.showTopLimitation",
+    "onCommand:ripr.showReceiptStatus",
+    "onCommand:ripr.copyReceiptCommand",
+    "onCommand:ripr.openAttemptLedger",
+    "onCommand:ripr.showRouteQuality"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -67,10 +76,10 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.12.4",
-    "@types/vscode": "^1.90.0",
+    "@types/node": "^24.13.2",
+    "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^2.4.1",
-    "@vscode/vsce": "^3.2.2",
+    "@vscode/vsce": "^3.9.2",
     "mocha": "^10.8.2",
     "typescript": "^6.0.3"
   },
@@ -245,6 +254,42 @@
       {
         "command": "ripr.openSettings",
         "title": "ripr: Open Settings"
+      },
+      {
+        "command": "ripr.copyTopRepairPacket",
+        "title": "ripr: Copy Top Repair Packet"
+      },
+      {
+        "command": "ripr.copyTopVerifyCommand",
+        "title": "ripr: Copy Verify Command"
+      },
+      {
+        "command": "ripr.copyTopReceiptCommand",
+        "title": "ripr: Copy Receipt Command"
+      },
+      {
+        "command": "ripr.openReport",
+        "title": "ripr: Open Report"
+      },
+      {
+        "command": "ripr.showTopLimitation",
+        "title": "ripr: Show Top Limitation"
+      },
+      {
+        "command": "ripr.showReceiptStatus",
+        "title": "RIPR: Show Receipt Status"
+      },
+      {
+        "command": "ripr.copyReceiptCommand",
+        "title": "RIPR: Copy Receipt Command"
+      },
+      {
+        "command": "ripr.openAttemptLedger",
+        "title": "RIPR: Open Attempt Ledger"
+      },
+      {
+        "command": "ripr.showRouteQuality",
+        "title": "RIPR: Show Route Quality"
       }
     ]
   }

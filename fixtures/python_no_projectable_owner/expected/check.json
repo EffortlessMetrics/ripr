@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_no_projectable_owner/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_constants.py:1:python_preview",
+      "id": "probe:src_constants.py:python_preview:c16b4583",
       "canonical_gap_id": "gap:python:src/constants.py:<module>:predicate_boundary:predicate:base_discount=12",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_constants.py:1:python_preview",
+        "id": "probe:src_constants.py:python_preview:c16b4583",
         "family": "predicate",
         "delta": "control",
         "file": "src/constants.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: <module>", "owner_kind: module_function", "test_framework: pytest (test_base_discount)", "test_verify_command: pytest tests/test_constants.py::test_base_discount (test_base_discount)", "related_test_relation: same_stem (test_base_discount)", "related_test_uncertain: same_stem (test_base_discount)"],
       "missing": ["Only heuristic Python test links were found for `<module>`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_base_discount",
@@ -72,7 +75,21 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "module_function"
+      "owner_kind": "module_function",
+      "changed_sink": "BASE_DISCOUNT",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/constants.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

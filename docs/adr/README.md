@@ -25,3 +25,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0016](0016-editor-adoption-assurance-remains-read-only.md) | proposed | Keep editor adoption assurance read-only. |
 | [0017](0017-editor-gap-queue-is-read-only.md) | accepted | Keep editor actionable gap queue projection read-only. |
 | [0018](0018-perl-lsp-fact-substrate.md) | proposed | Use `perl-lsp` batch fact export as the Perl intelligence substrate. |
+| [0019](0019-language-adapters-reuse-shared-packet-contract.md) | proposed | Language adapters reuse the shared packet contract: one validator, shared renderers, parity test. |

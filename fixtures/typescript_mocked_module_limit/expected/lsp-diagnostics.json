@@ -5,11 +5,11 @@
       "data": {
         "classification": "exposed",
         "confidence": 0.6,
-        "finding_id": "probe:src_discount.ts:2:typescript_preview",
+        "finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",
         "language": "typescript",
         "language_status": "preview",
         "probe_family": "predicate",
-        "probe_id": "probe:src_discount.ts:2:typescript_preview",
+        "probe_id": "probe:src_discount.ts:typescript_preview:2396aec1",
         "schema_version": "0.1",
         "source_range": {
           "column": 1,

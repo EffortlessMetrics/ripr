@@ -431,7 +431,7 @@ fn stage_record(stage: &StageEvidence) -> EvidenceRecordStage {
     }
 }
 
-fn actionability_for(
+pub(crate) fn actionability_for(
     entry: &ClassifiedSeam,
     missing_records: &[crate::output::agent_seam_packets::MissingRecord],
 ) -> EvidenceRecordActionability {
@@ -605,7 +605,7 @@ fn raw_spans_for(raw_findings: &[EvidenceRecordRawFinding]) -> Vec<EvidenceRecor
         .collect()
 }
 
-fn gap_state_for(
+pub(crate) fn gap_state_for(
     entry: &ClassifiedSeam,
     actionability: &EvidenceRecordActionability,
 ) -> &'static str {
@@ -766,7 +766,7 @@ fn alignment_confidence_for(
     }
 }
 
-fn is_static_limited(entry: &ClassifiedSeam) -> bool {
+pub(crate) fn is_static_limited(entry: &ClassifiedSeam) -> bool {
     cross_language_oracle_visibility_unresolved(entry)
         || cross_language_test_target_unresolved(entry)
         || matches!(entry.class, SeamGripClass::Opaque)
@@ -933,9 +933,10 @@ fn recommendation_for(
     let assertion_shape =
         actionable.then(|| assertion_shape_record(assertion_shape_for_entry(entry)));
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
-    let nearest_test_to_imitate = nearest_strong_test_to_imitate(&entry.evidence)
-        .or_else(|| entry.evidence.related_tests.first())
-        .map(|test| related_test_record(test, entry.seam.kind()));
+    let nearest_test_to_imitate =
+        nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence)
+            .or_else(|| entry.evidence.related_tests.first())
+            .map(|test| related_test_record(test, entry.seam.kind()));
 
     EvidenceRecordRecommendation {
         action: action.to_string(),
@@ -951,7 +952,10 @@ fn recommendation_for(
     }
 }
 
-fn canonical_receipt_command_for(entry: &ClassifiedSeam, gap_state: &str) -> Option<String> {
+pub(crate) fn canonical_receipt_command_for(
+    entry: &ClassifiedSeam,
+    gap_state: &str,
+) -> Option<String> {
     if gap_state != "actionable" {
         return None;
     }
@@ -1017,7 +1021,9 @@ fn oracle_semantics_record(
     }
 }
 
-fn static_limitations_for(entry: &ClassifiedSeam) -> Vec<EvidenceRecordStaticLimitation> {
+pub(crate) fn static_limitations_for(
+    entry: &ClassifiedSeam,
+) -> Vec<EvidenceRecordStaticLimitation> {
     let mut limitations = Vec::new();
     if cross_language_oracle_visibility_unresolved(entry) {
         limitations.push(EvidenceRecordStaticLimitation {

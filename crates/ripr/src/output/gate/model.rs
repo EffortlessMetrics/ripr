@@ -61,9 +61,28 @@ pub(crate) struct GateDecisionReport {
     pub(super) inputs: GateDecisionInputs,
     pub(super) policy: GatePolicy,
     pub(super) summary: GateSummary,
+    pub(super) new_unsuppressed: NewUnsuppressed,
     pub(super) decisions: Vec<GateDecision>,
     pub(super) warnings: Vec<String>,
     pub(super) config_errors: Vec<String>,
+}
+
+/// Canonical downstream-thresholding receipt field.
+///
+/// `count` is the number of policy-eligible, non-suppressed, non-acknowledged,
+/// non-not_applicable decisions (i.e. `decision ∈ {"blocking","advisory"}`)
+/// after filtering by `candidate_class_is_policy_eligible`.  In baseline mode
+/// only decisions where `is_baseline_new` is true are counted.
+///
+/// `basis` is `Some("diff")` for diff-scoped runs, `Some("baseline")` for
+/// baseline-aware runs where a baseline was actually read, or `None` when
+/// `config_errors` is non-empty (analysis did not run — fail-closed sentinel).
+/// When `basis` is `None`, `count` is `0` and `reason` discloses why.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NewUnsuppressed {
+    pub(crate) basis: Option<String>,
+    pub(crate) count: u64,
+    pub(crate) reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,6 +135,10 @@ pub(super) struct GateDecision {
     pub(super) placement: GatePlacement,
     pub(super) policy: GateDecisionPolicy,
     pub(super) evidence: GateEvidence,
+    /// Whether the candidate was absent from the baseline at decision time.
+    /// Always `true` for diff-scoped modes (no baseline).
+    /// Used when computing `new_unsuppressed.count` in baseline mode.
+    pub(super) is_baseline_new: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +198,10 @@ pub(super) struct GateCandidate {
     pub(super) suppressed: bool,
     pub(super) configured_off: bool,
     pub(super) suppression_reason: Option<String>,
+    /// Producer-assigned reason why this item was placed in `summary_only` instead
+    /// of an inline comment slot.  Closed vocabulary: `inline_comment_cap_reached`,
+    /// `no_safe_changed_line_placement`, `navigation_only_cross_language_target`.
+    pub(super) summary_reason: Option<String>,
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,

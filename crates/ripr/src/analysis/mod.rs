@@ -8,7 +8,7 @@ mod language;
 mod pipeline;
 mod probes;
 mod rust_index;
-mod seam_cache;
+pub(crate) mod seam_cache;
 mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
@@ -20,15 +20,32 @@ mod value_resolution;
 mod workspace;
 
 pub(crate) use diff::{load_diff, load_diff_range, parse_unified_diff};
+pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
 pub(crate) use seam_inventory::{
-    ScopedClassifiedSeamInventory, inventory_classified_seams_at_with_config,
+    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
+    SeamLimitSource, apply_pilot_seam_budget, inventory_classified_seams_at_with_config,
     inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config, inventory_seams_at,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
+
+/// Re-export workspace discovery helpers for the output layer so it can
+/// detect TS-predominant workspaces without importing through analysis::workspace
+/// directly. These are thin shims that forward to the inner workspace module.
+pub(crate) fn workspace_preview_language_files(
+    root: &Path,
+) -> Vec<(language::LanguageId, PathBuf)> {
+    workspace::discover_preview_language_files(root)
+}
+
+/// Re-export workspace Rust file discovery for the output layer so it can
+/// check whether a workspace has any Rust source.
+pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {
+    workspace::discover_rust_files(root).unwrap_or_default()
+}
 
 use crate::config::OraclePolicy;
 use crate::domain::{Finding, Summary};
@@ -51,12 +68,55 @@ pub struct AnalysisOptions {
     pub diff_file: Option<PathBuf>,
     pub mode: AnalysisMode,
     pub include_unchanged_tests: bool,
+    /// When `true`, the TypeScript adapter reads `compilerOptions.paths` from
+    /// `tsconfig.json` / `jsconfig.json` and uses alias maps to resolve
+    /// non-relative import specifiers during owner↔test discovery.
+    ///
+    /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
+    pub resolve_tsconfig_paths: bool,
+}
+
+/// Advisory record for one compiled preview-language adapter whose files are
+/// present in the analyzed scope.
+///
+/// Produced by the pipeline when TypeScript, JavaScript, or Python files are
+/// present in the diff or repo — regardless of whether the adapter is
+/// `enabled` in `ripr.toml` and regardless of whether any findings were
+/// emitted. The count and sample paths come from real path routing
+/// (`analysis::language::route`); they are never fabricated.
+///
+/// The `enabled` flag distinguishes the two honesty cases per
+/// RIPR-SPEC-0082:
+///
+/// - `enabled == true` — the adapter ran; an empty result is advisory and may
+///   be incomplete, not a Rust-grade clean result.
+/// - `enabled == false` — the adapter is preview and NOT enabled, so these
+///   files were not analyzed at all; the empty result must not be read as
+///   clean.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewLanguageAdvisory {
+    /// Stable language wire string (e.g. `"typescript"`, `"python"`).
+    pub language: String,
+    /// Number of files routed to this preview adapter.
+    pub file_count: usize,
+    /// Up to three sample file paths (normalized, forward-slash).
+    pub sample_paths: Vec<String>,
+    /// Whether this preview adapter was enabled (ran) for this analysis.
+    ///
+    /// `false` means the preview-language files were detected in scope but not
+    /// analyzed because the adapter is not enabled in `ripr.toml`.
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
     pub summary: Summary,
     pub findings: Vec<Finding>,
+    /// Advisory records for preview-language files in the analyzed scope.
+    ///
+    /// Empty when only Rust (stable) files are in scope. Non-empty only when
+    /// at least one file routed to a preview adapter (TypeScript/JS or Python).
+    pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.
@@ -197,6 +257,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("diff.patch")),
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -213,6 +274,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("diff.patch")),
             mode: AnalysisMode::Instant,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -260,6 +322,7 @@ fn premium_customer_gets_discount() {
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if out.findings.is_empty() {
@@ -362,6 +425,7 @@ fn test_with_predicate() {
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         for finding in &out.findings {
@@ -424,6 +488,7 @@ index 0000000..1111111 100644
             diff_file: Some(root.join("empty.patch")),
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -436,6 +501,7 @@ index 0000000..1111111 100644
             diff_file: None,
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
         })?;
 
         if repo_out.findings.is_empty() {

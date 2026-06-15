@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.1",
+  "kind": "evidence_promotion_honesty_corpus",
+  "spec": "RIPR-SPEC-0108",
+  "description": "Cross-language pinned adversarial corpus: evidence may not promote to exposed/strong unless it structurally matches the seam.",
+  "cases": [
+    {
+      "id": "py_token_substring",
+      "language": "python",
+      "source_fixture": "fixtures/python_adversarial_buffer_token",
+      "vector": "token_substring_coincidence",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
+      "id": "py_mock_call_not_value",
+      "language": "python",
+      "source_fixture": "fixtures/python_adversarial_mock_call_not_value",
+      "vector": "mock_call_not_value",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
+      "id": "ts_broad_tothrow",
+      "language": "typescript",
+      "source_fixture": "fixtures/typescript_broad_tothrow",
+      "vector": "cross_family_oracle_seam",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
+      "id": "rust_weak_error_oracle",
+      "language": "rust",
+      "source_fixture": "fixtures/weak_error_oracle",
+      "vector": "non_variant_observing_error_oracle",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
+      "id": "rust_error_path_sibling_oracle",
+      "language": "rust",
+      "source_fixture": "fixtures/error_path_sibling_oracle_fake_clean",
+      "vector": "sibling_oracle_does_not_confirm_error_path",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
+      "id": "rust_strong_error_oracle_control",
+      "language": "rust",
+      "source_fixture": "fixtures/strong_error_oracle",
+      "control": "must_stay_exposed",
+      "expected_promoted": true
+    },
+    {
+      "id": "rust_unwrap_err_variant_positive_control",
+      "language": "rust",
+      "source_fixture": "fixtures/unwrap_err_variant_positive",
+      "control": "must_stay_exposed",
+      "expected_promoted": true
+    },
+    {
+      "id": "ts_strong_oracle_control",
+      "language": "typescript",
+      "source_fixture": "fixtures/typescript_strong_oracle",
+      "control": "must_stay_exposed",
+      "expected_promoted": true
+    }
+  ]
+}

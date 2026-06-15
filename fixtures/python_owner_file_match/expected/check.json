@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_owner_file_match/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_catalog.py:2:python_preview",
+      "id": "probe:src_catalog.py:python_preview:b6dc0fa5",
       "canonical_gap_id": "gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_catalog.py:2:python_preview",
+        "id": "probe:src_catalog.py:python_preview:b6dc0fa5",
         "family": "return_value",
         "delta": "value",
         "file": "src/catalog.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: calculate_total", "owner_kind: function", "test_framework: pytest (test_checkout_total_includes_fee)", "test_verify_command: pytest tests/test_checkout.py::test_checkout_total_includes_fee (test_checkout_total_includes_fee)", "related_test_relation: syntactic_call (test_checkout_total_includes_fee)", "test_oracle: exact_value strong (test_checkout_total_includes_fee)"],
       "missing": ["Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_checkout_total_includes_fee",
@@ -72,7 +75,22 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "observed_sink": "assert calculate_total(10) == 17",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/catalog.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

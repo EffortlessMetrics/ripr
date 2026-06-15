@@ -21,6 +21,8 @@ use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     ValueContext, ValueFact,
 };
+// Re-export so callers that import from this module continue to compile.
+pub(crate) use crate::domain::{RelationConfidence, RelationReason};
 use serde::{Deserialize, Serialize};
 use std::cell::{OnceCell, RefCell};
 use std::cmp::Reverse;
@@ -1891,94 +1893,9 @@ fn code_contains_parent_qualified_helper_call(code: &str, helper_name: &str) -> 
     })
 }
 
-/// Why this test is related to the seam. v1: a single highest-priority
-/// reason per test (no multi-reason public shape). Priority is pinned
-/// by `RelationReason::priority` and exercised by ranking tests.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum RelationReason {
-    DirectOwnerCall,
-    HelperOwnerCall,
-    AssertionTargetAffinity,
-    SameTestFile,
-    SameModule,
-    OwnerNamedTest,
-    ImportPathAffinity,
-    FixtureOwnerAffinity,
-}
-
-impl RelationReason {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::DirectOwnerCall => "direct_owner_call",
-            Self::HelperOwnerCall => "helper_owner_call",
-            Self::AssertionTargetAffinity => "assertion_target_affinity",
-            Self::SameTestFile => "same_test_file",
-            Self::SameModule => "same_module",
-            Self::OwnerNamedTest => "owner_named_test",
-            Self::ImportPathAffinity => "import_path_affinity",
-            Self::FixtureOwnerAffinity => "fixture_owner_affinity",
-        }
-    }
-
-    /// Lower value sorts first. Stable contract pinned by tests.
-    fn priority(self) -> u8 {
-        match self {
-            Self::DirectOwnerCall => 0,
-            Self::HelperOwnerCall => 1,
-            Self::AssertionTargetAffinity => 2,
-            Self::SameTestFile => 3,
-            Self::SameModule => 4,
-            Self::OwnerNamedTest => 5,
-            Self::ImportPathAffinity => 6,
-            Self::FixtureOwnerAffinity => 7,
-        }
-    }
-
-    fn confidence(self) -> RelationConfidence {
-        match self {
-            Self::DirectOwnerCall | Self::HelperOwnerCall => RelationConfidence::High,
-            Self::AssertionTargetAffinity => RelationConfidence::Medium,
-            Self::SameTestFile
-            | Self::SameModule
-            | Self::OwnerNamedTest
-            | Self::ImportPathAffinity => RelationConfidence::Medium,
-            Self::FixtureOwnerAffinity => RelationConfidence::Low,
-        }
-    }
-}
-
-/// Confidence that the related test grips the seam. Independent of
-/// oracle strength: a `Low` relation can still carry a strong oracle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum RelationConfidence {
-    High,
-    Medium,
-    Low,
-    Opaque,
-}
-
-impl RelationConfidence {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::High => "high",
-            Self::Medium => "medium",
-            Self::Low => "low",
-            Self::Opaque => "opaque",
-        }
-    }
-
-    /// Lower value sorts first (highest confidence first).
-    fn rank(self) -> u8 {
-        match self {
-            Self::High => 0,
-            Self::Medium => 1,
-            Self::Low => 2,
-            Self::Opaque => 3,
-        }
-    }
-}
+// `RelationReason` and `RelationConfidence` now live in `crate::domain::evidence`.
+// They are re-exported at the top of this file so callers can still import them
+// from here without source-level changes.
 
 /// Build evidence records for a slice of seams. Output is sorted by
 /// `seam_id` so two runs over the same input produce identical bytes.
@@ -3899,7 +3816,10 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
             if oracle.strength.rank() > best.rank() {
                 best = oracle.strength.clone();
             }
-            if oracle_kind_matches_seam(seam, &oracle.kind) {
+            // RIPR-SPEC-0106 (Part B): for ErrorVariant seams, oracle_kind_matches_seam
+            // is necessary but not sufficient — the oracle must also structurally pin
+            // the seam's specific variant. oracle_discriminates_seam checks both.
+            if oracle_discriminates_seam(seam, oracle) {
                 best_kind_matches_seam = true;
             }
         }
@@ -3920,23 +3840,106 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
     StageEvidence::new(state, Confidence::Medium, summary)
 }
 
-fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
-    match seam.kind() {
+/// Returns true when `oracle` is a discriminating match for `seam`.
+///
+/// For non-ErrorVariant seams this is identical to `oracle_kind_matches_seam`
+/// (the existing kind-category check).
+///
+/// For `ErrorVariant` seams (RIPR-SPEC-0106, Part B) the oracle must also
+/// structurally pin the seam's specific variant:
+/// - The oracle kind must be `ExactErrorVariant`.
+/// - The oracle text must contain the seam's variant token
+///   (from `RequiredDiscriminator::ErrorVariant { variant }`).
+/// - If the seam variant cannot be parsed from the discriminator, or the
+///   oracle text does not contain it, the oracle is NOT credited (fail-closed).
+///
+/// This is the over-credit guard: a test that pins `MyError::Negative` does
+/// NOT discriminate a `MyError::TooLarge` seam.
+fn oracle_discriminates_seam(seam: &RepoSeam, oracle: &super::facts::OracleFact) -> bool {
+    if !oracle_kind_matches_seam(seam, &oracle.kind) {
+        return false;
+    }
+    if seam.kind() != SeamKind::ErrorVariant {
+        return true;
+    }
+    // ErrorVariant seam: require variant-level structural match.
+    error_variant_oracle_matches_seam_variant(seam, &oracle.text)
+}
+
+/// Returns true when the oracle text structurally pins the same error variant
+/// as the seam requires.
+///
+/// The seam variant is extracted from `RequiredDiscriminator::ErrorVariant { variant }`
+/// (which holds the full `Err(<variant>)` expression such as
+/// `"return Err(MyError::TooLarge)"`). The assertion variant is extracted from
+/// the oracle text using the same `exact_error_variant` + `enum_variant_values`
+/// parsers.
+///
+/// Fail-closed: returns `false` whenever either side cannot be parsed or they
+/// do not share a common variant value.
+fn error_variant_oracle_matches_seam_variant(seam: &RepoSeam, oracle_text: &str) -> bool {
+    use super::classify::{enum_variant_values, exact_error_variant};
+    use crate::analysis::seams::RequiredDiscriminator;
+
+    // Extract the seam's required variant from the discriminator expression.
+    let seam_variant = match seam.required_discriminator() {
+        RequiredDiscriminator::ErrorVariant { variant } => {
+            // The `variant` field is the full expression such as
+            // `"return Err(MyError::TooLarge);"` — extract the inner variant.
+            // Fail-closed: if unparseable, return false.
+            match exact_error_variant(variant) {
+                Some(v) => v,
+                None => return false,
+            }
+        }
+        _ => return false,
+    };
+
+    // Extract the variant(s) named in the oracle assertion text.
+    // For `assert_eq!(err, MyError::Negative)` there is no `Err(` in the text,
+    // so we use `enum_variant_values` directly on the full oracle text.
+    let oracle_variants = if oracle_text.contains("Err(") {
+        // Classic inline form: `assert_matches!(result, Err(MyError::Negative))`
+        match exact_error_variant(oracle_text) {
+            Some(v) => vec![v],
+            None => return false,
+        }
+    } else {
+        // Unwrap_err-bound form: `assert_eq!(err, MyError::Negative)`
+        enum_variant_values(oracle_text)
+    };
+
+    // Credit only when the oracle names the seam's exact variant.
+    oracle_variants.iter().any(|v| v == &seam_variant)
+}
+
+/// Returns true when `oracle_kind` is an acceptable discriminator for `seam_kind`.
+///
+/// This is the single source of truth for the kind-matching rule used by both
+/// the grader (via `oracle_kind_matches_seam`) and the exemplar selector in
+/// `output::agent_seam_packets::nearest_strong_test_to_imitate`.
+/// Do not duplicate this rule — call this function instead.
+pub(crate) fn oracle_kind_matches_seam_kind(seam_kind: SeamKind, oracle_kind: &OracleKind) -> bool {
+    match seam_kind {
         SeamKind::PredicateBoundary
         | SeamKind::ReturnValue
         | SeamKind::MatchArm
         | SeamKind::FieldConstruction => matches!(
-            oracle,
+            oracle_kind,
             OracleKind::ExactValue
                 | OracleKind::WholeObjectEquality
                 | OracleKind::Snapshot
                 | OracleKind::RelationalCheck
         ),
-        SeamKind::ErrorVariant => matches!(oracle, OracleKind::ExactErrorVariant),
+        SeamKind::ErrorVariant => matches!(oracle_kind, OracleKind::ExactErrorVariant),
         SeamKind::SideEffect | SeamKind::CallPresence => {
-            matches!(oracle, OracleKind::MockExpectation)
+            matches!(oracle_kind, OracleKind::MockExpectation)
         }
     }
+}
+
+fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
+    oracle_kind_matches_seam_kind(seam.kind(), oracle)
 }
 
 pub(crate) fn oracle_semantics_for(
@@ -14503,5 +14506,90 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 .unwrap_or_default(),
             vec![0]
         );
+    }
+
+    // RIPR-SPEC-0103 fixture 5: parity table for oracle_kind_matches_seam_kind.
+    // ErrorVariant accepts ONLY ExactErrorVariant; rejects all value/mock oracles.
+    // Value seams accept ExactValue/WholeObjectEquality/Snapshot/RelationalCheck.
+    // SideEffect/CallPresence accept ONLY MockExpectation.
+    #[test]
+    fn oracle_kind_matches_seam_kind_error_variant_accepts_only_exact_error_variant() {
+        use crate::domain::OracleKind;
+        // ErrorVariant + ExactErrorVariant → true
+        assert!(
+            oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &OracleKind::ExactErrorVariant),
+            "ErrorVariant must accept ExactErrorVariant"
+        );
+        // ErrorVariant rejects all other kinds
+        for rejected in [
+            OracleKind::ExactValue,
+            OracleKind::WholeObjectEquality,
+            OracleKind::Snapshot,
+            OracleKind::RelationalCheck,
+            OracleKind::MockExpectation,
+            OracleKind::BroadError,
+            OracleKind::SmokeOnly,
+        ] {
+            assert!(
+                !oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &rejected),
+                "ErrorVariant must reject {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_kind_matches_seam_kind_value_seams_accept_exact_value() {
+        use crate::domain::OracleKind;
+        for value_seam in [
+            SeamKind::PredicateBoundary,
+            SeamKind::ReturnValue,
+            SeamKind::MatchArm,
+            SeamKind::FieldConstruction,
+        ] {
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::ExactValue),
+                "{value_seam:?} must accept ExactValue"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::WholeObjectEquality),
+                "{value_seam:?} must accept WholeObjectEquality"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::Snapshot),
+                "{value_seam:?} must accept Snapshot"
+            );
+            assert!(
+                oracle_kind_matches_seam_kind(value_seam, &OracleKind::RelationalCheck),
+                "{value_seam:?} must accept RelationalCheck"
+            );
+            // Value seams must reject error-kind and mock-kind oracles
+            assert!(
+                !oracle_kind_matches_seam_kind(value_seam, &OracleKind::ExactErrorVariant),
+                "{value_seam:?} must reject ExactErrorVariant"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(value_seam, &OracleKind::MockExpectation),
+                "{value_seam:?} must reject MockExpectation"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_kind_matches_seam_kind_side_effect_accepts_only_mock_expectation() {
+        use crate::domain::OracleKind;
+        for effect_seam in [SeamKind::SideEffect, SeamKind::CallPresence] {
+            assert!(
+                oracle_kind_matches_seam_kind(effect_seam, &OracleKind::MockExpectation),
+                "{effect_seam:?} must accept MockExpectation"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(effect_seam, &OracleKind::ExactValue),
+                "{effect_seam:?} must reject ExactValue"
+            );
+            assert!(
+                !oracle_kind_matches_seam_kind(effect_seam, &OracleKind::ExactErrorVariant),
+                "{effect_seam:?} must reject ExactErrorVariant"
+            );
+        }
     }
 }

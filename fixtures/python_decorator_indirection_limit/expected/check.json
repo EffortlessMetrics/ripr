@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_decorator_indirection_limit/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_retry_total.py:3:python_preview",
+      "id": "probe:src_retry_total.py:python_preview:b1af3427",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_retry_total.py:3:python_preview",
+        "id": "probe:src_retry_total.py:python_preview:b1af3427",
         "family": "return_value",
         "delta": "value",
         "file": "src/retry_total.py",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: fetch_total", "owner_kind: function", "owner_decorators: retry", "static_limit decorator_indirection: `retry`", "test_framework: pytest (test_fetch_total_uses_retry_path)", "test_fixtures: client (test_fetch_total_uses_retry_path)", "test_verify_command: pytest tests/test_retry_total.py::test_fetch_total_uses_retry_path (test_fetch_total_uses_retry_path)", "related_test_relation: syntactic_call (test_fetch_total_uses_retry_path)", "test_oracle: exact_value strong (test_fetch_total_uses_retry_path)"],
       "missing": ["Static limit `decorator_indirection`: owner `fetch_total` is decorated with `retry`; syntax-first preview evidence does not resolve decorator-modified call behavior."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_fetch_total_uses_retry_path",
@@ -60,7 +63,21 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "decorator_indirection"
+      "static_limit_kind": "decorator_indirection",
+      "changed_sink": "client, total_with_retry",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/retry_total.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

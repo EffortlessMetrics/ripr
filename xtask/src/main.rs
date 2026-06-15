@@ -1950,23 +1950,35 @@ fn check_pr() -> Result<(), String> {
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
-    ci_fast_with_envs(&temp_env_refs)?;
-    run_with_envs(
-        "cargo",
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        &temp_env_refs,
+    label_check_pr_gate(
+        "ci-fast",
+        "cargo xtask ci-fast",
+        ci_fast_with_envs(&temp_env_refs),
     )?;
-    run_with_envs(
-        "cargo",
-        &["doc", "--workspace", "--no-deps"],
-        &temp_env_refs,
+    label_check_pr_gate(
+        "clippy",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        run_with_envs(
+            "cargo",
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            &temp_env_refs,
+        ),
+    )?;
+    label_check_pr_gate(
+        "doc",
+        "cargo doc --workspace --no-deps",
+        run_with_envs(
+            "cargo",
+            &["doc", "--workspace", "--no-deps"],
+            &temp_env_refs,
+        ),
     )?;
     pr_summary()?;
     let body = check_pr_report_body();
@@ -1975,6 +1987,22 @@ fn check_pr() -> Result<(), String> {
     receipts_write()?;
     pr_summary()?;
     reports_index()
+}
+
+/// Attribute a `check-pr` sub-gate failure to the gate that produced it, with the
+/// command that reproduces *just* that gate and a pointer to the reports. Without
+/// this, a clippy or doc failure surfaces a bare tool error with no indication it
+/// came from `check-pr` or how to re-run only the failing step.
+fn label_check_pr_gate<T>(
+    name: &str,
+    reproduce: &str,
+    result: Result<T, String>,
+) -> Result<T, String> {
+    result.map_err(|err| {
+        format!(
+            "check-pr gate `{name}` failed\nreproduce: {reproduce}\nreports: target/ripr/reports/check-pr.md\n{err}"
+        )
+    })
 }
 
 fn check_pr_temp_env() -> Result<Vec<(String, String)>, String> {
@@ -5308,17 +5336,52 @@ pub(crate) fn goldens_impl(args: &[String]) -> Result<(), String> {
 
 fn goldens_check() -> Result<(), String> {
     let run_set = collect_golden_runs()?;
-    write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
+    let entries = write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
     let body = goldens_check_report_body(&run_set.fixtures, &run_set.runs, &run_set.violations);
     write_report("goldens.md", &body)?;
     if run_set.violations.is_empty() {
         Ok(())
     } else {
-        Err(format!(
-            "goldens check failed; see target/ripr/reports/goldens.md\n{}",
-            run_set.violations.join("\n")
-        ))
+        Err(goldens_check_failure_message(&entries, &run_set.violations))
     }
+}
+
+/// Build an actionable `goldens check` failure: each drifted fixture gets its
+/// semantic drift type (the discriminator from [`golden_drift_type`]) and a
+/// blessing-state note, non-drift violations (contract/run errors) are listed
+/// verbatim, and the message ends with the reproduce + next-action commands. The
+/// gate emits its own repair card instead of "failed; see report".
+fn goldens_check_failure_message(entries: &[GoldenDriftEntry], violations: &[String]) -> String {
+    let mut message = String::from(
+        "goldens check failed; semantic drift detail in target/ripr/reports/golden-drift.md\n",
+    );
+    for entry in entries {
+        let blessing = if entry.blessing_reason_present {
+            "blessing CHANGELOG present"
+        } else {
+            "no blessing CHANGELOG — re-bless if the flip is intended"
+        };
+        message.push_str(&format!(
+            "  drift: fixture `{}` [{}]: {} ({})\n",
+            entry.fixture,
+            entry.surface,
+            golden_drift_type(&entry.semantics),
+            blessing,
+        ));
+    }
+    // Violations that are not per-fixture output drift (contract or run errors)
+    // are not represented in `entries`; surface them verbatim so nothing is lost.
+    for violation in violations
+        .iter()
+        .filter(|violation| !violation.contains("drift for fixture"))
+    {
+        message.push_str(&format!("  error: {violation}\n"));
+    }
+    message.push_str("reproduce: cargo xtask goldens check\n");
+    message.push_str(
+        "next: inspect target/ripr/reports/golden-drift.md; if a flip is intended, run `cargo xtask goldens bless <fixture> --reason <reason>`",
+    );
+    message
 }
 
 pub(crate) fn golden_drift_impl() -> Result<(), String> {
@@ -5446,12 +5509,15 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "editor_first_pr_bridge"
                     | "editor_adoption_assurance"
                     | "editor_actionable_gap_queue"
+                    | "evidence-promotion-honesty-corpus"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
                     | "perl_lsp_facts_exporter"
                     | "python"
+                    | "python-eval-sweep"
+                    | "python-judged-pr-panel"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
                     | "surface-projection-alignment"
@@ -5822,13 +5888,73 @@ fn goldens_check_report_body(
     body
 }
 
-fn write_golden_drift_reports(runs: &[FixtureRun], violations: &[String]) -> Result<(), String> {
+fn write_golden_drift_reports(
+    runs: &[FixtureRun],
+    violations: &[String],
+) -> Result<Vec<GoldenDriftEntry>, String> {
     let changed_paths = collect_changed_paths_set().unwrap_or_default();
     let entries = golden_drift_entries(runs, &changed_paths)?;
     let markdown = golden_drift_markdown(&entries, violations);
     let json = golden_drift_json(&entries, violations);
     write_report("golden-drift.md", &markdown)?;
-    write_report("golden-drift.json", &json)
+    write_report("golden-drift.json", &json)?;
+    Ok(entries)
+}
+
+/// Summarize a single golden drift as a semantic category, so a `goldens check`
+/// failure says *what kind* of drift happened (classification flip, added/removed
+/// finding, oracle change, banned static-language term, or formatting-only) rather
+/// than only pointing at a report file. Reuses the already-computed
+/// [`GoldenDriftSemantics`]; this is the discriminator a reviewer needs to decide
+/// whether a flip is intended (re-bless) or a regression.
+fn golden_drift_type(semantics: &GoldenDriftSemantics) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if !semantics.changed_exposure_classes.is_empty() {
+        parts.push(format!(
+            "classification_changed [{}]",
+            semantics.changed_exposure_classes.join("; ")
+        ));
+    }
+    if !semantics.added_finding_ids.is_empty() {
+        parts.push(format!(
+            "finding_added x{}",
+            semantics.added_finding_ids.len()
+        ));
+    }
+    if !semantics.removed_finding_ids.is_empty() {
+        parts.push(format!(
+            "finding_removed x{}",
+            semantics.removed_finding_ids.len()
+        ));
+    }
+    if !semantics.changed_oracle_strengths.is_empty() {
+        parts.push("oracle_strength_changed".to_string());
+    }
+    if !semantics.changed_oracle_kinds.is_empty() {
+        parts.push("oracle_kind_changed".to_string());
+    }
+    if !semantics.changed_probe_families.is_empty() {
+        parts.push("probe_family_changed".to_string());
+    }
+    if !semantics.changed_stop_reasons.is_empty() {
+        parts.push("stop_reason_changed".to_string());
+    }
+    if !semantics.changed_recommendations.is_empty() {
+        parts.push("recommendation_changed".to_string());
+    }
+    if !semantics.static_language_terms.is_empty() {
+        parts.push(format!(
+            "banned_static_language [{}]",
+            semantics.static_language_terms.join(", ")
+        ));
+    }
+    if parts.is_empty() {
+        parts.push(format!(
+            "formatting_only ({} line(s))",
+            semantics.changed_line_count
+        ));
+    }
+    parts.join(", ")
 }
 
 fn golden_drift_entries(
@@ -6478,7 +6604,8 @@ fn check_static_language_impl() -> Result<(), String> {
         fix_kind: FixKind::ReviewerDecisionRequired,
         recommended_fixes: &[
             "Rewrite static product output to use the approved exposure vocabulary.",
-            "If this is explanatory documentation, add a reasoned `[[allow]]` entry to the static-language allowlist.",
+            "For an innocent word in a comment, append `ripr-allow: static-language: <reason>` to that single line.",
+            "If a whole file is explanatory documentation, add a reasoned `[[allow]]` entry to the static-language allowlist.",
         ],
         rerun_command: "cargo xtask check-static-language",
         exception_template: Some(
@@ -6501,11 +6628,19 @@ fn check_static_language_impl() -> Result<(), String> {
         let text = read_text_lossy(&path)?;
         for (line_number, line) in text.lines().enumerate() {
             let lower = line.to_ascii_lowercase();
+            // A reasoned inline allow suppresses this line's forbidden terms.
+            // It is finer-grained than a whole-file allowlist entry (smaller
+            // bypass surface, reviewable in the diff) and must carry a reason.
+            if line_has_static_language_inline_allow(&lower) {
+                continue;
+            }
             for term in &forbidden {
                 if contains_word(&lower, term) {
-                    violations.push(format!(
-                        "{normalized}:{} contains prohibited static-language term `{term}`",
-                        line_number + 1
+                    violations.push(static_language_violation_message(
+                        &normalized,
+                        line_number + 1,
+                        term,
+                        line,
                     ));
                 }
             }
@@ -7892,6 +8027,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_bun_ub_cross_language_dogfood_fixture_corpus(&mut violations)?;
     validate_typescript_preview_repair_loop_fixture_corpus(&mut violations)?;
     validate_typescript_preview_false_actionable_audit_fixture_corpus(&mut violations)?;
+    validate_evidence_promotion_honesty_corpus(&mut violations)?;
     validate_user_surface_projection_alignment_fixture_corpus(&mut violations)?;
     validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
     validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
@@ -8312,6 +8448,8 @@ const TYPESCRIPT_PREVIEW_REPAIR_LOOP_CORPUS: &str =
     "fixtures/typescript-preview-repair-loop/corpus.json";
 const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS: &str =
     "fixtures/typescript-preview-false-actionable-audit/corpus.json";
+const EVIDENCE_PROMOTION_HONESTY_CORPUS: &str =
+    "fixtures/evidence-promotion-honesty-corpus/corpus.json";
 const USER_SURFACE_PROJECTION_ALIGNMENT_CORPUS: &str =
     "fixtures/user-surface-projection-alignment/corpus.json";
 
@@ -10292,6 +10430,274 @@ fn validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
         if !dispositions.contains(required) {
             violations.push(format!(
                 "TypeScript preview false-actionable audit corpus must include disposition {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_evidence_promotion_honesty() -> Result<(), String> {
+    let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
+    let mut violations = Vec::new();
+    validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
+
+    let report = if violations.is_empty() {
+        "pass: all charter members at expected class; no promoted case carries exposed; all controls retain exposed".to_string()
+    } else {
+        format!("FAIL: {}", violations.join("; "))
+    };
+    ensure_reports_dir()?;
+    let mut body = format!(
+        "# check-evidence-promotion-honesty\n\nStatus: {}\n\n",
+        if violations.is_empty() {
+            "pass"
+        } else {
+            "fail"
+        }
+    );
+    body.push_str("## Why This Matters\n\n");
+    body.push_str(
+        "A finding may not be promoted to `exposed` unless its evidence STRUCTURALLY \
+         matches the seam. Each confirmed fake-clean is pinned as a charter member that \
+         must stay non-promoted. Honest re-bless of a charter fixture to `exposed` in the \
+         golden would bypass `goldens check`; this gate reads the byte-pinned golden and \
+         asserts the semantic expectation independently.\n\n",
+    );
+    if violations.is_empty() {
+        body.push_str("## Violations\n\nNone detected.\n\n");
+    } else {
+        body.push_str("## Violations\n\n");
+        for v in &violations {
+            body.push_str("```text\n");
+            body.push_str(v);
+            body.push_str("\n```\n\n");
+        }
+        body.push_str("## Fix Kind\n\n```text\nAuthorDecisionRequired\n```\n\n");
+        body.push_str("## Recommended Fixes\n\n");
+        body.push_str(
+            "1. If a non-promoted case now shows `exposed`, the classifier changed — \
+               revert the production change or add a stricter corpus entry.\n\
+             2. If a control case lost `exposed`, the gate has over-corrected — revert \
+               the production change or update the control.\n\
+             3. To register a new fake-clean, add a `must_remain_non_promoted` case to \
+               fixtures/evidence-promotion-honesty-corpus/corpus.json.\n",
+        );
+    }
+    body.push_str(&format!("\n## Detail\n\n{report}\n\n"));
+    body.push_str("## Rerun\n\n```bash\ncargo xtask check-evidence-promotion-honesty\n```\n");
+    write_report("evidence-promotion-honesty.md", &body)?;
+
+    if violations.is_empty() {
+        println!("{}", report);
+        Ok(())
+    } else {
+        Err(format!(
+            "check-evidence-promotion-honesty failed; see target/ripr/reports/evidence-promotion-honesty.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn validate_evidence_promotion_honesty_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
+    if !corpus_path.exists() {
+        violations.push(format!(
+            "evidence promotion honesty corpus is missing {}",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    }
+    validate_evidence_promotion_honesty_corpus_at(corpus_path, violations)
+}
+
+/// Classification severity ordering: exposed > weakly_exposed > reachable_unrevealed/no_static_path/*_unknown
+fn evidence_class_severity(class: &str) -> u8 {
+    match class {
+        "exposed" => 3,
+        "weakly_exposed" => 2,
+        "reachable_unrevealed" | "no_static_path" => 1,
+        _ => 0, // infection_unknown, propagation_unknown, static_unknown
+    }
+}
+
+fn validate_evidence_promotion_honesty_corpus_at(
+    corpus_path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !corpus_path.exists() {
+        violations.push(format!(
+            "evidence promotion honesty corpus is missing {}",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    }
+
+    let corpus_text = read_text_lossy(corpus_path)?;
+    let corpus_value: Value = serde_json::from_str(&corpus_text)
+        .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
+
+    let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
+        violations.push(format!(
+            "{} has no `cases` array",
+            normalize_path(corpus_path)
+        ));
+        return Ok(());
+    };
+
+    // Parity: track languages with non-promoted cases and control cases
+    let mut non_promoted_languages: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut control_languages: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut seen_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+    for case in cases {
+        let id = case
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing-id>");
+
+        // Duplicate id check
+        if !seen_ids.insert(id.to_string()) {
+            violations.push(format!(
+                "evidence promotion honesty corpus has duplicate case id `{id}`"
+            ));
+        }
+
+        let language = case
+            .get("language")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let source_fixture = case
+            .get("source_fixture")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+
+        // Parity: source fixture must exist
+        let fixture_dir = Path::new(source_fixture);
+        if !fixture_dir.exists() {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` does not exist"
+            ));
+            continue;
+        }
+
+        // Parity: source fixture must have expected/check.json
+        let check_json_path = fixture_dir.join("expected/check.json");
+        if !check_json_path.exists() {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: `{}` is missing expected/check.json",
+                normalize_path(fixture_dir)
+            ));
+            continue;
+        }
+
+        // Parity: source fixture must NOT be in the manifest-only denylist
+        // (it must stay covered by `goldens check`)
+        if is_manifest_only_fixture_dir(fixture_dir) {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` is a manifest-only fixture dir; only regular fixtures with golden check.json may be charter members"
+            ));
+            continue;
+        }
+
+        // Read the golden check.json (byte-pinned source of truth)
+        let check_json_text = read_text_lossy(&check_json_path)?;
+        let check_json: Value = serde_json::from_str(&check_json_text).map_err(|err| {
+            format!(
+                "failed to parse {}: {err}",
+                normalize_path(&check_json_path)
+            )
+        })?;
+        let findings = check_json
+            .get("findings")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let must_remain_non_promoted = case
+            .get("must_remain_non_promoted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let expected_promoted = case
+            .get("expected_promoted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        if must_remain_non_promoted {
+            non_promoted_languages.insert(language.to_string());
+
+            let expected_max_class = case
+                .get("expected_max_class")
+                .and_then(Value::as_str)
+                .unwrap_or("weakly_exposed");
+            let max_severity = evidence_class_severity(expected_max_class);
+
+            for finding in &findings {
+                let class = finding
+                    .get("classification")
+                    .and_then(Value::as_str)
+                    .unwrap_or("static_unknown");
+                let finding_id = finding
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("<no-id>");
+
+                // Hard invariant: no finding may be promoted to `exposed`
+                if class == "exposed" {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                         finding `{finding_id}` has classification `exposed` but \
+                         `must_remain_non_promoted` is true — dishonest re-bless detected; \
+                         revert the golden or remove this charter member"
+                    ));
+                }
+
+                // Soft invariant: respect expected_max_class
+                if evidence_class_severity(class) > max_severity {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                         finding `{finding_id}` has classification `{class}` which exceeds \
+                         expected_max_class `{expected_max_class}`"
+                    ));
+                }
+            }
+        } else if expected_promoted {
+            control_languages.insert(language.to_string());
+
+            // Control: at least one finding must be `exposed`
+            let has_exposed = findings
+                .iter()
+                .any(|f| f.get("classification").and_then(Value::as_str) == Some("exposed"));
+            if !has_exposed {
+                violations.push(format!(
+                    "evidence promotion honesty control case `{id}` (fixture `{source_fixture}`): \
+                     `expected_promoted` is true but no finding has classification `exposed` — \
+                     the gate has over-corrected or the fixture needs re-blessing"
+                ));
+            }
+        }
+    }
+
+    // Parity: each of {python, typescript, rust} must have >= 1 non-promoted case
+    for lang in ["python", "typescript", "rust"] {
+        if !non_promoted_languages.contains(lang) {
+            violations.push(format!(
+                "evidence promotion honesty corpus must include at least one \
+                 `must_remain_non_promoted` case for language `{lang}`"
+            ));
+        }
+    }
+
+    // Parity: each of {python, typescript, rust} must have >= 1 control case
+    // Note: python may not have a positive control yet, so we only require rust+typescript.
+    // The requirement from the spec is rust and typescript.
+    for lang in ["rust", "typescript"] {
+        if !control_languages.contains(lang) {
+            violations.push(format!(
+                "evidence promotion honesty corpus must include at least one \
+                 `expected_promoted` control case for language `{lang}`"
             ));
         }
     }
@@ -24044,6 +24450,20 @@ struct RiprSwarmReadinessReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmRouteQualityReport {
+    status: String,
+    runtime_status: Lane1RuntimeStatus,
+    generated_at: String,
+    attempt_ledger_path: String,
+    attempt_ledger_state: String,
+    attempt_ledger_limitation: Option<String>,
+    repair_route_quality_latest: Vec<RiprSwarmRepairRouteQualityRow>,
+    repair_route_quality_historical: Vec<RiprSwarmRepairRouteQualityRow>,
+    language_repair_route_quality_latest: Vec<RiprSwarmRepairRouteQualityRow>,
+    language_repair_route_quality_historical: Vec<RiprSwarmRepairRouteQualityRow>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmAttemptLedgerReport {
     status: String,
     runtime_status: Lane1RuntimeStatus,
@@ -26350,6 +26770,193 @@ fn ripr_swarm_attempt_ledger_report(args: &RiprSwarmAttemptLedgerArgs) -> Result
         "swarm-attempt-ledger.md",
         &ripr_swarm_attempt_ledger_markdown(&report),
     )
+}
+
+fn ripr_swarm_route_quality_report(args: &[String]) -> Result<(), String> {
+    let mut attempt_ledger_path = PathBuf::from("target/ripr/reports/swarm-attempt-ledger.json");
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--attempt-ledger" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("route-quality --attempt-ledger requires a path".to_string());
+                };
+                attempt_ledger_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown route-quality argument `{other}`\nusage: cargo xtask route-quality [--attempt-ledger <path>]"
+                ));
+            }
+        }
+        index += 1;
+    }
+    let generated_at = generated_at_unix_ms()?;
+    let (ledger_state, ledger_limitation, ledger_value) =
+        ripr_swarm_read_optional_json(&attempt_ledger_path);
+    let report = ripr_swarm_route_quality_from_ledger_value(
+        generated_at,
+        normalize_path(&attempt_ledger_path),
+        ledger_state,
+        ledger_limitation,
+        ledger_value.as_ref(),
+    );
+    write_report(
+        "route-quality.json",
+        &ripr_swarm_route_quality_report_json(&report)?,
+    )?;
+    write_report(
+        "route-quality.md",
+        &ripr_swarm_route_quality_report_markdown(&report),
+    )
+}
+
+fn ripr_swarm_route_quality_from_ledger_value(
+    generated_at: String,
+    attempt_ledger_path: String,
+    attempt_ledger_state: String,
+    attempt_ledger_limitation: Option<String>,
+    attempt_ledger_value: Option<&Value>,
+) -> RiprSwarmRouteQualityReport {
+    let (
+        status,
+        runtime_status,
+        rows_latest,
+        rows_historical,
+        rows_language_latest,
+        rows_language_historical,
+    ) = if let Some(ledger) = attempt_ledger_value {
+        let attempts = ripr_swarm_attempt_ledger_entries_from_value(ledger);
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        let rows_latest = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
+        let rows_language_latest =
+            ripr_swarm_attempt_ledger_language_repair_route_quality(&latest_attempts);
+        let rows_historical = ripr_swarm_attempt_ledger_repair_route_quality(&attempts);
+        let rows_language_historical =
+            ripr_swarm_attempt_ledger_language_repair_route_quality(&attempts);
+        let runtime_status = lane1_runtime_status_from_report_value(ledger)
+            .unwrap_or_else(lane1_runtime_status_full);
+        let status = "advisory".to_string();
+        (
+            status,
+            runtime_status,
+            rows_latest,
+            rows_historical,
+            rows_language_latest,
+            rows_language_historical,
+        )
+    } else {
+        let runtime_status = lane1_runtime_status_limited_input(
+            "attempt_ledger_input",
+            "swarm-attempt-ledger",
+            Some(&attempt_ledger_path),
+            "attempt_ledger_input_unavailable",
+            "run cargo xtask ripr-swarm attempt-ledger before building the route-quality report",
+            false,
+        );
+        (
+            "blocked".to_string(),
+            runtime_status,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+    };
+    RiprSwarmRouteQualityReport {
+        status,
+        runtime_status,
+        generated_at,
+        attempt_ledger_path,
+        attempt_ledger_state,
+        attempt_ledger_limitation,
+        repair_route_quality_latest: rows_latest,
+        repair_route_quality_historical: rows_historical,
+        language_repair_route_quality_latest: rows_language_latest,
+        language_repair_route_quality_historical: rows_language_historical,
+    }
+}
+
+fn ripr_swarm_route_quality_report_json(
+    report: &RiprSwarmRouteQualityReport,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "route-quality",
+        "scope": "repo",
+        "status": report.status,
+        "run_status": report.runtime_status.state.clone(),
+        "runtime_status": lane1_runtime_status_json(&report.runtime_status),
+        "generated_at": report.generated_at,
+        "metadata": {
+            "attempt_ledger_path": report.attempt_ledger_path,
+            "attempt_ledger_state": report.attempt_ledger_state,
+            "attempt_ledger_limitation": report.attempt_ledger_limitation,
+        },
+        "repair_route_quality_latest": ripr_swarm_repair_route_quality_json(&report.repair_route_quality_latest),
+        "repair_route_quality_historical": ripr_swarm_repair_route_quality_json(&report.repair_route_quality_historical),
+        "language_repair_route_quality_latest": ripr_swarm_repair_route_quality_json(&report.language_repair_route_quality_latest),
+        "language_repair_route_quality_historical": ripr_swarm_repair_route_quality_json(&report.language_repair_route_quality_historical),
+        "must_not_infer": [
+            "route-quality rows group latest attempt outcomes by repair_kind; they are a grouping signal, not a gate or ranking",
+            "success_rate is (improved + resolved + expected_unchanged) / attempted and is null when attempted == 0; it does not weight by receipt presence",
+            "empty arrays mean no attempts were found with matching outcomes; they do not imply zero quality",
+            "route-quality does not report orphan receipt sources or stale receipt counts; no producer for those fields exists yet",
+            "route-quality counts do not change public badge semantics or CI gate mode",
+            "this report is advisory; do not promote or downgrade actionability from route-quality evidence alone"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render route-quality JSON: {err}"))
+}
+
+fn ripr_swarm_route_quality_report_markdown(report: &RiprSwarmRouteQualityReport) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR Route Quality Report\n\n");
+    out.push_str(&format!(
+        "Run status: `{}`\n\n",
+        report.runtime_status.state
+    ));
+    out.push_str("Advisory grouping of repair-route outcomes by `repair_kind`. Does not execute repairs, create receipts, or change gate semantics.\n\n");
+    lane1_runtime_status_push_markdown(&mut out, &report.runtime_status);
+    out.push_str("## Inputs\n\n");
+    out.push_str("| Input | State | Path | Limitation |\n");
+    out.push_str("| --- | --- | --- | --- |\n");
+    out.push_str(&format!(
+        "| attempt ledger | `{}` | `{}` | {} |\n\n",
+        audit_markdown_cell(&report.attempt_ledger_state),
+        audit_markdown_cell(&report.attempt_ledger_path),
+        audit_markdown_cell(report.attempt_ledger_limitation.as_deref().unwrap_or(""))
+    ));
+    out.push_str("## Latest Repair Route Quality\n\n");
+    ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality_latest);
+    out.push_str("## Latest Repair Route Quality By Language\n\n");
+    ripr_swarm_push_repair_route_quality_table(
+        &mut out,
+        &report.language_repair_route_quality_latest,
+    );
+    out.push_str("## Historical Repair Route Quality\n\n");
+    out.push_str("Durable history rows preserve older unchanged, regressed, and no-receipt attempts after a later attempt improves or resolves the same canonical gap.\n\n");
+    ripr_swarm_push_repair_route_quality_table(&mut out, &report.repair_route_quality_historical);
+    out.push_str("## Historical Repair Route Quality By Language\n\n");
+    ripr_swarm_push_repair_route_quality_table(
+        &mut out,
+        &report.language_repair_route_quality_historical,
+    );
+    out.push_str("## Must Not Infer\n\n");
+    out.push_str("- Route-quality rows group latest attempt outcomes by `repair_kind`; they are a grouping signal, not a ranking gate.\n");
+    out.push_str("- `repair_kind_success_rate` is `(improved + resolved + expected_unchanged) / attempted`; it is `null` when `attempted == 0` — never `0.0` as a fake rate.\n");
+    out.push_str("- Empty arrays mean no attempts with matching outcomes were found; they do not imply zero quality.\n");
+    out.push_str("- Orphan receipt sources and stale receipt counts are not reported here; no real producer for those fields exists yet.\n");
+    out.push_str("- Route-quality counts do not change public badge semantics or CI gate mode.\n");
+    out.push_str("- This report is advisory; do not promote or downgrade actionability from route-quality evidence alone.\n");
+    out
 }
 
 #[cfg(test)]
@@ -58461,6 +59068,7 @@ fn check_output_contracts() -> Result<(), String> {
     let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
     let mutation_calibration =
         read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
+    let swarm_ingest = read_text_lossy(Path::new("crates/ripr/src/output/swarm_ingest.rs"))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -58549,10 +59157,26 @@ fn check_output_contracts() -> Result<(), String> {
             }
             "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
             | "stage_state" | "confidence" | "oracle_kind" | "oracle_strength" | "stop_reason"
-            | "value_context" => {
+            | "value_context" | "oracle_alignment" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "ingest_reason" => {
+                require_contract_value(
+                    "crates/ripr/src/output/swarm_ingest.rs",
+                    &swarm_ingest,
                     value,
                     kind,
                     &mut violations,
@@ -59478,7 +60102,7 @@ fn validate_support_tier_spec_links(
             && !text.contains("SUPPORT_TIERS.md")
         {
             violations.push(format!(
-                "{} has support-tier impact but does not reference docs/status/SUPPORT_TIERS.md",
+                "{}: spec declares `Support-tier impact:` but does not reference docs/status/SUPPORT_TIERS.md\n    reason: spec_support_tier_reference_missing\n    next: add a docs/status/SUPPORT_TIERS.md link in the Support-tier impact section, or set the impact to `None` if the spec has none",
                 display_repo_path(root, &path)
             ));
         }
@@ -60699,35 +61323,20 @@ fn check_readme_state() -> Result<(), String> {
     {
         violations.push("README.md is missing `# ripr` or centered HTML h1".to_string());
     }
+    // README front-door contract: the README is a front door, not a support
+    // ledger. Required sections are the contract spine; aging capability state
+    // lives in docs/CAPABILITY_MATRIX.md, not the front door.
     for heading in [
-        "## Current Scope",
-        "## Current Capability Snapshot",
-        "## Supporting Docs",
+        "## The first useful run",
+        "## Where it fits",
+        "## What you get",
+        "## Status",
+        "## Docs",
+        "## Contributing",
+        "## License",
     ] {
         if !has_markdown_heading(&readme, heading) {
             violations.push(format!("README.md is missing `{heading}`"));
-        }
-    }
-
-    if !readme.contains("| Capability | Current state | Next checkpoint |") {
-        violations
-            .push("README.md capability snapshot is missing the expected table header".to_string());
-    }
-
-    for capability in [
-        "Distribution",
-        "Diff analysis",
-        "Test discovery",
-        "Output",
-        "LSP",
-        "Agent context",
-        "Calibration",
-    ] {
-        let marker = format!("| {capability} |");
-        if !readme.contains(&marker) {
-            violations.push(format!(
-                "README.md capability snapshot is missing `{capability}`"
-            ));
         }
     }
 
@@ -61447,9 +62056,13 @@ fn validate_campaign_manifest(
                 }
             }
             Some(status) => violations.push(format!(
-                "{item_id} has unsupported status `{status}`; use done, active, ready, or blocked"
+                "{item_id} (line {}) has unsupported status `{status}`; expected one of done, active, ready, blocked",
+                item.line
             )),
-            None => violations.push(format!("{item_id} is missing `status`")),
+            None => violations.push(format!(
+                "{item_id} (line {}) is missing `status`",
+                item.line
+            )),
         }
 
         if item
@@ -61457,20 +62070,32 @@ fn validate_campaign_manifest(
             .as_ref()
             .is_none_or(|value| value.trim().is_empty())
         {
-            violations.push(format!("{item_id} is missing `branch`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `branch`",
+                item.line
+            ));
         }
         if item.stackable.is_none() {
-            violations.push(format!("{item_id} is missing `stackable`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `stackable`",
+                item.line
+            ));
         }
         if item
             .acceptance
             .as_ref()
             .is_none_or(|value| value.trim().is_empty())
         {
-            violations.push(format!("{item_id} is missing `acceptance`"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing `acceptance`",
+                item.line
+            ));
         }
         if item.status.as_deref() != Some("blocked") && item.commands.is_empty() {
-            violations.push(format!("{item_id} is missing command entries"));
+            violations.push(format!(
+                "{item_id} (line {}) is missing command entries",
+                item.line
+            ));
         }
         for command in &item.commands {
             if !is_known_campaign_command(command) {
@@ -67285,6 +67910,8 @@ fn tracked_files() -> Result<Vec<String>, String> {
 fn should_skip_path(path: &str) -> bool {
     path == ".git"
         || path.starts_with(".git/")
+        || path == ".claude"
+        || path.starts_with(".claude/")
         || path == "target"
         || path.starts_with("target/")
         || path == ".ripr/release"
@@ -68382,6 +69009,70 @@ fn forbidden_static_terms() -> Vec<String> {
         .iter()
         .map(|value| value.to_string())
         .collect()
+}
+
+/// Inline marker that suppresses static-language violations for a single line —
+/// finer-grained than a whole-file allowlist entry. It MUST be followed by a
+/// reason so the suppression is reviewable and not a silent drive-by:
+///   `<comment-prefix> ripr-allow: static-language: <reason>`
+const STATIC_LANGUAGE_INLINE_ALLOW_MARKER: &str = "ripr-allow: static-language:";
+
+/// True when the (already-lowercased) line carries the inline-allow marker
+/// followed by a non-empty reason. A bare marker with no reason does NOT
+/// suppress, so an intentional allow always records why.
+fn line_has_static_language_inline_allow(lower_line: &str) -> bool {
+    match lower_line.find(STATIC_LANGUAGE_INLINE_ALLOW_MARKER) {
+        Some(index) => {
+            let after = &lower_line[index + STATIC_LANGUAGE_INLINE_ALLOW_MARKER.len()..];
+            !after.trim().is_empty()
+        }
+        None => false,
+    }
+}
+
+/// A plain-English synonym hint for a prohibited static-language term, used to
+/// speed fixes when the term appears in prose/comments rather than analyzer
+/// output. The gate scans all tracked prose, not only output strings, so a hit
+/// is often an innocent English word that just needs a neutral synonym.
+fn static_language_synonym_hint(term: &str) -> &'static str {
+    match term {
+        "killed" => "removed/terminated",
+        "survived" => "persisted/remained",
+        "untested" => "unexercised/uncovered",
+        "proven" => "demonstrated/established",
+        "adequate" => "sufficient/enough",
+        _ => "a neutral synonym",
+    }
+}
+
+/// Build an actionable static-language violation: `path:line`, the offending
+/// snippet, and a fix hint. The hint names the common confusion — the gate
+/// scans all tracked prose, not just analyzer output — so a hit in a comment or
+/// doc is fixed with a plain synonym, while a hit in real output must use the
+/// approved exposure vocabulary.
+fn static_language_violation_message(
+    path: &str,
+    line_number: usize,
+    term: &str,
+    line: &str,
+) -> String {
+    let trimmed = line.trim();
+    let snippet = if trimmed.chars().count() > 80 {
+        let mut shortened: String = trimmed.chars().take(77).collect();
+        shortened.push_str("...");
+        shortened
+    } else {
+        trimmed.to_string()
+    };
+    let hint = static_language_synonym_hint(term);
+    format!(
+        "{path}:{line_number} prohibited static-language term `{term}` in `{snippet}` \
+— this gate scans all tracked prose, not just analyzer output. In output, use the \
+approved exposure vocabulary (exposed/weakly_exposed/reachable_unrevealed/no_static_path/\
+infection_unknown/propagation_unknown/static_unknown). In comments or docs, use a plain \
+synonym (e.g. {hint}). To intentionally allow this line, append \
+`{STATIC_LANGUAGE_INLINE_ALLOW_MARKER} <reason>`."
+    )
 }
 
 fn forbidden_panic_patterns() -> Vec<String> {
@@ -70641,6 +71332,9 @@ mod tests {
     use super::ripr_swarm_attempt_ledger_repair_route_quality;
     use super::ripr_swarm_repair_route_quality_attempt_is_failure;
     use super::ripr_swarm_repair_route_quality_failure_count;
+    use super::ripr_swarm_repair_route_quality_success_rate;
+    use super::ripr_swarm_route_quality_from_ledger_value;
+    use super::ripr_swarm_route_quality_report_json;
     use super::run::{
         TimedFileOutput, TimedOutput, capture_output, run, run_output, run_output_optional,
         run_output_owned,
@@ -70744,21 +71438,22 @@ mod tests {
         lane1_evidence_audit_report_from_complete_repo_exposure,
         lane1_evidence_audit_timeout_error, lane1_readiness_packet_specs,
         limited_badge_artifacts_json, limited_badge_artifacts_markdown,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, next_spec_id_from_ids, no_panic_toml_string,
-        non_rust_programming_retention_reason, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, normalize_path,
-        panic_family_from_pattern, parse_actionable_gap_outcomes_args, parse_campaign_manifest,
-        parse_doc_artifact_ledger_text, parse_file_policy_allowlist, parse_gh_pr_status_args,
-        parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
-        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
-        parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
-        parse_repo_badge_artifact_options, parse_repo_exposure_static_seams,
-        parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
-        parse_ripr_swarm_plan_args, parse_sarif_policy_args, parse_sarif_policy_results,
-        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        line_has_static_language_inline_allow, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        normalize_path, panic_family_from_pattern, parse_actionable_gap_outcomes_args,
+        parse_campaign_manifest, parse_doc_artifact_ledger_text, parse_file_policy_allowlist,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
+        parse_pr_triage_pull_requests, parse_reason, parse_repo_badge_artifact_options,
+        parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
+        parse_required_status_contexts, parse_ripr_swarm_args, parse_ripr_swarm_plan_args,
+        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
+        parse_string_value, parse_targeted_test_outcome_args,
         pr_actionable_delta_front_panel_from_inputs, pr_body_validation_warning, pr_checks_summary,
         pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
         pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
@@ -70797,12 +71492,13 @@ mod tests {
         should_skip_path, sorted_allowlist_content, sorted_capability_blocks_content,
         sorted_command_catalog_content, sorted_markdown_index_table_content,
         sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
-        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
-        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, user_surface_projection_required_run_status_violations,
+        spec_numbering_violations, specs, static_language_allowlist_covers,
+        static_language_violation_message, status_for_report, suggested_fixes_patch,
+        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message,
+        user_surface_projection_required_run_status_violations,
         validate_actionable_gap_outcomes_fixture_case,
         validate_actionable_gap_outcomes_fixture_corpus, validate_local_context_allowlist,
         validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
@@ -75833,6 +76529,90 @@ fn has_unwrap_in_name() -> bool {
     }
 
     #[test]
+    fn line_has_static_language_inline_allow_requires_a_reason() {
+        // Marker with a reason suppresses (input is lowercased by the caller).
+        assert!(line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language: established ci wording"
+        ));
+        // Bare marker with no reason does NOT suppress — an allow must say why.
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language:"
+        ));
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach  # ripr-allow: static-language:   "
+        ));
+        // No marker at all.
+        assert!(!line_has_static_language_inline_allow(
+            "# the proven approach"
+        ));
+    }
+
+    #[test]
+    fn static_language_violation_message_advertises_inline_allow() {
+        let message = static_language_violation_message(
+            "policy/x.txt",
+            3,
+            "adequate",
+            "# this set is adequate",
+        );
+        assert!(
+            message.contains("ripr-allow: static-language:"),
+            "message must advertise the inline-allow escape, got: {message}"
+        );
+    }
+
+    #[test]
+    fn static_language_violation_message_is_actionable() {
+        let message = static_language_violation_message(
+            ".github/workflows/scratch-gc.yml",
+            4,
+            "proven",
+            "# Mirrors the proven inline \"Prepare scratch\" step",
+        );
+        // file:line and the term.
+        assert!(
+            message.starts_with(".github/workflows/scratch-gc.yml:4"),
+            "message must lead with path:line, got: {message}"
+        );
+        assert!(
+            message.contains("`proven`"),
+            "message must name the term, got: {message}"
+        );
+        // The offending snippet, so the author sees the context inline.
+        assert!(
+            message.contains("Mirrors the proven inline"),
+            "message must quote the offending line, got: {message}"
+        );
+        // The key fix hint: the gate scans prose, not just output.
+        assert!(
+            message.contains("scans all tracked prose"),
+            "message must explain the prose-vs-output scope, got: {message}"
+        );
+        // A plain synonym for the prose case.
+        assert!(
+            message.contains("demonstrated/established"),
+            "message must suggest a synonym, got: {message}"
+        );
+    }
+
+    #[test]
+    fn static_language_violation_message_truncates_long_lines() {
+        let long = "x".repeat(200);
+        let line = format!("// {long} adequate");
+        let message = static_language_violation_message("docs/notes.md", 7, "adequate", &line);
+        // Snippet is bounded so the report stays scannable.
+        assert!(
+            message.contains("..."),
+            "long snippet must be truncated, got len {}",
+            message.len()
+        );
+        assert!(
+            message.contains("sufficient/enough"),
+            "message must suggest a synonym for `adequate`, got: {message}"
+        );
+    }
+
+    #[test]
     fn should_scan_static_language_path_combines_candidate_check_and_allowlist() {
         let allowlist = allowlist_with_docs_markdown_globs();
 
@@ -75883,6 +76663,24 @@ fn has_unwrap_in_name() -> bool {
         assert!(should_skip_path("editors/vscode/out/src/extension.js"));
         assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
         assert!(!should_skip_path("editors/vscode/src/config.ts"));
+    }
+
+    #[test]
+    fn should_skip_path_ignores_agent_worktree_state() {
+        // Nested agent worktrees under `.claude/worktrees/` contain full repo
+        // copies; FS-walking checks must not descend into them and double-count
+        // or false-fail policy gates (#1030). `.claude/` is gitignored, so
+        // `git ls-files`-based checks are already safe; this guards the
+        // `collect_files()` filesystem walkers.
+        assert!(should_skip_path(".claude"));
+        assert!(should_skip_path(".claude/settings.local.json"));
+        assert!(should_skip_path(
+            ".claude/worktrees/agent-1/crates/ripr/src/lib.rs"
+        ));
+        // A real source path that merely contains the substring elsewhere must
+        // still be scanned.
+        assert!(!should_skip_path("crates/ripr/src/lib.rs"));
+        assert!(!should_skip_path("docs/claude-notes.md"));
     }
 
     #[test]
@@ -78291,6 +79089,68 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
     }
 
     #[test]
+    fn golden_drift_type_names_classification_flip() {
+        // Gate-feedback contract: a goldens-check failure must say WHAT KIND of
+        // drift happened. A classification flip is the highest-stakes case and
+        // must be named explicitly with its before/after.
+        let semantics = super::GoldenDriftSemantics {
+            changed_exposure_classes: vec![
+                "expected [exposed] -> actual [weakly_exposed]".to_string(),
+            ],
+            ..super::GoldenDriftSemantics::default()
+        };
+        let summary = super::golden_drift_type(&semantics);
+        assert!(summary.contains("classification_changed"), "{summary}");
+        assert!(summary.contains("exposed"), "{summary}");
+        assert!(summary.contains("weakly_exposed"), "{summary}");
+    }
+
+    #[test]
+    fn golden_drift_type_falls_back_to_formatting_only() {
+        // A whitespace/format-only drift must not masquerade as a semantic change.
+        let semantics = super::GoldenDriftSemantics {
+            changed_line_count: 3,
+            ..super::GoldenDriftSemantics::default()
+        };
+        let summary = super::golden_drift_type(&semantics);
+        assert!(summary.contains("formatting_only"), "{summary}");
+        assert!(summary.contains('3'), "{summary}");
+    }
+
+    #[test]
+    fn goldens_check_failure_message_is_a_repair_card() {
+        // The failure message must point at the semantic report, carry the
+        // reproduce command, and tell the reader how to re-bless an intended flip.
+        let entries = vec![super::GoldenDriftEntry {
+            fixture: "python_field_assignment_shape".to_string(),
+            surface: "check.json".to_string(),
+            expected: "fixtures/x/expected/check.json".to_string(),
+            actual: "target/x/actual/check.json".to_string(),
+            blessing_reason_required: true,
+            blessing_reason_present: false,
+            semantics: super::GoldenDriftSemantics {
+                changed_exposure_classes: vec![
+                    "expected [exposed] -> actual [weakly_exposed]".to_string(),
+                ],
+                ..super::GoldenDriftSemantics::default()
+            },
+        }];
+        let violations = vec!["drift for fixture `python_field_assignment_shape`".to_string()];
+        let message = super::goldens_check_failure_message(&entries, &violations);
+        assert!(message.contains("golden-drift.md"), "{message}");
+        assert!(
+            message.contains("python_field_assignment_shape"),
+            "{message}"
+        );
+        assert!(message.contains("classification_changed"), "{message}");
+        assert!(message.contains("re-bless"), "{message}");
+        assert!(
+            message.contains("reproduce: cargo xtask goldens check"),
+            "{message}"
+        );
+    }
+
+    #[test]
     fn json_string_values_for_key_reads_multiline_arrays() {
         let text = r#"{
   "stop_reasons": [
@@ -79279,7 +80139,7 @@ fn exact_owner_call_has_external_expected_value() {
         let typescript_preview_repair_loop_run = super::DogfoodTypescriptPreviewRepairLoopRun {
             name: "typescript_boundary_predicate_proof".to_string(),
             source_fixture: "fixtures/typescript_boundary_gap".to_string(),
-            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            source_finding_id: "probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             language: "typescript".to_string(),
             classification: "weakly_exposed".to_string(),
             changed_owner: "applyDiscount".to_string(),
@@ -79305,7 +80165,7 @@ fn exact_owner_call_has_external_expected_value() {
                 "default gate or badge policy".to_string(),
             ],
             raw_evidence_refs: vec![
-                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview"
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1"
                     .to_string(),
             ],
             non_claims: vec![
@@ -84559,7 +85419,7 @@ fn exact_owner_call_has_external_expected_value() {
         DogfoodTypescriptPreviewRepairLoopScenario {
             name: "typescript_boundary_predicate_proof".to_string(),
             source_fixture: "fixtures/typescript_boundary_gap".to_string(),
-            source_finding_id: "probe:src_discount.ts:2:typescript_preview".to_string(),
+            source_finding_id: "probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             language: "typescript".to_string(),
             language_status: "preview".to_string(),
             classification: "weakly_exposed".to_string(),
@@ -84587,7 +85447,7 @@ fn exact_owner_call_has_external_expected_value() {
                 "default gate or badge policy".to_string(),
             ],
             raw_evidence_refs: vec![
-                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:2:typescript_preview".to_string(),
+                "fixtures/typescript_boundary_gap/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1".to_string(),
             ],
             non_claims: vec![
                 "no provider calls".to_string(),
@@ -89467,10 +90327,14 @@ metric = "language_adapter_python_repair_routing_quality_metrics"
             );
 
             let violations = super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
+            // Gate-feedback contract: the violation names the offending spec, the
+            // missing SUPPORT_TIERS.md reference, a reason code, and a next action.
             assert!(
                 violations.iter().any(|violation| {
-                    violation.contains("has support-tier impact")
-                        && violation.contains("SUPPORT_TIERS.md")
+                    violation.contains("RIPR-SPEC-0001")
+                        && violation.contains("docs/status/SUPPORT_TIERS.md")
+                        && violation.contains("spec_support_tier_reference_missing")
+                        && violation.contains("next:")
                 }),
                 "{violations:#?}"
             );
@@ -90468,10 +91332,15 @@ acceptance = "Closed proof exists."
             let validation = super::validate_campaign_manifest(&manifest, &mut violations);
             assert!(validation.is_ok(), "{validation:?}");
 
+            // Gate-feedback contract: the violation names the work_item id, the
+            // exact line, and the missing field so an agent can jump straight to
+            // the offending row instead of re-deriving it.
             assert!(
-                violations
-                    .iter()
-                    .any(|violation| violation.contains("docs/test is missing command entries")),
+                violations.iter().any(|violation| {
+                    violation.contains("docs/test")
+                        && violation.contains("(line ")
+                        && violation.contains("is missing command entries")
+                }),
                 "{violations:?}"
             );
         });
@@ -115007,5 +115876,184 @@ level = "deny"
                 "warn".to_string()
             )]
         );
+    }
+
+    // RIPR-SPEC-0080 route-quality standalone report tests
+
+    #[test]
+    fn route_quality_success_rate_is_null_when_attempted_is_zero() {
+        let row = super::RiprSwarmRepairRouteQualityRow {
+            repair_kind: "add_call_observer".to_string(),
+            attempted: 0,
+            improved: 0,
+            resolved: 0,
+            expected_unchanged: 0,
+            ..super::RiprSwarmRepairRouteQualityRow::default()
+        };
+        assert_eq!(
+            ripr_swarm_repair_route_quality_success_rate(&row),
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn route_quality_success_rate_computed_when_attempted_nonzero() {
+        let row = super::RiprSwarmRepairRouteQualityRow {
+            repair_kind: "add_call_observer".to_string(),
+            attempted: 4,
+            improved: 2,
+            resolved: 1,
+            expected_unchanged: 0,
+            unchanged: 1,
+            ..super::RiprSwarmRepairRouteQualityRow::default()
+        };
+        // success = improved(2) + resolved(1) + expected_unchanged(0) = 3; rate = 3/4 = 0.75
+        let rate = ripr_swarm_repair_route_quality_success_rate(&row);
+        assert_eq!(rate, serde_json::json!(0.75));
+        assert!(rate != serde_json::Value::Null);
+        // Confirm the JSON value is a number, not null
+        assert!(rate.is_number());
+    }
+
+    #[test]
+    fn route_quality_empty_input_produces_empty_not_zero_filled_report() -> Result<(), String> {
+        let report = ripr_swarm_route_quality_from_ledger_value(
+            "unix_ms:1".to_string(),
+            "target/ripr/reports/swarm-attempt-ledger.json".to_string(),
+            "missing".to_string(),
+            Some("no ledger found".to_string()),
+            None,
+        );
+        assert_eq!(report.repair_route_quality_latest, vec![]);
+        assert_eq!(report.repair_route_quality_historical, vec![]);
+        assert_eq!(report.language_repair_route_quality_latest, vec![]);
+        assert_eq!(report.language_repair_route_quality_historical, vec![]);
+        assert_eq!(report.status, "blocked");
+        let json_str = ripr_swarm_route_quality_report_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json_str).map_err(|err| err.to_string())?;
+        assert_eq!(value["repair_route_quality_latest"], serde_json::json!([]));
+        assert_eq!(
+            value["repair_route_quality_historical"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            value["language_repair_route_quality_latest"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            value["language_repair_route_quality_historical"],
+            serde_json::json!([])
+        );
+        // Confirm forbidden keys are absent
+        assert!(value.get("top_orphan_receipt_sources").is_none());
+        assert!(value.get("stale_receipt_count").is_none());
+        assert!(value.get("top_limitation_routes").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn route_quality_cross_validates_with_attempt_ledger_repair_route_quality() -> Result<(), String>
+    {
+        // Build a minimal attempt ledger value with two attempts and check that
+        // route_quality.repair_route_quality_latest matches repair_route_quality in the
+        // swarm-attempt-ledger, differing only by the added success_rate field.
+        let ledger_value = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "swarm-attempt-ledger",
+            "run_status": "full",
+            "runtime_status": { "state": "full", "downstream_consumable": true },
+            "repair_route_quality": [],
+            "language_repair_route_quality": [],
+            "historical_repair_route_quality": [],
+            "historical_language_repair_route_quality": [],
+            "attempts": [
+                {
+                    "packet_id": "packet-a",
+                    "canonical_gap_id": "gap-a",
+                    "attempt_id": "attempt-a-1",
+                    "repair_kind": "add_assertion",
+                    "outcome": "evidence_improved",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test",
+                    "verify_result": "pass",
+                    "receipt_state": "receipt_present",
+                    "reason": "test"
+                },
+                {
+                    "packet_id": "packet-b",
+                    "canonical_gap_id": "gap-b",
+                    "attempt_id": "attempt-b-1",
+                    "repair_kind": "add_assertion",
+                    "outcome": "evidence_unchanged",
+                    "actor_kind": "agent",
+                    "verify_command": "cargo test",
+                    "verify_result": "pass",
+                    "receipt_state": "receipt_present",
+                    "reason": "test"
+                }
+            ],
+            "latest_attempts": []
+        });
+
+        let route_quality_report = ripr_swarm_route_quality_from_ledger_value(
+            "unix_ms:2".to_string(),
+            "test".to_string(),
+            "read".to_string(),
+            None,
+            Some(&ledger_value),
+        );
+        let attempts = super::ripr_swarm_attempt_ledger_entries_from_value(&ledger_value);
+        let latest_attempts = ripr_swarm_attempt_ledger_latest_attempts(&attempts);
+        let ledger_rows = ripr_swarm_attempt_ledger_repair_route_quality(&latest_attempts);
+
+        // The route-quality report latest rows must match the ledger rows (same counts)
+        assert_eq!(
+            route_quality_report.repair_route_quality_latest.len(),
+            ledger_rows.len()
+        );
+        for (rq_row, ledger_row) in route_quality_report
+            .repair_route_quality_latest
+            .iter()
+            .zip(ledger_rows.iter())
+        {
+            assert_eq!(rq_row.repair_kind, ledger_row.repair_kind);
+            assert_eq!(rq_row.attempted, ledger_row.attempted);
+            assert_eq!(rq_row.improved, ledger_row.improved);
+            assert_eq!(rq_row.unchanged, ledger_row.unchanged);
+            assert_eq!(rq_row.resolved, ledger_row.resolved);
+            assert_eq!(rq_row.regressed, ledger_row.regressed);
+            assert_eq!(rq_row.attempted_no_receipt, ledger_row.attempted_no_receipt);
+            assert_eq!(rq_row.receipt_present, ledger_row.receipt_present);
+            assert_eq!(
+                rq_row.missing_verify_result,
+                ledger_row.missing_verify_result
+            );
+            assert_eq!(rq_row.expected_unchanged, ledger_row.expected_unchanged);
+            assert_eq!(rq_row.unknown, ledger_row.unknown);
+        }
+
+        // Verify the JSON output includes success_rate for each row and no forbidden keys
+        let json_str = ripr_swarm_route_quality_report_json(&route_quality_report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json_str).map_err(|err| err.to_string())?;
+        let rq_latest = value["repair_route_quality_latest"]
+            .as_array()
+            .ok_or("repair_route_quality_latest must be an array")?;
+        assert!(
+            !rq_latest.is_empty(),
+            "expected non-empty route quality rows"
+        );
+        for row in rq_latest {
+            assert!(
+                row.get("repair_kind_success_rate").is_some(),
+                "each row must have repair_kind_success_rate"
+            );
+        }
+        assert!(value.get("top_orphan_receipt_sources").is_none());
+        assert!(value.get("stale_receipt_count").is_none());
+        assert!(value.get("top_limitation_routes").is_none());
+        Ok(())
     }
 }

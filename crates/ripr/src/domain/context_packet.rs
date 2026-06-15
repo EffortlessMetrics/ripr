@@ -210,6 +210,10 @@ mod tests {
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 
@@ -221,6 +225,8 @@ mod tests {
             oracle: Some("assert_eq!(value, 1)".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         }
     }
 

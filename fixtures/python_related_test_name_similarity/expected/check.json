@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_related_test_name_similarity/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_pricing.py:2:python_preview",
+      "id": "probe:src_pricing.py:python_preview:5511809e",
       "canonical_gap_id": "gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_pricing.py:2:python_preview",
+        "id": "probe:src_pricing.py:python_preview:5511809e",
         "family": "return_value",
         "delta": "value",
         "file": "src/pricing.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary_case)", "test_verify_command: pytest tests/test_checkout.py::test_apply_discount_boundary_case (test_apply_discount_boundary_case)", "related_test_relation: test_name_similarity (test_apply_discount_boundary_case)", "related_test_uncertain: test_name_similarity (test_apply_discount_boundary_case)"],
       "missing": ["Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_apply_discount_boundary_case",
@@ -72,7 +75,21 @@
       "suggested_next_action": "",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/pricing.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

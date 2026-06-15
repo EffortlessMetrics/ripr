@@ -22,7 +22,12 @@
     "receipt": {
       "movement": "resolved",
       "path": ".ripr/receipts/python-threshold.json",
-      "present": true
+      "present": true,
+      "provenance": {
+        "after_sha256": "f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099f0e1d2c3b4a50099",
+        "before_sha256": "a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011a1b2c3d4e5f60011",
+        "snapshot_provenance_present": true
+      }
     },
     "staleness_status": "not_evaluated",
     "stop_reason": null,

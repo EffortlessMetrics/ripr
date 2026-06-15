@@ -1,4 +1,7 @@
 use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
+use crate::output::gap_decision_ledger::GapRecord;
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use serde_json::{Value, json};
 
 const AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
@@ -41,12 +44,8 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
 
     let gap_state = evidence_value(finding, "gap_state: ")?;
     let actionability_category = evidence_value(finding, "actionability_category: ")?;
-    let why_not_actionable = evidence_value(finding, "why_not_actionable: ")?;
     let repair_route = evidence_value(finding, "repair_route: ")?;
     let evidence_needed_to_promote = evidence_value(finding, "evidence_needed_to_promote: ")?;
-    let missing_actionability_fields = evidence_value(finding, "missing_actionability_fields: ")
-        .map(split_csv)
-        .unwrap_or_default();
     let missing_graph_legs = evidence_value(finding, "missing_graph_legs: ")
         .map(split_csv)
         .unwrap_or_default();
@@ -58,19 +57,115 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
         .map(parse_raw_evidence_ref)
         .collect::<Vec<_>>();
 
+    // §1 / §2 (RIPR-SPEC-0087 §PR7): compute repair_packet_ready by projecting
+    // a GapRecord from the finding and calling the SHARED Rust validator.
+    // `None` packet ⇒ `false` automatically (fail-closed default).
+    // No parallel TypeScript validator is introduced: the only flip authority
+    // is `validate_agent_gap_record_packet`.
+    let packet = typescript_gap_record_for(finding);
+    let repair_packet_ready = packet
+        .as_ref()
+        .is_some_and(|record| validate_agent_gap_record_packet(record).is_ok());
+
+    // If the validator rejected the packet, surface why so the missing field
+    // is visible to the operator (§1.3).
+    let why_not_actionable_computed = if let Some(record) = packet.as_ref() {
+        match validate_agent_gap_record_packet(record) {
+            Ok(()) => {
+                // actionable — this field now reads as the "why actionable"
+                // line (the renderer relabels it). It must NOT contradict the
+                // complete packet, so it names the resolved contract fields.
+                "complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)".to_string()
+            }
+            Err(reason) => {
+                // Surface the validator's reason alongside the evidence reason
+                let base = evidence_value(finding, "why_not_actionable: ")
+                    .unwrap_or("incomplete repair packet")
+                    .to_string();
+                format!("{base}; validator: {reason}")
+            }
+        }
+    } else {
+        evidence_value(finding, "why_not_actionable: ")
+            .unwrap_or("TypeScript preview lacks a complete repair packet contract")
+            .to_string()
+    };
+
+    // §1.3 / RIPR-SPEC-0088 §PR8: flip gap_state + actionability_category when
+    // repair_packet_ready. For the actionable case the incomplete-packet
+    // evidence strings (repair_route "only after ... available",
+    // evidence_needed_to_promote, missing fields) are written for blocked
+    // cases and would directly contradict the complete packet, so we replace
+    // them with actionable-reading values: the actual repair action and an
+    // empty "needed" list.
+    let (
+        resolved_gap_state,
+        resolved_category,
+        resolved_missing_fields,
+        resolved_repair_route,
+        resolved_evidence_needed,
+    ) = if repair_packet_ready {
+        (
+            "actionable".to_string(),
+            "complete_repair_packet".to_string(),
+            Vec::new(),
+            actionable_repair_route(packet.as_ref()),
+            String::new(),
+        )
+    } else {
+        (
+            gap_state.to_string(),
+            actionability_category.to_string(),
+            evidence_value(finding, "missing_actionability_fields: ")
+                .map(split_csv)
+                .unwrap_or_default(),
+            repair_route.to_string(),
+            evidence_needed_to_promote.to_string(),
+        )
+    };
+
     Some(PreviewActionability {
         authority_boundary: AUTHORITY_BOUNDARY.to_string(),
-        repair_packet_ready: false,
-        gap_state: gap_state.to_string(),
-        actionability_category: actionability_category.to_string(),
-        why_not_actionable: why_not_actionable.to_string(),
-        repair_route: repair_route.to_string(),
-        missing_actionability_fields,
+        repair_packet_ready,
+        gap_state: resolved_gap_state,
+        actionability_category: resolved_category,
+        why_not_actionable: why_not_actionable_computed,
+        repair_route: resolved_repair_route,
+        missing_actionability_fields: resolved_missing_fields,
         missing_graph_legs,
         unlock_condition,
-        evidence_needed_to_promote: evidence_needed_to_promote.to_string(),
+        evidence_needed_to_promote: resolved_evidence_needed,
         raw_evidence_refs,
     })
+}
+
+/// Build the actionable repair-route line for a complete TypeScript packet.
+///
+/// The incomplete-packet `repair_route` ("project ... only after verify,
+/// receipt, evidence refs, and edit boundaries are available") is false for an
+/// actionable finding — those fields ARE available. This names the actual
+/// repair action instead, derived from the projected GapRecord's repair route
+/// (suggested assertion shape / missing discriminator), falling back to a
+/// concise generic action.
+fn actionable_repair_route(packet: Option<&GapRecord>) -> String {
+    if let Some(route) = packet.and_then(|record| record.repair_route.as_ref()) {
+        if let Some(shape) = route.assertion_shape.as_deref().filter(|s| !s.is_empty()) {
+            return format!(
+                "add or strengthen the focused assertion `{shape}` in the related test"
+            );
+        }
+        if let Some(disc) = route
+            .missing_discriminator
+            .as_deref()
+            .filter(|d| !d.is_empty())
+        {
+            return format!(
+                "add a focused assertion for the missing discriminator `{disc}` in the related test"
+            );
+        }
+    }
+    "add or strengthen a focused assertion in the related test to cover the changed behavior"
+        .to_string()
 }
 
 pub(crate) fn preview_actionability_json_value(actionability: &PreviewActionability) -> Value {
@@ -174,7 +269,7 @@ fn raw_ref_json(raw_ref: &PreviewRawEvidenceRef) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_preview_actionability_evidence_line, preview_actionability_for,
+        actionable_repair_route, is_preview_actionability_evidence_line, preview_actionability_for,
         preview_actionability_json_value,
     };
     use crate::domain::{
@@ -182,6 +277,49 @@ mod tests {
         LanguageStatus, Probe, ProbeFamily, ProbeId, RevealEvidence, RiprEvidence, SourceLocation,
         StageEvidence, StageState,
     };
+    use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
+
+    #[test]
+    fn actionable_repair_route_names_assertion_shape_not_blocked_text() {
+        let record = GapRecord {
+            repair_route: Some(GapRepairRoute {
+                assertion_shape: Some("expect(result).toBe(50)".to_string()),
+                ..GapRepairRoute::default()
+            }),
+            ..GapRecord::default()
+        };
+        let route = actionable_repair_route(Some(&record));
+        // The actionable route must name the real repair action and must NOT
+        // contain the blocked-case "only after ... available" phrasing
+        // (RIPR-SPEC-0088 §PR8).
+        assert!(
+            route.contains("expect(result).toBe(50)"),
+            "expected assertion shape in route, got {route:?}"
+        );
+        assert!(
+            !route.contains("only after"),
+            "actionable route must not contain blocked-case text, got {route:?}"
+        );
+    }
+
+    #[test]
+    fn actionable_repair_route_falls_back_to_discriminator_then_generic() {
+        let record = GapRecord {
+            repair_route: Some(GapRepairRoute {
+                missing_discriminator: Some("amount == threshold".to_string()),
+                ..GapRepairRoute::default()
+            }),
+            ..GapRecord::default()
+        };
+        assert!(
+            actionable_repair_route(Some(&record)).contains("amount == threshold"),
+            "expected discriminator fallback"
+        );
+        // No repair route at all → generic, still actionable-reading.
+        let generic = actionable_repair_route(None);
+        assert!(generic.contains("focused assertion"), "got {generic:?}");
+        assert!(!generic.contains("only after"), "got {generic:?}");
+    }
 
     #[test]
     fn parses_typescript_preview_actionability_strings() -> Result<(), String> {
@@ -305,6 +443,10 @@ mod tests {
             language_status: Some(LanguageStatus::Preview),
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 

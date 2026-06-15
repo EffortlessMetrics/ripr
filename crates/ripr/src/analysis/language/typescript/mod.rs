@@ -1,0 +1,266 @@
+//! TypeScript preview adapter.
+//!
+//! See `docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md` and
+//! `docs/adr/0008-typescript-parser-substrate.md`.
+//!
+//! Split from a monolithic 9497-line file for maintainability.
+//! The only public API of this module is `TypeScriptAdapter`.
+
+pub(crate) use super::super::{
+    AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
+};
+// `probes` is a private module of `crate::analysis`; import it so submodules
+// can call `probes::expected_sinks` / `probes::required_oracles` via `super::probes`.
+pub(crate) use super::{
+    LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route,
+};
+pub(super) use crate::analysis::probes;
+pub(crate) use crate::config::OraclePolicy;
+pub(crate) use crate::domain::{
+    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
+    LanguageId as DomainLanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, RelatedTest, RevealEvidence, RiprEvidence,
+    SourceLocation, StageEvidence, StageState, StaticLimitKind, StopReason, SymbolId,
+};
+pub(crate) use crate::domain::{FlowSinkFact, FlowSinkKind};
+pub(crate) use oxc_allocator::Allocator;
+pub(crate) use oxc_ast::ast::{
+    Argument, ArrowFunctionExpression, BindingPattern, Class, ClassElement, Declaration,
+    ExportDefaultDeclarationKind, Expression, Function, ImportDeclarationSpecifier,
+    ImportOrExportKind, MethodDefinition, ModuleExportName, ObjectPropertyKind, PropertyKey,
+    Statement, VariableDeclaration, VariableDeclarator,
+};
+pub(crate) use oxc_parser::Parser;
+pub(crate) use oxc_span::{GetSpan, SourceType};
+pub(crate) use std::path::{Path, PathBuf};
+
+mod actionability;
+mod bun_bridge;
+mod classifier;
+mod discovery;
+mod oracle;
+mod owners;
+mod package;
+mod parse;
+mod paths;
+mod probe_shape;
+mod related_tests;
+mod static_limit;
+#[cfg(test)]
+mod tests;
+mod tests_extract;
+pub(crate) mod tsconfig;
+mod types;
+
+// Re-export all submodule items unconditionally so that every sibling
+// submodule's `use super::*;` resolves, and so that `tests.rs` which
+// uses `use super::*;` can access all items.
+pub(crate) use actionability::*;
+pub(crate) use bun_bridge::*;
+pub(crate) use classifier::*;
+pub(crate) use discovery::*;
+pub(crate) use oracle::*;
+pub(crate) use owners::*;
+pub(crate) use package::*;
+pub(crate) use parse::*;
+pub(crate) use paths::*;
+pub(crate) use probe_shape::*;
+pub(crate) use related_tests::*;
+pub(crate) use static_limit::*;
+pub(crate) use tests_extract::*;
+pub(crate) use tsconfig::{TsAliasMap, load_alias_map};
+pub(crate) use types::*;
+
+/// TypeScript / JavaScript preview adapter.
+///
+/// Stateless: routing, parsing, and per-file extraction only.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TypeScriptAdapter;
+
+pub(crate) fn source_type_for(path: &Path) -> SourceType {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("tsx") => SourceType::tsx(),
+        Some("ts") => SourceType::ts(),
+        Some("jsx") => SourceType::jsx(),
+        Some("js") => SourceType::mjs(),
+        _ => SourceType::mjs(),
+    }
+}
+
+impl LanguageAdapter for TypeScriptAdapter {
+    fn accepts_path(&self, path: &Path) -> bool {
+        matches!(route(path), Some(LanguageId::TypeScript))
+    }
+
+    fn analyze_diff(
+        &self,
+        options: &AnalysisOptions,
+        _oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+    ) -> Result<LanguageDiffResult, String> {
+        // Phase 1: discover and index every accepted file in the workspace
+        // so we can find related tests for any owner regardless of whether
+        // the test file itself changed in this diff.
+        let workspace_files = collect_workspace_typescript_files(&options.root);
+        let mut all_owners: Vec<TypeScriptOwner> = Vec::new();
+        let mut all_tests: Vec<TypeScriptTest> = Vec::new();
+        let mut parse_limits: Vec<TypeScriptParseLimit> = Vec::new();
+        for relative in &workspace_files {
+            let absolute = options.root.join(relative);
+            let Ok(source) = std::fs::read_to_string(&absolute) else {
+                continue;
+            };
+            if let Some(reason) = parse_error_reason(relative, &source) {
+                if !is_test_file(relative) {
+                    parse_limits.push(TypeScriptParseLimit {
+                        file: relative.clone(),
+                        reason,
+                    });
+                }
+                continue;
+            }
+            if is_test_file(relative) {
+                all_tests.extend(extract_tests(relative, &source));
+            } else {
+                all_owners.extend(extract_owners(relative, &source));
+            }
+        }
+        // Build tsconfig.json alias map when opt-in flag is enabled (RIPR-SPEC-0099).
+        // fail-closed: None when flag is off, when tsconfig is absent, when extends/
+        // references are present, or when any other parse/resolution failure occurs.
+        let alias_map: Option<TsAliasMap> = if options.resolve_tsconfig_paths {
+            load_alias_map(&options.root)
+        } else {
+            None
+        };
+        let alias_map_ref: Option<&TsAliasMap> = alias_map.as_ref();
+
+        // Build the single-hop re-export index from all non-test workspace files
+        // (RIPR-SPEC-0095). The index enables crediting tests that reach the owner
+        // via an explicit `export { N } from './owner'` barrel-file re-export.
+        let reexport_index =
+            ReExportIndex::build(&workspace_files, &options.root, alias_map_ref, is_test_file);
+
+        // Phase 2: for each accepted changed file, classify each changed
+        // line that falls inside an owner.
+        let mut findings: Vec<Finding> = Vec::new();
+        let mut changed_count: usize = 0;
+        for changed in changed_files {
+            for added in &changed.added_lines {
+                if let Some(finding) = bun_cross_language_finding_for_changed_rust_line(
+                    &changed.path,
+                    added.line,
+                    &added.text,
+                    &all_tests,
+                ) {
+                    findings.push(finding);
+                }
+            }
+            if !self.accepts_path(&changed.path) {
+                continue;
+            }
+            changed_count += 1;
+            // Skip test-file changes for finding generation; classifier
+            // operates on production owners. Test file edits are still
+            // counted in the file tally.
+            if is_test_file(&changed.path) {
+                continue;
+            }
+
+            // Resolve package/workspace discovery facts for this changed file.
+            // Evidence lines are injected into every finding generated below
+            // so that the rendering layer (typescript_preview_card) and the
+            // next-PR runner-inference step can consume them without re-reading
+            // the filesystem.
+            let pkg_discovery = resolve_package_discovery(&changed.path, &options.root);
+            let discovery_evidence = pkg_discovery.evidence_lines();
+
+            if let Some(limit) = parse_limit_for_file(&changed.path, &parse_limits) {
+                if let Some(added) = changed.added_lines.first() {
+                    let mut finding =
+                        unsupported_syntax_finding(&changed.path, added.line, &added.text, limit);
+                    finding.evidence.extend(discovery_evidence.clone());
+                    findings.push(finding);
+                }
+                continue;
+            }
+            for added in &changed.added_lines {
+                if let Some(mut finding) = classify_change(
+                    &changed.path,
+                    added.line,
+                    &added.text,
+                    &all_owners,
+                    &all_tests,
+                    Some(&options.root),
+                    &reexport_index,
+                    alias_map_ref,
+                ) {
+                    finding.evidence.extend(discovery_evidence.clone());
+                    // Inject verify-command evidence derived from the strongest
+                    // related test and the package-discovery facts already
+                    // resolved above. Fail-closed: when the runner is
+                    // unresolved the named limitation
+                    // `typescript_test_runner_unresolved` is emitted instead
+                    // so consumers know why no command is available.
+                    let inferred_cmd = finding
+                        .related_tests
+                        .iter()
+                        .max_by_key(|t| t.oracle_strength.rank())
+                        .and_then(|best_test| {
+                            verify_command_for_discovery(&pkg_discovery, &best_test.file)
+                        });
+                    if let Some(cmd) = inferred_cmd {
+                        finding
+                            .evidence
+                            .push(format!("typescript_verify_command: {cmd}"));
+                        // The runner resolved: drop `verify_command` from the
+                        // static `missing_actionability_fields` list so the JSON
+                        // output does not self-contradict (claiming a field is
+                        // missing while also carrying its value two lines over).
+                        // Fail-closed: this path is only reached when
+                        // `inferred_cmd.is_some()` — when the runner is
+                        // unresolved the `missing_actionability_fields` line is
+                        // left intact so consumers see the correct gap.
+                        // (RIPR-SPEC cockpit delta #5 / issue #1245)
+                        for ev in &mut finding.evidence {
+                            if ev.starts_with("missing_actionability_fields:") {
+                                *ev = remove_field_from_missing_list(ev, "verify_command");
+                            }
+                        }
+                        finding.evidence.retain(|ev| !ev.is_empty());
+                    } else if pkg_discovery.framework_hint.is_none() {
+                        // No command resolved AND no framework detected — emit
+                        // the named limitation so the card surface shows the
+                        // correct gap.  When a framework IS detected (e.g. ava)
+                        // the `typescript_test_runner: <name>` evidence line was
+                        // already injected via `discovery_evidence` above;
+                        // suppress the unresolved limitation so consumers see the
+                        // detected runner name instead of a false negative.
+                        finding.evidence.push(
+                            "typescript_package_limitation: typescript_test_runner_unresolved"
+                                .to_string(),
+                        );
+                    }
+                    findings.push(finding);
+                }
+            }
+        }
+        Ok(LanguageDiffResult {
+            findings,
+            changed_files: changed_count,
+        })
+    }
+
+    fn analyze_repo(
+        &self,
+        _options: &AnalysisOptions,
+        _oracle_policy: &OraclePolicy,
+    ) -> Result<LanguageRepoResult, String> {
+        // Repo-mode preview output lands in a follow-up. The current
+        // sub-slice scopes to diff-mode for the smallest useful fixture.
+        Ok(LanguageRepoResult {
+            findings: Vec::new(),
+            production_files: 0,
+        })
+    }
+}

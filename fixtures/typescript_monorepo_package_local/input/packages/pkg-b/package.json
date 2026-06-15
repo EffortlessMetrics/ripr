@@ -1,0 +1,10 @@
+{
+  "name": "pkg-b",
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0"
+  },
+  "scripts": {
+    "test": "jest"
+  }
+}

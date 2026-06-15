@@ -1,0 +1,55 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/observation_verified_call_deletion/input
+
+Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO fixtures/observation_verified_call_deletion/input/src/lib.rs:15
+
+Changed
+  before: cache.insert("old_key", result);
+  after:  cache.insert("result_key", result);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::store_result
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach store_result: store_result_inserts_result_key_with_value
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence state write: cache.insert("result_key", result)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches state write: cache.insert("result_key", result) (line 15)
+  - related test tests/store_tests.rs:4 store_result_inserts_result_key_with_value uses strong exact value oracle: assert_eq!(cache.inserted, vec!["result_key=42".to_string()]);
+  - observed function argument value result = 42 at line 6
+  - observed assertion argument value "result_key=42" at line 7
+
+INFO fixtures/observation_verified_call_deletion/input/src/lib.rs:15
+
+Changed
+  before: cache.insert("old_key", result);
+  after:  cache.insert("result_key", result);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  src/lib.rs::store_result
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach store_result: store_result_inserts_result_key_with_value
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence state write: cache.insert("result_key", result)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches state write: cache.insert("result_key", result) (line 15)
+  - related test tests/store_tests.rs:4 store_result_inserts_result_key_with_value uses strong exact value oracle: assert_eq!(cache.inserted, vec!["result_key=42".to_string()]);
+  - observed function argument value result = 42 at line 6
+  - observed assertion argument value "result_key=42" at line 7

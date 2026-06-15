@@ -1,0 +1,275 @@
+id = "python-repair-routing-reliability"
+title = "Python Repair-Routing Reliability to Release"
+status = "tracker"
+lane = 1
+
+# Focused Python release-readiness tracker.
+# This is not the active Codex Goals manifest. `.ripr/goals/active.toml` remains
+# the active execution manifest (use-case spec spine, frozen until 0.9.0 ships).
+# Promotion into `active.toml` is a maintainer decision recorded here.
+#
+# Public tracker: https://github.com/EffortlessMetrics/ripr-swarm/issues/1160
+# Ruff parser-substrate watchpoint (NOT a release gate): EffortlessMetrics/ripr#1430
+
+objective = """
+Promote Python repair routing from usable-alpha proof to a usable release claim
+shipped from source `ripr`, using external-repo evidence as the spine. Each PR
+adds one production delta plus its evidence; promotion gates on measured crash
+rate, parse-failure rate, runtime, gap-ID stability, and false-actionability,
+never on assertion. Target tier is `usable`, not `stable`.
+"""
+
+non_goals = [
+  "Ruff integration or parser breadth (tracked separately as ripr#1430).",
+  "Completeness across all Python constructs or frameworks.",
+  "A `stable` claim; the target tier is `usable`.",
+  "Supporting Django/SQLAlchemy/etc — only failing closed (named limitation) there.",
+]
+
+# The evidence ladder. Tier A measures robustness only; Tier B measures top-card
+# usefulness and false-actionability; Tier C measures repair closure.
+evidence_path = [
+  "baseline dogfood (in-repo corpus, saturated 26/26) — done",
+  "Tier A external robustness sweep (crash / parse-fail / runtime / gap-ID stability)",
+  "Tier B judged external PR panel (top-1 usefulness, false-actionable rate)",
+  "Tier C external repair attempts (before/after receipts)",
+  "rollback / regression proof",
+  "support-tier promotion (usable)",
+  "source promotion into ripr",
+]
+
+end_state = [
+  "ripr runs crash-free and gap-ID-stable on external Python repos at scale.",
+  "False-actionable rate measured and low on a judged external PR (diff) panel.",
+  "Repair closure demonstrated externally with before/after receipts.",
+  "Rollback/regression behavior documented and honest.",
+  "Support tier promoted to `usable` with signoff.",
+  "Demonstrated surface shipped from source `ripr`.",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-harness"
+status = "done"
+branch = "eval/python-eval-sweep-harness"
+acceptance = "Tier A `cargo xtask eval-sweep` harness reads a pinned manifest, runs ripr check + one re-run per repo, and records crash/parse/runtime/gap-ID-stability metrics (RIPR-SPEC-0086, PR #1161)."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-not-run-gate"
+status = "done"
+branch = "dogfood/eval-sweep-not-run-gate"
+acceptance = "Empty/no-clone sweeps report `not_run`, never a vacuous `pass` (PR #1163)."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-runtime-fidelity"
+status = "done"
+branch = "dogfood/eval-sweep-runtime-fidelity"
+acceptance = "Invoke the built `ripr` binary directly so runtime measures analysis time, not `cargo run` overhead. (PR #1166)"
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-per-repo-diffs"
+status = "done"
+branch = "dogfood/eval-sweep-per-repo-diffs"
+acceptance = "Per-repo real diffs so the sweep produces real canonical gaps and gap-ID stability becomes a meaningful signal. (PR #1167)"
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-discriminate-sink-alignment"
+status = "done"
+branch = "analysis/py-discriminate-sink-alignment"
+acceptance = "Require oracle-to-changed-sink alignment before crediting `exposed`; downgrade strong-but-orthogonal oracles to `weakly_exposed` with a typed reason. (PR #1172; RIPR-SPEC-0028 revealability)"
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-output-alignment-fields"
+status = "done"
+branch = "output/py-oracle-alignment-fields"
+acceptance = "Surface changed_sink, observed_sink, oracle_alignment, and alignment_reason on Python findings so a user can see why a strong-but-orthogonal oracle did not credit `exposed`."
+commands = [
+  "cargo xtask check-output-contracts",
+  "cargo xtask goldens check",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-classification-distribution"
+status = "done"
+branch = "dogfood/eval-sweep-classification-distribution"
+acceptance = "Eval-sweep records the exposed / weakly_exposed / no_static_path / limitation distribution plus oracle_alignment distribution (absent != unknown) and repair-packet presence, not only gap-ID stability, so Tier A surfaces over-credit risk before Tier B judging (PR #1190). Validated externally: the starter --clone sweep recorded on #1160 showed 0 exposed, tenacity weakly_exposed/orthogonal, six parse_failure correctly counted (parse-key fix #1194)."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-eval-sweep-scale"
+status = "done"
+branch = "dogfood/eval-sweep-scale"
+acceptance = "Corpus scaled 3 -> 8 stratified pinned public repos with verified SHAs + precise per-repo diffs (jinja/anyio/flask/sqlalchemy/structlog added; sqlalchemy is the unsupported bucket). Recorded on #1160. Result: gate=pass, 0 crashes, gap-ID stability 1.000, and **0 exposed** — the load-bearing 0 false-`exposed` holds at scale across 8 diverse repos. flask fails closed (parse_failure on decorator/config code); sqlalchemy timed out at 123s (>120s default — ripr is slow on very large dynamic ORMs, a performance/robustness note, not a crash). 2 orthogonal cases (tenacity + anyio), both strong false-actionable candidates from the local-binding family (see analysis/python-local-callable-instance-alignment). NOTE 8 < the aspirational 12-20; a further scale pass can add more once the slow-repo timeout/perf is addressed."
+commands = [
+  "cargo xtask eval-sweep",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-b-panel-schema"
+status = "done"
+branch = "dogfood/python-tier-b-judged-panel"
+acceptance = "Tier B judged-diff panel SCHEMA + hand-vetted seed (RIPR-SPEC-0092, PR #1197): panel unit is a judged diff with expected_direction (should_gap/should_stay_quiet/should_limit), the two-error model (false_actionable visible vs false_exposed silent) and the outcome lattice, labels all-nullable until judged. Schema + seed only; no judging engine, no analyzer change. (Renumbered 0091->0092 after a concurrent registry collision with #1195.)"
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-b-judged-panel"
+status = "done"
+branch = "dogfood/python-tier-b-judging"
+acceptance = "First populated RIPR-SPEC-0092 panel: the 3 real Tier A starter-sweep diffs (click/six/tenacity) judged by manual review against each repo's tests (fixtures/python-judged-pr-panel/starter-judged.json). Result: 0 false-`exposed` (no over-credit on real external code) and 1 false-actionable (tenacity — ripr over-suggested where test_stop_after_attempt already discriminates the `__call__` boundary via `r.stop(make_retry_state(3, ...))`; the documented #1172 local-callable-instance limitation). ripr errs conservative, the safe direction. Small judged set — directional, not a robust rate; scale before claiming `usable`."
+commands = [
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-b-judged-panel-scaled"
+status = "done"
+branch = "dogfood/python-tier-b-judging-scaled"
+acceptance = "Second populated RIPR-SPEC-0092 panel (fixtures/python-judged-pr-panel/scaled-judged.json): the 4 scaled-sweep diffs that produced findings (jinja/anyio/flask/structlog) judged by manual review, each verdict RE-DERIVED from the real `ripr check --root <checkout> --diff --mode fast --json` output plus the repo's own tests at the pinned SHA (not from a prior lead). sqlalchemy recorded as a no-finding timeout (Tier A robustness carryover). Result this pass: 0 false-`exposed`, 3 false-actionable (jinja/anyio/structlog), 1 correct conservative gap (flask, the empty-string env-var boundary is genuinely unexercised). COMBINED with the starter panel: judged n=7, **0/7 false-`exposed`** (the load-bearing safety result holds on every repo) and **4/7 false-actionable**, every one from the indirect-call family — local-instance binding (tenacity), framework filter-dispatch (jinja), function-result binding + async/non-value oracle (anyio), inline construct-call + cross-file relation miss (structlog). Verdict: SAFE but NOISY. Verifying the artifact CORRECTED a pre-judgment lead: jinja was expected to be a correct gap but test_round_positive in fact discriminates the inverted method guard, so it is false-actionable. Recorded on #1160."
+commands = [
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-local-callable-instance-alignment"
+status = "done"
+branch = "analysis/py-local-callable-instance-alignment"
+acceptance = "DONE 2026-06-14: added an oracle-eligible `LocalBinding` PythonRelationKind (rank 4) detecting a single unambiguous `local = OwnerClass(...)` binding called as `local(...)` on a `__call__` owner, slotted after ConstructCall and before SameStem in related_test_relation. Guarded: A owner is `__call__`; B test imports the class (blocks same-name cross-module); C exactly one real, non-inline construction (inline `C()(...)` stays ConstructCall); D direct `local = Class(` assignment only (keyword-arg/wrapper/attribute targets rejected); E bound local is called and assigned exactly once (reassignment rejected). Effect: python_local_callable_binding moves from same_stem/uncertain/oracle=unknown to local_binding/direct/oracle=smoke, surfacing `self.assertTrue(stop(3))` and flipping the card from the misleading 'no direct test found' to `strengthen_existing_test`. Class STAYS weakly_exposed (Smoke < Strong; cannot reach the exposed branch) — zero golden class flips, only python_local_callable_binding drifted (re-blessed), broad_boolean/cross_file/strong_oracle unchanged. 6 new unit tests + 194 python lib tests + goldens green. CORRECTED 2026-06-13 (was: 'flip python_local_callable_binding to exposed'). Reading the actual classifier + the `python_broad_boolean_assertion` golden DISPROVED that goal. (was: 'flip python_local_callable_binding to exposed'). Reading the actual classifier + the `python_broad_boolean_assertion` golden DISPROVED that goal. `exposed` requires `strongest_strength >= Strong && alignment.observes()`; `assertTrue`/`assertFalse` map to OracleStrength::Smoke (oracle_for_call); and `python_broad_boolean_assertion` pins `assert is_priority(100)` — a DIRECT broad-boolean call on the changed predicate owner — as weakly_exposed/smoke BY DESIGN. The tenacity `stop = stop_after_attempt(3); assertTrue(stop(3))` shape is exactly that plus a local binding, so flipping it to `exposed` would CONTRADICT the golden and the discrimination-not-coverage contract. The local-callable issue is a RELATION-DIAGNOSIS bug (the card falsely implies no direct test exists), NOT a classification bug. CORRECTED ACCEPTANCE: trace a single unambiguous `local = OwnerClass(...)` binding called as `local(...)` so the relation links DIRECT and the existing oracle (smoke) is surfaced — the fixture should resolve to weakly_exposed/smoke/direct-relation, MATCHING python_broad_boolean_assertion, NOT exposed. Guard reassigned/dynamic/wrapper bindings. This change CANNOT introduce false-exposed (the smoke oracle and the orthogonal alignment of `stop(3)` both block the exposed branch), and it must produce ZERO classification flips on any golden (protect python_strong_oracle/cross_file/field/broad_boolean). Value: removes the misleading 'no direct test' card on the smoke local-binding family. REFRAMED PRECISION LEVER: the four Tier B false-actionables split by oracle STRENGTH (scaled-judged.json, n=7). tenacity's discriminating assertion is a SMOKE oracle (assertTrue), so the correct RESOLVED state is weakly_exposed/smoke per python_broad_boolean_assertion (this work item is a relation/card fix, NOT an exposed flip). Precise cause: today the weakly_exposed comes from the same_stem relation miss (oracle surfaced as `unknown`, not `smoke`); the fix surfaces the smoke oracle and corrects the 'no direct test' card without changing the class. jinja/structlog/anyio = STRONG oracles (ExactValue / ExactErrorVariant) that ripr NEVER SAW due to relation/extraction misses — those are the TRUE false-actionables and the only ones legitimately flippable to exposed. Tractable next: structlog's cross-file relation miss (ripr linked test_processors.py; the strong `pytest.raises(ValueError, match=...)` lives in test_renderers.py::test_invalid_key) -> a NEW work item `analysis/python-cross-file-strong-oracle-relation`. jinja (framework filter-dispatch) and anyio (fn-result + async non-value oracle) remain hard/defensible limitations. Do NOT chase exposed on the smoke local-binding case."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-cross-file-strong-oracle-relation"
+status = "done"
+branch = "analysis/py-cross-file-construct-call"
+acceptance = "The REAL precision lever surfaced by Tier B pass-2 (scaled-judged.json, n=7): the genuine false-actionables are STRONG owner-aligned oracles that ripr never links because its relation heuristic reaches the WRONG tests. structlog is the tractable exemplar — the changed owner LogfmtRenderer.__call__ has a strong discriminator `pytest.raises(ValueError, match='Invalid key: \"invalid key\"')` calling `LogfmtRenderer()(None, None, {'invalid key': ...})` in tests/processors/test_renderers.py::TestLogfmtRenderer::test_invalid_key, but ripr's name-proximity relation linked tests/processors/test_processors.py (wrong file) and surfaced only unknown oracles, so it read weakly_exposed/no_strong_oracle and routed a card. UNLIKE the smoke local-binding case, this oracle IS strong and IS sink-aligned (it raises ValueError on the changed-key path), so linking it correctly SHOULD flip structlog to exposed — a real, contract-honoring precision gain. Scope: improve cross-file / inline-construct-call relation so the strong oracle is found and aligned, fixture-first with a new fixture that pins the structlog shape, WITHOUT crediting genuinely-orthogonal oracles or over-linking unrelated same-name tests across files (no false-exposed; protect all existing goldens incl. python_broad_boolean_assertion which must STAY weakly_exposed). Higher-risk; sequence after the safe relation-diagnosis fix. OUT OF SCOPE: jinja framework filter-dispatch (rendered-template oracle reached via the filter registry — opaque, defensible permanent limitation) and anyio function-result binding observed by a non-value async-cancellation oracle (both remain weakly_exposed). DONE: added a `ConstructCall` PythonRelationKind (rank 4, oracle-eligible) detecting an inline construct-call `OwnerClass(...)(...)` on a `__call__` owner, gated by Guard A (owner is `__call__`), Guard B (test imports the class — blocks same-name cross-module collisions), and an inline-only balanced-paren check (excludes the bound local `x = C(); x(...)`, so python_local_callable_binding STAYS weakly_exposed). structlog now reads `exposed`/changed_sink_token linking test_renderers.py::test_invalid_key. New regression fixture python_cross_file_construct_call (demonstrated as no_static_path WITHOUT the fix, exposed WITH it); broad_boolean + local_callable unchanged; goldens/dogfood zero drift; 132 python tests + clippy pass."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-tier-c-repair-attempts"
+status = "ready"
+branch = "dogfood/python-tier-c-repair-attempts"
+acceptance = "External repair attempts with before/after receipts (card -> packet -> test edit -> verify -> receipt)."
+commands = [
+  "cargo xtask metrics",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-rollback-proof"
+status = "ready"
+branch = "outcome/python-rollback-proof"
+acceptance = "Demonstrate and document Python-lane rollback/regression behavior."
+commands = [
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-support-tier-promotion"
+status = "ready"
+branch = "docs/python-support-tier-promotion"
+acceptance = "Promote Python repair routing to `usable`, gated on measured evidence."
+commands = [
+  "cargo xtask check-support-tiers",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-source-promotion"
+status = "ready"
+branch = "release/python-source-promotion"
+acceptance = "Promote the demonstrated lane into source `ripr`."
+commands = [
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-adversarial-false-exposed-guards-v1"
+status = "done"
+branch = "dogfood/py-adversarial-false-exposed-panel"
+acceptance = "DONE 2026-06-14 (v1 GUARD SEEDING — NOT the whole adversarial program). Seeded the adversarial false-exposed guards as end-to-end golden fixtures that PIN conservative (non-exposed) classification: python_adversarial_buffer_token (token coincidence buffer⊂buffered_output stays weakly_exposed/orthogonal end-to-end — a #1224 regression guard at the fixture level) and python_adversarial_mock_call_not_value (a mock assert_called_once observes the CALL not the changed return value; mock_expectation/medium never reaches the exposed branch). Both verified against the real binary, blessed, goldens+fixture-contracts green. FOUND a live false-exposed building the same-method-different-class case — split to analysis/python-false-exposed-attribute-call-owner-name (do NOT pin a bug). The broader panel is now MORE important, not complete — see eval/python-adversarial-false-exposed-panel (v2)."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "eval/python-adversarial-false-exposed-panel"
+status = "ready"
+branch = "dogfood/py-adversarial-false-exposed-panel-v2"
+acceptance = "Expand the adversarial false-exposed panel beyond the v1 guards (eval/python-adversarial-false-exposed-guards-v1). Add same-token/different-owner methods, same method name on different classes, owner-name coincidence, nearby unrelated strong oracles, mock/call assertions that observe calls but not changed values, and framework-dispatch traps — each a pinned should-stay-conservative golden. The panel measures silent over-credit (false-exposed) separately from visible false-actionable noise. Standing requirement: support-tier promotion gates on 0 known adversarial false-exposed in the current panel — natural sweeps cannot certify the silent class (see docs/LEARNINGS.md § Token coincidence)."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-false-exposed-attribute-call-owner-name"
+status = "in_progress"
+branch = "fix/py-false-exposed-attribute-call-owner-name"
+acceptance = "PARTIAL — NOT closed. Layered oppositional review (3 rounds) proved the import/token-guard approach leaks: round 1 gated bare method-name by import; round 2 closed dead-import + free-fn alias; round 3 STILL found comment/string body-usage spoof, alias-as-constructor-arg, and CROSS-TEST satisfaction (the two gate halves satisfied by different tests). Root cause is structural: the alignment layer lacks RECEIVER IDENTITY, so name/import guards leak indefinitely. The #1249 branch closes the primary + 2 round-1 vectors with zero golden drift (a real partial hardening) but must NOT be merged as a closure. PROPER FIX -> new work_item analysis/python-method-owner-receiver-binding-identity (receiver-binding resolution at the relation layer; credit a method owner `direct` only when the method is called on a receiver statically bound to the owner class — `v = OwnerClass(...); v.method(...)` or inline `OwnerClass(...).method(...)`; closes all five bypasses AND preserves the legit `v=Cls(); v.method()==x` pattern; subsumes Cluster A method-owner case). PRIOR (premature) DONE note kept for history: closed the live false-exposed in classify_sink_alignment. For method/classmethod owners, the bare method-name token no longer credits `direct` alignment without owner-class identity (the owner's class token is observed, or a strong observing test imports the owner's class); otherwise it falls through to changed_sink_token/orthogonal. Free-function names and class tokens are unambiguous and unchanged. The TokenValidator.validate / PaymentProcessor.validate repro now reads weakly_exposed/orthogonal. ZERO existing golden drift (the fix had no blast radius); same-method fixture re-added as a pinned guard python_adversarial_same_method_other_class; 2 new unit tests (negative guard + positive identity-preserved); docs/STATIC_EXPOSURE_MODEL.md § Identity beats token overlap. Stacked on #1244. Preserved: python_strong_oracle, python_cross_file_construct_call (#1228), python_adversarial_buffer_token (#1224). ORIGINAL: HIGH PRIORITY — close a LIVE analyzer false-exposed found 2026-06-14 by the v1 guards. This is an ANALYZER bug, not just an eval finding. Repro: owner `TokenValidator.validate` (src/auth.py) changed `token` -> `token.strip()`; the ONLY related test `test_billing_validate` tests a DIFFERENT class `PaymentProcessor.validate` (src/billing.py), never importing or naming TokenValidator. ripr reads `exposed` (summary.exposed=1). Chain: (1) body_calls_owner links a syntactic_call via contains_any_attribute_call(body, owner.name) — a bare `.validate(` with ANY receiver; (2) classify_sink_alignment credits oracle_alignment=direct / strong_oracle_observes_owner_name because the strong `== True` oracle text contains the owner's BARE METHOD-NAME token `validate`. Fix: for method/classmethod owners, bare method-name overlap or any `.validate(` receiver is NOT enough to credit `exposed` — require owner IDENTITY evidence (owner-class token observed, import/alias of the owner class, inline construct call, local binding, or a receiver statically bound to the owner). Else downgrade to weakly_exposed/orthogonal. Trades a little false-actionable to close a false-exposed (contract-prioritized). REQUIRES careful golden review — must PRESERVE python_strong_oracle (free-function exact-value stays exposed), python_cross_file_construct_call (#1228 inline construct stays exposed), python_adversarial_buffer_token (#1224 guard), and python_local_callable_binding (#1242 weakly_exposed/smoke). Then the same-method fixture (repro under target/ripr/found-false-exposed/) flips to weakly_exposed and is added as a pinned guard."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/python-method-owner-receiver-binding-identity"
+status = "next"
+branch = "analysis/py-method-owner-receiver-binding"
+acceptance = "The PROPER fix for the method-owner false-exposed family (supersedes the leaky import/token-guard approach in analysis/python-false-exposed-attribute-call-owner-name, demonstrated to leak across 3 oppositional-review rounds). Resolve RECEIVER IDENTITY at the relation layer: credit a method/classmethod owner `direct`/`exposed` only when a SINGLE strong related test calls the owner method on a receiver statically bound to the owner class — inline `OwnerClass(...).method(...)`, or `v = OwnerClass(...); v.method(...)` (receiver-binding, analogous to LocalBinding), or `OwnerClass.method(...)` for classmethods — AND the oracle observes that call. A bare `.method(` on an unresolved receiver is NOT identity-bearing and stays weakly_exposed. This single principle closes ALL known bypasses (bare-name, dead-import, free-fn alias, comment/string body spoof, alias-as-constructor-arg, cross-test satisfaction) AND preserves the common legit `v=Cls(); assert v.method(x)==expected` pattern that the brute 'drop method credit' alternative would wrongly downgrade. Subsumes the method-owner slice of Cluster A. Build on the #1249 branch artifacts (keep python_adversarial_same_method_other_class, the STATIC_EXPOSURE_MODEL identity doc, the unit tests; replace the leaky gate). Re-run the adversarial red-team + oppositional review until a round is dry before claiming closure. Preserve python_strong_oracle, python_cross_file_construct_call (#1228), python_adversarial_buffer_token (#1224)."
+commands = [
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-pr",
+]

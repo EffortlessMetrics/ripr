@@ -3,6 +3,11 @@
 `ripr` uses Diataxis so docs answer the reader's immediate problem instead of
 mixing tutorials, references, and design arguments in one place.
 
+**Front-door catalog:** [LIBRARY.md](LIBRARY.md) organizes accumulated knowledge
+into three shelves — agentic learnings, repo domain learnings, and repo learnings
+over time — with annotated links to canonical docs and a timeline of major
+learning milestones. Start there when orienting to the codebase.
+
 ## Tutorials
 
 Tutorials help a new user succeed once.
@@ -66,7 +71,9 @@ Current how-to docs:
 - [Python repair routing proposal](proposals/RIPR-PROP-0017-python-repair-routing-lane.md)
 - [Static limits](STATIC_LIMITS.md)
 - [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md)
+- [Agent operating model](AGENT_OPERATING_MODEL.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [LSP-first repair/receipt workflow for agents](LSP_AGENT_REPAIR_WORKFLOW.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
@@ -275,7 +282,9 @@ Current explanation docs:
 - [Handoff ledger](handoffs/README.md)
 - [ADRs](adr/)
 - [Specs](specs/)
+- [Agent operating model](AGENT_OPERATING_MODEL.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [LSP-first repair/receipt workflow for agents](LSP_AGENT_REPAIR_WORKFLOW.md)
 - [RIPR swarm human workflow](RIPR_SWARM_HUMAN_WORKFLOW.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)

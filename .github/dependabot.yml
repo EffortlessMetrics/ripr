@@ -48,6 +48,11 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # @types/vscode is the compile-time contract for engines.vscode and must
+      # move deliberately, in lockstep with the advertised support floor — never
+      # via auto-bump. Pinned to ~1.90 in package.json so the floor is enforced
+      # (#1033). Ignore all of its updates here.
+      - dependency-name: "@types/vscode"
     groups:
       vscode-runtime:
         patterns:

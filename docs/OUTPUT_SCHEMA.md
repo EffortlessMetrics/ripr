@@ -6,7 +6,7 @@ agents.
 The current schema version is:
 
 ```text
-0.1
+0.2
 ```
 
 Schema changes that remove fields, rename fields, or change field meanings
@@ -303,16 +303,18 @@ Field contract:
 
 ## Finding
 
+The `id` field is content-addressed: `probe:<sanitized_path>:<family>:<fp8>[.<n>]` where `<fp8>` is the first 8 hex chars of SHA-256 over `path\0family\0owner\0expression\0`. This means a suppression tracks the code, not the line — the same expression moved to a new line keeps its id (suppression follows it), while changed code at a spot gets a new id (stale suppression invalidates). The `line` field in the `probe` object still gives locality for display.
+
 A finding contains:
 
 ```json
 {
-  "id": "probe:src_lib.rs:88:predicate",
+  "id": "probe:src_lib.rs:predicate:bbaa2c25",
   "classification": "weakly_exposed",
   "severity": "warning",
   "confidence": 0.92,
   "probe": {
-    "id": "probe:src_lib.rs:88:predicate",
+    "id": "probe:src_lib.rs:predicate:bbaa2c25",
     "family": "predicate",
     "delta": "control",
     "file": "src/lib.rs",
@@ -362,11 +364,13 @@ A finding contains:
   ],
   "evidence": [],
   "missing": [],
+  "assertion_texts": {
+    "12": "assert_eq!(discounted_total(50, 100), 50);"
+  },
   "activation": {
     "observed_values": [
       {
         "line": 12,
-        "text": "assert_eq!(discounted_total(50, 100), 50);",
         "value": "amount = 50",
         "context": "function_argument"
       }
@@ -386,7 +390,6 @@ A finding contains:
   "observed_values": [
     {
       "line": 12,
-      "text": "assert_eq!(discounted_total(50, 100), 50);",
       "value": "amount = 50",
       "context": "function_argument"
     }
@@ -402,6 +405,7 @@ A finding contains:
       }
     }
   ],
+  "related_tests_total": 1,
   "related_tests": [
     {
       "name": "premium_customer_gets_discount",
@@ -409,7 +413,9 @@ A finding contains:
       "line": 12,
       "oracle_strength": "strong",
       "oracle_kind": "exact_value",
-      "oracle": "assert_eq!(total, 90)"
+      "oracle": "assert_eq!(total, 90)",
+      "relation_reason": "direct_owner_call",
+      "relation_confidence": "high"
     }
   ],
   "stop_reasons": [],
@@ -421,18 +427,86 @@ A finding contains:
 }
 ```
 
-The evidence-first fields are additive in schema `0.1`:
+The evidence-first fields are additive in schema `0.2`:
 
 - `evidence_path` is an ordered, human-readable summary of reachability,
   infection, propagation, observation, discrimination, local flow, related test
   oracles, observed values, and missing discriminator evidence.
+- `assertion_texts` (added in schema `0.2`) is a finding-level JSON object
+  mapping line-number strings to assertion source text.  Per-value objects in
+  `observed_values` no longer carry a redundant `text` field; downstream
+  consumers recover the assertion source via
+  `finding.assertion_texts[line.to_string()]`.  **Known limitation**: the map
+  is keyed by line number only, so if two assertions in different source files
+  share the same line number within one finding, only one text is retained.
+  This is a low-probability edge case; a future schema could use `"file:line"`
+  composite keys.
 - `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
   nested activation evidence for consumers that want direct finding-level
   access.
+- `related_tests_total` — number of related tests the analyzer matched for
+  this finding (pre-cap, always the true count). The `related_tests` array is
+  **capped** at `MAX_RELATED_TESTS_PER_FINDING_JSON` (currently 8) to bound
+  artifact size on real repos where a high-traffic owner can fan out to
+  hundreds of related tests. This is an additive field (no `schema_version`
+  bump). The cap never affects classification, finding count, or the
+  `oracle_kind`/`oracle_strength` summary — those use the full pre-cap vector.
+  Mirrors the `related_tests_total` + cap pattern already in
+  `seams[].related_tests_total` for the `repo-exposure.json` format.
+- `related_tests[].relation_reason` — (optional, additive, no `schema_version`
+  bump) the highest-priority static signal that caused this test to be
+  included. Values: `direct_owner_call`, `helper_owner_call`,
+  `assertion_target_affinity`, `same_test_file`, `same_module`,
+  `owner_named_test`, `import_path_affinity`, `fixture_owner_affinity`,
+  `weak_token_substring`. Consumers can filter or de-prioritize entries tagged
+  `weak_token_substring` — these are attached via probe-token name matching and
+  cover ~59–90% of unrelated tests in real repos. **Membership is unchanged**:
+  all tests that were previously in `related_tests` remain; only the tagging
+  is added. Absent on language adapters (Python, TypeScript) that do not yet
+  compute reason; `null` / omitted in that case.
+- `related_tests[].relation_confidence` — (optional, additive) companion
+  confidence level for the `relation_reason`. Values: `high`, `medium`, `low`,
+  `opaque`. `direct_owner_call` → `high`; `assertion_target_affinity`,
+  `owner_named_test`, `same_test_file` → `medium`; `weak_token_substring`,
+  `same_module`, `helper_owner_call` → `low`; other static signals → `opaque`.
 - `oracle_kind` and `oracle_strength` summarize the strongest related oracle
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
   integrations.
+- `changed_sink`, `observed_sink`, `oracle_alignment`, and `alignment_reason`
+  are additive optional fields (RIPR-SPEC-0028) that surface the Python
+  classifier's **sink-alignment** decision — *why* a strong oracle did or did
+  not credit `exposed`. They are emitted only on `language == "python"` findings
+  and are absent on Rust and TypeScript findings; they do **not** bump
+  `schema_version` (still `0.2`). `changed_sink` is the comma-joined significant
+  tokens of the changed line; `observed_sink` is the strongest related oracle's
+  assertion text; `alignment_reason` is a stable snake_case token. The
+  `oracle_alignment` value is a controlled enum (`ORACLE_ALIGNMENT_VALUES`):
+  - `direct` — a strong oracle observes the changed owner by name.
+  - `alias` — a strong oracle observes an import alias of the owner.
+  - `changed_sink_token` — a strong oracle observes a changed-sink token from
+    the changed line, but not the owner name.
+  - `orthogonal` — a strong oracle exists but observes a different sink than the
+    change (the fail-closed `weakly_exposed` branch); `alignment_reason` is
+    `strong_oracle_observes_different_sink`.
+  - `unknown` — no strong oracle observed the changed sink (or a `<module>`
+    owner with no usable token).
+
+  Example — an `exposed` finding aligned directly, and a `weakly_exposed`
+  finding whose strong oracle is orthogonal:
+
+  ```json
+  { "class": "exposed", "language": "python",
+    "changed_sink": "amount, threshold",
+    "observed_sink": "assert apply_discount(100, 100) == 90",
+    "oracle_alignment": "direct",
+    "alignment_reason": "strong_oracle_observes_owner_name" }
+  { "class": "weakly_exposed", "language": "python",
+    "changed_sink": "amount, threshold",
+    "observed_sink": "assert run_retry(lambda: 'x') == 'x'",
+    "oracle_alignment": "orthogonal",
+    "alignment_reason": "strong_oracle_observes_different_sink" }
+  ```
 - `repair_placement` is an additive optional object for preview-language
   findings that can statically name a bounded test location and command before
   full repair-card projection. It currently appears for direct weak Python
@@ -465,13 +539,157 @@ The evidence-first fields are additive in schema `0.1`:
   `findings[].evidence` strings for compatibility. It is not a repair packet
   and is not gate, badge, baseline, RIPR Zero, or agent-packet authority.
   Current fields are `authority_boundary` (`"preview_advisory_only"`),
-  `repair_packet_ready` (`false` for this preview slice), `gap_state`,
-  `actionability_category`, `why_not_actionable`, `repair_route`,
-  `missing_actionability_fields[]`, `missing_graph_legs[]`, nullable
-  `unlock_condition`, `evidence_needed_to_promote`, and `raw_evidence_refs[]`.
+  `repair_packet_ready` (boolean; `false` for most preview findings; flips to
+  `true` only for TypeScript findings satisfying the RIPR-SPEC-0087 complete
+  contract — see the flip condition below), `gap_state`, `actionability_category`,
+  `why_not_actionable`, `repair_route`, `missing_actionability_fields[]`,
+  `missing_graph_legs[]`, nullable `unlock_condition`,
+  `evidence_needed_to_promote`, and `raw_evidence_refs[]`.
+  `repair_packet_ready` flip condition (RIPR-SPEC-0087 §PR7): a TypeScript
+  finding flips `repair_packet_ready: true` iff ALL of the following hold:
+  (a) `actionability_category == "incomplete_repair_packet"` (G-A);
+  (b) `language_status == "preview"` and `language ∈ {typescript, javascript}`;
+  (c) `typescript_oracle_expected` is a concrete literal AND
+    `typescript_dynamic_assertion_unresolved` limitation is absent (G-C);
+  (d) related test is oracle-eligible (import-aware/owner-call, not
+    heuristic-only) — guaranteed by G-A (G-D);
+  (e) at least one named missing discriminator exists in `missing_discriminators`
+    (G-E);
+  (f) no `route_cross_language_oracle_visibility_limitation` or
+    `typescript_bun_bridge_verdict` evidence present (G-F);
+  AND the shared `validate_agent_gap_record_packet` validator returns `Ok(())`.
+  When flipped: `actionability_category` becomes `"complete_repair_packet"`,
+  `gap_state` becomes `"actionable"`, `missing_actionability_fields` becomes
+  `[]`, and `authority_boundary` stays `"preview_advisory_only"` (TypeScript
+  remains preview). Only `incomplete_repair_packet` is eligible to flip; all
+  other categories stay non-actionable. `schema_version` is unchanged.
+  When flipped, the actionability fields are rewritten to read as actionable
+  (RIPR-SPEC-0088 §PR8) so they do not contradict the complete packet:
+  `repair_route` names the actual repair action (the suggested assertion shape
+  or missing discriminator) rather than the blocked-case "only after ...
+  available" text; `evidence_needed_to_promote` is the empty string (nothing is
+  needed); and `why_not_actionable` carries the "why actionable" confirmation
+  naming the resolved contract fields. The JSON keys are kept stable for schema
+  compatibility; the human renderer relabels them to `why actionable` /
+  `repair action` and omits the empty `evidence needed` line for the actionable
+  case.
   Raw evidence refs carry the original raw string plus parsed `file`, `line`,
   `kind`, `source_id`, optional `owner`, optional graph `leg`, and optional
   source `sample` when present.
+- TypeScript preview findings may include additive package-discovery evidence
+  strings inside the existing `findings[].evidence[]` array. These strings are
+  produced by the `analysis/language/typescript/package.rs` manifest resolver
+  (RIPR-SPEC-0085 PR 2 — package-root and workspace discovery). They are
+  advisory and do not change `repair_packet_ready`, `preview_advisory_only`,
+  or `language_status`. New evidence strings are:
+  - `typescript_package_root: <path>` — nearest ancestor directory that
+    contains a `package.json` (relative to the repo root). Absent when no
+    `package.json` is found.
+  - `typescript_workspace_root: <path>` — nearest ancestor with a
+    `pnpm-workspace.yaml` or a `package.json` `"workspaces"` field; falls
+    back to `package_root`. Absent when `package_root` is unresolved.
+  - `typescript_framework_hint: <jest|vitest|bun|mocha|node_test|ava>` — test
+    framework detected from `package.json` deps/devDeps. Absent when no
+    evidence-backed framework is found.
+  - `typescript_test_runner: <jest|vitest|bun|mocha|node_test|ava>` — dedicated
+    evidence field for the detected test runner name. Always co-emitted with
+    `typescript_framework_hint` when a framework is detected. Absent when no
+    framework is found (fail-closed). Detected from `devDependencies`,
+    `dependencies`, and `scripts.test` value (script-name fallback handles
+    composite scripts like `"xo && npm run build && ava"`). Additive: does not
+    change any existing field. A later item uses this field to infer verify
+    commands for runners not yet handled by `verify_command_for_discovery`
+    (TS must-use roadmap item 3; RIPR-SPEC-0085).
+  - `typescript_runner_hint: <bun|pnpm|yarn|npm>` — package runner detected
+    from lockfile presence or `scripts.test`. Absent when no evidence-backed
+    runner is found.
+  - `typescript_package_confidence: <high|medium|low|none>` — how much
+    manifest evidence backed the resolution. `high` = framework + runner,
+    `medium` = one of the two, `low` = package found but neither resolved,
+    `none` = no `package.json` found at all.
+  - `typescript_package_limitation: <kind>` — named limitation when required
+    evidence is absent. Current kinds:
+    `typescript_package_root_unresolved` (no `package.json` found; value is
+    never fabricated from the file extension alone),
+    `typescript_framework_hint_unresolved`,
+    `typescript_package_manager_unresolved` (framework is known so a verify
+    command IS available via the framework binary, but no lockfile evidence
+    identified the package manager (npm/pnpm/yarn/bun); informational, not
+    blocking; per RIPR-SPEC-0101),
+    `typescript_runner_hint_unresolved` (no framework AND no lockfile/script
+    runner evidence; no verify command can be derived; strong fail-closed case),
+    `typescript_test_runner_unresolved` (neither framework nor runner could be
+    resolved to a bounded verify command; emitted when `verify_command_for_discovery`
+    returns `None`; fail-closed per RIPR-SPEC-0085 §"Fail-closed").
+    When `typescript_package_root_unresolved` is present, no
+    `typescript_package_root` line is emitted (fail-closed per RIPR-SPEC-0085).
+  - `typescript_verify_command: <cmd>` — evidence-backed verify command for the
+    strongest related test, expressed relative to `package_root`. Emitted only
+    when at least one of `framework_hint` or `runner_hint` is resolved. When
+    emitted, `typescript_preview_card.verify.command` reflects the same value.
+    Command forms (RIPR-SPEC-0085 PR 3):
+    `jest <file>`, `vitest run <file>`, `bun test <file>`,
+    `ava <file>`, `node --test <file>`, `npm test -- <file>`, `pnpm test -- <file>`,
+    `yarn test <file>`.
+  - `typescript_limitation: <name>` — ADDITIVE evidence line (RIPR-SPEC-0085
+    §PR4, named limitation taxonomy). Emitted only when a REAL detected
+    TypeScript construct triggers the named limitation. No existing field is
+    changed. Current emitted names and their real producers:
+    - `typescript_mock_only_observer` — fired by `StaticLimitKind::MockedModule`
+      (a related test file uses `jest.mock()`/`vi.mock()`).
+    - `typescript_import_graph_unresolved` — fired by
+      `StaticLimitKind::MissingImportGraph` (the changed line calls an imported
+      symbol whose cross-module implementation is unavailable to the syntax
+      adapter).
+    - `typescript_snapshot_discriminator_unresolved` — fired when an
+      oracle-eligible related test assertion has `OracleKind::Snapshot`
+      (`toMatchSnapshot`/`toMatchInlineSnapshot`).
+    - `typescript_custom_matcher_unresolved` — fired when an oracle-eligible
+      related test assertion has `OracleKind::Unknown` AND a non-empty matcher
+      name that is not in the recognised matcher set (real oxc-parsed AST
+      evidence).
+    - `typescript_dynamic_assertion_unresolved` — fired (RIPR-SPEC-0085 §PR5)
+      when an oracle-eligible related test assertion has a non-literal dynamic
+      matcher argument (a variable, function call, or computed expression). The
+      real producer is `oracle.rs::extract_matcher_expected_value`, which sets
+      `has_dynamic_matcher_arg = true` when the argument is not a resolvable
+      literal. The limitation explains that the expected discriminator value
+      cannot be statically resolved.
+    - `typescript_target_unresolved` — fired (RIPR-SPEC-0085 §PR6) when a test
+      in a different package references the owner by call name but is excluded by
+      the package-local ownership filter. The real producer is
+      `static_limit.rs::named_limitations_for_unresolved_ownership`, which
+      confirms the cross-package exclusion by comparing candidates with vs.
+      without the package-local filter. Only emitted when `workspace_root` is
+      `Some` (i.e. in production, not in unit tests without a workspace root).
+    Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
+    `typescript_oracle_helper_gated`.
+  - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
+    `file:line` of the real AST evidence that triggered the named limitation.
+  - `typescript_limitation_why: <name> — <why>` — additive; human-readable
+    reason why the finding is not actionable for this limitation.
+  - `typescript_limitation_repair_route: <name> → <route>` — additive; pointer
+    to the analyzer backlog slice that would resolve this limitation.
+- Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5). ADDITIVE: do not change
+  `oracle_kind`, `oracle_strength`, `static_limit_kind`, or `repair_packet_ready`.
+  Emitted from the strongest oracle-eligible assertion across all oracle-eligible
+  related test candidates. Only ONE assertion's metadata is emitted per finding.
+  - `typescript_oracle_observed: <expr>` — additive; the `expect(<expr>)` argument
+    as source text, extracted from the oxc AST span. The actual value/expression
+    being observed by the assertion.
+  - `typescript_oracle_expected: <value>` — additive; the matcher argument as
+    source text, emitted ONLY when the argument is a concrete resolvable literal
+    (string, number, boolean, null, or a safe all-literal object). NOT emitted
+    for dynamic/non-literal arguments; those trigger
+    `typescript_dynamic_assertion_unresolved` instead.
+  - `typescript_oracle_confidence: <level>` — additive; confidence derived from
+    `oracle_strength` plus whether the expected value is a concrete literal.
+    Values: `high` (Strong oracle + literal expected), `medium` (Strong oracle
+    without literal, or Medium oracle), `low` (Weak or Smoke oracle), `unknown`
+    (Unknown oracle kind).
+  - `typescript_oracle_evidence_ref: <file>:<line>` — additive; `file:line`
+    back to the `expect(...)` call in the test file, pointing at the AST call
+    site of the assertion.
 - `typescript_preview_card` is an additive optional object for TypeScript and
   JavaScript preview findings that already have structured
   `preview_actionability`. It is an advisory card, not a repair packet. The v1
@@ -521,6 +739,19 @@ The evidence-first fields are additive in schema `0.1`:
   repair packet.
   `repair_packet_ready` remains `false` for this preview slice, and nullable
   `verify.command` must not be interpreted as a delegated repair route.
+- `typescript_repair_packet` is an additive optional object present only when
+  `typescript_preview_card.repair_packet_ready == true` (i.e., the full RIPR-SPEC-0087
+  contract is satisfied). It is an advisory repair-work packet projected via the shared
+  renderer from the GapRecord computed by `typescript_gap_record_for`. It carries
+  `schema_version` (`"0.3"`), `source` (`"typescript_preview_projection"`),
+  `gap_id`, `canonical_gap_id`, `language`, `language_status` (`"preview"`),
+  `authority_boundary` (`"preview_advisory_only"`), optional `file`, optional `line`,
+  optional `owner`, `verify_command`, optional `receipt_command`, `allowed_edit_surface[]`,
+  `forbidden_files[]`, `must_not_change[]`, optional `assertion_shape`,
+  optional `repair_kind`, optional `target_test`, and optional `missing_discriminator`.
+  When absent, the human output contains a named `status: not actionable` limitation
+  section instead. This field is RIPR-SPEC-0088 §2.2. It is not a gate, badge, or
+  public repair authority; authority boundary remains `preview_advisory_only`.
 - `perl_preview_card` is an additive optional object for Perl preview findings
   that already have strict fact-packet evidence, canonical gap identity,
   related-test evidence, missing discriminator evidence, verify-command
@@ -599,6 +830,76 @@ The evidence-first fields are additive in schema `0.1`:
   `opaque_custom_assertion_helper`, `property_based_test`,
   `unresolved_pytest_fixture`, or `unsupported_syntax`.
 
+### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
+
+Added in schema `0.2` as an additive optional top-level array. Emitted whenever
+preview-language files (TypeScript, JavaScript, or Python) are present in the
+analyzed scope — **regardless of whether the preview adapter is enabled** in
+`ripr.toml`. Absent for pure-Rust scopes. Does not bump `schema_version`.
+
+Not-enabled (default) example — the #1111 case where a TypeScript change is run
+under the default Rust-only config and was therefore not analyzed:
+
+```json
+"preview_languages": [
+  {
+    "language": "typescript",
+    "file_count": 1,
+    "sample_paths": ["src/utils.ts"],
+    "enabled": false,
+    "analyzed": false,
+    "category": "preview_language_advisory",
+    "why": "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"typescript\"]"
+  }
+]
+```
+
+Enabled example carries `"enabled": true`, `"analyzed": true`, and a
+`"why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"`.
+
+- `language` — stable wire string; one of `typescript`, `javascript`, `python`
+- `file_count` — number of files in scope routed to this adapter (real, never fabricated)
+- `sample_paths` — up to three normalized (forward-slash) file paths
+- `enabled` — whether the preview adapter was enabled (ran) for this analysis
+- `analyzed` — whether the files were analyzed (mirrors `enabled`)
+- `category` — always `"preview_language_advisory"` for machine filtering
+- `why` — advisory rationale string (case-specific)
+
+An empty or absent `preview_languages` array means only stable (Rust) content
+was in scope. A non-empty array is an honesty signal: either the listed
+preview-language files were not analyzed at all (`enabled == false`) or were
+analyzed under advisory preview support that may be incomplete
+(`enabled == true`). In neither case is an empty result a Rust-grade clean
+result.
+
+### `scope_disclosures` (top-level additive advisory, RIPR-SPEC-0083)
+
+Added as an additive optional top-level array. Emitted only when `ripr check`
+was invoked with **no analysis scope** (no `--diff`, `--base`, or `--mode`
+flag) and the result is empty. Absent when scope was explicitly provided (even
+if the analyzed scope produced 0 findings). Does not bump `schema_version`.
+
+No-scope example — the RIPR-SPEC-0083 case where bare `ripr check` analyzes
+nothing yet prints empty:
+
+```json
+"scope_disclosures": [
+  {
+    "scope_status": "no_scope_provided",
+    "category": "no_scope_disclosure",
+    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --mode fast"
+  }
+]
+```
+
+When scope was explicitly provided (`--diff`, `--base`, or `--mode`),
+`scope_disclosures` is absent. A scope-provided empty result is honest and
+requires no disclosure.
+
+- `scope_status` — always `"no_scope_provided"` for machine filtering
+- `category` — always `"no_scope_disclosure"` for machine filtering
+- `why` — advisory rationale string guiding the user to the correct invocation
+
 ## Enums
 
 `classification` values:
@@ -646,6 +947,7 @@ The evidence-first fields are additive in schema `0.1`:
 - `property_based_test`
 - `unresolved_pytest_fixture`
 - `unsupported_syntax`
+- `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
 
 Reserved `flow_sink` values:
 
@@ -1102,7 +1404,7 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
   "version": "1.0",
   "tool": "ripr",
   "probe": {
-    "id": "probe:src_lib.rs:88:predicate",
+    "id": "probe:src_lib.rs:predicate:bbaa2c25",
     "family": "predicate",
     "delta": "control",
     "file": "src/lib.rs",
@@ -1532,11 +1834,13 @@ Consumers must not treat limited artifacts as canonical actionable counts.
             "summary": "equality discriminator is missing"
           }
         },
+        "assertion_texts": {
+          "12": "discounted_total(50, 100)"
+        },
         "observed_values": [
           {
             "value": "50",
             "line": 12,
-            "text": "discounted_total(50, 100)",
             "context": "function_argument"
           }
         ],
@@ -1638,6 +1942,28 @@ Field contract:
   additive string enum within `0.3`; `helper_owner_call` extends the
   existing relation taxonomy without changing the field shape.
 - `scope` — always `"repo"`.
+- `run_status` — always present; one of `"complete"` or
+  `"seam_limit_applied"`. `"complete"` means the run analyzed all
+  seams. `"seam_limit_applied"` means `RIPR_REPO_EXPOSURE_SEAM_LIMIT`
+  truncated the inventory. Consumers must read `run_status` before
+  treating counts as complete-repo totals. Added as an additive field
+  within schema version `0.3` per RIPR-SPEC-0074.
+- `limitations[]` — present only when `run_status` is
+  `"seam_limit_applied"`. Each entry carries:
+  - `category` — `"repo_seam_limit_applied"`.
+  - `seams_analyzed` — number of seams that were classified.
+  - `seams_total` — total seams before truncation.
+  - `limit_source` — `"default"` when the cap came from the built-in
+    default (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`);
+    `"configured"` when `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly
+    set in the environment. Added as an additive field within schema
+    version `0.3` per RIPR-SPEC-0074 Slice B.
+  - `control` — the env var that triggered the limit:
+    `"RIPR_REPO_EXPOSURE_SEAM_LIMIT"`.
+  - `repair_route` — human-readable instructions. When `limit_source`
+    is `"default"`: set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` to analyze
+    all seams. When `limit_source` is `"configured"`: remove or raise
+    the env var.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
   zero so consumers can plot stable bar charts.
@@ -5697,10 +6023,40 @@ Field contract:
   comment body instead of raw static classes. It carries gap kind, changed
   behavior when available, why the gap matters, the bounded repair route,
   evidence IDs, verification commands, source artifact, and authority boundary.
+- `comments[].gap_state` - canonical actionability state per RIPR-SPEC-0061.
+  Present on every card (working-set and gap-ledger paths). Values:
+  `"actionable"`, `"static_limitation"`, `"already_observed"`,
+  `"internal_only"`, or `"unknown"`. This replaces the previous implicit
+  classification from `grip_class` alone for consumer code; always prefer
+  `gap_state` for routing decisions. Enforced by reject-list test
+  `spec0068_every_card_carries_gap_state`.
+- `comments[].receipt_command` - copyable `ripr agent receipt` command.
+  Present when `gap_state == "actionable"`. This completes the
+  actionable-card contract: `verify_command` (in `llm_guidance`) plus
+  `receipt_command` together form the proof-closure handoff. Enforced by
+  reject-list test `spec0068_actionable_card_carries_verify_and_receipt_commands`.
+- `comments[].why_not_actionable` - human-readable sentence from the first
+  `EvidenceRecordStaticLimitation.reason`. Present when
+  `gap_state == "static_limitation"`. Consumers should show this alongside
+  `limitation` and `limitation_route` when explaining why no repair is offered.
+- `comments[].non_claims` - advisory-only boundary declarations. Present when
+  `gap_state == "static_limitation"`. Always carries
+  `authority_boundary: "advisory_static_evidence_only"`. The `language_status`
+  field classifies the evidence tier (`"advisory"`, `"preview_advisory"`, etc.).
+- `comments[].canonical_gap_id` - stable gap identity from the gap-ledger.
+  Present on gap-ledger path cards when available. Deferred on the working-set
+  path (no `CanonicalGapIdentity` is threaded through the working-set renderer
+  today; planned for a future slice).
 - `summary_only[]` - same recommendation shape without `placement`. These rows
   still carry `source_location` for navigable Markdown and JSON parity. CI
   should show these in the Markdown/job summary but must not invent a
   changed-line annotation for them.
+- `summary_only[].summary_reason` - closed-vocabulary token explaining why the
+  card is in the summary rather than the inline set. Valid tokens:
+  `inline_comment_cap_reached`, `no_safe_changed_line_placement`,
+  `navigation_only_cross_language_target`, `nearby_test_changed`,
+  `summary_cap`, `missing_verification_command`. Free-text values are
+  forbidden per RIPR-SPEC-0068; adding a new token requires amending the spec.
 - `suppressed[]` - bounded records for recommendations hidden by caps or
   nearby test changes.
 - `warnings[]` - selection warnings from the agent brief selection path.
@@ -6654,6 +7010,48 @@ Field contract:
 - `warnings[]` - missing optional inputs, unsupported labels, ambiguous
   calibration, baseline limitations, or schema limitations.
 - `limits_note` - static/runtime and advisory-default boundary text.
+- `new_unsuppressed` - canonical downstream-thresholding receipt (see below).
+
+### `new_unsuppressed` receipt field
+
+Added by RIPR-SPEC-0111. Additive — does not bump `schema_version`.
+
+```json
+"new_unsuppressed": { "basis": "diff", "count": 3, "reason": null }
+```
+
+Consumers may threshold on `.new_unsuppressed.count` (e.g.
+`max_new_unsuppressed=0`). The field is a stable filter over the gate's own
+`decisions[]` — reproducible by any reader of the same receipt.
+
+**Honest definition.** `count` is the number of decisions `d` in `decisions[]`
+where ALL of the following hold:
+
+1. `d.static_class ∈ {"weakly_gripped","ungripped","reachable_unrevealed","weakly_exposed"}`
+   (policy-eligible class).
+2. `d.decision ∈ {"blocking","advisory"}` — suppressed, acknowledged, and
+   not_applicable candidates are EXCLUDED (they are handled or ineligible).
+3. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
+   `basis == "diff"`: all candidates in 1+2 count (diff scope equals "new").
+
+CRITICAL: `count` INCLUDES policy-eligible `advisory` decisions. It is NOT
+equal to `summary.blocking`. In `visible-only` mode every eligible candidate is
+advisory (`blocking=0`) but `count` is the advisory candidate count. An external
+thresholder applies its own policy; `ripr` reports the candidate count
+regardless of its own blocking/advisory label.
+
+**`basis` values.**
+
+| `basis` | Meaning |
+|---|---|
+| `"diff"` | Diff-scoped run. All surviving candidates are new by definition. |
+| `"baseline"` | Baseline-aware run (`baseline-check` or `calibrated-gate`). Only `is_baseline_new=true` candidates count. |
+| `null` | FAIL CLOSED: `config_errors` is non-empty — analysis did not run. |
+
+**Fail-closed rule.** When `config_errors` is non-empty, `basis=null`,
+`count=0`, and `reason` discloses the first config error. `count=0` with
+`basis=null` must NEVER be read as "clean/pass" — the `reason` field is
+the mandatory disclosure.
 
 Markdown should fit in a job summary. It should name the top-level decision,
 mode, counts, blocking or acknowledged seams, repair action, and limits. It
@@ -10933,6 +11331,27 @@ top-level `attempt_outcome` are one of `attempted_no_receipt`,
 classifies an external result artifact; it does not run verification or write
 the receipt.
 
+`classification.reason` carries a machine-readable string for every outcome.
+For `unknown` outcomes it is always one of the following closed set of
+`ingest_reason` values:
+
+| `reason` value | When emitted |
+| --- | --- |
+| `forbidden_edit` | Agent edited a file on the packet's `forbidden_files` list; all movement claims are discarded. |
+| `missing_verify` | Verify evidence is absent, failed, or inconclusive; classifier cannot reach any improvement outcome. |
+| `movement_without_snapshot_provenance` | Receipt claims a movement (improved/unchanged/regressed/resolved) but the receipt provenance block is missing a non-empty `before_artifact.sha256` or `after_artifact.sha256`. Classifier fails closed per RIPR-SPEC-0073 outcome-resolution rule 5. |
+| `stale_packet` | The input packet's `staleness_status` is `stale`; evidence from a stale packet is unreliable and no movement claim is accepted. |
+
+For non-`unknown` outcomes (e.g. `resolved`, `evidence_improved`) the reason
+is a human-readable sentence describing the classification; those sentences are
+not part of the closed `ingest_reason` vocabulary and may change without a
+schema bump.
+
+`evidence.receipt.provenance` carries:
+- `before_sha256` — the `before_artifact.sha256` from the receipt provenance block, or `null` if absent.
+- `after_sha256` — the `after_artifact.sha256` from the receipt provenance block, or `null` if absent.
+- `snapshot_provenance_present` — `true` only when both `before_sha256` and `after_sha256` are non-empty. A movement claim is accepted only when this is `true`.
+
 ```json
 {
   "schema_version": "0.3",
@@ -11064,11 +11483,13 @@ the receipt.
             "summary": "equality boundary is not observed"
           }
         },
+        "assertion_texts": {
+          "12": "discounted_total(50, 100)"
+        },
         "observed_values": [
           {
             "value": "50",
             "line": 12,
-            "text": "discounted_total(50, 100)",
             "context": "function_argument"
           }
         ],
@@ -13218,6 +13639,130 @@ whether it replaces a v0.1 entry, old coordinates when available, new
 warnings. The TOML report uses schema `0.3` with `status = "proposal"` and is a
 copy aid only; reviewers must supply real ids, owners, expiries, and rationale
 before adopting any proposal.
+
+## PR Evidence Summary
+
+`cargo xtask ripr-pr-summary` writes two sibling files after the legacy
+`pr-summary.md`:
+
+```text
+target/ripr/reports/pr-evidence-summary.json
+target/ripr/reports/pr-evidence-summary.md
+```
+
+The JSON file carries a versioned, machine-readable evidence summary
+derived from the other report artifacts already present in
+`target/ripr/reports/`. Failure to load any artifact is fail-closed:
+the affected field is set to `"not_available"` or `null`.
+
+Pass `--baseline <before.json>` (a previous `pr-evidence-summary.json`)
+to unlock delta counts. Without a baseline, delta fields are `null`
+with an explanatory `gap_delta_note` (honest-baseline rule: never fake
+zeros).
+
+JSON shape (schema version `0.1`):
+
+```jsonc
+{
+  "schema_version": "0.1",
+  "kind": "pr_evidence_summary",
+  "tool": "ripr",
+  "run_status": "diff_complete_full_repo_limited",
+  "changed_surfaces": 3,
+  "gaps": {
+    "total_actionable": 2,
+    "total_static_limitation": 1,
+    "new_actionable": null,
+    "resolved": null,
+    "regressed": null,
+    "gap_delta_note": "no baseline snapshot provided; pass --baseline <before.json> for delta counts"
+  },
+  "limitations": [
+    {
+      "category": "repo_seam_limit_applied",
+      "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams."
+    }
+  ],
+  "missing_receipts": 2,
+  "receipt_status": {
+    "receipts_present": 1,
+    "missing_receipts": 2,
+    "orphan_receipts": "not_available",
+    "stale_receipts": "not_available",
+    "gap_mismatch_receipts": "not_available",
+    "verify_failed_receipts": "not_available"
+  },
+  "top_repair": {
+    "canonical_gap_id": "gap:src/lib.rs:error_path:c1a03250",
+    "language": "rust",
+    "repair_kind": "AddTest",
+    "target": "src/lib.rs",
+    "verify_command": "cargo test -p ripr error_path",
+    "receipt_command": "cargo xtask receipts",
+    "receipt_state": "receipt_missing"
+  },
+  "top_limitation": {
+    "category": "repo_seam_limit_applied",
+    "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams.",
+    "why_not_actionable": "Seam inventory was capped; not all seams were analyzed in this run."
+  },
+  "local_reproduction_commands": [
+    "ripr check --base origin/main",
+    "ripr first-pr --root . --base origin/main --head HEAD",
+    "cargo test -p ripr error_path"
+  ]
+}
+```
+
+When `top_repair` is absent, `top_repair_state` appears in its place
+and `top_repair` is `null`. When `limitations` is empty, `top_limitation`
+is omitted entirely. When delta fields are computed (baseline supplied),
+`gap_delta_note` is absent.
+
+Field sources:
+
+| Field | Source artifact | Path |
+| --- | --- | --- |
+| `run_status` | diff-report (then repo-exposure fallback) | `run_status` |
+| `changed_surfaces` | diff-report | `summary.changed_files` |
+| `gaps.total_actionable` | gap-decision-ledger | `summary.repairable_total` |
+| `gaps.total_static_limitation` | gap-decision-ledger | `summary.static_limitation_total` |
+| `gaps.*` delta fields | computed from `--baseline` | before/after `gaps.total_actionable` |
+| `limitations[]` | repo-exposure | `limitations[]` |
+| `missing_receipts` | gap-decision-ledger | `summary.repairable_total - receipt_improved_total` |
+| `receipt_status.receipts_present` | gap-decision-ledger | `summary.receipt_improved_total + summary.receipt_unchanged_after_attempt_total` |
+| `receipt_status.missing_receipts` | gap-decision-ledger | mirrors top-level `missing_receipts` |
+| `receipt_status.orphan_receipts` | not yet derivable | `"not_available"` until receipts/ dir sweep added to ledger |
+| `receipt_status.stale_receipts` | not yet derivable | `"not_available"` until the real staleness signal (`swarm_ingest.staleness_status`) is wired into the gap-ledger build |
+| `receipt_status.gap_mismatch_receipts` | not yet derivable | `"not_available"` until each receipt's own `canonical_gap_id` is read and compared |
+| `receipt_status.verify_failed_receipts` | attempt-ledger `attempts[].verify_result` ∈ `{"fail","failed","error"}` | `"not_available"` when `swarm-attempt-ledger.json` is absent; integer count (incl. 0) when present (RIPR-SPEC-0057, PR7 of #1123) |
+| `top_repair` | start-here | `selected` (when `state == "top_gap"`) |
+| `top_repair_state` | start-here | `selected.state` (when not `"top_gap"`) |
+| `top_limitation` | first entry in `limitations[]` | derived |
+| `local_reproduction_commands` | diff-report + start-here | base/head + `selected.verify_command` |
+
+The `receipt_status` object is additive — existing consumers reading `missing_receipts`
+at the top level continue to work unchanged (`schema_version` stays `"0.1"`; additive
+fields do not require a version bump per the stability rules above).
+
+`verify_failed_receipts` is now derivable (PR7 of #1123): when
+`target/ripr/reports/swarm-attempt-ledger.json` is present, it is counted
+from `attempts[].verify_result` ∈ `{"fail", "failed", "error"}`, which flows
+from the real `swarm_ingest` verify pipeline (`verify.status`/`exit_code`).
+When the artifact is absent the field stays `"not_available"` (honest-absent
+rule: absence is not zero). A `0` is now honest because a failed entry would
+have been counted (validated by
+`verify_failed_receipts_nonzero_when_attempt_ledger_has_real_failure`).
+
+The three remaining `"not_available"` fields (`orphan_receipts`,
+`stale_receipts`, `gap_mismatch_receipts`) honestly signal "this signal is
+not yet computed" rather than claiming zero: emitting `0` would falsely assert
+we checked and found none. The staleness signal lives in `swarm_ingest`
+(`staleness_status`), which the gap-decision-ledger build path does not consume;
+until a real producer is wired in, surfacing a `0` would be a fabricated count
+that no real condition can produce (see #1130 adversarial review).
+
+Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 
 ## Stability Rules
 

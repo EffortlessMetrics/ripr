@@ -18,6 +18,7 @@
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/routed-rust.yml|63|Swarm routed Rust workflow selects CX53, CX43, or hosted fallback and runs the existing Rust/product command surface; scratch GC precedes each disk guard so cancelled runs cannot leak disk forever.
+.github/workflows/scratch-gc.yml|6|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + advisory guard) on a timer so disk recovery does not depend on PR traffic (#1028).
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.

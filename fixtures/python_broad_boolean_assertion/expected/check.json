@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_broad_boolean_assertion/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_priority.py:2:python_preview",
+      "id": "probe:src_priority.py:python_preview:5c6fb782",
       "canonical_gap_id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_priority.py:2:python_preview",
+        "id": "probe:src_priority.py:python_preview:5c6fb782",
         "family": "return_value",
         "delta": "value",
         "file": "src/priority.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: is_priority", "owner_kind: function", "missing_discriminator: return value == amount >= 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_priority.py", "suggested_test_name: test_priority_amount", "suggested_test_node_id: tests/test_priority.py::test_priority_amount", "suggested_verify_command: pytest tests/test_priority.py::test_priority_amount", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
       "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -65,6 +67,7 @@
           "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_priority_amount",
@@ -120,7 +123,21 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/priority.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

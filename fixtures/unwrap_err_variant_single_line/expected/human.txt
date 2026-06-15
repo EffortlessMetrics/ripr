@@ -1,0 +1,95 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/unwrap_err_variant_single_line/input
+
+Summary: 3 probe(s), 2 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
+
+Changed
+  before: return Err(ParseError::TooLong(name.len() + 1));
+  after:  return Err(ParseError::TooLong(name.len()));
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::validate
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Medium oracle found: property or partial structural assertion
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)
+  - related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses medium exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));
+  - observed assertion argument value 12 at line 4
+  - observed builder method value "aaaaaaaaaaaa" at line 4
+  - observed builder method value 12 at line 4
+  - observed enum variant value ParseError::TooLong at line 4
+  - observed function argument value name = "aaaaaaaaaaaa" at line 4
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+INFO fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
+
+Changed
+  before: return Err(ParseError::TooLong(name.len() + 1));
+  after:  return Err(ParseError::TooLong(name.len()));
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::validate
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact error variant assertion
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)
+  - related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));
+  - observed assertion argument value 12 at line 4
+  - observed builder method value "aaaaaaaaaaaa" at line 4
+  - observed builder method value 12 at line 4
+  - observed enum variant value ParseError::TooLong at line 4
+  - observed function argument value name = "aaaaaaaaaaaa" at line 4
+
+INFO fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
+
+Changed
+  before: return Err(ParseError::TooLong(name.len() + 1));
+  after:  return Err(ParseError::TooLong(name.len()));
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::validate
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact error variant assertion
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)
+  - related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));
+  - observed assertion argument value 12 at line 4
+  - observed builder method value "aaaaaaaaaaaa" at line 4
+  - observed builder method value 12 at line 4
+  - observed enum variant value ParseError::TooLong at line 4
+  - observed function argument value name = "aaaaaaaaaaaa" at line 4

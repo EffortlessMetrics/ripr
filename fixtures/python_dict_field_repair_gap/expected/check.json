@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dict_field_repair_gap/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_invoice.py:2:python_preview",
+      "id": "probe:src_invoice.py:python_preview:5718c46e",
       "canonical_gap_id": "gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_invoice.py:2:python_preview",
+        "id": "probe:src_invoice.py:python_preview:5718c46e",
         "family": "field_construction",
         "delta": "value",
         "file": "src/invoice.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: invoice_payload", "owner_kind: function", "missing_discriminator: status == \"paid\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_invoice.py", "suggested_test_name: test_invoice_payload_smoke", "suggested_test_node_id: tests/test_invoice.py::test_invoice_payload_smoke", "suggested_verify_command: pytest tests/test_invoice.py::test_invoice_payload_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_invoice_payload_smoke)", "test_verify_command: pytest tests/test_invoice.py::test_invoice_payload_smoke (test_invoice_payload_smoke)", "related_test_relation: syntactic_call (test_invoice_payload_smoke)", "test_oracle: smoke_only smoke (test_invoice_payload_smoke)", "test_oracle_shape: broad_smoke_assertion (test_invoice_payload_smoke)"],
       "missing": ["Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -65,6 +67,7 @@
           "flow_sink": {"kind":"struct_field","text":"return {\"status\": \"paid\", \"id\": invoice_id}","line":2}
         }
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_invoice_payload_smoke",
@@ -120,7 +123,21 @@
       "suggested_next_action": "Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == \"paid\"`.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "status, paid, invoice_id, id",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/invoice.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

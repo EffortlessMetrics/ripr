@@ -27,7 +27,19 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     ));
 
     if output.findings.is_empty() {
-        out.push_str("No diff-derived mutation exposure probes found.\n");
+        out.push_str("No diff-derived static exposure probes found.\n");
+        // RIPR-SPEC-0083: disclose when no analysis scope was provided.
+        // This fires only when the caller passed no --diff/--base/--mode, so
+        // an empty result here means "nothing was analyzed", not "tests pass".
+        if output.no_scope_provided {
+            out.push_str(
+                "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
+Run `ripr check --base origin/main` to analyze your changes, or \
+`ripr check --root . --format repo-exposure-md` for a full-repo scan. \
+An empty result here does NOT mean your changed behavior is covered.\n",
+            );
+        }
+        render_preview_language_advisories(&mut out, output);
         return out;
     }
 
@@ -35,7 +47,78 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str(&render_finding_with_config(finding, config));
         out.push('\n');
     }
+    render_all_no_path_disclosure(&mut out, output);
+    render_preview_language_advisories(&mut out, output);
     out
+}
+
+/// Emit an advisory note when every finding is no-path or unknown (zero
+/// exposed/weakly_exposed/reachable_unrevealed). See RIPR-SPEC-0090.
+///
+/// Called unconditionally after the findings loop; emits nothing when:
+/// - there are zero findings (a different case handled elsewhere), or
+/// - at least one finding is exposed/weakly_exposed/reachable_unrevealed
+///   (the per-finding output already carries the signal).
+///
+/// This is a pure ABSENCE-OF-PATH statement, not a coverage or adequacy claim.
+fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
+    let s = &output.summary;
+    let all_no_path_count =
+        s.no_static_path + s.infection_unknown + s.propagation_unknown + s.static_unknown;
+    if s.findings == 0 {
+        return;
+    }
+    if s.exposed > 0 || s.weakly_exposed > 0 || s.reachable_unrevealed > 0 {
+        return;
+    }
+    if all_no_path_count != s.findings {
+        return;
+    }
+    out.push_str(&format!(
+        "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
+This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.\n",
+        all_no_path_count
+    ));
+}
+
+/// Emit preview-language advisory notes when preview-language files were
+/// in the analyzed scope.
+///
+/// Called unconditionally; emits nothing when `preview_language_advisories`
+/// is empty (pure-Rust scope). See RIPR-SPEC-0082.
+///
+/// Two wordings per the `enabled` flag:
+///
+/// - `enabled` — the preview adapter ran; the empty/partial result is advisory
+///   and may be incomplete, not Rust-grade clean.
+/// - not enabled — the files were detected but not analyzed because the
+///   preview adapter is not enabled in `ripr.toml`; the empty result must not
+///   be read as clean. A copy-paste-ready TOML block is appended so enabling
+///   the adapter is a single edit.
+fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
+    for advisory in &output.preview_language_advisories {
+        let language = capitalize_first(&advisory.language);
+        if advisory.enabled {
+            out.push_str(&format!(
+                "\nNote: {} {}(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.\n",
+                advisory.file_count, language,
+            ));
+        } else {
+            let language_lowercase = advisory.language.to_lowercase();
+            out.push_str(&format!(
+                "\nNote: this diff contains {} {}(s). The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
+                advisory.file_count, language, language,
+            ));
+        }
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
 }
 
 /// Render one finding section for the human-readable CLI output.
@@ -51,6 +134,7 @@ pub(crate) use sections::render_finding_with_config;
 #[cfg(test)]
 mod tests {
     use super::{render, render_finding};
+    use crate::analysis::PreviewLanguageAdvisory;
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
@@ -81,6 +165,8 @@ mod tests {
                 ..Summary::default()
             },
             findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         };
 
         let rendered = render(&output);
@@ -89,7 +175,7 @@ mod tests {
         assert!(rendered.contains(
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
-        assert!(rendered.contains("No diff-derived mutation exposure probes found."));
+        assert!(rendered.contains("No diff-derived static exposure probes found."));
     }
 
     #[test]
@@ -493,6 +579,8 @@ mod tests {
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -555,12 +643,18 @@ mod tests {
                 oracle: Some("assert_eq!(actual, expected)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
             language: None,
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 
@@ -602,6 +696,10 @@ mod tests {
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 
@@ -611,5 +709,595 @@ mod tests {
 
     fn unknown_stage(summary: &str) -> StageEvidence {
         stage(StageState::Unknown, Confidence::Low, summary)
+    }
+
+    // RIPR-SPEC-0082 tests: preview-language disclosure honesty
+    #[test]
+    fn render_emits_preview_disclosure_when_typescript_files_in_scope() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "typescript".to_string(),
+                file_count: 2,
+                sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
+                enabled: true,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("2 Typescript(s) analyzed under preview support"),
+            "expected preview disclosure in output; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("preview evidence is advisory"),
+            "expected advisory note; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("NOT a clean Rust-grade result"),
+            "expected honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_emits_preview_disclosure_when_python_files_in_scope() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "python".to_string(),
+                file_count: 3,
+                sample_paths: vec!["app/main.py".to_string()],
+                enabled: true,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("3 Python(s) analyzed under preview support"),
+            "expected python preview disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("NOT a clean Rust-grade result"),
+            "expected honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_preview_disclosure_for_pure_rust_scope() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("preview support"),
+            "pure-Rust scope must not emit preview note; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("NOT a clean Rust-grade result"),
+            "pure-Rust scope must not emit honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_preview_disclosure_count_matches_advisory_file_count() {
+        // The file_count in the advisory must appear verbatim in the disclosure line.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "typescript".to_string(),
+                file_count: 7,
+                sample_paths: vec!["src/lib.ts".to_string()],
+                enabled: true,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("7 Typescript(s) analyzed under preview support"),
+            "expected file_count=7 in disclosure; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled() {
+        // The #1111 default case: TypeScript files in the diff but the adapter
+        // is NOT enabled. The empty result must be broken by a disclosure that
+        // says the files were not analyzed.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "typescript".to_string(),
+                file_count: 1,
+                sample_paths: vec!["src/utils.ts".to_string()],
+                enabled: false,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("this diff contains 1 Typescript(s)"),
+            "expected not-enabled disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("not enabled, so these files were not analyzed"),
+            "expected not-analyzed wording; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("NOT a clean Rust-grade result"),
+            "expected honesty note; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Enable it in ripr.toml"),
+            "expected enable hint; got:\n{rendered}"
+        );
+        // Must include the copy-paste TOML block.
+        assert!(
+            rendered.contains("[languages]\nenabled = [\"rust\", \"typescript\"]"),
+            "expected copy-paste TOML block; got:\n{rendered}"
+        );
+        // Must NOT use the enabled wording.
+        assert!(
+            !rendered.contains("analyzed under preview support"),
+            "not-enabled case must not claim analysis ran; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_not_enabled_disclosure_includes_language_specific_toml_block() {
+        // Verify the copy-paste block uses the actual language name, not a
+        // hardcoded string. This covers the Python path; TypeScript is covered
+        // by render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: vec![PreviewLanguageAdvisory {
+                language: "python".to_string(),
+                file_count: 3,
+                sample_paths: vec!["app/models.py".to_string()],
+                enabled: false,
+            }],
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(r#"enabled = ["rust", "python"]"#),
+            "expected python-specific copy-paste TOML block; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r#"enabled = ["rust", "typescript"]"#),
+            "python advisory must not mention typescript; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_finding_normalizes_backslash_location_path_to_forward_slash() {
+        // Proves sections.rs uses display_path: Windows-style .\\src\\pricing.ts
+        // must render as src/pricing.ts in the WARNING line.
+        let mut finding = sample_finding();
+        finding.probe.location = SourceLocation::new(PathBuf::from(r"src\pricing.ts"), 10, 1);
+
+        let rendered = render_finding(&finding);
+
+        assert!(
+            rendered.contains("src/pricing.ts:10"),
+            "expected forward-slash location path in human output; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r"src\pricing.ts"),
+            "backslash path must not appear in human output; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_finding_normalizes_backslash_related_test_path_to_forward_slash() {
+        // Proves evidence_lines.rs uses display_path: related test file with
+        // backslashes must appear as forward-slash in the evidence lines.
+        let mut finding = sample_finding();
+        finding.related_tests[0].file = PathBuf::from(r"tests\sample.rs");
+
+        let rendered = render_finding(&finding);
+
+        assert!(
+            rendered.contains("tests/sample.rs:"),
+            "expected forward-slash related-test path in human evidence; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(r"tests\sample.rs"),
+            "backslash related-test path must not appear in human output; got:\n{rendered}"
+        );
+    }
+
+    // RIPR-SPEC-0083 tests: no-scope disclosure honesty
+
+    #[test]
+    fn render_emits_no_scope_guidance_when_no_scope_provided_and_empty() {
+        // The cardinal case: bare `ripr check` produces an empty result.
+        // `no_scope_provided: true` must emit the guidance note.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("no analysis scope was provided"),
+            "expected no-scope guidance; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("`ripr check --base origin/main`"),
+            "expected --base guidance; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("does NOT mean your changed behavior is covered"),
+            "expected honesty note; got:\n{rendered}"
+        );
+        // Bug 2 regression guard: the recommended full-repo-scan command must be
+        // --format repo-exposure-md, not --mode fast (which is a speed tier).
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "expected --format repo-exposure-md in guidance; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "guidance must NOT recommend --mode fast as a full-repo scan; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_no_scope_guidance_when_scope_provided_and_empty() {
+        // Scope was provided (--diff/--base) but found 0 probes.
+        // `no_scope_provided: false` must NOT emit the guidance — the result
+        // is honest: that diff really had no probes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("no analysis scope was provided"),
+            "scope-provided empty result must NOT show no-scope guidance; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("does NOT mean your changed behavior is covered"),
+            "scope-provided empty result must NOT show honesty note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_no_scope_guidance_uses_conservative_static_language() {
+        // Verify the no-scope disclosure text uses only approved static-language
+        // vocabulary. The gate bans mutation-testing runtime terms; we verify
+        // the disclosure uses the approved phrasing ("does NOT mean your changed
+        // behavior is covered") rather than any runtime claim.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        // Confirm the actual approved honesty phrase is present.
+        assert!(
+            rendered.contains("does NOT mean your changed behavior is covered"),
+            "expected approved honesty phrase; got:\n{rendered}"
+        );
+        // The disclosure is a static analysis advisory, not a runtime claim.
+        assert!(
+            rendered.contains("no analysis scope was provided"),
+            "expected scope disclosure lead-in; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn guidance_recommends_format_repo_exposure_md_not_mode_fast() {
+        // Bug 2 regression guard: the human guidance string must recommend
+        // --format repo-exposure-md for a full-repo scan, NOT --mode fast.
+        // --mode is a speed tier on the diff path; it does NOT provide scope.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: true,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("--format repo-exposure-md"),
+            "guidance must recommend --format repo-exposure-md for full-repo scan; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("--mode fast"),
+            "guidance must NOT recommend --mode fast as a full-repo-scan command; got:\n{rendered}"
+        );
+    }
+
+    // RIPR-SPEC-0090 tests: all-no-path disclosure honesty
+
+    #[test]
+    fn render_emits_all_no_path_disclosure_when_all_findings_are_no_path() {
+        // Primary case: findings exist but none are exposed/weak/reachable.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                no_static_path: 2,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered
+                .contains("ripr found no static test path for any of the 2 changed expression(s)"),
+            "expected all-no-path disclosure; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("not a coverage assessment"),
+            "expected honesty note; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("no co-located test was found that statically discriminates"),
+            "expected absence-of-path wording; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_emits_all_no_path_disclosure_for_infection_unknown_findings() {
+        // Also fires for infection_unknown / propagation_unknown / static_unknown classes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered
+                .contains("ripr found no static test path for any of the 1 changed expression(s)"),
+            "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_exposed_finding_exists() {
+        // If any finding is exposed, the per-finding output carries the signal.
+        // Do NOT emit the all-no-path note.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                exposed: 1,
+                no_static_path: 1,
+                ..Summary::default()
+            },
+            findings: vec![sample_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when an exposed finding exists; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_weakly_exposed_finding_exists() {
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![sample_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when a weakly_exposed finding exists; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_zero_findings() {
+        // Zero findings is a different case (handled by no-probes message).
+        // The all-no-path disclosure must NOT fire here.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any of the"),
+            "must NOT emit all-no-path disclosure when there are zero findings; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_uses_finding_count_not_probe_count() {
+        // The count shown must be the no-path/unknown total (= findings), not probes.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 5,
+                findings: 3,
+                no_static_path: 2,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("for any of the 3 changed expression(s)"),
+            "expected count=3 (findings), not 5 (probes); got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_uses_conservative_static_language() {
+        // Verify the disclosure does not use forbidden mutation-testing vocabulary.
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                no_static_path: 1,
+                ..Summary::default()
+            },
+            findings: vec![unknown_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(!rendered.contains("killed"), "must not use 'killed'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("survived"), "must not use 'survived'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("untested"), "must not use 'untested'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("proven"), "must not use 'proven'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(!rendered.contains("adequate"), "must not use 'adequate'"); // ripr-allow: static-language: test guard verifying disclosure does not emit forbidden mutation-testing term
+        assert!(
+            rendered.contains("ripr found no static test path"),
+            "expected absence-of-path statement"
+        );
     }
 }

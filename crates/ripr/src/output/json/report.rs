@@ -4,11 +4,17 @@ use crate::domain::{
     Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::agent_seam_packets::{
+    AGENT_SEAM_PACKET_SCHEMA_VERSION, allowed_edit_surface_for_gap_route,
+    gap_record_packet_do_not_do,
+};
+use crate::output::next_step::reconcile_next_step;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use crate::output::typescript_preview_card::{
     typescript_preview_card, typescript_preview_card_json_value,
 };
@@ -17,6 +23,14 @@ use std::collections::BTreeMap;
 
 use super::finding_alignment;
 use super::{array_field, escape, field, float_field, number_field};
+
+/// Cap on `related_tests` serialized per finding in the diff-check JSON output.
+/// The heuristic is permissive (any test that reaches the changed owner counts),
+/// so a high-traffic function can fan out to hundreds of related tests per probe.
+/// The cap keeps the artifact review-sized. The pre-cap count is always disclosed
+/// in `related_tests_total` so consumers see what was elided.
+/// Mirrors `MAX_RELATED_TESTS_PER_SEAM_JSON` in `output/repo_exposure.rs`.
+const MAX_RELATED_TESTS_PER_FINDING_JSON: usize = 8;
 
 pub fn render(output: &CheckOutput) -> String {
     render_with_config(output, &RiprConfig::default())
@@ -52,6 +66,59 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when no analysis scope was
+    // provided and the result is empty. Absent when scope was given (real
+    // analyzed-empty is honest) or when findings are non-empty.
+    // See RIPR-SPEC-0083.
+    if output.no_scope_provided {
+        out.push_str(",\n  \"scope_disclosures\": [\n");
+        out.push_str("    {\n");
+        field(&mut out, 3, "scope_status", "no_scope_provided", true);
+        field(&mut out, 3, "category", "no_scope_disclosure", true);
+        field(
+            &mut out,
+            3,
+            "why",
+            "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --format repo-exposure-md",
+            false,
+        );
+        out.push_str("    }\n");
+        out.push_str("  ]");
+    }
+    // Additive advisory field — emitted only when preview-language files were
+    // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
+    if !output.preview_language_advisories.is_empty() {
+        out.push_str(",\n  \"preview_languages\": [\n");
+        let advisories = &output.preview_language_advisories;
+        for (idx, adv) in advisories.iter().enumerate() {
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &adv.language, true);
+            number_field(&mut out, 3, "file_count", adv.file_count, true);
+            array_field(&mut out, 3, "sample_paths", &adv.sample_paths, true);
+            out.push_str(&format!(
+                "      \"enabled\": {},\n      \"analyzed\": {},\n",
+                adv.enabled, adv.enabled
+            ));
+            field(&mut out, 3, "category", "preview_language_advisory", true);
+            let why_owned;
+            let why: &str = if adv.enabled {
+                "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+            } else {
+                why_owned = format!(
+                    "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
+                    adv.language
+                );
+                &why_owned
+            };
+            field(&mut out, 3, "why", why, false);
+            out.push_str("    }");
+            if idx + 1 != advisories.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
     if let Some(report) = finding_alignment.as_ref() {
         out.push_str(",\n");
         out.push_str("  \"finding_alignment\": ");
@@ -186,6 +253,8 @@ fn finding_json_with_config_and_counts(
     out.push_str(",\n");
     array_field(out, indent + 1, "evidence", &finding.evidence, true);
     array_field(out, indent + 1, "missing", &finding.missing, true);
+    assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
+    out.push_str(",\n");
     activation_json(out, finding, indent + 1);
     out.push_str(",\n");
     value_facts_array_json(
@@ -202,13 +271,21 @@ fn finding_json_with_config_and_counts(
         indent + 1,
     );
     out.push_str(",\n");
+    let related_total = finding.related_tests.len();
+    let related_rendered = related_total.min(MAX_RELATED_TESTS_PER_FINDING_JSON);
+    number_field(out, indent + 1, "related_tests_total", related_total, true);
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
         "  ".repeat(indent + 1)
     ));
-    for (idx, test) in finding.related_tests.iter().enumerate() {
+    for (idx, test) in finding
+        .related_tests
+        .iter()
+        .take(related_rendered)
+        .enumerate()
+    {
         related_test_json(out, test, indent + 2);
-        if idx + 1 != finding.related_tests.len() {
+        if idx + 1 != related_rendered {
             out.push(',');
         }
         out.push('\n');
@@ -230,6 +307,21 @@ fn finding_json_with_config_and_counts(
             &typescript_preview_card_json_value(&card),
         );
         out.push_str(",\n");
+    }
+    // §PR8 (RIPR-SPEC-0088): emit the full work-packet JSON when
+    // repair_packet_ready: true. Absent when not actionable (invariant: never
+    // emit a partial or implied packet).
+    if let Some(record) = typescript_gap_record_for(finding) {
+        use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
+        if validate_agent_gap_record_packet(&record).is_ok() {
+            json_value_field(
+                out,
+                indent + 1,
+                "typescript_repair_packet",
+                &typescript_repair_packet_json(&record),
+            );
+            out.push_str(",\n");
+        }
     }
     if let Some(card) = perl_preview_card(finding) {
         json_value_field(
@@ -270,23 +362,35 @@ fn finding_json_with_config_and_counts(
             .unwrap_or("none"),
         true,
     );
+    // RIPR-SPEC-0088 §PR8: use the shared reconciliation fn so the JSON
+    // surface agrees with the human surface — no raw-field serialization.
+    let reconciled_step = reconcile_next_step(finding);
     field(
         out,
         indent + 1,
         "recommended_next_step",
-        finding.recommended_next_step.as_deref().unwrap_or(""),
+        &reconciled_step,
         true,
     );
     let has_language = finding.language.is_some();
     let has_status = finding.language_status.is_some();
     let has_owner_kind = finding.owner_kind.is_some();
     let has_static_limit_kind = finding.static_limit_kind.is_some();
+    let has_changed_sink = finding.changed_sink.is_some();
+    let has_observed_sink = finding.observed_sink.is_some();
+    let has_oracle_alignment = finding.oracle_alignment.is_some();
+    let has_alignment_reason = finding.alignment_reason.is_some();
+    // The Python sink-alignment fields are the final optional fields, so every
+    // preceding optional field must also account for them when deciding whether
+    // to emit a trailing comma.
+    let has_alignment =
+        has_changed_sink || has_observed_sink || has_oracle_alignment || has_alignment_reason;
     field(
         out,
         indent + 1,
         "suggested_next_action",
-        finding.recommended_next_step.as_deref().unwrap_or(""),
-        has_language || has_status || has_owner_kind || has_static_limit_kind,
+        &reconciled_step,
+        has_language || has_status || has_owner_kind || has_static_limit_kind || has_alignment,
     );
     if let Some(language) = finding.language {
         field(
@@ -294,7 +398,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language",
             language.as_str(),
-            has_status || has_owner_kind || has_static_limit_kind,
+            has_status || has_owner_kind || has_static_limit_kind || has_alignment,
         );
     }
     if let Some(status) = finding.language_status {
@@ -303,7 +407,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language_status",
             status.as_str(),
-            has_owner_kind || has_static_limit_kind,
+            has_owner_kind || has_static_limit_kind || has_alignment,
         );
     }
     if let Some(kind) = finding.owner_kind {
@@ -312,11 +416,51 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "owner_kind",
             kind.as_str(),
-            has_static_limit_kind,
+            has_static_limit_kind || has_alignment,
         );
     }
     if let Some(kind) = finding.static_limit_kind {
-        field(out, indent + 1, "static_limit_kind", kind.as_str(), false);
+        field(
+            out,
+            indent + 1,
+            "static_limit_kind",
+            kind.as_str(),
+            has_alignment,
+        );
+    }
+    // Python oracle sink-alignment (additive optional, RIPR-SPEC-0028): why a
+    // strong oracle did or did not credit `exposed`. Present only on Python
+    // findings; absent on Rust/TypeScript. `oracle_alignment` is a controlled
+    // enum (`ORACLE_ALIGNMENT_VALUES`).
+    if let Some(changed_sink) = &finding.changed_sink {
+        field(
+            out,
+            indent + 1,
+            "changed_sink",
+            changed_sink,
+            has_observed_sink || has_oracle_alignment || has_alignment_reason,
+        );
+    }
+    if let Some(observed_sink) = &finding.observed_sink {
+        field(
+            out,
+            indent + 1,
+            "observed_sink",
+            observed_sink,
+            has_oracle_alignment || has_alignment_reason,
+        );
+    }
+    if let Some(oracle_alignment) = &finding.oracle_alignment {
+        field(
+            out,
+            indent + 1,
+            "oracle_alignment",
+            oracle_alignment,
+            has_alignment_reason,
+        );
+    }
+    if let Some(alignment_reason) = &finding.alignment_reason {
+        field(out, indent + 1, "alignment_reason", alignment_reason, false);
     }
     out.push_str(&format!("{sp}}}"));
 }
@@ -512,9 +656,39 @@ fn value_fact_json(out: &mut String, fact: &ValueFact, indent: usize) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     number_field(out, indent + 1, "line", fact.line, true);
-    field(out, indent + 1, "text", &fact.text, true);
     field(out, indent + 1, "value", &fact.value, true);
     field(out, indent + 1, "context", fact.context.as_str(), false);
+    out.push_str(&format!("{sp}}}"));
+}
+
+/// Collect the unique (line -> assertion source text) map for a slice of
+/// [`ValueFact`]s and emit it as a JSON object keyed by line number string.
+///
+/// **Schema 0.2 dedup**: per-value objects no longer carry a redundant `text`
+/// field; downstream recovers the full assertion source via
+/// `assertion_texts[line.to_string()]`.
+///
+/// **Known limitation**: the map is keyed by line number only, so if two
+/// assertions in different source files share the same line number within one
+/// finding, only one text is retained.  This is a low-probability edge case; a
+/// future schema could use `"file:line"` composite keys.
+fn assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
+    let sp = "  ".repeat(indent);
+    let isp = "  ".repeat(indent + 1);
+    // BTreeMap gives deterministic (ascending) key order.
+    let mut map: BTreeMap<usize, &str> = BTreeMap::new();
+    for fact in facts {
+        map.entry(fact.line).or_insert(fact.text.as_str());
+    }
+    out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
+    let entries: Vec<_> = map.into_iter().collect();
+    for (idx, (line, text)) in entries.iter().enumerate() {
+        let trailing = if idx + 1 != entries.len() { "," } else { "" };
+        out.push_str(&format!(
+            "{isp}\"{line}\": \"{}\"{trailing}\n",
+            escape(text)
+        ));
+    }
     out.push_str(&format!("{sp}}}"));
 }
 
@@ -765,6 +939,63 @@ fn stage_json(out: &mut String, indent: usize, name: &str, stage: &StageEvidence
     ));
 }
 
+/// Build the `typescript_repair_packet` JSON value for an actionable TypeScript
+/// finding (RIPR-SPEC-0088 §PR8).
+///
+/// Uses shared helper functions from `agent_seam_packets` — no parallel TS
+/// renderer is introduced. The `GapRecord` is projected by
+/// `typescript_gap_record_for` and validated before this function is called.
+fn typescript_repair_packet_json(record: &crate::output::gap_decision_ledger::GapRecord) -> Value {
+    let route = record.repair_route.as_ref();
+    let edit_surface = route
+        .map(allowed_edit_surface_for_gap_route)
+        .unwrap_or_default();
+    // Compute forbidden files: anchor file unless it's the same as the edit surface.
+    let allowed_first = edit_surface.first().map(String::as_str);
+    let forbidden: Vec<String> = record
+        .anchor
+        .as_ref()
+        .and_then(|anchor| anchor.file.as_deref())
+        .filter(|f| allowed_first != Some(f))
+        .map(|f| f.to_string())
+        .into_iter()
+        .collect();
+    let must_not_change = gap_record_packet_do_not_do(record);
+    let verify_command = record.verification_commands.first().cloned();
+    let receipt_command = record.receipt_command.as_deref();
+    let canonical_gap_id = if record.canonical_gap_id.trim().is_empty() {
+        None
+    } else {
+        Some(record.canonical_gap_id.as_str())
+    };
+    let anchor = record.anchor.as_ref();
+    let target_test = route.and_then(|r| r.related_test.as_deref());
+    let assertion_shape = route.and_then(|r| r.assertion_shape.as_deref());
+    let repair_kind = route.map(|r| r.route_kind.as_str());
+    let missing_discriminator = route.and_then(|r| r.missing_discriminator.as_deref());
+    serde_json::json!({
+        "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
+        "source": "typescript_preview_projection",
+        "gap_id": record.gap_id.as_str(),
+        "canonical_gap_id": canonical_gap_id,
+        "language": record.language.as_str(),
+        "language_status": record.language_status.as_str(),
+        "authority_boundary": record.authority_boundary.as_str(),
+        "file": anchor.and_then(|a| a.file.as_deref()),
+        "line": anchor.and_then(|a| a.line),
+        "owner": anchor.and_then(|a| a.owner.as_deref()),
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+        "allowed_edit_surface": edit_surface,
+        "forbidden_files": forbidden,
+        "must_not_change": must_not_change,
+        "assertion_shape": assertion_shape,
+        "repair_kind": repair_kind,
+        "target_test": target_test,
+        "missing_discriminator": missing_discriminator,
+    })
+}
+
 pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: usize) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
@@ -791,12 +1022,35 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         test.oracle_kind.as_str(),
         true,
     );
+    // Additive optional fields: relation_reason and relation_confidence.
+    // Present only on Rust diff-check findings; absent (omitted) on Python /
+    // TypeScript preview findings and on legacy callers that set None.
+    let has_reason = test.relation_reason.is_some();
+    let has_confidence = test.relation_confidence.is_some();
     field(
         out,
         indent + 1,
         "oracle",
         test.oracle.as_deref().unwrap_or(""),
-        false,
+        has_reason || has_confidence,
     );
+    if let Some(reason) = test.relation_reason {
+        field(
+            out,
+            indent + 1,
+            "relation_reason",
+            reason.as_str(),
+            has_confidence,
+        );
+    }
+    if let Some(confidence) = test.relation_confidence {
+        field(
+            out,
+            indent + 1,
+            "relation_confidence",
+            confidence.as_str(),
+            false,
+        );
+    }
     out.push_str(&format!("{sp}}}"));
 }

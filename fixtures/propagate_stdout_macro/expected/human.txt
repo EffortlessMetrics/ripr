@@ -1,0 +1,78 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/propagate_stdout_macro/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 2 unknown
+
+NOTE fixtures/propagate_stdout_macro/input/src/lib.rs:2
+
+Changed
+  before: println!("amount is {}", amount);
+  after:  println!("amount is {}", amount * 9);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::report
+
+Static exposure
+  propagation_unknown (note, confidence 0.51)
+
+Evidence
+  - reach yes: Related tests appear to reach report: report_does_not_panic
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)
+  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
+  - observed function argument value amount = 5 at line 5
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+
+Stop reasons:
+  - proc_macro_opaque
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+NOTE fixtures/propagate_stdout_macro/input/src/lib.rs:2
+
+Changed
+  before: println!("amount is {}", amount);
+  after:  println!("amount is {}", amount * 9);
+
+Probe
+  family: side_effect
+  delta:  effect
+  owner:  src/lib.rs::report
+
+Static exposure
+  propagation_unknown (note, confidence 0.51)
+
+Evidence
+  - reach yes: Related tests appear to reach report: report_does_not_panic
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)
+  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
+  - observed function argument value amount = 5 at line 5
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+
+Stop reasons:
+  - proc_macro_opaque
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.
+
+
+Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.

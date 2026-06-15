@@ -5,6 +5,7 @@ pub(crate) mod agent_workflow;
 mod check;
 mod context;
 mod explain;
+pub(crate) mod receipt;
 mod selector;
 
 pub use crate::output::format::OutputFormat;
@@ -15,13 +16,13 @@ pub use context::{collect_context, collect_context_with_input};
 pub(crate) use explain::explain_finding_with_config;
 pub use explain::{explain_finding, explain_finding_with_input};
 
-use crate::analysis::AnalysisMode;
+use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
 use std::path::PathBuf;
 
-pub(crate) const CHECK_OUTPUT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const CHECK_OUTPUT_SCHEMA_VERSION: &str = "0.2";
 
 /// Input contract for [`check_workspace`].
 ///
@@ -117,6 +118,19 @@ pub struct CheckOutput {
     pub summary: Summary,
     /// Probe-level findings.
     pub findings: Vec<Finding>,
+    /// Advisory records for preview-language files in the analyzed scope.
+    ///
+    /// Non-empty only when TypeScript, JavaScript, or Python files were
+    /// present in the diff or repo. An empty result with non-empty advisories
+    /// is NOT a clean Rust-grade result — it means the preview adapter
+    /// analyzed the scope but found nothing actionable at this time.
+    /// See RIPR-SPEC-0082.
+    pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// When `true`, no analysis scope was provided by the caller (no `--diff`,
+    /// `--base`, `--files`, or full-repo mode flag). An empty result in this
+    /// state does NOT mean the changed behavior is covered — it means nothing
+    /// was analyzed. See RIPR-SPEC-0083.
+    pub no_scope_provided: bool,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

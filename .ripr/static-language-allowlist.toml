@@ -11,6 +11,11 @@
 # not a default escape hatch — every entry must name an owner and a durable
 # reason.
 #
+# For a single innocent use (e.g. a prohibited word in a comment or a policy
+# reason), prefer the finer-grained inline allow over a whole-file entry here:
+# append `ripr-allow: static-language: <reason>` to that one line. The reason is
+# required; a bare marker does not suppress.
+#
 # Validated by `cargo xtask check-static-language` via
 # `parse_static_language_allowlist` in `xtask/src/main.rs`. Glob entries are
 # currently restricted to `docs/*.md` and `docs/**/*.md`; broader Markdown

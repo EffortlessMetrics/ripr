@@ -174,8 +174,9 @@ owner = "product-swarm"
 id = "RIPR-SPEC-0068"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
-status = "proposed"
+status = "accepted"
 owner = "product-swarm"
+standalone_reason = "Product use-case spec under the evidence-to-repair use-case roadmap (RIPR-SPEC-0065 family); the roadmap spec is the umbrella, so there is no separate proposal artifact."
 
 [[artifact]]
 id = "RIPR-SPEC-0069"
@@ -211,3 +212,280 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0073-receipts-outcomes-route-quality-use-case.md"
 status = "proposed"
 owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0075"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0076"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0076-lsp-diagnostics-policy.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "LSP diagnostics-restraint policy spec derived directly from the diagnostics honesty requirement; no separate proposal artifact preceded it."
+
+[[artifact]]
+id = "RIPR-SPEC-0077"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0077-lsp-repair-packet-command.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0078"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0078-lsp-top-limitation-command.md"
+status = "proposed"
+owner = "product-swarm"
+
+[[artifact]]
+id = "RIPR-SPEC-0079"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0079-canonical-receipt-command-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Focused receipt-command contract under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0080"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0080-route-quality-standalone-report.md"
+status = "proposed"
+owner = "swarm"
+standalone_reason = "Standalone route-quality extraction under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0081"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0081-lsp-receipt-status-command.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "LSP receipt-status command under the RIPR-SPEC-0073 receipts/outcomes/route-quality umbrella; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0082"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure for preview-language content in diff scope; addresses #1111 silent empty-result gap; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0083"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0083-check-no-scope-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure when ripr check is run with no analysis scope; extends the #1111 honesty theme to the no-scope case; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0084"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0084-default-base-resolution.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Fix raw git error when origin/main is absent by resolving the repo's real default branch and failing closed with a named actionable message; addresses #1144; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0085"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Umbrella contract for turning the existing oxc-AST TypeScript preview adapter into a bounded evidence adapter (two outcomes: complete repair packet or named limitation); anchors the TypeScript wave PR sequence; references SPEC-0027/0071/0062/0063; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0086"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0086-python-eval-sweep.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+standalone_reason = "Standalone evidence-tooling contract for the Tier A external-repo eval sweep (cargo xtask eval-sweep); adds no product library behavior or public API; anchors the eval-sweep-driven Python reliability campaign; references ADR 0009; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0087"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "PR 7 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: closes the repair_packet_ready false→true flip for TypeScript findings with provably complete, evidence-backed, non-dynamic repair packets; reuses the shared validate_agent_gap_record_packet validator; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0088"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "PR 8 of the RIPR-SPEC-0085 TypeScript evidence-adapter wave: projects the actionable GapRecord computed in PR 7 into human (field-note), JSON (typescript_repair_packet field), LSP hover (Repair packet section), and LSP code-action (Copy TypeScript repair packet) surfaces via the shared renderer; no new public symbols; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0089"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0089-ts-full-repo-guidance.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Fixes #1175: emits a named typescript_diff_first guidance disclosure in repo-exposure-md and repo-exposure-json when a TypeScript-predominant workspace produces zero seams; fail-closed (fires only when Rust absent + TS present + seams empty); additive limitations[] entry with no schema bump; anchored by fixture ts_full_repo_guidance; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0090"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only (JSON unchanged, no schema bump); addresses #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0091"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0091-pilot-artifact-size-bound.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Bounds ripr pilot artifact size (repo-exposure.json + agent-seam-packets.json) to DEFAULT_PILOT_SEAM_BUDGET=2000 seams; fail-closed with limitations[] disclosure in both artifacts naming RIPR_PILOT_SEAM_BUDGET and a repair route; mirrors RIPR-SPEC-0074 run_status pattern; fixes #1170 (400 MB artifacts for one-file change)."
+
+[[artifact]]
+id = "RIPR-SPEC-0092"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0092-python-judged-pr-panel.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+standalone_reason = "Standalone evidence-schema contract for the Tier B judged-diff panel that extends the RIPR-SPEC-0086 Tier A sweep with judgment (false-actionable + false-exposed); ships schema plus a hand-vetted seed manifest only, no judging engine and no analyzer change; references ADR 0009; no separate proposal artifact."
+
+[[artifact]]
+id = "RIPR-SPEC-0093"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty fix for false-actionable MatchArm probes: downgrades exposed->weakly_exposed when no matched assertion text contains a token from the arm's pattern or variant (arm_observation_unverified); fixes #1198; no new JSON fields, no schema bump; fixture-backed by match_arm_blind (weakly_exposed) and match_arm_observer (exposed, no over-correction)."
+
+[[artifact]]
+id = "RIPR-SPEC-0094"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0094-observation-unverified-guard-generalization.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty fix generalizing the MatchArm arm_observation_unverified guard (RIPR-SPEC-0093) to ReturnValue, FieldConstruction, SideEffect, and CallDeletion families; also closes a type-blind token hole in the existing MatchArm guard via variant-scoped token_match; renames arm_observation_unverified->observation_unverified in message only; fixes #1216; no new JSON fields, no schema bump; fixture-backed by 9 new fixtures covering per-family blind/confirmed cases."
+
+[[artifact]]
+id = "RIPR-SPEC-0096"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0096-infect-propagate-fail-closed.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty fixes for false-exposed probes in INFECT/PROPAGATE stages (parts A, B, C of #1219): wildcard discard → infection_unknown, swallowed call-chain tails → propagation_unknown, stdout macros → propagation_unknown; no new JSON fields, no schema bump; fixture-backed by 6 new fixtures (3 downgrade proofs + 3 controls proving no over-correction); part D (confidence aggregation) deferred."
+
+[[artifact]]
+id = "RIPR-SPEC-0097"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty-safe oracle upgrade: toThrow with exact payload (string literal, all-literal object, PascalCase class ref) promotes BroadError/weak to ExactErrorVariant/strong, flipping weakly_exposed -> exposed; bare toThrow and camelCase identifier refs stay weak (fail-closed); TS stays preview-tier; no schema bump; fixture typescript_tothrow_exact_oracle + 7 unit tests."
+
+[[artifact]]
+id = "RIPR-SPEC-0098"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0098-typescript-exposed-observation-guard.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Fail-closed fix for false-exposed TypeScript preview findings: downgrades exposed→weakly_exposed when a strong oracle exists but no assertion's observed_expression flows from the changed sub-expression; fixes console.log/#1235 repro; language_status stays Preview; no schema bump; 4 unit tests (2 downgrade proofs + 2 controls proving no over-correction)."
+
+[[artifact]]
+id = "RIPR-SPEC-0099"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0099-typescript-tsconfig-path-aliases.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Opt-in tsconfig.json path-alias resolution for TypeScript preview: single-hop, fail-closed (exactly-one-file), default OFF; always-on typescript_path_alias_unresolved disclosure for name-matched unresolved aliases; 4 unit tests (POSITIVE/DEFAULT-OFF/AMBIGUOUS/NON-MATCH); no schema bump; language_status stays Preview."
+
+[[artifact]]
+id = "RIPR-SPEC-0100"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0100-lsp-related-test-codelens.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Advisory-only LSP codeLens above changed symbols citing the cached related-test count; display-only (never a diagnostic or gate); honesty rules: snapshot==None→empty Vec, N==0→'no related tests found', count from related_tests.len() only, preview prefix for TS/Python; new lsp/lens.rs pure-helper module; zero VS Code extension changes; 10 unit tests (8 fixture + 2 wiring/capability)."
+
+[[artifact]]
+id = "RIPR-SPEC-0101"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0101-typescript-package-manager-unresolved-disclosure.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty-clarity fix for TypeScript preview issue #1239: rewords misleading typescript_runner_hint_unresolved to typescript_package_manager_unresolved when a framework is known (verify command IS available via framework binary); preserves strong fail-closed typescript_runner_hint_unresolved for genuinely-unresolvable case (no framework AND no runner); 3 unit controls; no schema bump; language_status stays Preview."
+
+[[artifact]]
+id = "RIPR-SPEC-0102"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0102-typescript-import-alias-owner-call.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Under-emit honesty fix for TypeScript preview issue #1239 (gap 1): alias-rename import (import { X as local }) + verified body call upgraded from ImportedOwnerCall/import_path_affinity/Medium to ImportAliasOwnerCall/direct_owner_call/High; shadow guard via local_identifier_declared_in_test_body prevents over-claim when local is re-declared in test body; no new domain RelationReason variant; no schema_version bump; 5 unit controls; language_status stays Preview."
+
+[[artifact]]
+id = "RIPR-ADR-0019"
+kind = "adr"
+path = "docs/adr/0019-language-adapters-reuse-shared-packet-contract.md"
+status = "proposed"
+owner = "language-adapter-swarm"
+standalone_reason = "Cross-language architectural constraint that every actionable-packet adapter reuses the single validate_agent_gap_record_packet authority and shared agent-seam renderers, enforced by validator_parity_* tests; generalizes the pattern established in the RIPR-SPEC-0087/0088 TypeScript wave; no separate proposal artifact preceded it."
+
+[[artifact]]
+id = "RIPR-SPEC-0103"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0103-error-seam-exemplar-kind-gate.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty fix for Rust primary-language issue #1168 (slice 1): kind-gate the exemplar selector so nearest_strong_test_to_imitate returns null for an ErrorVariant seam when no related Strong test has ExactErrorVariant oracle kind, rather than nominating a misleading success-path exact_value test; oracle_kind_matches_seam_kind extracted as single source of truth; 7 unit controls; no schema bump; grip class unchanged."
+
+[[artifact]]
+id = "RIPR-SPEC-0104"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0104-typescript-oracle-seam-family-match.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "TypeScript honesty fix for issue #1246: assertion-level family↔oracle-kind filter (ts_oracle_kind_matches_seam + strongest_family_matching_oracle) so a cross-family Strong oracle (ExactErrorVariant on .toThrow) cannot promote a ReturnValue/Predicate seam to Exposed; SideEffect/CallDeletion families defer to RIPR-SPEC-0098 observation guard (two specs compose); 4 behavioral controls including single-test-both-assertions over-correction guard; mapping table unit test; no schema bump; no new class; TS stays preview."
+
+[[artifact]]
+id = "RIPR-SPEC-0105"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0105-lsp-defer-seam-inventory.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "LSP performance + disclosure fix for issue #1245 (cockpit dogfood gap #1): defer the expensive 336s cold / 31s warm full-repo seam inventory off the interactive did_open/did_save path; diff-scoped findings (33ms–11s) always produced; seams computed only on explicit ripr.refreshDiagnostics; disclosed via new seams_deferred run_status value (member of limited family); limited policy applied (severity downgrade + gap suppression); 4 unit controls; additive seams_deferred: bool field on AnalysisSnapshot; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0107"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0107-error-path-requires-variant-observing-oracle.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty fix: add ErrorPath to needs_token_confirmation in classify/reveal.rs so sibling ExactValue and broad is_err() oracles no longer promote error_path seams to exposed via observation_unverified; genuine variant-pinning ExactErrorVariant oracle (matching token) still clears guard and keeps seam exposed; reuses RIPR-SPEC-0094 + RIPR-SPEC-0106 machinery; one-line production delta; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0108"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (5 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0109"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0109-confidence-min-cap.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Confidence-display honesty fix: cap headline confidence_score by the weakest contributing stage's per-stage Confidence ceiling (Low=0.66, Unknown=0.50, High/Medium=1.0); applied after all existing score arithmetic; can only lower, never raise; classify untouched; seven fixture goldens re-blessed (confidence numbers only, classification byte-identical); no schema bump; no version bump; closes #1219 part D."
+
+[[artifact]]
+id = "RIPR-SPEC-0110"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Receipt-gap cross-reference (closes #1123 PR 4): adds optional --ledger flag to ripr receipt check; cross-references receipt's canonical_gap_id against live gap set from parse_gap_records_json; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed honesty rule); provides the real producer for labels deferred by #1130 no-fake-zero guard; 4 unit controls + 1 CLI smoke; no schema bump; no version bump."

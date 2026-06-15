@@ -204,6 +204,10 @@ This ADR should be revisited if any of these change:
   duck-typed call resolution), which would suggest a parser whose AST
   carries the additional facts natively.
 
+Operational watchpoint: [EffortlessMetrics/ripr#1430](https://github.com/EffortlessMetrics/ripr/issues/1430)
+tracks the first two criteria (Ruff parser publication and `rustpython-parser`
+decay) and the fact-contract lock that keeps a backend swap reviewable.
+
 ## Related Specs and Campaigns
 
 - [RIPR-SPEC-0026: Language adapter contract](../specs/RIPR-SPEC-0026-language-adapter-contract.md)

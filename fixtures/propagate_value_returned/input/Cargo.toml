@@ -1,0 +1,8 @@
+[package]
+name = "propagate_value_returned_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "propagate_value_returned_fixture"
+path = "src/lib.rs"

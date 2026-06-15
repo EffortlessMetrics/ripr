@@ -1,0 +1,96 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_cross_file_construct_call/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_formatter.py:python_preview:93f32878",
+      "canonical_gap_id": "gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key",
+        "language": "python",
+        "file": "src/formatter.py",
+        "owner": "Formatter.__call__",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "any_c<for_c_in_key"
+
+      },
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_formatter.py:python_preview:93f32878",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/formatter.py",
+        "line": 4,
+        "expression": "            if any(c < \" \" for c in key):",
+        "owner": "python:src/formatter.py::Formatter.__call__"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `__call__`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if any(c < \" \" for c in key):`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `__call__`", "infection yes: Changed Python predicate can alter branch selection: `if any(c < \" \" for c in key):`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)", "discriminator yes: Related Python test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: if any(c < \" \" for c in key): (line 4)", "related test tests/test_render.py:6 test_rejects_space_in_key uses strong exact error variant oracle: pytest.raises(ValueError, match='Invalid key')"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if any(c < \" \" for c in key):","line":4}
+      ],
+      "evidence": ["owner: Formatter.__call__", "owner_kind: method", "test_framework: pytest (test_rejects_space_in_key)", "test_verify_command: pytest tests/test_render.py::test_rejects_space_in_key (test_rejects_space_in_key)", "related_test_relation: construct_call (test_rejects_space_in_key)", "test_oracle: exact_error_variant strong (test_rejects_space_in_key)", "test_oracle_shape: exception_assertion (test_rejects_space_in_key)"],
+      "missing": ["Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_rejects_space_in_key",
+          "file": "tests/test_render.py",
+          "line": 6,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "pytest.raises(ValueError, match='Invalid key')"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "method",
+      "changed_sink": "any, key",
+      "observed_sink": "pytest.raises(ValueError, match='Invalid key')",
+      "oracle_alignment": "changed_sink_token",
+      "alignment_reason": "strong_oracle_observes_changed_sink_token"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/formatter.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

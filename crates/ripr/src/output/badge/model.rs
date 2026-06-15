@@ -137,6 +137,14 @@ pub struct BadgeSummary {
     /// expired suppressions and unmatched suppression selectors. Empty
     /// for the common-case green badge.
     pub warnings: Vec<String>,
+    /// Preview-language adapters that were detected in the diff but NOT
+    /// enabled. Non-empty means the badge is NOT a clean Rust-grade result:
+    /// those files were silently skipped. Consumers MUST treat a non-empty
+    /// list as a honesty signal even when `status` is `"warn"` rather
+    /// than `"pass"`, because the downgrade from pass to warn already
+    /// fired. Empty for clean Rust-only diffs and for diffs where the
+    /// preview adapter was enabled.
+    pub preview_skipped: Vec<String>,
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
@@ -144,8 +152,10 @@ pub struct BadgeSummary {
 /// `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`
 /// so public badge endpoints can be rendered from explicit GapRecord
 /// policy targets. v0.5 adds `basis = "canonical_actionable_gap"` for
-/// public repair-item badge projection.
-pub const BADGE_SCHEMA_VERSION: &str = "0.5";
+/// public repair-item badge projection. v0.6 adds `preview_skipped`
+/// so consumers can detect when a preview-language diff was not analyzed
+/// and the badge result is not a clean Rust-grade result.
+pub const BADGE_SCHEMA_VERSION: &str = "0.6";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order

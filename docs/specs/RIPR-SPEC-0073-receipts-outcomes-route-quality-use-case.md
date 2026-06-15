@@ -24,7 +24,7 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- #1123 PR 5: outcome classifier fails closed on missing snapshot provenance + emit reason
 
 Support-tier impact:
 
@@ -164,13 +164,14 @@ this closed vocabulary.
 4. An unrecognized movement string resolves to the presence-based
    outcome, never to an improvement.
 5. Receipt movement is valid only with before/after snapshot
-   provenance (the receipt's sha256 artifact fields). Planned
-   enforcement: rules 1–4 match current `classify_swarm_result`
-   behavior, but swarm-ingest classification today reads
-   `receipt.provenance.movement` without validating snapshot
-   provenance; the agent-receipt artifact carries sha256 provenance
-   by construction, and the ingest-side validation is a named
-   implementation slice in the linked plan.
+   provenance (the receipt's sha256 artifact fields). **ENFORCED**
+   as of PR 5 (#1123): `classify_swarm_result` now validates that
+   `receipt.provenance.before_artifact.sha256` and
+   `receipt.provenance.after_artifact.sha256` are both non-empty
+   before accepting any movement claim. Missing provenance yields
+   `outcome = unknown`, `reason = "movement_without_snapshot_provenance"`.
+   The `evidence.receipt.provenance.snapshot_provenance_present`
+   field in ingest output records whether the check passed.
 
 ### Required and forbidden wording
 

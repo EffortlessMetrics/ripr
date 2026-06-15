@@ -5,6 +5,7 @@
 //! analysis, config/suppression loading, and future CI policy code.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::SeamLimitInfo;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::CheckOutput;
 use crate::config::{ConfigSeverity, RiprConfig};
@@ -12,6 +13,8 @@ use crate::domain::{
     ExposureClass, Finding, LanguageId, LanguageStatus, MissingDiscriminatorFact, RelatedTest,
     StageEvidence, ValueFact,
 };
+use crate::output::next_step::reconcile_next_step;
+use crate::output::path::display_path_text;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
@@ -51,6 +54,7 @@ pub(crate) fn render_findings_sarif(
 /// Render repo-scoped classified seams as SARIF.
 pub(crate) fn render_repo_seams_sarif(
     classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
     config: &RiprConfig,
 ) -> String {
     let rules = seam_rules();
@@ -58,7 +62,56 @@ pub(crate) fn render_repo_seams_sarif(
         .iter()
         .filter_map(|entry| seam_result(entry, config))
         .collect::<Vec<_>>();
-    sarif_document("repo_seam", rules, results)
+    sarif_document_repo_seam(rules, results, limit_info)
+}
+
+fn sarif_document_repo_seam(
+    rules: Vec<Value>,
+    results: Vec<Value>,
+    limit_info: Option<&SeamLimitInfo>,
+) -> String {
+    let mut props = Map::new();
+    props.insert("tool".to_string(), json!("ripr"));
+    props.insert(
+        "schema_version".to_string(),
+        json!(RIPR_SARIF_SCHEMA_VERSION),
+    );
+    props.insert("scope".to_string(), json!("repo_seam"));
+    match limit_info {
+        None => {
+            props.insert("run_status".to_string(), json!("complete"));
+        }
+        Some(info) => {
+            props.insert("run_status".to_string(), json!("seam_limit_applied"));
+            let limitation = json!({
+                "category": "repo_seam_limit_applied",
+                "seams_analyzed": info.analyzed,
+                "seams_total": info.total,
+                "limit_source": info.source.as_str(),
+                "control": "RIPR_REPO_EXPOSURE_SEAM_LIMIT"
+            });
+            props.insert("limitations".to_string(), json!([limitation]));
+        }
+    }
+    let document = json!({
+        "$schema": SARIF_SCHEMA,
+        "version": SARIF_VERSION,
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "ripr",
+                        "semanticVersion": env!("CARGO_PKG_VERSION"),
+                        "informationUri": "https://github.com/EffortlessMetrics/ripr",
+                        "rules": rules
+                    }
+                },
+                "results": results,
+                "properties": props
+            }
+        ]
+    });
+    json_pretty(document)
 }
 
 fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String {
@@ -217,7 +270,7 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
             json!({
                 "id": gap.id.as_str(),
                 "language": gap.language.as_str(),
-                "file": gap.file.as_str(),
+                "file": display_path_text(&gap.file),
                 "owner": gap.owner.as_str(),
                 "behavior_kind": gap.behavior_kind.as_str(),
                 "probe_kind": gap.probe_kind.as_str(),
@@ -334,9 +387,11 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
         "missing_discriminators".to_string(),
         missing_discriminators(&finding.activation.missing_discriminators),
     );
+    // RIPR-SPEC-0088 §PR8: use the shared reconciliation fn so SARIF
+    // suggested_next_action agrees with the human and JSON surfaces.
     properties.insert(
         "suggested_next_action".to_string(),
-        json!(finding.recommended_next_step.as_deref().unwrap_or("")),
+        json!(reconcile_next_step(finding)),
     );
     Value::Object(properties)
 }
@@ -659,9 +714,12 @@ fn finding_message(finding: &Finding) -> String {
         message.push_str(": ");
         message.push_str(&finding.probe.expression);
     }
-    if let Some(next) = &finding.recommended_next_step {
+    // RIPR-SPEC-0088 §PR8: the SARIF message text is a machine-consumed surface.
+    // Use the shared reconciliation fn (not the raw field) so the embedded
+    // "Next step" agrees with suggested_next_action and the other surfaces.
+    if finding.recommended_next_step.is_some() {
         message.push_str(". Next step: ");
-        message.push_str(next);
+        message.push_str(&reconcile_next_step(finding));
     }
     message
 }
@@ -796,7 +854,7 @@ mod tests {
     #[test]
     fn sarif_renders_seams_with_stable_rule_ids() -> Result<(), String> {
         let rendered =
-            render_repo_seams_sarif(&[weakly_gripped_classified()], &RiprConfig::default());
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
         let sarif = parse_json(&rendered)?;
         let rule_ids = rule_ids(&sarif)?;
         let result = first_result(&sarif)?;
@@ -836,6 +894,31 @@ mod tests {
         assert_eq!(
             result["properties"]["canonical_gap"]["normalized_discriminator"],
             "amount>=threshold"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_normalizes_backslash_canonical_gap_file_to_forward_slash() -> Result<(), String> {
+        // Proves gap.file backslash paths are normalized in SARIF properties.
+        let mut output = sample_output();
+        output.findings[0].canonical_gap = Some(FindingCanonicalGap {
+            id: "gap:python:src/pricing.py:discount:predicate_boundary:predicate:x>=0".to_string(),
+            language: "python".to_string(),
+            file: r"src\pricing.py".to_string(),
+            owner: "discount".to_string(),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "x>=0".to_string(),
+        });
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+
+        assert_eq!(
+            result["properties"]["canonical_gap"]["file"], "src/pricing.py",
+            "canonical_gap file must use forward slashes in SARIF properties"
         );
         Ok(())
     }
@@ -922,6 +1005,8 @@ mod tests {
             oracle: Some("assert dispatch(\"total\", 10) == 10".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
         }];
 
         let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
@@ -1247,7 +1332,7 @@ weakly_exposed = "note"
 weakly_gripped = "note"
 "#,
         )?;
-        let rendered = render_repo_seams_sarif(&[weakly_gripped_classified()], &config);
+        let rendered = render_repo_seams_sarif(&[weakly_gripped_classified()], None, &config);
         let sarif = parse_json(&rendered)?;
         let result = first_result(&sarif)?;
 
@@ -1258,8 +1343,11 @@ weakly_gripped = "note"
 
     #[test]
     fn sarif_omits_off_seam_class() -> Result<(), String> {
-        let rendered =
-            render_repo_seams_sarif(&[strongly_gripped_classified()], &RiprConfig::default());
+        let rendered = render_repo_seams_sarif(
+            &[strongly_gripped_classified()],
+            None,
+            &RiprConfig::default(),
+        );
         let sarif = parse_json(&rendered)?;
         let results = results(&sarif)?;
 
@@ -1307,7 +1395,8 @@ weakly_gripped = "note"
     #[test]
     fn sarif_output_is_valid_json() -> Result<(), String> {
         let findings = render_findings_sarif(&sample_output(), &RiprConfig::default(), &[]);
-        let seams = render_repo_seams_sarif(&[weakly_gripped_classified()], &RiprConfig::default());
+        let seams =
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
 
         let _ = parse_json(&findings)?;
         let _ = parse_json(&seams)?;
@@ -1320,6 +1409,53 @@ weakly_gripped = "note"
         assert!(rendered.contains("weakly_exposed"));
         assert!(rendered.contains("static exposure"));
         assert!(rendered.contains("equality boundary is absent"));
+    }
+
+    #[test]
+    fn sarif_repo_seams_discloses_seam_limit_in_run_properties() -> Result<(), String> {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let info = SeamLimitInfo {
+            analyzed: 7,
+            total: 2000,
+            source: SeamLimitSource::Default,
+        };
+        let rendered = render_repo_seams_sarif(
+            &[weakly_gripped_classified()],
+            Some(&info),
+            &RiprConfig::default(),
+        );
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+        assert_eq!(
+            props["run_status"], "seam_limit_applied",
+            "run_status missing in properties:\n{sarif}"
+        );
+        let limitations = props["limitations"]
+            .as_array()
+            .ok_or("limitations array missing")?;
+        assert_eq!(limitations.len(), 1);
+        assert_eq!(limitations[0]["category"], "repo_seam_limit_applied");
+        assert_eq!(limitations[0]["seams_analyzed"], 7);
+        assert_eq!(limitations[0]["seams_total"], 2000);
+        assert_eq!(limitations[0]["control"], "RIPR_REPO_EXPOSURE_SEAM_LIMIT");
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_repo_seams_shows_complete_run_status_when_no_cap() -> Result<(), String> {
+        let rendered =
+            render_repo_seams_sarif(&[weakly_gripped_classified()], None, &RiprConfig::default());
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+        assert_eq!(
+            props["run_status"], "complete",
+            "run_status complete missing in:\n{sarif}"
+        );
+        assert!(
+            props["limitations"].is_null(),
+            "limitations must be absent when no cap fired:\n{sarif}"
+        );
+        Ok(())
     }
 
     fn parse_config(text: &str) -> Result<RiprConfig, String> {
@@ -1436,6 +1572,8 @@ weakly_gripped = "note"
             oracle: Some("ok(discount(...))".to_string()),
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
         }];
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
@@ -1451,6 +1589,8 @@ weakly_gripped = "note"
             base: Some("origin/main".to_string()),
             summary: Summary::default(),
             findings: vec![sample_finding()],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 
@@ -1510,12 +1650,18 @@ weakly_gripped = "note"
                 oracle: Some("assert_eq!(discounted_total(50, 100), 50)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("Add an equality-boundary assertion".to_string()),
             language: None,
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 

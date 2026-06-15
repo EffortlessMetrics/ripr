@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/weak_error_oracle_assert_matches/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":2,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:7:call_deletion",
+      "id": "probe:src_lib.rs:call_deletion:5bd64dc4",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:7:call_deletion",
+        "id": "probe:src_lib.rs:call_deletion:5bd64dc4",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/weak_error_oracle_assert_matches/input/src/lib.rs",
@@ -32,17 +32,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Medium oracle found: property or partial structural assertion", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"],
       "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -53,19 +54,18 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "empty_token_rejects_with_revoked_token",
@@ -73,7 +73,9 @@
           "line": 10,
           "oracle_strength": "medium",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -84,12 +86,12 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:7:error_path",
+      "id": "probe:src_lib.rs:error_path:99b06ce7",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:7:error_path",
+        "id": "probe:src_lib.rs:error_path:99b06ce7",
         "family": "error_path",
         "delta": "value",
         "file": "fixtures/weak_error_oracle_assert_matches/input/src/lib.rs",
@@ -109,17 +111,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
       "missing": [],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -130,19 +133,18 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "empty_token_rejects_with_revoked_token",
@@ -150,7 +152,9 @@
           "line": 10,
           "oracle_strength": "strong",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
@@ -161,12 +165,12 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:7:return_value",
+      "id": "probe:src_lib.rs:return_value:e21dcccc",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:7:return_value",
+        "id": "probe:src_lib.rs:return_value:e21dcccc",
         "family": "return_value",
         "delta": "value",
         "file": "fixtures/weak_error_oracle_assert_matches/input/src/lib.rs",
@@ -186,17 +190,18 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
       "missing": [],
+      "assertion_texts": {
+        "11": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+      },
       "activation": {
         "observed_values": [
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "AuthError::RevokedToken",
             "context": "enum_variant"
           },
           {
             "line": 11,
-            "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
             "value": "token = \"\"",
             "context": "function_argument"
           }
@@ -207,19 +212,18 @@
       "observed_values": [
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "AuthError::RevokedToken",
           "context": "enum_variant"
         },
         {
           "line": 11,
-          "text": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
           "value": "token = \"\"",
           "context": "function_argument"
         }
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "empty_token_rejects_with_revoked_token",
@@ -227,7 +231,9 @@
           "line": 10,
           "oracle_strength": "strong",
           "oracle_kind": "exact_error_variant",
-          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));"
+          "oracle": "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],

@@ -15,7 +15,7 @@ mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, OraclePolicy, RiprConfig, SeverityConfig,
+    CheckInputExplicit, ConfigSeverity, OraclePolicy, RiprConfig, SeverityConfig, TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -215,6 +215,11 @@ impl RiprConfig {
         if let Some(profiles) = raw.profiles {
             config.profiles = parse_profiles(profiles)?;
         }
+        if let Some(ts) = raw.typescript {
+            config.typescript = TypescriptConfig {
+                resolve_tsconfig_paths: ts.resolve_tsconfig_paths.unwrap_or(false),
+            };
+        }
         Ok(config)
     }
 }
@@ -294,6 +299,13 @@ struct RawConfig {
     suppressions: Option<RawSuppressionsConfig>,
     languages: Option<RawLanguagesConfig>,
     profiles: Option<RawProfilesConfig>,
+    typescript: Option<RawTypescriptConfig>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTypescriptConfig {
+    resolve_tsconfig_paths: Option<bool>,
 }
 
 #[derive(Deserialize)]

@@ -17,10 +17,10 @@
 //! repo-exposure report's 0.1, because the packet is a separate
 //! contract aimed at coding agents rather than reviewers.
 
-use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
+use crate::analysis::{ClassifiedSeam, SeamLimitInfo, SeamLimitSource};
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, cross_language_oracle_visibility_unresolved,
     cross_language_test_target_unresolved, evidence_record_for, evidence_record_json_value,
@@ -53,7 +53,13 @@ const RUNTIME_CONFIRMATION_NOTE: &str =
 /// intentional, and suppressed seams are skipped. `Opaque` seams emit a
 /// conservative `inspect_static_limitation` packet so the agent at least
 /// sees the static boundary that hides evidence.
-pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> String {
+///
+/// When `limit_info` is `Some`, the artifact carries a `limitations[]` block
+/// so consumers know the output is bounded and can opt out via the env var.
+pub(crate) fn render_agent_seam_packets_json(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+) -> String {
     let canonical_gaps = canonical_gap_identities(classified);
     let mut out = String::new();
     out.push_str("{\n");
@@ -62,6 +68,40 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
         AGENT_SEAM_PACKET_SCHEMA_VERSION
     ));
     out.push_str("  \"scope\": \"repo\",\n");
+
+    // run_status mirrors the repo-exposure pattern: "complete" when nothing
+    // was capped, "seam_limit_applied" when the pilot budget fired.
+    match limit_info {
+        None => out.push_str("  \"run_status\": \"complete\",\n"),
+        Some(_) => out.push_str("  \"run_status\": \"seam_limit_applied\",\n"),
+    }
+
+    if let Some(info) = limit_info {
+        let repair_route = match info.source {
+            SeamLimitSource::Default => {
+                "Set RIPR_PILOT_SEAM_BUDGET=0 to render packets for all seams, or use `ripr check --diff` to scope the run."
+            }
+            SeamLimitSource::Configured => {
+                "Remove or raise RIPR_PILOT_SEAM_BUDGET to render packets for more seams, or use `ripr check --diff`."
+            }
+        };
+        out.push_str("  \"limitations\": [\n");
+        out.push_str("    {\n");
+        out.push_str("      \"category\": \"pilot_seam_budget_applied\",\n");
+        out.push_str(&format!("      \"seams_analyzed\": {},\n", info.analyzed));
+        out.push_str(&format!("      \"seams_total\": {},\n", info.total));
+        out.push_str(&format!(
+            "      \"limit_source\": \"{}\",\n",
+            info.source.as_str()
+        ));
+        out.push_str("      \"control\": \"RIPR_PILOT_SEAM_BUDGET\",\n");
+        out.push_str(&format!(
+            "      \"repair_route\": \"{}\"\n",
+            crate::output::json::escape(repair_route)
+        ));
+        out.push_str("    }\n");
+        out.push_str("  ],\n");
+    }
 
     let actionable: Vec<&ClassifiedSeam> = classified
         .iter()
@@ -90,8 +130,9 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
 }
 
 /// Render the existing agent seam packet JSON envelope for one seam.
+/// Single-seam packets are always unbounded — no limit_info.
 pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
-    render_agent_seam_packets_json(std::slice::from_ref(entry))
+    render_agent_seam_packets_json(std::slice::from_ref(entry), None)
 }
 
 /// Render one explicit GapRecord as an agent packet. This is the same
@@ -836,7 +877,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
     }
 }
 
-fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
+pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
     let projection = record
         .projection_eligibility
         .get("agent_packet")
@@ -903,7 +944,7 @@ fn recommended_test_reason(route: &GapRepairRoute) -> &'static str {
     }
 }
 
-fn allowed_edit_surface_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
+pub(crate) fn allowed_edit_surface_for_gap_route(route: &GapRepairRoute) -> Vec<String> {
     route
         .target_file
         .as_deref()
@@ -1254,7 +1295,7 @@ fn gap_record_packet_receipt(record: &GapRecord) -> Vec<String> {
     receipt
 }
 
-fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
+pub(crate) fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
     let mut guidance = vec![
         "Do not edit production code unless the focused proof exposes a real product defect."
             .to_string(),
@@ -1389,7 +1430,7 @@ fn push_packet_json(
     ));
     out.push_str("},\n");
 
-    let nearest_strong = nearest_strong_test_to_imitate(evidence);
+    let nearest_strong = nearest_strong_test_to_imitate(seam.kind(), evidence);
     out.push_str("      \"nearest_strong_test_to_imitate\": ");
     if let Some(test) = nearest_strong {
         push_related_test_reference(out, test, "nearest strong related test by ranked evidence");
@@ -1667,7 +1708,7 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
             ),
         };
     }
-    if let Some(test) = nearest_strong_test_to_imitate(&entry.evidence) {
+    if let Some(test) = nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence) {
         return RecommendedTest {
             name,
             file: display_path(&test.file),
@@ -1869,12 +1910,16 @@ fn snake_case_token(raw: &str) -> String {
 }
 
 pub(crate) fn nearest_strong_test_to_imitate(
+    seam_kind: SeamKind,
     evidence: &TestGripEvidence,
 ) -> Option<&crate::analysis::test_grip_evidence::RelatedTestGrip> {
-    evidence
-        .related_tests
-        .iter()
-        .find(|test| test.oracle_strength == crate::domain::OracleStrength::Strong)
+    evidence.related_tests.iter().find(|test| {
+        test.oracle_strength == crate::domain::OracleStrength::Strong
+            && crate::analysis::test_grip_evidence::oracle_kind_matches_seam_kind(
+                seam_kind,
+                &test.oracle_kind,
+            )
+    })
 }
 
 fn push_related_test_reference(
@@ -2393,7 +2438,7 @@ mod tests {
     #[test]
     fn given_weakly_gripped_boundary_seam_when_packet_is_rendered_then_missing_boundary_value_is_present()
     -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         if !json.contains("\"current_grip\": \"weakly_gripped\"") {
             return Err(format!("missing current_grip in: {json}"));
         }
@@ -2419,7 +2464,7 @@ mod tests {
 
     #[test]
     fn missing_discriminators_carry_value_and_reason_objects() -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         if !json.contains(
             "{\"value\": \"discount_threshold (equality boundary)\", \"reason\": \"observed values do not include the equality-boundary case\"}",
         ) {
@@ -2435,7 +2480,7 @@ mod tests {
     -> Result<(), String> {
         let mut entry = weakly_gripped_classified();
         entry.class = SeamGripClass::Opaque;
-        let json = render_agent_seam_packets_json(&[entry]);
+        let json = render_agent_seam_packets_json(&[entry], None);
         if !json.contains("\"task\": \"inspect_static_limitation\"") {
             return Err(format!(
                 "expected task=inspect_static_limitation for opaque seam: {json}"
@@ -2460,7 +2505,7 @@ mod tests {
         // agent has something to act on.
         let mut entry = weakly_gripped_classified();
         entry.evidence.missing_discriminators = Vec::new();
-        let json = render_agent_seam_packets_json(&[entry]);
+        let json = render_agent_seam_packets_json(&[entry], None);
         if !json
             .contains("\"value\": \"input that hits the boundary: amount >= discount_threshold\"")
         {
@@ -2479,7 +2524,7 @@ mod tests {
     -> Result<(), String> {
         let mut entry = weakly_gripped_classified();
         entry.class = SeamGripClass::Intentional;
-        let json = render_agent_seam_packets_json(&[entry]);
+        let json = render_agent_seam_packets_json(&[entry], None);
         if !json.contains("\"packets_total\": 0") {
             return Err(format!("intentional seam should produce no packet: {json}"));
         }
@@ -2489,7 +2534,7 @@ mod tests {
     #[test]
     fn given_ungripped_seam_when_packet_is_rendered_then_task_is_write_targeted_test()
     -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[ungripped_classified()]);
+        let json = render_agent_seam_packets_json(&[ungripped_classified()], None);
         if !json.contains("\"task\": \"write_targeted_test\"") {
             return Err(format!("missing task field: {json}"));
         }
@@ -2502,7 +2547,7 @@ mod tests {
     #[test]
     fn given_strongly_gripped_seam_when_packets_are_requested_then_no_actionable_packet_is_emitted()
     -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[strongly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[strongly_gripped_classified()], None);
         if !json.contains("\"packets_total\": 0") {
             return Err(format!(
                 "expected packets_total=0 for strongly-gripped input: {json}"
@@ -2517,7 +2562,7 @@ mod tests {
     #[test]
     fn given_related_tests_when_packet_is_rendered_then_oracle_kind_and_strength_are_present()
     -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         for needle in [
             "\"name\": \"below_threshold_has_no_discount\"",
             "\"oracle_kind\": \"exact_value\"",
@@ -2532,7 +2577,7 @@ mod tests {
 
     #[test]
     fn given_agent_packet_with_related_tests_when_rendered_then_relation_fields_are_emitted() {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         assert!(
             json.contains("\"relation_reason\": \"direct_owner_call\""),
             "relation_reason missing: {json}"
@@ -2578,7 +2623,7 @@ mod tests {
         // emits ranked, so this mirrors the production path.
         entry.evidence.related_tests = vec![high, low];
 
-        let json = render_agent_seam_packets_json(&[entry]);
+        let json = render_agent_seam_packets_json(&[entry], None);
         let high_idx = json
             .find("\"name\": \"z_high_confidence\"")
             .ok_or_else(|| "high-confidence test missing".to_string())?;
@@ -2597,7 +2642,7 @@ mod tests {
     #[test]
     fn packet_v2_carries_recommended_test_candidate_values_assertion_shape_and_confidence()
     -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         for needle in [
             "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
             "\"file\": \"tests/pricing.rs\"",
@@ -2617,7 +2662,7 @@ mod tests {
 
     #[test]
     fn packet_carries_shared_evidence_record_projection() -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         let value = serde_json::from_str::<serde_json::Value>(&json)
             .map_err(|err| format!("agent packet JSON should parse: {err}"))?;
         let packet = value
@@ -3743,7 +3788,7 @@ mod tests {
         let mut entry = weakly_gripped_classified();
         entry.evidence.related_tests[0].file = PathBuf::from(r"tests\pricing.rs");
 
-        let json = render_agent_seam_packets_json(&[entry]);
+        let json = render_agent_seam_packets_json(&[entry], None);
         assert!(
             json.contains("\"file\": \"tests/pricing.rs\""),
             "expected normalized related test file in packet JSON, got {json}"
@@ -3757,7 +3802,7 @@ mod tests {
 
     #[test]
     fn packet_v2_carries_patterns_to_imitate_and_avoid() -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         for needle in [
             "\"patterns_to_imitate\": [",
             "\"reason\": \"strong exact_value oracle with high relation\"",
@@ -3821,7 +3866,7 @@ mod tests {
 
     #[test]
     fn packet_v2_recommends_inferred_test_file_when_no_related_test_exists() -> Result<(), String> {
-        let json = render_agent_seam_packets_json(&[ungripped_classified()]);
+        let json = render_agent_seam_packets_json(&[ungripped_classified()], None);
         for needle in [
             "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
             "\"file\": \"tests/pricing_tests.rs\"",
@@ -3852,11 +3897,10 @@ mod tests {
             },
             ExpectedSink::ReturnValue,
         );
-        let json = render_agent_seam_packets_json(&[classified_with(
-            seam,
-            SeamGripClass::Ungripped,
-            Vec::new(),
-        )]);
+        let json = render_agent_seam_packets_json(
+            &[classified_with(seam, SeamGripClass::Ungripped, Vec::new())],
+            None,
+        );
 
         for needle in ["\"packets_total\": 0", "\"packets\": []"] {
             if !json.contains(needle) {
@@ -4002,7 +4046,7 @@ mod tests {
             vec![unrelated_rust_test],
         );
 
-        let json = render_agent_seam_packets_json(std::slice::from_ref(&entry));
+        let json = render_agent_seam_packets_json(std::slice::from_ref(&entry), None);
         for needle in ["\"packets_total\": 0", "\"packets\": []"] {
             if !json.contains(needle) {
                 return Err(format!("missing packet exclusion {needle:?} in: {json}"));
@@ -4069,11 +4113,10 @@ mod tests {
             },
             ExpectedSink::SideEffect,
         );
-        let json = render_agent_seam_packets_json(&[classified_with(
-            seam,
-            SeamGripClass::Ungripped,
-            Vec::new(),
-        )]);
+        let json = render_agent_seam_packets_json(
+            &[classified_with(seam, SeamGripClass::Ungripped, Vec::new())],
+            None,
+        );
 
         assert!(
             json.contains("\"file\": \"crates/ripr/src/lsp/tests.rs\""),
@@ -4097,11 +4140,10 @@ mod tests {
             },
             ExpectedSink::SideEffect,
         );
-        let json = render_agent_seam_packets_json(&[classified_with(
-            seam,
-            SeamGripClass::Ungripped,
-            Vec::new(),
-        )]);
+        let json = render_agent_seam_packets_json(
+            &[classified_with(seam, SeamGripClass::Ungripped, Vec::new())],
+            None,
+        );
 
         assert!(
             json.contains("\"file\": \"crates/ripr/src/output/pilot/tests.rs\""),
@@ -4126,11 +4168,14 @@ mod tests {
             OracleStrength::Weak,
             crate::analysis::test_grip_evidence::RelationConfidence::High,
         );
-        let json = render_agent_seam_packets_json(&[classified_with(
-            seam,
-            SeamGripClass::WeaklyGripped,
-            vec![related],
-        )]);
+        let json = render_agent_seam_packets_json(
+            &[classified_with(
+                seam,
+                SeamGripClass::WeaklyGripped,
+                vec![related],
+            )],
+            None,
+        );
         for needle in [
             "\"name\": \"authenticate_exact_error_variant\"",
             "\"candidate_values\": [",
@@ -4205,10 +4250,13 @@ mod tests {
             },
             ExpectedSink::SideEffect,
         );
-        let json = render_agent_seam_packets_json(&[
-            classified_with(side_effect, SeamGripClass::Ungripped, Vec::new()),
-            classified_with(call_presence, SeamGripClass::Ungripped, Vec::new()),
-        ]);
+        let json = render_agent_seam_packets_json(
+            &[
+                classified_with(side_effect, SeamGripClass::Ungripped, Vec::new()),
+                classified_with(call_presence, SeamGripClass::Ungripped, Vec::new()),
+            ],
+            None,
+        );
         for needle in [
             "\"name\": \"charge_customer_side_effect_observer\"",
             "\"value\": \"input that produces payment event\"",
@@ -4237,21 +4285,24 @@ mod tests {
         );
         let mut opaque = weakly_gripped_classified();
         opaque.class = SeamGripClass::Opaque;
-        let json = render_agent_seam_packets_json(&[
-            classified_with(
-                seam_with(
-                    "math::score",
-                    SeamKind::ReturnValue,
-                    RequiredDiscriminator::ReturnValue {
-                        description: "score".to_string(),
-                    },
-                    ExpectedSink::ReturnValue,
+        let json = render_agent_seam_packets_json(
+            &[
+                classified_with(
+                    seam_with(
+                        "math::score",
+                        SeamKind::ReturnValue,
+                        RequiredDiscriminator::ReturnValue {
+                            description: "score".to_string(),
+                        },
+                        ExpectedSink::ReturnValue,
+                    ),
+                    SeamGripClass::WeaklyGripped,
+                    vec![medium_related],
                 ),
-                SeamGripClass::WeaklyGripped,
-                vec![medium_related],
-            ),
-            opaque,
-        ]);
+                opaque,
+            ],
+            None,
+        );
         for needle in [
             "\"confidence\": \"medium\"",
             "\"reason\": \"medium relational_check oracle with medium relation\"",
@@ -4322,7 +4373,7 @@ mod tests {
 
     #[test]
     fn schema_version_is_pinned_to_zero_three() {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         assert!(
             json.contains("\"schema_version\": \"0.3\""),
             "expected schema_version 0.3: {json}"
@@ -4331,7 +4382,7 @@ mod tests {
 
     #[test]
     fn empty_input_emits_well_formed_json() {
-        let json = render_agent_seam_packets_json(&[]);
+        let json = render_agent_seam_packets_json(&[], None);
         assert!(json.contains("\"packets_total\": 0"));
         assert!(json.contains("\"packets\": []"));
         assert!(json.contains("\"schema_version\": \"0.3\""));
@@ -4339,7 +4390,7 @@ mod tests {
 
     #[test]
     fn suggested_assertion_for_predicate_boundary_uses_owner_and_missing_value() {
-        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         // owner short name is `discounted_total`.
         assert!(
             json.contains(
@@ -4347,5 +4398,229 @@ mod tests {
             ),
             "expected templated assert_eq! suggestion: {json}"
         );
+    }
+
+    // -- Pilot seam budget disclosure tests ----------------------------------
+
+    #[test]
+    fn no_limit_info_emits_run_status_complete() {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
+        assert!(
+            json.contains("\"run_status\": \"complete\""),
+            "expected run_status=complete when no limit_info: {json}"
+        );
+        assert!(
+            !json.contains("\"limitations\""),
+            "expected no limitations block when no limit_info: {json}"
+        );
+    }
+
+    #[test]
+    fn limit_info_emits_run_status_seam_limit_applied_and_disclosure() {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let limit_info = SeamLimitInfo {
+            analyzed: 2_000,
+            total: 23_113,
+            source: SeamLimitSource::Default,
+        };
+        let json =
+            render_agent_seam_packets_json(&[weakly_gripped_classified()], Some(&limit_info));
+        assert!(
+            json.contains("\"run_status\": \"seam_limit_applied\""),
+            "expected run_status=seam_limit_applied: {json}"
+        );
+        assert!(
+            json.contains("\"limitations\""),
+            "expected limitations block when limit_info is Some: {json}"
+        );
+        assert!(
+            json.contains("\"category\": \"pilot_seam_budget_applied\""),
+            "expected pilot_seam_budget_applied category: {json}"
+        );
+        assert!(
+            json.contains("\"seams_analyzed\": 2000"),
+            "expected seams_analyzed in disclosure: {json}"
+        );
+        assert!(
+            json.contains("\"seams_total\": 23113"),
+            "expected seams_total in disclosure: {json}"
+        );
+        assert!(
+            json.contains("\"control\": \"RIPR_PILOT_SEAM_BUDGET\""),
+            "expected RIPR_PILOT_SEAM_BUDGET as control: {json}"
+        );
+        assert!(
+            json.contains("\"limit_source\": \"default\""),
+            "expected limit_source=default: {json}"
+        );
+    }
+
+    #[test]
+    fn limit_info_configured_source_emits_configured_repair_route() {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        let limit_info = SeamLimitInfo {
+            analyzed: 500,
+            total: 1_000,
+            source: SeamLimitSource::Configured,
+        };
+        let json = render_agent_seam_packets_json(&[], Some(&limit_info));
+        assert!(
+            json.contains("Remove or raise RIPR_PILOT_SEAM_BUDGET"),
+            "expected configured repair route in disclosure: {json}"
+        );
+        assert!(
+            json.contains("\"limit_source\": \"configured\""),
+            "expected limit_source=configured: {json}"
+        );
+    }
+
+    // RIPR-SPEC-0103 fixtures: error-seam exemplar kind-gate.
+
+    fn error_variant_seam() -> RepoSeam {
+        seam_with(
+            "auth::authenticate",
+            SeamKind::ErrorVariant,
+            crate::analysis::seams::RequiredDiscriminator::ErrorVariant {
+                variant: "AuthError::RevokedToken".to_string(),
+            },
+            ExpectedSink::ErrorChannel,
+        )
+    }
+
+    // Fixture 1 (+ fixture 6 static-language guard):
+    // ErrorVariant seam with ONLY a success-path Strong exact_value related test
+    // → nearest_strong_test_to_imitate == null  AND  current_grip == weakly_gripped.
+    #[test]
+    fn kind_gate_error_variant_seam_with_only_exact_value_strong_test_yields_null_exemplar()
+    -> Result<(), String> {
+        let success_path_strong = related_test_with(
+            "authenticate_succeeds",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![success_path_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        for needle in [
+            "\"current_grip\": \"weakly_gripped\"",
+            "\"nearest_strong_test_to_imitate\": null",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 1: expected {needle:?} in: {json}"
+                ));
+            }
+        }
+        // Fixture 6: static-language guard — no forbidden vocab in the rendered packet.
+        let static_language_forbidden = [
+            "killed", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "survived", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "untested", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "proven", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+            "adequate", // ripr-allow: static-language: test guard — checking this word does not appear in rendered packet output
+        ];
+        for forbidden in static_language_forbidden {
+            if json.contains(forbidden) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 6 (static-language): forbidden word {forbidden:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    // Fixture 2 (must-not-over-withdraw control):
+    // PredicateBoundary seam with a Strong exact_value related test
+    // → that test IS still nominated (kind gate only withdraws when kind mismatches).
+    #[test]
+    fn kind_gate_predicate_boundary_seam_with_exact_value_strong_test_still_nominated()
+    -> Result<(), String> {
+        let strong_exact_value = related_test_with(
+            "below_threshold_has_no_discount",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let seam = boundary_seam();
+        let classified =
+            classified_with(seam, SeamGripClass::WeaklyGripped, vec![strong_exact_value]);
+        let json = render_agent_seam_packets_json(&[classified], None);
+        if json.contains("\"nearest_strong_test_to_imitate\": null") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 2: predicate_boundary seam must nominate exact_value strong test, not null; got: {json}"
+            ));
+        }
+        if !json.contains("\"name\": \"below_threshold_has_no_discount\"") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 2: expected nominated test name in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    // Fixture 3 (positive: kind matches):
+    // ErrorVariant seam whose related Strong test has oracle_kind ExactErrorVariant
+    // → that test IS nominated (kind matches → not withdrawn).
+    #[test]
+    fn kind_gate_error_variant_seam_with_exact_error_variant_strong_test_is_nominated()
+    -> Result<(), String> {
+        let exact_error_variant_strong = related_test_with(
+            "authenticate_revoked_token_returns_exact_variant",
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![exact_error_variant_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        if json.contains("\"nearest_strong_test_to_imitate\": null") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 3: ExactErrorVariant strong test must be nominated for ErrorVariant seam, not null; got: {json}"
+            ));
+        }
+        if !json.contains("\"name\": \"authenticate_revoked_token_returns_exact_variant\"") {
+            return Err(format!(
+                "RIPR-SPEC-0103 fixture 3: expected nominated test name in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    // Fixture 4 (must-not-over-credit control):
+    // ErrorVariant seam with a Strong relational/whole-object test and NO ExactErrorVariant test
+    // → nearest_strong == null, grip stays weakly_gripped.
+    #[test]
+    fn kind_gate_error_variant_seam_with_relational_strong_test_yields_null_exemplar()
+    -> Result<(), String> {
+        let relational_strong = related_test_with(
+            "authenticate_always_fails_for_revoked",
+            OracleKind::RelationalCheck,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![relational_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        for needle in [
+            "\"current_grip\": \"weakly_gripped\"",
+            "\"nearest_strong_test_to_imitate\": null",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "RIPR-SPEC-0103 fixture 4: expected {needle:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
     }
 }

@@ -1,0 +1,8 @@
+[package]
+name = "all_no_path_disclosure_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "all_no_path_disclosure_fixture"
+path = "src/lib.rs"

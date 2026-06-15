@@ -166,8 +166,8 @@ cargo run -p ripr -- --version
 cargo run -p ripr -- doctor
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff --json
-cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:21:error_path
-cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:21:error_path --json
+cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771
+cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771 --json
 ```
 
 Editor extension checks:
@@ -204,9 +204,88 @@ Prefer small, high-signal changes:
 - Human output should be actionable.
 - JSON output should be stable and versioned.
 - Agent context should state the exact missing discriminator.
+- Do not credit reach-plus-a-strong-oracle as `exposed`: a strong oracle must
+  observe the changed sink (see `docs/STATIC_EXPOSURE_MODEL.md` § Discrimination
+  vs Coverage). Crediting proximity as discrimination is the coverage mistake.
+- Align on identity, not tokens. Before crediting `exposed` from a name match,
+  resolve that the test reaches the *same entity*, not just the same *string*: a
+  bare `.method(` on any receiver, or the owner's bare method-name appearing in an
+  oracle, can belong to a different class. Token coincidence — substring
+  (`buffer⊂buffered_stream`) or whole-word-wrong-owner — is the recurring
+  false-`exposed` family; when you touch one token-matching alignment/relation
+  site, audit the others, and pin each confirmed over-credit as a
+  should-stay-`weakly_exposed` golden (see `docs/LEARNINGS.md` § Token coincidence
+  is a false-`exposed` family).
+- Real producers only: do not flip a not-available field to a fabricated
+  taxonomy or a fake-zero. Until a real production condition populates the
+  inspected field, defer the named limitation to a code comment rather than
+  emit invented evidence (see `docs/LEARNINGS.md` § Detection needs a real
+  producer).
+- The actionability flip is the cardinal-sin seam: a wrong
+  `repair_packet_ready: true` is worse than ten advisory findings. Under-emit
+  before you over-emit — keep the flip fail-closed and let the shared validator
+  be the only authority.
+- Reuse the shared enforcement layer (validators, renderers, route helpers)
+  across every surface; do not fork a parallel validator. Reconcile derived
+  messaging in the layer that owns the final decision so all surfaces agree
+  (see `docs/adr/0019-language-adapters-reuse-shared-packet-contract.md`).
+- Graduate every confirmed false-promotion into the evidence-promotion corpus
+  (`fixtures/evidence-promotion-honesty-corpus/corpus.json` +
+  `cargo xtask check-evidence-promotion-honesty`, RIPR-SPEC-0108), not just a unit
+  test. The gate pins the non-promotion expectation *independent of the golden*,
+  so it catches a dishonest re-bless that `goldens check` would accept — goldens
+  can encode dishonesty. Share the invariant + corpus across languages; do **not**
+  unify the per-language matchers (different taxonomies, different edge policies).
+- Performance is part of honesty: an interactive path that is too slow, or that
+  defers expensive analysis off the keystroke path, must **disclose** its state
+  (e.g. `run_status: "seams_deferred"`, RIPR-SPEC-0105) and never present a
+  partial/deferred run as complete. A fast path may be partial only if the status
+  says so.
+
+When a target file is already a monolith — flagged by `cargo xtask
+module-health` (advisory, exits 0) — the first PR of a capability wave should
+be a behaviour-preserving decomposition. Zero golden drift is the proof that it
+is pure structure: each new capability then lands in a focused module with a
+clear single responsibility, and the blast radius of future changes shrinks.
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
+
+### Verification bias
+
+- Treat sub-agent and scout findings as leads, not facts. Verify control-flow
+  claims against the code, and turn a suspected bug into a PR only behind a
+  failing fixture. Fast, confident producers — sub-agents included — are
+  unreliable on precise logic; a cheap finding is a lead that needs a slower
+  verifier beneath it.
+- For classifier or `analysis/**` behavior changes, work fixture-first and
+  measure golden blast radius (`cargo xtask goldens check` + `cargo xtask
+  dogfood`) before finalizing. The golden corpus is the regression net and will
+  catch an over-corrected heuristic; an in-repo corpus that already passes is not
+  evidence the change is accurate on external code.
+- Verify the artifact, not the report: every PR, RUN the command and READ the
+  output before claiming it works. Gates passing, tests passing, and a builder's
+  own "all gates pass" are weak oracles for behavior. Never merge on a
+  sub-agent's or builder's self-report.
+- Do not hide a gate's exit code behind a pipeline. `cargo test … | grep … ;
+  echo done` reports the exit status of `echo` (always 0), so a real failure
+  reads as success. Run the gate directly, or capture `${PIPESTATUS[0]}` (bash)
+  before the pipe. Likewise, a green required check is not proof an analyzer fix
+  is correct — CI can pass on a fix the adversarial review knows is partial;
+  judge the fix on its semantics, not its exit code.
+- Run the full `routed-rust.yml` `cargo xtask check-*` list, not `precommit` and
+  not a hand-picked subset. A partial list silently skips `check-network-policy`,
+  `check-dependencies`, and `check-generated`; CI will fail what local guessing
+  missed.
+- Verify with the *right* harness — "verify the artifact" cuts both ways, since a
+  wrong harness manufactures false **negatives**. Run the **absolute** worktree
+  binary (`<worktree>/target/debug/ripr.exe`, not a long `../` that escapes to the
+  main checkout's stale binary) and `cargo fmt --check` under the pinned 1.95.0 /
+  rustfmt 1.9.0 toolchain. When a fix "doesn't work" but the builder insists it
+  does, suspect your own harness before the builder — inject a unique marker string
+  into the output to confirm your edits are even in the binary you are running. And
+  terminate any `ripr lsp --stdio` you spawn for an LSP behavioral test; an
+  orphaned server holds a Windows file lock and breaks the next build.
 
 ## PR Scope Doctrine
 
@@ -241,6 +320,41 @@ review -> improve -> validate -> commit -> push -> open/update PR -> merge when 
 A PR is ready when the branch is current, required checks pass, real review
 findings are addressed, the diff matches the stated scope, and repo policy does
 not require a different sequence.
+
+Merge-safety rules, learned the hard way:
+
+- Treat CI checks like oracles. A check that *runs* but is not *required* is not
+  a discriminator for merge safety — an advisory red can still merge. Before
+  saying a policy is protected by a gate, verify the required check actually
+  depends on it
+  (`gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`).
+- Do not treat `mergeStateStatus=UNSTABLE` as a merge decision by itself. Inspect
+  required checks, advisory checks, and branch protection separately; merge only
+  when the required discriminator is green, and explain advisory failures rather
+  than waving them through.
+- When a PR fails on a file or spec it did not touch, reproduce against
+  `origin/main`. If `main` is already broken, fix `main` in a tiny unblock PR
+  first, then rebase the dependent work — do not debug your own diff for an
+  inherited failure.
+- A pass with zero analyzed subjects is `not_run`, not evidence. Preserve
+  denominators in reports; a green state with an empty denominator proves nothing.
+- An output-shape change invalidates every golden. A PR that adds or renames a
+  field in `ripr check` / report JSON must re-bless **all** affected goldens in
+  the same PR — and a golden PR that merges concurrently with such a change goes
+  stale the moment both land, breaking `goldens check` (the required gate) for
+  every subsequent PR. This is the single-writer-collision family (cf. spec
+  numbers) on goldens. When `goldens check` fails on `main`, diff
+  `expected/check.json` against the actual output: an additive missing field
+  points at a concurrent output-shape PR. Fix by re-blessing on the *current*
+  `main` (after the latest output-shape change), not an older base — re-blessing
+  on a stale base just re-breaks it. If a later output-shape PR has already
+  re-blessed everything, an earlier in-flight re-bless PR becomes redundant *and*
+  harmful (merging it reverts the golden): close it.
+- Distinguish an infra tempfail from a real failure before reacting. A quick
+  `runner_api_failed` / runner-selection error is infra — re-run. A gate that
+  *ran* and failed (e.g. `xtask: goldens check failed`, a `FAILED` test) is real
+  — read the report and fix it. Re-running a real failure wastes a CI cycle;
+  debugging your own diff for an infra flake wastes a turn.
 
 `stackable = false` means do not build the next dependent work item on top of
 the current branch. It does not create an approval gate.
@@ -339,6 +453,17 @@ with cleanup: worktrees, branches, stashes, `target/ripr` cache growth,
 temp files, generated artifacts, cargo/npm churn, rescue leftovers, and
 local-only files.
 
+**Background workflow agents share the main working directory.** Even
+read-only-by-intent scout/Explore agents have shell access and can create or
+modify tracked files (`cat >`, `git apply`, `mkdir`) on whatever branch the main
+session occupies. A background planning fanout once authored a whole spec plus
+fixtures into the working tree, and a `git add -A` swept them into an unrelated
+PR. Therefore: run any workflow whose agents might write with **worktree
+isolation**, not the shared tree; word planning/research prompts to forbid file
+creation; never `git add -A` while a background workflow is live — stage
+explicit paths; and run `git status --short` before every commit, reverting
+anything the pass did not author.
+
 ## Long-Context Agent Workflow
 
 This repo is intentionally organized so agents can resume long-running goals
@@ -359,3 +484,15 @@ When picking up work:
 - update `docs/LEARNINGS.md` when repo knowledge or blockers should survive
 
 See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.
+
+See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
+agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
+for why constraints enable autonomy.
+
+See `docs/LSP_AGENT_REPAIR_WORKFLOW.md` for the end-to-end LSP-first
+repair/receipt loop: Show Status → Copy Top Repair Packet → edit in cage →
+verify → receipt → Show Receipt Status → Show Route Quality.
+
+See `docs/LIBRARY.md` for the curated knowledge library: agentic learnings,
+repo domain learnings, and a dated timeline of major learning milestones across
+all campaigns.

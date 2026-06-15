@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_async_owner/input",
@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_loading.py:2:python_preview",
+      "id": "probe:src_loading.py:python_preview:f9419b36",
       "canonical_gap_id": "gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2",
       "canonical_gap_group_size": 1,
       "canonical_gap": {
@@ -24,7 +24,7 @@
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_loading.py:2:python_preview",
+        "id": "probe:src_loading.py:python_preview:f9419b36",
         "family": "return_value",
         "delta": "value",
         "file": "src/loading.py",
@@ -45,6 +45,8 @@
       ],
       "evidence": ["owner: load_total", "owner_kind: function", "owner_decorators: async_def", "test_framework: pytest (test_load_total_includes_fee)", "test_fixtures: client (test_load_total_includes_fee)", "test_verify_command: pytest tests/test_loading.py::test_load_total_includes_fee (test_load_total_includes_fee)", "related_test_relation: syntactic_call (test_load_total_includes_fee)", "test_oracle: exact_value strong (test_load_total_includes_fee)"],
       "missing": ["Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -55,6 +57,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_load_total_includes_fee",
@@ -72,7 +75,22 @@
       "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "changed_sink": "client, total",
+      "observed_sink": "assert await load_total(client) == 12",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/loading.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

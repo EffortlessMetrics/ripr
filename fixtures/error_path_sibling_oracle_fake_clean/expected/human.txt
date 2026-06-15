@@ -1,0 +1,101 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/error_path_sibling_oracle_fake_clean/input
+
+Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
+
+Changed
+  before: return Err(ParseError::TooShort);
+  after:  return Err(ParseError::TooLong);
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::validate_or_default
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
+  - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
+  - observed assertion argument value "valid" at line 9
+  - observed function argument value input = "hello" at line 9
+
+Weakness
+  - No strong discriminator was detected
+  - missing discriminator ParseError::TooLong: No exact error variant assertion for ParseError::TooLong
+
+Next step
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
+
+Changed
+  before: return Err(ParseError::TooShort);
+  after:  return Err(ParseError::TooLong);
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::validate_or_default
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
+  - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
+  - observed assertion argument value "valid" at line 9
+  - observed function argument value input = "hello" at line 9
+
+Weakness
+  - No exact error variant discriminator was detected
+  - missing discriminator ParseError::TooLong: No exact error variant assertion for ParseError::TooLong
+
+Next step
+  Assert the exact error variant or payload instead of only is_err().
+
+WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
+
+Changed
+  before: return Err(ParseError::TooShort);
+  after:  return Err(ParseError::TooLong);
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::validate_or_default
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
+  - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
+  - observed assertion argument value "valid" at line 9
+  - observed function argument value input = "hello" at line 9
+
+Weakness
+  - No strong discriminator was detected
+  - missing discriminator ParseError::TooLong: No exact error variant assertion for ParseError::TooLong
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.

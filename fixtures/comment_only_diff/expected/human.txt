@@ -4,4 +4,4 @@ root: fixtures/comment_only_diff/input
 
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-No diff-derived mutation exposure probes found.
+No diff-derived static exposure probes found.

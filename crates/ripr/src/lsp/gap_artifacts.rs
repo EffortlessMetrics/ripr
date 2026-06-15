@@ -1359,6 +1359,7 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::DecoratorIndirection,
         StaticLimitKind::MockedModule,
         StaticLimitKind::UnsupportedSyntax,
+        StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)

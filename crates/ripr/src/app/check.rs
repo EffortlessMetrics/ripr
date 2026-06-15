@@ -69,6 +69,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
         AnalysisResult {
             summary: Summary::default(),
             findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
         },
     )
 }
@@ -83,7 +84,7 @@ fn run_check(
     config: &RiprConfig,
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
-    let options = options_builder::analysis_options_from_input(&input);
+    let options = options_builder::analysis_options_from_input_and_config(&input, config);
     let analysis = match mode {
         AnalysisMode::Diff => run_analysis_with_oracle_policy(
             &options,
@@ -125,14 +126,12 @@ mod tests {
     fn check_workspace_runs_diff_use_case_from_input() -> Result<(), String> {
         let output = check_workspace(sample_diff_input())?;
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.summary.findings, output.findings.len());
-        assert!(
-            output.findings.iter().any(|finding| finding.id
-                == "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path")
-        );
+        assert!(output.findings.iter().any(|finding| finding.id
+            == "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683"));
         Ok(())
     }
 
@@ -143,7 +142,7 @@ mod tests {
 
         let output = check_workspace_repo(input)?;
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.root, sample_root());
@@ -155,7 +154,7 @@ mod tests {
         let input = sample_diff_input();
         let output = repo_seam_inventory_input(input);
 
-        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.schema_version, "0.2");
         assert_eq!(output.tool, "ripr");
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.root, sample_root());

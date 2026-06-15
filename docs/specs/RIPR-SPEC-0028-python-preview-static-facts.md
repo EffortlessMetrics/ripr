@@ -211,7 +211,14 @@ spine as other languages:
   can flow through an exception/control boundary, or can only weakly propagate
   through unresolved control, object, or side-effect flow
 - revealability: the strongest extracted pytest or unittest oracle and whether
-  it discriminates the changed behavior
+  it discriminates the changed behavior. A strong oracle is credited as
+  discriminating — and the finding classified `exposed` — only when its
+  assertion observes the changed sink: it must reference the changed owner (by
+  name or import alias) or a changed-sink identifier/literal from the changed
+  line. A strong oracle that reaches the owner but observes a *different* value
+  (for example a wrapper's return value rather than the changed boundary)
+  downgrades to `weakly_exposed` with a typed reason. Reach plus a strong oracle
+  alone must not credit `exposed`, or the classification degrades into coverage.
 
 Static-limit findings must fail closed. They keep any observed reachability and
 oracle facts, but their infection and propagation stages remain `unknown`, the
@@ -230,6 +237,31 @@ changed `logger.warning("coupon expired")` call can emit
 repair-card contract supplies the test shape, verify command, receipt command,
 and edit boundaries. Heuristic-only links, no related-test paths, and static
 limits must not emit repair guidance.
+
+### Sink alignment visibility
+
+The adapter already decides `exposed` vs `weakly_exposed` by whether a strong
+oracle observes the changed sink (the revealability rule above). It must also
+**surface** that decision so a consumer can see *why* a strong oracle did or did
+not credit `exposed`, via four additive optional output fields. They are a pure
+read-out: the boolean the classifier uses is derived from the surfaced
+`oracle_alignment`, so the visible value can never disagree with the decision.
+
+- `changed_sink` — the comma-joined significant tokens of the changed line.
+- `observed_sink` — the strongest related oracle's assertion text.
+- `oracle_alignment` — a controlled enum mapping to the existing branches:
+  `direct` / `alias` / `changed_sink_token` appear only on `exposed` findings
+  (strong oracle observes the owner name, an import alias, or a changed-sink
+  token); `orthogonal` appears only on the fail-closed `weakly_exposed` branch
+  (strong oracle observes a different sink); `unknown` covers every other
+  finding (no strong oracle, or a `<module>` owner with no usable token).
+- `alignment_reason` — a stable snake_case token explaining the value
+  (e.g. `strong_oracle_observes_different_sink`).
+
+These fields are advisory preview evidence; they do not change the
+classification and do not claim runtime maturity. The contract does not bump the
+JSON `schema_version`. Python's support tier remains governed by
+[Support tiers](../status/SUPPORT_TIERS.md).
 
 ## Required Evidence
 

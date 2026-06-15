@@ -19,6 +19,7 @@ pub(crate) struct RiprConfig {
     pub(super) suppressions: SuppressionsConfig,
     pub(super) languages: LanguagesConfig,
     pub(super) profiles: ProfilesConfig,
+    pub(super) typescript: TypescriptConfig,
     pub(super) source_path: Option<PathBuf>,
     pub(super) source_text: Option<String>,
 }
@@ -54,6 +55,10 @@ impl RiprConfig {
 
     pub(crate) fn profiles(&self) -> &ProfilesConfig {
         &self.profiles
+    }
+
+    pub(crate) fn typescript(&self) -> &TypescriptConfig {
+        &self.typescript
     }
 
     pub(crate) fn source_text(&self) -> Option<&str> {
@@ -186,6 +191,26 @@ impl SuppressionsConfig {
 
     pub(crate) fn display_path(&self) -> String {
         self.path.to_string_lossy().replace('\\', "/")
+    }
+}
+
+/// `[typescript]` opt-in configuration for the TypeScript preview adapter.
+///
+/// All options default to `false` / off. This section may be absent from
+/// `ripr.toml`; absence is equivalent to `TypescriptConfig::default()`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TypescriptConfig {
+    /// When `true`, the adapter reads `compilerOptions.paths` from `tsconfig.json`
+    /// (or `jsconfig.json`) and uses the alias map to resolve non-relative import
+    /// specifiers to workspace files during owner↔test discovery.
+    ///
+    /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
+    pub(super) resolve_tsconfig_paths: bool,
+}
+
+impl TypescriptConfig {
+    pub(crate) fn resolve_tsconfig_paths(&self) -> bool {
+        self.resolve_tsconfig_paths
     }
 }
 

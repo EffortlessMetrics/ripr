@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dynamic_import_limit/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_plugin_loader.py:4:python_preview",
+      "id": "probe:src_plugin_loader.py:python_preview:f81f0948",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_plugin_loader.py:4:python_preview",
+        "id": "probe:src_plugin_loader.py:python_preview:f81f0948",
         "family": "return_value",
         "delta": "value",
         "file": "src/plugin_loader.py",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: run_plugin", "owner_kind: function", "static_limit missing_import_graph: changed line uses dynamic import syntax", "test_framework: pytest (test_run_plugin_returns_payload_status)", "test_verify_command: pytest tests/test_plugin_loader.py::test_run_plugin_returns_payload_status (test_run_plugin_returns_payload_status)", "related_test_relation: syntactic_call (test_run_plugin_returns_payload_status)", "test_oracle: exact_value strong (test_run_plugin_returns_payload_status)"],
       "missing": ["Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not build an import graph or resolve imported implementation semantics."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_run_plugin_returns_payload_status",
@@ -60,7 +63,21 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "missing_import_graph"
+      "static_limit_kind": "missing_import_graph",
+      "changed_sink": "importlib, import_module, module_name, handle, payload, strict",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/plugin_loader.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

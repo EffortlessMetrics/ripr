@@ -6,6 +6,8 @@ mod scan;
 pub(crate) use classify::classify_assertion;
 #[cfg(test)]
 pub(crate) use patterns::contains_macro_invocation;
+pub(crate) use patterns::is_unwrap_err_bound_error_assertion;
+pub(crate) use scan::unwrap_err_bound_variables;
 pub(crate) use scan::{extract_assertions, extract_line_scanned_oracles};
 
 #[cfg(test)]

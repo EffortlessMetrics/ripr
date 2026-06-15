@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_dynamic_dispatch_limit/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_dispatch.py:2:python_preview",
+      "id": "probe:src_dispatch.py:python_preview:8ff6dd4a",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_dispatch.py:2:python_preview",
+        "id": "probe:src_dispatch.py:python_preview:8ff6dd4a",
         "family": "return_value",
         "delta": "value",
         "file": "src/dispatch.py",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_dispatches_total)", "test_fixtures: client (test_call_named_dispatches_total)", "test_verify_command: pytest tests/test_dispatch.py::test_call_named_dispatches_total (test_call_named_dispatches_total)", "related_test_relation: syntactic_call (test_call_named_dispatches_total)", "test_oracle: exact_value strong (test_call_named_dispatches_total)"],
       "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_call_named_dispatches_total",
@@ -60,7 +63,21 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "dynamic_dispatch"
+      "static_limit_kind": "dynamic_dispatch",
+      "changed_sink": "getattr, client, method_name",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/dispatch.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

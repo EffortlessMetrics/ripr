@@ -93,7 +93,7 @@ fn top_seam_json(
     let evidence = &entry.evidence;
     let missing = agent_seam_packets::missing_discriminator_records_for(entry);
     let recommended = agent_seam_packets::recommended_test_for(entry);
-    let nearest = agent_seam_packets::nearest_strong_test_to_imitate(evidence);
+    let nearest = agent_seam_packets::nearest_strong_test_to_imitate(seam.kind(), evidence);
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
     let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
 

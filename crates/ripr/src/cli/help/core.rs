@@ -39,6 +39,13 @@ Options:
   --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
   --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to 30000.
 
+Environment variables:
+  RIPR_PILOT_SEAM_BUDGET   Maximum seams written to pilot artifacts (repo-exposure.json,
+                            agent-seam-packets.json). Default: 2000. Set to 0 to disable
+                            the budget and write all seams (may produce very large files).
+                            When the budget is applied, both artifacts include a
+                            limitations[] disclosure naming the env var and a repair route.
+
 Outputs:
   - repo-exposure.json and repo-exposure.md
   - agent-seam-packets.json
@@ -139,6 +146,19 @@ Checks:
   - Cargo.toml is present at the selected root
   - ripr.toml load status and effective defaults are visible
   - git, cargo, and rustc are available
+
+First-run diagnosis (printed automatically):
+  - Detected languages: shallow file-marker scan; each language shows its
+    canonical tier (stable or preview) and [adapter not compiled] when the
+    feature is absent. Only languages with concrete markers are listed —
+    no overclaiming.
+  - Detected test surfaces: per detected language, the first recognizable
+    framework marker (cargo test, pytest, jest, vitest, bun). Prints
+    "test framework not detected" rather than guessing.
+  - Known limitations: static notes on preview coverage, cross-language
+    oracle visibility (fail-closed), large-repo scan bounds, and advisory
+    nature of preview-language evidence.
+  - Recommended first command: ripr check --base origin/main
 
 Start-here next step:
   - after setup is valid, run `ripr first-pr --root . --base origin/main --head HEAD`

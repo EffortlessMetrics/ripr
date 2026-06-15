@@ -1,6 +1,6 @@
 use super::model::{
     CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePolicy,
-    GateSummary,
+    GateSummary, NewUnsuppressed,
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use serde_json::{Value, json};
@@ -16,6 +16,7 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
         "inputs": inputs_json(&report.inputs),
         "policy": policy_json(&report.policy),
         "summary": summary_json(&report.summary),
+        "new_unsuppressed": new_unsuppressed_json(&report.new_unsuppressed),
         "decisions": report.decisions.iter().map(decision_json).collect::<Vec<_>>(),
         "warnings": report.warnings,
         "config_errors": report.config_errors,
@@ -192,6 +193,14 @@ fn calibration_json(evidence: &CalibrationEvidence) -> Value {
         "available": evidence.available,
         "outcome": evidence.outcome,
         "confidence_effect": evidence.confidence_effect,
+    })
+}
+
+fn new_unsuppressed_json(nu: &NewUnsuppressed) -> Value {
+    json!({
+        "basis": nu.basis,
+        "count": nu.count,
+        "reason": nu.reason,
     })
 }
 

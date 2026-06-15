@@ -5,6 +5,7 @@ use super::{
 use crate::analysis;
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
+use crate::output::repo_exposure::TsFullRepoGuidance;
 use std::collections::BTreeMap;
 
 /// Path (relative to the analyzed workspace root) where the
@@ -57,9 +58,14 @@ pub(crate) fn render_check_with_config(
             Ok(repo_seams::render_repo_seams_md(&seams))
         }
         OutputFormat::RepoExposureJson => {
-            let classified =
+            let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(repo_exposure::render_repo_exposure_json(&classified))
+            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
+            Ok(repo_exposure::render_repo_exposure_json(
+                &classified,
+                limit_info.as_ref(),
+                ts_guidance.as_ref(),
+            ))
         }
         OutputFormat::RepoExposureSummaryJson => {
             let classified =
@@ -72,23 +78,91 @@ pub(crate) fn render_check_with_config(
             ))
         }
         OutputFormat::RepoExposureMd => {
-            let classified =
+            let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(repo_exposure::render_repo_exposure_md(&classified))
+            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
+            Ok(repo_exposure::render_repo_exposure_md(
+                &classified,
+                limit_info.as_ref(),
+                ts_guidance.as_ref(),
+            ))
         }
         OutputFormat::RepoSarif => {
-            let classified =
+            let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(sarif::render_repo_seams_sarif(&classified, config))
+            Ok(sarif::render_repo_seams_sarif(
+                &classified,
+                limit_info.as_ref(),
+                config,
+            ))
         }
         OutputFormat::AgentSeamPacketsJson => {
-            let classified =
+            let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(agent_seam_packets::render_agent_seam_packets_json(
                 &classified,
+                None,
             ))
         }
     }
+}
+
+/// Public re-export for CLI callers that drive the streaming JSON path directly
+/// (bypassing `render_check_with_config`).
+pub(crate) fn detect_ts_full_repo_guidance_pub(
+    root: &std::path::Path,
+    classified: &[crate::analysis::ClassifiedSeam],
+) -> Option<TsFullRepoGuidance> {
+    detect_ts_full_repo_guidance(root, classified)
+}
+
+/// Detect whether a TypeScript diff-first guidance disclosure should fire.
+///
+/// Returns `Some(TsFullRepoGuidance)` when ALL of:
+///
+/// 1. The classified seam inventory is empty (no Rust seams, so the report
+///    would otherwise be a silent empty result).
+/// 2. TypeScript or JavaScript files are present in the workspace (detected
+///    by path extension via `workspace_preview_language_files`).
+/// 3. No Rust source files are found at the root (the workspace has no
+///    Rust crate presence that could legitimately produce zero seams).
+///
+/// Condition 3 is the key guard for the "additive / no Rust regression"
+/// invariant: a Rust-only workspace that happens to produce zero seams
+/// (e.g., a workspace with only `mod` re-exports and no production shapes)
+/// must NOT trigger the TS guidance. Only workspaces where Rust is absent
+/// and TS is present get the disclosure.
+fn detect_ts_full_repo_guidance(
+    root: &std::path::Path,
+    classified: &[crate::analysis::ClassifiedSeam],
+) -> Option<TsFullRepoGuidance> {
+    use crate::domain::LanguageId;
+
+    // Guidance only fires when the repo scan produced no seams.
+    if !classified.is_empty() {
+        return None;
+    }
+
+    // Count TS/JS files in the workspace.
+    let preview_files = analysis::workspace_preview_language_files(root);
+    let ts_file_count = preview_files
+        .iter()
+        .filter(|(lang, _)| *lang == LanguageId::TypeScript || *lang == LanguageId::JavaScript)
+        .count();
+
+    if ts_file_count == 0 {
+        return None;
+    }
+
+    // Guard: if there are Rust files, the empty-seam result is a legitimate
+    // Rust analysis outcome (e.g. a workspace with no production shapes), not
+    // a TS-first scan gap. Only fire when Rust is absent.
+    let rust_files = analysis::workspace_rust_files(root);
+    if !rust_files.is_empty() {
+        return None;
+    }
+
+    Some(TsFullRepoGuidance { ts_file_count })
 }
 
 fn load_suppressions(
@@ -237,6 +311,7 @@ fn missing_test_efficiency_badge_summary(
             ..badge::BadgePolicy::default()
         },
         warnings: vec![warning],
+        preview_skipped: Vec::new(),
     }
 }
 
@@ -787,6 +862,8 @@ mod tests {
             base: Some("origin/main".to_string()),
             summary: Summary::default(),
             findings,
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
         }
     }
 
@@ -910,12 +987,18 @@ mod tests {
                 oracle: None,
                 oracle_kind: OracleKind::Unknown,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
             }],
             recommended_next_step: Some("add stronger assertion".to_string()),
             language: None,
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
         }
     }
 }

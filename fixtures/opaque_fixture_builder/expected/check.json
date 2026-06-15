@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/opaque_fixture_builder/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:2:predicate",
+      "id": "probe:src_lib.rs:predicate:47d36ed0",
       "classification": "infection_unknown",
       "severity": "warning",
-      "confidence": 0.87,
+      "confidence": 0.66,
       "probe": {
-        "id": "probe:src_lib.rs:2:predicate",
+        "id": "probe:src_lib.rs:predicate:47d36ed0",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/opaque_fixture_builder/input/src/lib.rs",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount", "Related tests use opaque fixtures; activation/infection is unknown", "Strong oracle found: exact value or pattern assertion"],
       "missing": ["No detected boundary input for the changed predicate", "Related tests use opaque fixtures; activation/infection is unknown"],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "fixture_builder_case_has_no_discount",
@@ -49,7 +52,9 @@
           "line": 16,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(discounted_total(case.amount), case.expected);"
+          "oracle": "assert_eq!(discounted_total(case.amount), case.expected);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": ["fixture_opaque"],

@@ -84,6 +84,12 @@ pub(in crate::analysis) fn infection_evidence(
                     Confidence::Low,
                     "No reachable tests were found, so infection cannot be established",
                 )
+            } else if is_wildcard_discard(&probe.expression) {
+                StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "Changed value is bound to a discard pattern; it cannot infect a sink",
+                )
             } else {
                 StageEvidence::new(
                     StageState::Yes,
@@ -93,6 +99,17 @@ pub(in crate::analysis) fn infection_evidence(
             }
         }
     }
+}
+
+/// Returns true iff the expression is an exact wildcard discard that provably
+/// cannot infect any sink.  Matches `let _ =` and `let _:` (with leading
+/// whitespace) but NOT `let _name` — those bindings are still used.
+fn is_wildcard_discard(expression: &str) -> bool {
+    let trimmed = expression.trim_start();
+    // "let _ =" covers `let _ = expr;` (value silently dropped)
+    // "let _:" covers `let _: Type = expr;` (typed wildcard discard)
+    // We do NOT match `let _x` because `_x` is a named binding (possibly used).
+    trimmed.starts_with("let _ =") || trimmed.starts_with("let _:")
 }
 
 #[cfg(test)]
@@ -150,6 +167,52 @@ mod tests {
             evidence.summary,
             "No reachable tests were found, so infection cannot be established"
         );
+    }
+
+    #[test]
+    fn wildcard_discard_is_infection_unknown_even_with_related_tests() {
+        let probe = probe(ProbeFamily::SideEffect, "let _ = compute_fee(amount)");
+        let test = test_with_literals(&["42"]);
+        let evidence = infection_evidence(&probe, &[&test], &ActivationEvidence::default());
+
+        assert_eq!(evidence.state, StageState::Unknown);
+        assert_eq!(
+            evidence.summary,
+            "Changed value is bound to a discard pattern; it cannot infect a sink"
+        );
+    }
+
+    #[test]
+    fn typed_wildcard_discard_is_infection_unknown() {
+        let probe = probe(ProbeFamily::ReturnValue, "let _: u32 = helper(x)");
+        let test = test_with_literals(&["1"]);
+        let evidence = infection_evidence(&probe, &[&test], &ActivationEvidence::default());
+
+        assert_eq!(evidence.state, StageState::Unknown);
+        assert_eq!(
+            evidence.summary,
+            "Changed value is bound to a discard pattern; it cannot infect a sink"
+        );
+    }
+
+    #[test]
+    fn named_binding_is_not_a_discard_stays_yes() {
+        // `let _name = ...` is a named binding that could be used — must stay Yes
+        let probe = probe(ProbeFamily::ReturnValue, "let _result = helper(a)");
+        let test = test_with_literals(&["1"]);
+        let evidence = infection_evidence(&probe, &[&test], &ActivationEvidence::default());
+
+        assert_eq!(evidence.state, StageState::Yes);
+    }
+
+    #[test]
+    fn return_value_read_into_tail_stays_exposed() {
+        // Control: `let result = helper(a); result + 1` (value read into return) must stay Yes
+        let probe = probe(ProbeFamily::ReturnValue, "result + 1");
+        let test = test_with_literals(&["1"]);
+        let evidence = infection_evidence(&probe, &[&test], &ActivationEvidence::default());
+
+        assert_eq!(evidence.state, StageState::Yes);
     }
 
     fn probe(family: ProbeFamily, expression: &str) -> Probe {

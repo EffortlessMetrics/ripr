@@ -1,4 +1,5 @@
-use crate::agent::loop_commands::{outcome_command, shell_arg};
+use crate::agent::loop_commands::shell_arg;
+use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -219,7 +220,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     };
 
     if input.source_kind == GapDecisionLedgerSourceKind::CheckOutput {
-        attach_check_output_python_receipt_routes(&mut records, &input.root, &input.records_path);
+        attach_check_output_python_receipt_routes(&mut records, &input.root);
     }
 
     for record in &records {
@@ -1152,11 +1153,7 @@ fn perl_route_kind(value: &str) -> &'static str {
     }
 }
 
-fn attach_check_output_python_receipt_routes(
-    records: &mut [GapRecord],
-    root: &str,
-    before_check_output: &str,
-) {
+fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &str) {
     let after_check_command = format!(
         "ripr check --root {} --json > {}",
         shell_arg(root),
@@ -1177,9 +1174,17 @@ fn attach_check_output_python_receipt_routes(
             .is_none()
         {
             let receipt_path = default_python_receipt_path(record);
-            record.receipt_command = Some(outcome_command(
-                before_check_output,
-                DEFAULT_CHECK_AFTER_OUTPUT,
+            let gap_id_for_receipt = non_empty(&record.canonical_gap_id)
+                .or_else(|| non_empty(&record.gap_id))
+                .unwrap_or("python-gap");
+            let verify_cmd = record
+                .verification_commands
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("ripr check --root . --json");
+            record.receipt_command = Some(receipt_write_command(
+                gap_id_for_receipt,
+                verify_cmd,
                 Some(&receipt_path),
             ));
         }
@@ -2795,11 +2800,14 @@ mod tests {
             record.regeneration_commands,
             vec!["ripr check --root . --json > target/ripr/reports/after-check.json".to_string()]
         );
-        assert_eq!(
-            record.receipt_command.as_deref(),
-            Some(
-                "ripr outcome --before target/ripr/reports/check.json --after target/ripr/reports/after-check.json --format json --out target/ripr/receipts/gap-python-src-pricing.py-calculate_discount-predicate_boundary-predicate-amount-threshold.json"
-            )
+        let receipt_cmd = record.receipt_command.as_deref().unwrap_or("");
+        assert!(
+            receipt_cmd.starts_with("ripr receipt write --gap "),
+            "receipt_command must be canonical ripr receipt write per RIPR-SPEC-0079, got: {receipt_cmd}"
+        );
+        assert!(
+            !receipt_cmd.contains("ripr outcome"),
+            "receipt_command must not contain ripr outcome, got: {receipt_cmd}"
         );
         let packet = crate::output::agent_seam_packets::render_agent_gap_record_packet_json(
             "target/ripr/reports/gap-decision-ledger.json",
@@ -4206,6 +4214,63 @@ mod tests {
         assert!(
             msg.contains("invalid GapRecord"),
             "expected 'invalid GapRecord' in: {msg}"
+        );
+        Ok(())
+    }
+
+    // ── #1130: gap-ledger does NOT fabricate stale/verify-failed counts ─────
+
+    /// Honesty guard for #1130: the gap-decision-ledger build path has no real
+    /// producer of verify-failed/stale receipt signals (those live in
+    /// swarm_ingest, a separate artifact). Even if a record carries a
+    /// `receipt.state` value, the ledger summary must NOT surface a
+    /// `receipt_stale_total` / `receipt_verify_failed_total` count — emitting one
+    /// would be a structurally-always-zero fake count. The summary JSON must not
+    /// contain those keys at all.
+    #[test]
+    fn ledger_summary_does_not_emit_fabricated_receipt_state_counts() -> Result<(), String> {
+        // Two records carrying receipt.state, exactly the shape that would have
+        // tripped the reverted detection.
+        let input = serde_json::json!([
+            {
+                "gap_id": "gap:stale-j",
+                "canonical_gap_id": "gap:stale-j",
+                "kind": "MissingValueAssertion",
+                "language": "rust",
+                "language_status": "stable",
+                "scope": "repo_scoped",
+                "evidence_class": "return_value",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "no_action",
+                "authority_boundary": "gate_decision_artifact_only",
+                "receipt": {"state": "receipt_stale", "movement": "unchanged"}
+            },
+            {
+                "gap_id": "gap:vf-j",
+                "canonical_gap_id": "gap:vf-j",
+                "kind": "MissingValueAssertion",
+                "language": "rust",
+                "language_status": "stable",
+                "scope": "repo_scoped",
+                "evidence_class": "return_value",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "no_action",
+                "authority_boundary": "gate_decision_artifact_only",
+                "receipt": {"state": "receipt_verify_failed"}
+            }
+        ]);
+        let report = report_from_json(input);
+        let json = render_gap_decision_ledger_json(&report)
+            .map_err(|err| format!("render failed: {err}"))?;
+        assert!(
+            !json.contains("receipt_stale_total"),
+            "ledger summary must NOT emit a fabricated receipt_stale_total: {json}"
+        );
+        assert!(
+            !json.contains("receipt_verify_failed_total"),
+            "ledger summary must NOT emit a fabricated receipt_verify_failed_total: {json}"
         );
         Ok(())
     }

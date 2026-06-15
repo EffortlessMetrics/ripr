@@ -72,6 +72,20 @@ pub(in crate::analysis) fn local_flow_sinks(
                     probe.location.line,
                     owner.clone(),
                 )]
+            } else if value_is_swallowed(&probe.expression) {
+                vec![flow_sink(
+                    FlowSinkKind::Unknown,
+                    "value is discarded at the call-chain tail; propagation unknown",
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else if is_non_escaping_effect(&probe.expression, owner_fn) {
+                vec![flow_sink(
+                    FlowSinkKind::Unknown,
+                    "effect does not escape the function scope; propagation unknown",
+                    probe.location.line,
+                    owner.clone(),
+                )]
             } else {
                 vec![flow_sink(
                     effect_sink_kind(&probe.expression),
@@ -300,6 +314,138 @@ fn flow_sink(
         line,
         owner,
     }
+}
+
+/// Returns true when the effect cannot escape the function's observable boundary.
+///
+/// Three categories (conservative — only provably-local cases flagged):
+/// 1. `println!` / `eprintln!` — stdout macros that produce no capturable
+///    artifact from a static-analysis perspective.  `log::` / `tracing::` are
+///    KEPT as LogMessage (they go to a capturable sink).
+/// 2. `.push(..)` / `.insert(..)` / `.write(..)` on a provably function-local
+///    receiver — scanned from `owner_fn.body` for a `let [mut] <recv> = …`
+///    binding with no subsequent `return <recv>` or field-store of `<recv>`.
+/// 3. Trait-object receiver (`&dyn` / `Box<dyn`) — we cannot statically prove
+///    where dispatch resolves.
+fn is_non_escaping_effect(text: &str, owner_fn: Option<&FunctionSummary>) -> bool {
+    let trimmed = text.trim();
+    // Category 1: stdout macros (but NOT log:: / tracing:: which are capturable)
+    if is_stdout_macro(trimmed) {
+        return true;
+    }
+    // Category 3: trait-object receiver  (&dyn Trait::m or Box<dyn Trait>::m)
+    if has_trait_object_receiver(trimmed) {
+        return true;
+    }
+    // Category 2: local-dropped collection receiver
+    if let Some(receiver) = collection_receiver(trimmed)
+        && is_function_local_dropped_receiver(&receiver, owner_fn)
+    {
+        return true;
+    }
+    false
+}
+
+/// True for `println!(…)` / `eprintln!(…)` but NOT `log::`, `tracing::`,
+/// `info!(`, `warn!(`, etc.  Those go to a capturable sink and stay as
+/// `LogMessage`.
+fn is_stdout_macro(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    // Must start with the macro name to avoid matching a call like
+    // `do_println(x)`.
+    lower.trim_start().starts_with("println!(") || lower.trim_start().starts_with("eprintln!(")
+}
+
+/// True when the receiver is an opaque trait object.
+/// We look for `(&dyn` / `(Box<dyn` in the call chain.
+fn has_trait_object_receiver(text: &str) -> bool {
+    text.contains("&dyn ") || text.contains("Box<dyn ")
+}
+
+/// Extract the receiver name from `.push(` / `.insert(` / `.write(` calls,
+/// e.g. `vec.push(x)` → `Some("vec")`, `self.push(x)` → `None` (self escapes).
+fn collection_receiver(text: &str) -> Option<String> {
+    for method in &[".push(", ".insert(", ".write("] {
+        if let Some(dot_pos) = text.find(method) {
+            // Walk backwards to find the receiver name
+            let before = &text[..dot_pos];
+            let receiver = before
+                .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                .next_back()
+                .unwrap_or("")
+                .to_string();
+            if !receiver.is_empty() && receiver != "self" {
+                return Some(receiver);
+            }
+            // receiver is `self` or empty — cannot determine, leave as Yes
+        }
+    }
+    None
+}
+
+/// Returns true when `receiver` is provably declared and dropped inside
+/// `owner_fn` — i.e. there is a `let [mut] <receiver> = …` in the body and
+/// no `return <receiver>` / `self.<field> = <receiver>` after it.
+fn is_function_local_dropped_receiver(receiver: &str, owner_fn: Option<&FunctionSummary>) -> bool {
+    let Some(function) = owner_fn else {
+        return false;
+    };
+    let body = &function.body;
+    // Check for a let binding of this receiver
+    let let_pat_plain = format!("let {receiver} =");
+    let let_pat_mut = format!("let mut {receiver} =");
+    let has_local_binding = body.contains(&let_pat_plain) || body.contains(&let_pat_mut);
+    if !has_local_binding {
+        return false;
+    }
+    // Check it does NOT escape via return or field-store
+    let escapes = body.contains(&format!("return {receiver}"))
+        || body.contains(&format!("return {receiver};"))
+        || body.contains(&format!("self. = {receiver}")) // self.<any_field> = recv
+        || body
+            .lines()
+            .any(|line| looks_like_field_store_of(line, receiver));
+    !escapes
+}
+
+/// Heuristic: `self.<field> = <receiver>` lines escape the receiver.
+fn looks_like_field_store_of(line: &str, receiver: &str) -> bool {
+    let trimmed = line.trim();
+    // Pattern: `self.<ident> = <receiver>` or `self.<ident> = <receiver>;`
+    if !trimmed.starts_with("self.") {
+        return false;
+    }
+    let suffix = &trimmed["self.".len()..];
+    // There should be ` = <receiver>` somewhere after the field name
+    suffix.contains(&format!("= {receiver}")) || suffix.contains(&format!("= {receiver};"))
+}
+
+/// Returns true when the call-chain tail provably discards the returned value,
+/// meaning the changed call cannot propagate through a return/error/field path.
+///
+/// Conservative: only matches exact tail patterns so `x.ok().map(f)` is NOT
+/// flagged (the value continues to flow).
+fn value_is_swallowed(text: &str) -> bool {
+    let trimmed = text.trim();
+    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding
+    if trimmed.starts_with("let _ =") {
+        return true;
+    }
+    // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
+    // We strip the trailing `;` first, then check if the trimmed tail is ".ok()"
+    let without_semi = trimmed.trim_end_matches(';').trim_end();
+    if without_semi.ends_with(".ok()") {
+        return true;
+    }
+    // Pattern 3: `drop(<expr>)` wrapper — explicit discard
+    if trimmed.starts_with("drop(") {
+        return true;
+    }
+    // Pattern 4: `= ();` — assignment of unit value (explicit unit discard)
+    if trimmed.ends_with("= ();") || trimmed == "= ()" {
+        return true;
+    }
+    false
 }
 
 fn effect_sink_kind(text: &str) -> FlowSinkKind {
@@ -710,6 +856,129 @@ mod tests {
             is_test: false,
             attrs: Vec::new(),
         }
+    }
+
+    // ── Fix B: value_is_swallowed ─────────────────────────────────────────
+
+    #[test]
+    fn swallowed_ok_tail_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "self.persist(amount * 9).ok();", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+        assert!(sinks[0].text.contains("discarded"));
+    }
+
+    #[test]
+    fn wildcard_discard_binding_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "let _ = compute(x);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn drop_wrapper_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "drop(compute(x));", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn returned_call_is_not_swallowed_stays_return_value() {
+        // Control: `return self.persist(amount*9)` is NOT swallowed — stays exposed
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "return self.persist(amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+    }
+
+    #[test]
+    fn chained_ok_map_is_not_swallowed() {
+        // `x.ok().map(f)` is NOT a tail-discard: the value continues to flow
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "self.compute().ok().map(transform)",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        // Should NOT be Unknown — the value is not swallowed
+        assert_ne!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    // ── Fix C: is_non_escaping_effect ────────────────────────────────────
+
+    #[test]
+    fn println_macro_yields_unknown_sink() {
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "println!(\"amount is {}\", amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn eprintln_macro_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "eprintln!(\"err {}\", msg);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn log_info_macro_stays_log_message_not_downgraded() {
+        // Control: `log::info!` is a capturable sink — must NOT be downgraded
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "log::info!(\"amount is {}\", amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::LogMessage);
+    }
+
+    #[test]
+    fn local_vec_push_yields_unknown_sink() {
+        // A provably-local Vec receiver: `let mut items = Vec::new(); items.push(x)`
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::collect".to_string()),
+            name: "collect".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body:
+                "pub fn collect(x: i32) {\n    let mut items = Vec::new();\n    items.push(x);\n}"
+                    .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::SideEffect, "items.push(x * 9);", 3);
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn self_field_push_stays_state_write_not_downgraded() {
+        // Control: `self.items.push(x)` — `self` is not a local binding, must stay Yes
+        let probe = probe(ProbeFamily::SideEffect, "self.items.push(x * 9);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        // `self` receiver is NOT considered local-dropped — stays StateWrite
+        assert_eq!(sinks[0].kind, FlowSinkKind::StateWrite);
     }
 
     fn probe(family: ProbeFamily, expression: &str, line: usize) -> Probe {

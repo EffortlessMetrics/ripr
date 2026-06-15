@@ -26,8 +26,8 @@ use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CacheLoad, RepoSeamFactCache, WorkspaceState, classified_seam_cache_store_limit,
-    compact_classified_seam_cache_store_limit,
+    CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache, WorkspaceState,
+    classified_seam_cache_store_limit, compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
@@ -41,6 +41,22 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const REPO_EXPOSURE_SEAM_LIMIT_ENV: &str = "RIPR_REPO_EXPOSURE_SEAM_LIMIT";
+
+/// Default cap on the number of seams analyzed in a single full-repo
+/// `repo-exposure-json` run. This prevents pathological 41-minute runs
+/// on giant workspaces. Operators can opt out via `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0`.
+pub(crate) const DEFAULT_REPO_EXPOSURE_SEAM_LIMIT: usize = 10_000;
+
+/// Environment variable that overrides the pilot artifact seam budget.
+/// Set to `0` to remove the cap (unbounded); any positive integer sets
+/// the budget explicitly.  When unset, `DEFAULT_PILOT_SEAM_BUDGET` applies.
+pub(crate) const PILOT_SEAM_BUDGET_ENV: &str = "RIPR_PILOT_SEAM_BUDGET";
+
+/// Default cap on the number of seams written to pilot artifacts
+/// (`repo-exposure.json` and `agent-seam-packets.json`).  2 000 seams
+/// stay comfortably below 10 MB at typical per-seam evidence sizes.
+/// Operators can raise or remove the cap via `RIPR_PILOT_SEAM_BUDGET`.
+pub(crate) const DEFAULT_PILOT_SEAM_BUDGET: usize = 2_000;
 
 const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 
@@ -62,6 +78,55 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     Ok(inventory_seams_from_index(&production_files, &index))
 }
 
+/// Whether a seam limit was the built-in default or explicitly configured
+/// via the environment variable.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum SeamLimitSource {
+    /// The limit came from `DEFAULT_REPO_EXPOSURE_SEAM_LIMIT` (env var unset).
+    Default,
+    /// The limit came from an explicit `RIPR_REPO_EXPOSURE_SEAM_LIMIT` setting.
+    Configured,
+}
+
+impl SeamLimitSource {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Configured => "configured",
+        }
+    }
+}
+
+/// Carries information about a seam-limit truncation so the output
+/// layer can self-declare when a run analyzed fewer seams than were
+/// available.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SeamLimitInfo {
+    pub(crate) analyzed: usize,
+    pub(crate) total: usize,
+    pub(crate) source: SeamLimitSource,
+}
+
+impl From<CachedSeamLimitInfo> for SeamLimitInfo {
+    fn from(cached: CachedSeamLimitInfo) -> Self {
+        Self {
+            analyzed: cached.analyzed,
+            total: cached.total,
+            source: cached.source,
+        }
+    }
+}
+
+impl From<&SeamLimitInfo> for CachedSeamLimitInfo {
+    fn from(info: &SeamLimitInfo) -> Self {
+        Self {
+            analyzed: info.analyzed,
+            total: info.total,
+            source: info.source.clone(),
+        }
+    }
+}
+
 /// Walk production Rust files at `root` and emit per-seam evidence and
 /// classification. This is the input to `output/repo-exposure-report-v1`.
 /// The discard hook in `inventory_seams_at` from #237 is replaced by
@@ -77,12 +142,13 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
 #[cfg(test)]
 pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<ClassifiedSeam>, String> {
     inventory_classified_seams_at_with_config(root, &RiprConfig::default())
+        .map(|(classified, _)| classified)
 }
 
 pub(crate) fn inventory_classified_seams_at_with_config(
     root: &Path,
     config: &RiprConfig,
-) -> Result<Vec<ClassifiedSeam>, String> {
+) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
     let total_started = Instant::now();
     let cache = RepoSeamFactCache::at(root);
     let collect_started = Instant::now();
@@ -102,12 +168,8 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     };
     let key = state.cache_key();
-    if repo_exposure_seam_limit().is_some() {
-        trace_latency_phase("cache_load", "skipped_due_seam_limit", Duration::ZERO);
-        let classified = inventory_classified_seams_from_state_with_config(&state, config)?;
-        trace_latency_phase("total", "sampled_computed", total_started.elapsed());
-        return Ok(classified);
-    }
+    // NOTE: the seam-limit key is baked into `key.filename()`, so a capped run
+    // and an unbounded run never share a cache file — no fast-path bypass needed.
     let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
     trace_latency_phase(
@@ -116,10 +178,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         Duration::ZERO,
     );
     match cache.load_classified_seams(&key) {
-        CacheLoad::Hit(cached) => {
+        CacheLoad::Hit((cached, cached_limit_info)) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "cache_hit", total_started.elapsed());
-            return Ok(cached);
+            // Preserve the run_status from the original run: a capped run stored
+            // its SeamLimitInfo in the envelope; a complete run stored None.
+            return Ok((cached, cached_limit_info.map(SeamLimitInfo::from)));
         }
         CacheLoad::Miss => {
             trace_latency_phase("cache_load", "miss", cache_started.elapsed());
@@ -133,19 +197,22 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     }
     let compute_started = Instant::now();
     trace_latency_phase("cold_compute", "start", Duration::ZERO);
-    let classified = match inventory_classified_seams_from_state_with_config(&state, config) {
-        Ok(classified) => {
-            trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
-            classified
-        }
-        Err(err) => {
-            trace_latency_phase("cold_compute", "error", compute_started.elapsed());
-            trace_latency_phase("total", "error", total_started.elapsed());
-            return Err(err);
-        }
-    };
+    let (classified, limit_info) =
+        match inventory_classified_seams_from_state_with_config(&state, config) {
+            Ok(pair) => {
+                trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
+                pair
+            }
+            Err(err) => {
+                trace_latency_phase("cold_compute", "error", compute_started.elapsed());
+                trace_latency_phase("total", "error", total_started.elapsed());
+                return Err(err);
+            }
+        };
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
+    // Persist the limit_info so a warm-path load returns the correct run_status.
+    let cached_limit_info: Option<CachedSeamLimitInfo> = limit_info.as_ref().map(Into::into);
     let store_started = Instant::now();
     trace_latency_phase(
         "cache_store",
@@ -156,8 +223,12 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         ),
         Duration::ZERO,
     );
-    let store_status = match cache.store_classified_seams_with_limit(&key, &classified, store_limit)
-    {
+    let store_status = match cache.store_classified_seams_with_limit(
+        &key,
+        &classified,
+        cached_limit_info.as_ref(),
+        store_limit,
+    ) {
         Ok(status) => status.label,
         Err(reason) => {
             eprintln!("ripr: repo seam cache store ignored ({reason})");
@@ -166,7 +237,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     };
     trace_latency_phase("cache_store", &store_status, store_started.elapsed());
     trace_latency_phase("total", "computed", total_started.elapsed());
-    Ok(classified)
+    Ok((classified, limit_info))
 }
 
 fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
@@ -291,7 +362,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     let key = state.cache_key();
     let cache_started = Instant::now();
     match cache.load_classified_seams(&key) {
-        CacheLoad::Hit(cached) => {
+        CacheLoad::Hit((cached, _limit_info)) => {
             trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
             return Ok(cached);
@@ -403,7 +474,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
 fn inventory_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
-) -> Result<Vec<ClassifiedSeam>, String> {
+) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
     trace_latency_phase(
@@ -428,7 +499,7 @@ fn inventory_classified_seams_from_state_with_config(
     let seams_started = Instant::now();
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
-    apply_repo_exposure_seam_limit(&mut seams);
+    let limit_info = apply_repo_exposure_seam_limit(&mut seams);
     let evidence_started = Instant::now();
     trace_latency_phase(
         "evidence_for_seams",
@@ -440,7 +511,7 @@ fn inventory_classified_seams_from_state_with_config(
     let classify_started = Instant::now();
     let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
-    Ok(classified)
+    Ok((classified, limit_info))
 }
 
 #[derive(Clone, Debug)]
@@ -589,10 +660,22 @@ fn normalized_inventory_path(path: &Path) -> String {
         .to_string()
 }
 
-fn repo_exposure_seam_limit() -> Option<usize> {
-    std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV)
-        .ok()
-        .and_then(|value| parse_repo_exposure_seam_limit(&value))
+/// Return the effective seam limit and its source.
+///
+/// - Env var unset → `Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, Default))` — always-on cap.
+/// - Env var = "0" (or parses to 0) → `None` — operator opt-out: unbounded.
+/// - Env var = N > 0 → `Some((N, Configured))`.
+pub(crate) fn repo_exposure_seam_limit() -> Option<(usize, SeamLimitSource)> {
+    match std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV) {
+        Ok(value) => {
+            // Explicit env: "0" means opt-out (unbounded); N>0 means configured.
+            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
+        }
+        Err(_) => {
+            // Env var not set → apply the default cap.
+            Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, SeamLimitSource::Default))
+        }
+    }
 }
 
 fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
@@ -603,13 +686,19 @@ fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
         .filter(|limit| *limit > 0)
 }
 
-fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) {
-    let Some(limit) = repo_exposure_seam_limit() else {
-        return;
-    };
+pub(crate) fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimitInfo> {
+    let (limit, source) = repo_exposure_seam_limit()?;
+    apply_repo_exposure_seam_limit_inner(seams, limit, source)
+}
+
+fn apply_repo_exposure_seam_limit_inner(
+    seams: &mut Vec<RepoSeam>,
+    limit: usize,
+    source: SeamLimitSource,
+) -> Option<SeamLimitInfo> {
     let total = seams.len();
     if total <= limit {
-        return;
+        return None;
     }
     seams.truncate(limit);
     trace_latency_phase(
@@ -617,6 +706,66 @@ fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) {
         &format!("limit_{}_of_{total}", seams.len()),
         Duration::ZERO,
     );
+    Some(SeamLimitInfo {
+        analyzed: seams.len(),
+        total,
+        source,
+    })
+}
+
+#[cfg(test)]
+fn apply_repo_exposure_seam_limit_for_test(
+    seams: &mut Vec<RepoSeam>,
+    limit_and_source: Option<(usize, SeamLimitSource)>,
+) -> Option<SeamLimitInfo> {
+    let (limit, source) = limit_and_source?;
+    apply_repo_exposure_seam_limit_inner(seams, limit, source)
+}
+
+/// Apply the pilot seam budget to an already-classified slice, returning
+/// a `SeamLimitInfo` when the slice was truncated, or `None` when the full
+/// slice fits within the budget.
+///
+/// The budget is resolved in priority order:
+/// 1. `RIPR_PILOT_SEAM_BUDGET=0` → unbounded (operator opt-out).
+/// 2. `RIPR_PILOT_SEAM_BUDGET=N` (N > 0) → configured cap N.
+/// 3. Env var unset → `DEFAULT_PILOT_SEAM_BUDGET` (always-on default).
+pub(crate) fn apply_pilot_seam_budget(
+    classified: &mut Vec<super::seam_classification::ClassifiedSeam>,
+) -> Option<SeamLimitInfo> {
+    let (limit, source) = pilot_seam_budget()?;
+    apply_pilot_seam_budget_inner(classified, limit, source)
+}
+
+fn apply_pilot_seam_budget_inner(
+    classified: &mut Vec<super::seam_classification::ClassifiedSeam>,
+    limit: usize,
+    source: SeamLimitSource,
+) -> Option<SeamLimitInfo> {
+    let total = classified.len();
+    if total <= limit {
+        return None;
+    }
+    classified.truncate(limit);
+    Some(SeamLimitInfo {
+        analyzed: classified.len(),
+        total,
+        source,
+    })
+}
+
+/// Return the effective pilot seam budget and its source.
+///
+/// - Env var unset → `Some((DEFAULT_PILOT_SEAM_BUDGET, Default))`.
+/// - Env var = `"0"` → `None` (operator opt-out: unbounded).
+/// - Env var = N > 0 → `Some((N, Configured))`.
+pub(crate) fn pilot_seam_budget() -> Option<(usize, SeamLimitSource)> {
+    match std::env::var(PILOT_SEAM_BUDGET_ENV) {
+        Ok(value) => {
+            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
+        }
+        Err(_) => Some((DEFAULT_PILOT_SEAM_BUDGET, SeamLimitSource::Default)),
+    }
 }
 
 #[cfg(test)]
@@ -1915,5 +2064,347 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
 
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
+    }
+
+    // ---- seam_limit cache-roundtrip integration test (Slice B) ------------
+    //
+    // Anti-regression test: a capped cold run stores limit_info; a second run
+    // (cache hit, same workspace + same limit) must STILL return
+    // seam_limit_applied, NOT complete. This is the entire point of Slice B.
+
+    // The cache-roundtrip integration test is covered by the cli_smoke test
+    // `check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied`
+    // which exercises the full binary pipeline with RIPR_REPO_EXPOSURE_SEAM_LIMIT=1.
+    // Here we test the internal store/load round-trip at the cache module level
+    // without touching process env (to stay within unsafe_code=forbid).
+    #[test]
+    fn capped_cold_run_stores_limit_info_and_warm_run_returns_seam_limit_applied()
+    -> Result<(), String> {
+        use super::super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
+        use super::super::seam_cache::{CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache};
+        let root = make_tempdir("cache-roundtrip-seam-limit")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn check_a(x: i32) -> bool { x > 0 }\n\
+             pub fn check_b(x: i32) -> bool { x < 0 }\n",
+        )?;
+        // Collect the workspace state so we can derive the key.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache_dir = cache_dir_under(&root);
+        let cache = RepoSeamFactCache::at_dir(cache_dir.clone());
+        // Simulate what a capped cold run would store: 1 seam analyzed, 2 total.
+        let cold_limit = CachedSeamLimitInfo {
+            analyzed: 1,
+            total: 2,
+            source: SeamLimitSource::Configured,
+        };
+        // We'll store an empty seam list with the limit_info to keep the test
+        // lightweight (we're testing the store/load round-trip, not classification).
+        cache
+            .store_classified_seams_with_limit(
+                &key,
+                &[],
+                Some(&cold_limit),
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store capped cold run: {err}"))?;
+
+        // Warm load (same key) must return the limit_info, NOT None.
+        let result = match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((_, warm_limit)) => match warm_limit {
+                None => Err(
+                    "warm cache hit after capped cold run must return Some(limit_info), \
+                         not None — a None would incorrectly signal run_status=complete"
+                        .to_string(),
+                ),
+                Some(li) => {
+                    if li.analyzed != cold_limit.analyzed {
+                        Err(format!(
+                            "warm limit_info.analyzed ({}) must match cold ({})",
+                            li.analyzed, cold_limit.analyzed
+                        ))
+                    } else if li.total != cold_limit.total {
+                        Err(format!(
+                            "warm limit_info.total ({}) must match cold ({})",
+                            li.total, cold_limit.total
+                        ))
+                    } else if li.source.as_str() != cold_limit.source.as_str() {
+                        Err(format!(
+                            "warm limit_info.source ({}) must match cold ({})",
+                            li.source.as_str(),
+                            cold_limit.source.as_str()
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+            other => Err(format!("expected Hit on warm cache, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    // ---- seam_limit_source unit tests (Slice B) ----------------------------
+
+    #[test]
+    fn seam_limit_source_as_str_returns_correct_strings() {
+        assert_eq!(SeamLimitSource::Default.as_str(), "default");
+        assert_eq!(SeamLimitSource::Configured.as_str(), "configured");
+    }
+
+    #[test]
+    fn parse_repo_exposure_seam_limit_zero_returns_none() {
+        // "0" is the opt-out value: unbounded.
+        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+    }
+
+    #[test]
+    fn parse_repo_exposure_seam_limit_positive_returns_some() {
+        assert_eq!(parse_repo_exposure_seam_limit("7500"), Some(7500));
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_below_cap_returns_none() -> Result<(), String> {
+        // Build a tiny seam vec; limit >> vec size → no truncation.
+        let path = PathBuf::from("src/a.rs");
+        let source = "pub fn check(x: i32) -> bool { x > 0 }\n";
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((999_999, SeamLimitSource::Configured)),
+        );
+        if result.is_some() {
+            return Err(format!(
+                "below-cap inventory should produce None limit_info, got {result:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_above_cap_returns_some_with_configured_source()
+    -> Result<(), String> {
+        // Two seams; cap at 1 → truncation.
+        let path = PathBuf::from("src/b.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        if seams.len() < 2 {
+            return Ok(()); // can't test truncation without at least 2 seams
+        }
+        let total_before = seams.len();
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((1, SeamLimitSource::Configured)),
+        );
+        let info = result.ok_or("expected Some(SeamLimitInfo) for above-cap run")?;
+        assert_eq!(info.analyzed, 1, "analyzed should be 1");
+        assert_eq!(
+            info.total, total_before,
+            "total should be pre-truncation count"
+        );
+        assert_eq!(
+            info.source,
+            SeamLimitSource::Configured,
+            "env-set limit should be Configured"
+        );
+        assert_eq!(seams.len(), 1, "seams should be truncated to 1");
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_above_cap_returns_some_with_default_source()
+    -> Result<(), String> {
+        // Same truncation test, but with Default source (env var unset).
+        let path = PathBuf::from("src/b2.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        if seams.len() < 2 {
+            return Ok(());
+        }
+        let result = apply_repo_exposure_seam_limit_for_test(
+            &mut seams,
+            Some((1, SeamLimitSource::Default)),
+        );
+        let info = result.ok_or("expected Some(SeamLimitInfo) for default-cap run")?;
+        assert_eq!(
+            info.source,
+            SeamLimitSource::Default,
+            "default limit should be Default"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apply_repo_exposure_seam_limit_opt_out_none_returns_none_for_any_size() -> Result<(), String>
+    {
+        // None limit → unbounded opt-out: no truncation.
+        let path = PathBuf::from("src/c.rs");
+        let source = r#"
+pub fn check_a(x: i32) -> bool { x > 0 }
+pub fn check_b(x: i32) -> bool { x < 0 }
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let mut seams = inventory_seams_from_index(&[path], &index);
+        let result = apply_repo_exposure_seam_limit_for_test(&mut seams, None);
+        assert!(
+            result.is_none(),
+            "None limit (opt-out) should return None (unbounded), got {result:?}"
+        );
+        Ok(())
+    }
+
+    // -- Pilot seam budget tests ---------------------------------------------
+
+    #[test]
+    fn pilot_seam_budget_default_constant_is_smaller_than_repo_exposure_cap() {
+        // DEFAULT_PILOT_SEAM_BUDGET must be ≤ DEFAULT_REPO_EXPOSURE_SEAM_LIMIT
+        // so the pilot budget can never produce a larger artifact than the
+        // repo-exposure default.
+        // Enforce the compile-time invariant: pilot budget must not exceed
+        // the repo-exposure default cap.
+        const _: () = assert!(
+            DEFAULT_PILOT_SEAM_BUDGET <= DEFAULT_REPO_EXPOSURE_SEAM_LIMIT,
+            "pilot budget must not exceed the repo-exposure seam limit"
+        );
+        assert_eq!(DEFAULT_PILOT_SEAM_BUDGET, 2_000);
+    }
+
+    #[test]
+    fn pilot_seam_budget_env_zero_parses_as_unbounded() {
+        // The same `parse_repo_exposure_seam_limit` helper is shared for
+        // opt-out (value "0" → None means no budget applied).
+        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+        assert_eq!(parse_repo_exposure_seam_limit("500"), Some(500));
+    }
+
+    #[test]
+    fn apply_pilot_seam_budget_inner_truncates_when_above_limit() -> Result<(), String> {
+        // Use the inner fn to avoid env-var dependency in the test.
+        use super::seam_classification::ClassifiedSeam;
+        use super::test_grip_evidence::TestGripEvidence;
+        use crate::analysis::seams::{
+            ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind,
+        };
+        use crate::domain::{Confidence, StageEvidence, StageState};
+        use std::path::PathBuf;
+
+        let stage = |state| StageEvidence::new(state, Confidence::Unknown, String::new());
+
+        let make_classified = |byte_offset: usize| -> ClassifiedSeam {
+            let seam = RepoSeam::new(
+                PathBuf::from("src/lib.rs"),
+                format!("owner_{byte_offset}"),
+                SeamKind::ReturnValue,
+                byte_offset,
+                1,
+                "x".to_string(),
+                RequiredDiscriminator::ReturnValue {
+                    description: "x".to_string(),
+                },
+                ExpectedSink::ReturnValue,
+            );
+            let seam_id = seam.id().clone();
+            ClassifiedSeam {
+                seam,
+                evidence: TestGripEvidence {
+                    seam_id,
+                    related_tests: Vec::new(),
+                    reach: stage(StageState::Unknown),
+                    activate: stage(StageState::Unknown),
+                    propagate: stage(StageState::Unknown),
+                    observe: stage(StageState::Unknown),
+                    discriminate: stage(StageState::Unknown),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                },
+                class: SeamGripClass::Ungripped,
+            }
+        };
+
+        let mut classified = vec![make_classified(0), make_classified(10), make_classified(20)];
+        let info = apply_pilot_seam_budget_inner(&mut classified, 2, SeamLimitSource::Default);
+        let info = info.ok_or("should truncate and return Some when limit < total")?;
+        if classified.len() != 2 {
+            return Err(format!(
+                "expected classified.len() == 2, got {}",
+                classified.len()
+            ));
+        }
+        if info.analyzed != 2 || info.total != 3 {
+            return Err(format!(
+                "expected analyzed=2 total=3, got analyzed={} total={}",
+                info.analyzed, info.total
+            ));
+        }
+        if info.source != SeamLimitSource::Default {
+            return Err(format!(
+                "expected SeamLimitSource::Default, got {:?}",
+                info.source
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn apply_pilot_seam_budget_inner_returns_none_when_at_or_below_limit() {
+        use super::seam_classification::ClassifiedSeam;
+        use super::test_grip_evidence::TestGripEvidence;
+        use crate::analysis::seams::{
+            ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind,
+        };
+        use crate::domain::{Confidence, StageEvidence, StageState};
+        use std::path::PathBuf;
+
+        let stage = |state| StageEvidence::new(state, Confidence::Unknown, String::new());
+
+        let make_classified = |byte_offset: usize| -> ClassifiedSeam {
+            let seam = RepoSeam::new(
+                PathBuf::from("src/lib.rs"),
+                format!("owner_{byte_offset}"),
+                SeamKind::ReturnValue,
+                byte_offset,
+                1,
+                "x".to_string(),
+                RequiredDiscriminator::ReturnValue {
+                    description: "x".to_string(),
+                },
+                ExpectedSink::ReturnValue,
+            );
+            let seam_id = seam.id().clone();
+            ClassifiedSeam {
+                seam,
+                evidence: TestGripEvidence {
+                    seam_id,
+                    related_tests: Vec::new(),
+                    reach: stage(StageState::Unknown),
+                    activate: stage(StageState::Unknown),
+                    propagate: stage(StageState::Unknown),
+                    observe: stage(StageState::Unknown),
+                    discriminate: stage(StageState::Unknown),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                },
+                class: SeamGripClass::Ungripped,
+            }
+        };
+
+        let mut classified = vec![make_classified(0), make_classified(10)];
+        let info = apply_pilot_seam_budget_inner(&mut classified, 5, SeamLimitSource::Default);
+        assert!(
+            info.is_none(),
+            "slice smaller than budget must return None, got {info:?}"
+        );
+        assert_eq!(classified.len(), 2, "slice should be unchanged");
     }
 }

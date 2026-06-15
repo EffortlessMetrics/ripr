@@ -30,6 +30,15 @@ flow_sink|match_arm|Flow sink value.
 flow_sink|return_value|Flow sink value.
 flow_sink|struct_field|Flow sink value.
 flow_sink|unknown|Flow sink value.
+ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
+ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
+ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
+ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+oracle_alignment|alias|Python oracle observes an import alias of the changed owner.
+oracle_alignment|changed_sink_token|Python oracle observes a changed-sink token from the changed line.
+oracle_alignment|direct|Python oracle observes the changed owner by name.
+oracle_alignment|orthogonal|Python strong oracle observes a different sink than the change.
+oracle_alignment|unknown|No strong Python oracle observed the changed sink.
 oracle_kind|broad_error|Oracle kind value.
 oracle_kind|exact_error_variant|Oracle kind value.
 oracle_kind|exact_value|Oracle kind value.
@@ -53,7 +62,7 @@ probe_family|predicate|Probe family value.
 probe_family|return_value|Probe family value.
 probe_family|side_effect|Probe family value.
 probe_family|static_unknown|Probe family value.
-schema_version|0.1|Current check JSON schema version.
+schema_version|0.2|Current check JSON schema version.
 severity|info|Output and LSP severity value.
 severity|note|Output and LSP severity value.
 severity|warning|Output and LSP severity value.

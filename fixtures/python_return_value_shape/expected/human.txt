@@ -37,3 +37,6 @@ Weakness
 
 Next step
   Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

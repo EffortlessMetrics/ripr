@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unsupported_syntax_limit/input",
@@ -7,12 +7,12 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
-      "id": "probe:src_mapper.py:2:python_preview",
+      "id": "probe:src_mapper.py:python_preview:ebfdf92c",
       "classification": "static_unknown",
       "severity": "note",
       "confidence": 0.20,
       "probe": {
-        "id": "probe:src_mapper.py:2:python_preview",
+        "id": "probe:src_mapper.py:python_preview:ebfdf92c",
         "family": "return_value",
         "delta": "value",
         "file": "src/mapper.py",
@@ -32,6 +32,8 @@
       ],
       "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
       "missing": ["Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
+      "assertion_texts": {
+      },
       "activation": {
         "observed_values": [
         ],
@@ -42,6 +44,7 @@
       ],
       "missing_discriminators": [
       ],
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "test_make_mapper_adds_two",
@@ -60,7 +63,21 @@
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
-      "static_limit_kind": "unsupported_syntax"
+      "static_limit_kind": "unsupported_syntax",
+      "changed_sink": "value",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/mapper.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ]
 }

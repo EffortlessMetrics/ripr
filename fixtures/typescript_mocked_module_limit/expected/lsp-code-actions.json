@@ -3,9 +3,9 @@
     {
       "arguments": [
         {
-          "finding_id": "probe:src_discount.ts:2:typescript_preview",
+          "finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",
           "line": 2,
-          "probe_id": "probe:src_discount.ts:2:typescript_preview",
+          "probe_id": "probe:src_discount.ts:typescript_preview:2396aec1",
           "uri": "src/discount.ts"
         }
       ],
