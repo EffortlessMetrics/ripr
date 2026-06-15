@@ -44,13 +44,41 @@ pub(crate) fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFac
 /// (RIPR-SPEC-0106, Part A).
 pub(crate) fn unwrap_err_bound_variables(body: &str) -> std::collections::BTreeSet<String> {
     let mut vars = std::collections::BTreeSet::new();
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if let Some(var) = extract_unwrap_err_binding(trimmed) {
+    // Split into statement-sized chunks on `;`/`{`/`}`/newline so a
+    // `let <ident> = <expr>.unwrap_err()` binding is recognized regardless of
+    // source formatting — not only when `let` begins a trimmed source line.
+    // Without this, a single-line test body (`fn t() { let e = f().unwrap_err();
+    // assert_eq!(e, E::V); }`, e.g. un-rustfmt'd) hides the binding, the
+    // assertion is never upgraded to ExactErrorVariant, and the seam carries a
+    // contradictory `missing_discriminators` line despite being discriminated.
+    for stmt in body.split([';', '{', '}', '\n']) {
+        if let Some(binding) = let_binding_substring(stmt)
+            && let Some(var) = extract_unwrap_err_binding(binding)
+        {
             vars.insert(var);
         }
     }
     vars
+}
+
+/// Return the slice of `stmt` starting at a `let ` token boundary (preceded by
+/// start-of-chunk or a non-identifier char so `let` inside a longer identifier
+/// is skipped), or `None` when the chunk has no `let` binding.
+fn let_binding_substring(stmt: &str) -> Option<&str> {
+    let mut search_from = 0;
+    while let Some(rel) = stmt[search_from..].find("let ") {
+        let idx = search_from + rel;
+        let prev_ok = idx == 0
+            || !stmt[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+        if prev_ok {
+            return Some(stmt[idx..].trim_start());
+        }
+        search_from = idx + 1;
+    }
+    None
 }
 
 /// If `line` is of the form `let <ident> = <expr>.unwrap_err()` or
@@ -188,6 +216,45 @@ mod spec_0106_scan_tests {
             Some(OracleKind::ExactErrorVariant),
             "assert_eq!(err, CalcError::Negative) on unwrap_err binding must be ExactErrorVariant"
         );
+    }
+
+    // Formatting robustness: a single-line test body (`let` not at the start of
+    // a source line, sitting mid-line after `{`) must still expose the binding.
+    // Without statement-wise splitting the binding is hidden, the assertion is
+    // never upgraded, and a discriminated error_path seam carries a
+    // contradictory `missing_discriminators` line.
+    #[test]
+    fn unwrap_err_binding_detected_in_single_line_body() {
+        let body =
+            "fn t() { let err = compute(-1).unwrap_err(); assert_eq!(err, CalcError::Negative); }";
+        let vars = unwrap_err_bound_variables(body);
+        assert!(
+            vars.contains("err"),
+            "binding in a single-line body must be collected, not only `let`-at-line-start"
+        );
+    }
+
+    // End-to-end (lexical path): a brace-prefixed binding (`let` sharing the
+    // opening line of the fn body) is now detected, so the own-line assertion
+    // upgrades to ExactErrorVariant. Isolates the binding-detection fix from the
+    // separate line-classifier `{`-confusion that a fully single-line body trips.
+    #[test]
+    fn extract_assertions_upgrades_brace_prefixed_unwrap_err_variant() {
+        let body = "fn t() { let err = compute(-1).unwrap_err();\n            assert_eq!(err, CalcError::Negative);\n}";
+        let facts = extract_assertions(body, 1);
+        let got = facts.iter().find(|f| f.text.contains("assert_eq!"));
+        assert_eq!(
+            got.map(|f| f.kind.clone()),
+            Some(OracleKind::ExactErrorVariant),
+            "brace-prefixed unwrap_err variant assertion must upgrade to ExactErrorVariant"
+        );
+    }
+
+    #[test]
+    fn multiple_bindings_separated_by_braces_all_collected() {
+        let body = "fn t() { if c { let a = f().unwrap_err(); } let b = g().expect_err(\"x\"); }";
+        let vars = unwrap_err_bound_variables(body);
+        assert!(vars.contains("a") && vars.contains("b"), "got {vars:?}");
     }
 
     // Control 3 (GENERIC): generic assertion stays at its original classification.

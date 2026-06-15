@@ -5933,11 +5933,15 @@ tests = [
   "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::expect_err_binding_also_recognized",
   "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::extract_assertions_upgrades_unwrap_err_variant_to_exact_error_variant",
   "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::generic_assertion_on_unwrap_err_var_not_upgraded",
+  "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::unwrap_err_binding_detected_in_single_line_body",
+  "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::extract_assertions_upgrades_brace_prefixed_unwrap_err_variant",
+  "crates/ripr/src/analysis/extract/oracles/scan.rs::spec_0106_scan_tests::multiple_bindings_separated_by_braces_all_collected",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::sibling_variant_assertion_does_not_match_too_large_probe",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::exact_variant_assertion_matches_matching_probe",
 ]
 fixtures = [
   "fixtures/unwrap_err_variant_positive",
+  "fixtures/unwrap_err_variant_single_line",
   "fixtures/unwrap_err_sibling_variant",
   "fixtures/unwrap_err_generic_is_err",
 ]
