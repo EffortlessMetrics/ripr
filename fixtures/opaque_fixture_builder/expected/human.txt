@@ -16,7 +16,7 @@ Probe
   owner:  src/lib.rs::discounted_total
 
 Static exposure
-  infection_unknown (warning, confidence 0.87)
+  infection_unknown (warning, confidence 0.66)
 
 Evidence
   - reach yes: Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount

@@ -6013,3 +6013,31 @@ metrics = [
   "evidence_promotion_honesty_charter_members",
   "evidence_promotion_honesty_control_cases",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0109"
+name = "confidence min-cap by weakest stage"
+spec = "docs/specs/RIPR-SPEC-0109-confidence-min-cap.md"
+tests = [
+  "crates/ripr/src/analysis/classify/decision.rs::confidence_score_genuine_exposure_all_yes_medium_is_not_capped",
+  "crates/ripr/src/analysis/classify/decision.rs::confidence_score_low_propagate_confidence_caps_score_to_0_66",
+  "crates/ripr/src/analysis/classify/decision.rs::confidence_score_cap_does_not_change_classification",
+]
+fixtures = [
+  "fixtures/infect_value_returned",
+  "fixtures/infect_wildcard_discard",
+  "fixtures/observation_unverified_field_construction",
+  "fixtures/observation_verified_field_construction",
+  "fixtures/observation_verified_return_value",
+  "fixtures/opaque_fixture_builder",
+  "fixtures/propagate_swallowed_ok",
+]
+code = [
+  "crates/ripr/src/analysis/classify/decision.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0109-confidence-min-cap.md",
+]
+metrics = [
+  "confidence_min_cap_fixtures_reblessed",
+]

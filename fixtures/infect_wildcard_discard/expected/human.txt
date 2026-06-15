@@ -51,7 +51,7 @@ Probe
   owner:  src/lib.rs::process
 
 Static exposure
-  propagation_unknown (note, confidence 0.79)
+  propagation_unknown (note, confidence 0.66)
 
 Evidence
   - reach yes: Related tests appear to reach process: process_returns_amount_unchanged

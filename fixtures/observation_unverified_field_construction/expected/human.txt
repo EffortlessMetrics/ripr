@@ -46,7 +46,7 @@ Probe
   owner:  src/lib.rs::default_config
 
 Static exposure
-  propagation_unknown (note, confidence 0.79)
+  propagation_unknown (note, confidence 0.66)
 
 Evidence
   - reach yes: Related tests appear to reach default_config: config_exists

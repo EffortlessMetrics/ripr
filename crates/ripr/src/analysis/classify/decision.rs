@@ -46,6 +46,19 @@ pub(in crate::analysis) fn classify(
     }
 }
 
+/// Maximum headline confidence permitted for a given per-stage `Confidence`
+/// marker.  `High` and `Medium` return `1.0` so genuine all-Yes/Medium
+/// exposures are never suppressed.  Only `Low` and `Unknown` stages produce a
+/// real ceiling, capping an over-stated aggregate score without affecting the
+/// classification at all.
+fn confidence_ceiling(c: &Confidence) -> f32 {
+    match c {
+        Confidence::High | Confidence::Medium => 1.0,
+        Confidence::Low => 0.66,
+        Confidence::Unknown => 0.50,
+    }
+}
+
 pub(in crate::analysis) fn confidence_score(
     reach: &StageEvidence,
     infect: &StageEvidence,
@@ -54,16 +67,10 @@ pub(in crate::analysis) fn confidence_score(
     discriminate: &StageEvidence,
     class: &ExposureClass,
 ) -> f32 {
-    let states = [
-        &reach.state,
-        &infect.state,
-        &propagate.state,
-        &observe.state,
-        &discriminate.state,
-    ];
+    let stages = [reach, infect, propagate, observe, discriminate];
     let mut score = 0.0;
-    for state in states {
-        score += match state {
+    for stage in &stages {
+        score += match stage.state {
             StageState::Yes => 0.2,
             StageState::Weak => 0.12,
             StageState::Unknown => 0.07,
@@ -78,7 +85,15 @@ pub(in crate::analysis) fn confidence_score(
     ) {
         score = (score + 0.15_f32).min(0.95_f32);
     }
-    (score * 100.0).round() / 100.0
+    // Cap the headline score by the weakest contributing stage's per-stage
+    // Confidence ceiling (RIPR-SPEC-0109).  Applied AFTER the +0.15 bump so
+    // it can only lower, never raise.  High/Medium stages → cap = 1.0 (no
+    // effect); Low → cap = 0.66; Unknown → cap = 0.50.
+    let cap = stages
+        .iter()
+        .map(|s| confidence_ceiling(&s.confidence))
+        .fold(1.0_f32, f32::min);
+    (score.min(cap) * 100.0).round() / 100.0
 }
 
 pub(in crate::analysis) fn missing_evidence(
@@ -326,6 +341,94 @@ mod tests {
             Some(
                 "Replace broad assertions with exact equality or a property that constrains the changed returned value."
             )
+        );
+    }
+
+    // RIPR-SPEC-0109 control (a): genuine all-Yes/Medium exposure must not be
+    // suppressed — the cap is 1.0 for Medium stages.
+    #[test]
+    fn confidence_score_genuine_exposure_all_yes_medium_is_not_capped() {
+        let score = confidence_score(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &ExposureClass::Exposed,
+        );
+        // 5 × Yes = 5 × 0.20 = 1.00; cap = 1.0 (all Medium) → unchanged.
+        assert!(
+            (score - 1.0).abs() < f32::EPSILON,
+            "genuine exposure must report confidence 1.0, got {score}"
+        );
+    }
+
+    // RIPR-SPEC-0109 control (b): a propagation_unknown finding with
+    // propagate.confidence = Low must be capped to ≤ 0.66, and its class
+    // must NOT change (class is determined by `classify`, not here).
+    #[test]
+    fn confidence_score_low_propagate_confidence_caps_score_to_0_66() {
+        let low_propagate =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "propagation unknown");
+        let score = confidence_score(
+            &stage(StageState::Yes),  // reach
+            &stage(StageState::Yes),  // infect
+            &low_propagate,           // propagate — Low confidence
+            &stage(StageState::Yes),  // observe
+            &stage(StageState::Weak), // discriminate
+            &ExposureClass::PropagationUnknown,
+        );
+        // Raw: 0.20+0.20+0.07+0.20+0.12 = 0.79; Low cap = 0.66 → score = 0.66.
+        assert!(
+            score <= 0.66,
+            "propagation_unknown with Low confidence must be capped to ≤ 0.66, got {score}"
+        );
+        // Confirm class is determined independently — classification is
+        // asserted via the `classify` fn contract, not here.  The score must
+        // be strictly below the uncapped value of 0.79.
+        assert!(
+            score < 0.79,
+            "score must be below uncapped 0.79, got {score}"
+        );
+    }
+
+    // RIPR-SPEC-0109 control (c): #1232 no-regression — infection_unknown and
+    // propagation_unknown classifications must remain unchanged; only the
+    // numeric confidence may drop.
+    #[test]
+    fn confidence_score_cap_does_not_change_classification() {
+        // infection_unknown: `let _ = expr` pattern — infect.confidence = Low
+        let low_infect =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "infection unknown");
+        let infect_class = classify(
+            &stage(StageState::Yes),
+            &low_infect,
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "compute()"),
+        );
+        assert_eq!(
+            infect_class,
+            ExposureClass::InfectionUnknown,
+            "infection_unknown class must be unchanged after RIPR-SPEC-0109"
+        );
+
+        // propagation_unknown: `.ok()` swallow — propagate.confidence = Low
+        let low_propagate =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "propagation unknown");
+        let prop_class = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &low_propagate,
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "self.persist(amount).ok();"),
+        );
+        assert_eq!(
+            prop_class,
+            ExposureClass::PropagationUnknown,
+            "propagation_unknown class must be unchanged after RIPR-SPEC-0109"
         );
     }
 

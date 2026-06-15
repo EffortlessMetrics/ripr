@@ -41,7 +41,7 @@ Probe
   owner:  src/lib.rs::compute_score
 
 Static exposure
-  static_unknown (note, confidence 0.61)
+  static_unknown (note, confidence 0.50)
 
 Evidence
   - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor

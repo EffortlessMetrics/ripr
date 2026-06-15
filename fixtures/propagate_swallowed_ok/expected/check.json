@@ -10,7 +10,7 @@
       "id": "probe:src_lib.rs:call_deletion:cdc2bbfa",
       "classification": "propagation_unknown",
       "severity": "note",
-      "confidence": 0.79,
+      "confidence": 0.66,
       "probe": {
         "id": "probe:src_lib.rs:call_deletion:cdc2bbfa",
         "family": "call_deletion",

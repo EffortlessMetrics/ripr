@@ -89,7 +89,7 @@
       "id": "probe:src_lib.rs:static_unknown:35a08f71",
       "classification": "static_unknown",
       "severity": "note",
-      "confidence": 0.61,
+      "confidence": 0.50,
       "probe": {
         "id": "probe:src_lib.rs:static_unknown:35a08f71",
         "family": "static_unknown",

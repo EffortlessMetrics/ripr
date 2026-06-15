@@ -42,7 +42,7 @@ Probe
   owner:  src/lib.rs::score
 
 Static exposure
-  static_unknown (note, confidence 0.61)
+  static_unknown (note, confidence 0.50)
 
 Evidence
   - reach yes: Related tests appear to reach score: score_uses_multiplier

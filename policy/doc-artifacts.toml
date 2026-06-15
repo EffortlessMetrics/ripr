@@ -473,3 +473,11 @@ path = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (5 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0109"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0109-confidence-min-cap.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Confidence-display honesty fix: cap headline confidence_score by the weakest contributing stage's per-stage Confidence ceiling (Low=0.66, Unknown=0.50, High/Medium=1.0); applied after all existing score arithmetic; can only lower, never raise; classify untouched; seven fixture goldens re-blessed (confidence numbers only, classification byte-identical); no schema bump; no version bump; closes #1219 part D."

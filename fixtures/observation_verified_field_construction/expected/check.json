@@ -79,7 +79,7 @@
       "id": "probe:src_lib.rs:return_value:8ed284d1",
       "classification": "propagation_unknown",
       "severity": "note",
-      "confidence": 0.87,
+      "confidence": 0.66,
       "probe": {
         "id": "probe:src_lib.rs:return_value:8ed284d1",
         "family": "return_value",
