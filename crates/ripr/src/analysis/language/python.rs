@@ -4462,12 +4462,17 @@ fn is_control_flow_change_line(line_text: &str) -> bool {
 /// `None` if the line has no `{...}` body or no parseable fields.
 fn parse_dict_literal_fields(line: &str) -> Option<Vec<(String, String)>> {
     let trimmed = line.trim();
-    let open = trimmed.find('{')?;
-    let close = trimmed.rfind('}')?;
-    if close <= open {
-        return None;
-    }
-    let body = &trimmed[open + 1..close];
+    // The dict EXPRESSION must literally START with `{` (after an optional `return `),
+    // not merely contain one — otherwise an f-string like `f"{value:.3f}"`, a
+    // `.format(...)` call, or any line with `{` inside a string literal is mis-read as
+    // a dict literal and wrongly gated (this follow-up fixes a regressed f-string
+    // discriminator). A set literal `{1, 2}` is naturally excluded below since it has
+    // no top-level `key: value` segments.
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    let body = expr.strip_prefix('{')?.strip_suffix('}')?;
     let mut fields = Vec::new();
     for segment in top_level_python_segments(body) {
         if let Some((key, value)) = python_dict_field_segment_parts(segment) {
@@ -7259,6 +7264,43 @@ def test_build_user_smoke():
             finding.class,
             ExposureClass::Exposed,
             "observing the changed key's value discriminates the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_return_is_not_treated_as_dict_literal() -> Result<(), String> {
+        // #1290 follow-up regression guard: an f-string `f"{value:.3f}"` contains `{`
+        // and `}` but is NOT a dict literal — it must not be gated by the dict-element
+        // check. A genuine f-string discriminator stays exposed.
+        assert!(parse_dict_literal_fields("    return f\"{value:.3f}\"").is_none());
+        assert!(
+            dict_changed_keys_and_values(
+                Some("    return f\"{value:.2f}\""),
+                "    return f\"{value:.3f}\""
+            )
+            .is_none()
+        );
+        let source = "def render_price(value):\n    return f\"{value:.3f}\"\n";
+        let owners = extract_owners(Path::new("src/price.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_price.py"),
+            "from src.price import render_price\n\n\ndef test_render_price_uses_three_decimals():\n    assert render_price(3.14159) == \"3.142\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/price.py"),
+            2,
+            "    return f\"{value:.3f}\"",
+            Some("    return f\"{value:.2f}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a genuine f-string discriminator must not be downgraded by the dict-element gate"
         );
         Ok(())
     }
