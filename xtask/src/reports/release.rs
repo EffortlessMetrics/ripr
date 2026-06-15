@@ -113,6 +113,7 @@ fn build_release_readiness_report(version: &str) -> ReleaseReadinessReport {
         lsp_cockpit_check(),
         github_workflow_check(&installed_binary),
         vsix_packaging_check(),
+        extension_version_match_check(crate_version.as_deref()),
         known_limits_docs_check(),
     ];
     let status = release_readiness_status(&checks).to_string();
@@ -961,6 +962,72 @@ fn vsix_packaging_check() -> ReleaseReadinessCheck {
     }
 }
 
+/// Fail-closed guard against the VS Code extension version silently drifting
+/// from the crate version. When `editors/vscode/package.json` lags the crate,
+/// `vsce` embeds the stale version into the VSIX and the marketplace publish
+/// fails with "vX already exists" — the failure mode that left the extension two
+/// releases behind through 0.8.0/0.9.0 (#1283). Any read failure or mismatch is
+/// a fail; only an exact match passes.
+fn extension_version_match_check(crate_version: Option<&str>) -> ReleaseReadinessCheck {
+    let package_json = Path::new("editors/vscode/package.json");
+    let ext_version = read_json_value(package_json).ok().and_then(|value| {
+        value
+            .get("version")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+    extension_version_check_from(ext_version.as_deref(), crate_version)
+}
+
+/// Pure comparison split out from the file read so it is testable without a
+/// working-directory dependency.
+fn extension_version_check_from(
+    ext_version: Option<&str>,
+    crate_version: Option<&str>,
+) -> ReleaseReadinessCheck {
+    let command = "compare editors/vscode/package.json version to crates/ripr/Cargo.toml version";
+    match (ext_version, crate_version) {
+        (Some(ext), Some(krate)) if ext == krate => readiness_check(
+            "extension-version-match",
+            "pass",
+            true,
+            command,
+            "VS Code extension version matches the crate version",
+            vec!["editors/vscode/package.json".to_string()],
+            Vec::new(),
+        ),
+        (Some(ext), Some(krate)) => readiness_check(
+            "extension-version-match",
+            "fail",
+            true,
+            command,
+            "VS Code extension version does not match the crate version; the marketplace publish would fail or republish a stale version",
+            Vec::new(),
+            vec![format!(
+                "editors/vscode/package.json version {ext} != crate version {krate} (bump editors/vscode/package.json + package-lock.json)"
+            )],
+        ),
+        (None, _) => readiness_check(
+            "extension-version-match",
+            "fail",
+            true,
+            command,
+            "could not read the VS Code extension version",
+            Vec::new(),
+            vec!["editors/vscode/package.json version field unreadable".to_string()],
+        ),
+        (_, None) => readiness_check(
+            "extension-version-match",
+            "fail",
+            true,
+            command,
+            "could not read the crate version",
+            Vec::new(),
+            vec!["crates/ripr/Cargo.toml version unreadable".to_string()],
+        ),
+    }
+}
+
 fn missing_required_needles(text: &str, required: &[&str]) -> Vec<String> {
     required
         .iter()
@@ -1256,14 +1323,39 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        ReleaseReadinessCheck, ReleaseReadinessReport, missing_required_needles,
-        parse_release_readiness_args, readiness_check, release_readiness_json,
-        release_readiness_markdown, release_readiness_status,
+        ReleaseReadinessCheck, ReleaseReadinessReport, extension_version_check_from,
+        missing_required_needles, parse_release_readiness_args, readiness_check,
+        release_readiness_json, release_readiness_markdown, release_readiness_status,
         vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn extension_version_check_fails_closed_on_drift() -> Result<(), String> {
+        let matched = extension_version_check_from(Some("0.10.0"), Some("0.10.0"));
+        if matched.status != "pass" || !matched.required {
+            return Err(format!(
+                "expected pass+required on match, got {}/{}",
+                matched.status, matched.required
+            ));
+        }
+        for (ext, krate, label) in [
+            (Some("0.8.0"), Some("0.10.0"), "stale extension"),
+            (None, Some("0.10.0"), "unreadable extension"),
+            (Some("0.10.0"), None, "unreadable crate"),
+        ] {
+            let check = extension_version_check_from(ext, krate);
+            if check.status != "fail" || !check.required {
+                return Err(format!(
+                    "expected required fail for {label}, got {}/{}",
+                    check.status, check.required
+                ));
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn release_readiness_args_parse_version() -> Result<(), String> {
