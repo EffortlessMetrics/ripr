@@ -9,9 +9,41 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
+
+Release date: staged (unreleased).
+
+RIPR 0.10.0 hardens the central promise that evidence is only credited to a seam
+it actually observes. The headline is honesty-by-construction: across Rust,
+TypeScript, and Python, over-claims now fail closed into named limitations
+instead of becoming a confident `exposed` / strong-oracle finding, and that
+property is enforced by a standing meta-gate rather than re-checked per surface.
+The release also makes RIPR adoptable as a downstream CI gate — a single,
+documented receipt number a generic thresholding gate can consume — and finishes
+the content-addressed finding-id migration so suppressions track code, not lines.
+
 ### Breaking changes
 
 - **Content-addressed finding/probe IDs** (#1053): The `id` field format changed from `probe:<path>:<line>:<family>` to `probe:<path>:<family>:<fp8>[.<n>]` where `<fp8>` is the first 8 hex chars of SHA-256 over `path\0family\0owner\0expression\0`. The `line` segment is removed from the id. The `line` field in the `probe` JSON object is unchanged. Existing `.ripr/suppressions.toml` entries keyed by `finding_id` must be updated to the new id format; stale ids will fail closed (no match = not suppressed). The new ids track the code (expression + owner + family), so a suppression survives line movement and invalidates when the expression changes.
+
+### Added
+
+- **Canonical `new_unsuppressed` gate receipt** (RIPR-SPEC-0111, #1038): `gate-decision.json` now carries `new_unsuppressed { basis, count, reason }` — a documented, stable count a generic thresholding gate (e.g. `max_new_unsuppressed = 0`) can consume without modelling RIPR's full decision logic. It is a filter over the gate's own `decisions[]` (consumer-verifiable), includes policy-eligible advisory candidates so an external policy can be applied independently, and fails closed (`basis: null`) when analysis did not run. Additive field; `schema_version` unchanged.
+- **Receipt ledger cross-reference** (RIPR-SPEC-0110, #1261): `ripr receipt check --ledger <path>` cross-references a receipt's `canonical_gap_id` against the gap ledger; absence of `--ledger` is not interpreted as "receipt ok", and orphan / gap-mismatch receipts exit non-zero.
+- **`cargo xtask module-health`** (#1147): advisory report flagging oversized Rust source files as a refactor-before-extend signal. Advisory only — never fails CI.
+- **VS Code cockpit inspection commands** (#1119, #1123, #1134, #1138): receipt-status and route-quality inspection wired into the command palette (inspect/copy only).
+- **Confidence ceiling** (RIPR-SPEC-0109, #1258): Low/Unknown evidence confidence caps the displayed confidence score so it can only lower, never inflate, a finding's apparent strength.
+
+### Fixed (honesty hardening)
+
+- **Evidence-promotion honesty meta-gate** (RIPR-SPEC-0108): a standing gate asserts each charter fixture's exposure class independently of its pinned golden, catching a dishonest re-bless that golden-equality alone would accept. Closes the cross-language "fake-clean" class (evidence credited to a seam it does not observe) across Rust, TypeScript, and Python.
+- **Error-path seams require a variant-observing oracle** (RIPR-SPEC-0106/0107, #1252/#1254/#1255): an error-return seam reaches `exposed` only when a test pins the exact error variant; `unwrap_err()` + `assert_eq!(err, Variant)` is recognized as an exact-error-variant oracle, and that recognition is robust to single-line / un-`rustfmt`'d test formatting (no more discriminated seam contradicting its own `missing_discriminators`).
+- **Python owner identity** (#1260, #1264, #1271): method-owner and free-function exposed credit now require receiver / import-source-module identity, so a same-named symbol in another module no longer borrows a test's evidence.
+- **TypeScript assertion-level filtering** (#1236, #1248): oracle-kind matching and the SideEffect observation guard operate at the assertion level, so a broad `.toThrow()` or a mock-call assertion no longer over-credits a value seam.
+
+### Internal / CI
+
+- Advisory proof-routing with the first docs-only lane skip, a `ci-budget` hygiene report, and a scheduled scratch-GC lane across all three self-hosted runner pools (#1028).
 
 ## 0.9.0 - Multi-language evidence-to-repair preview
 
