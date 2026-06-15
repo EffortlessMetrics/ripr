@@ -2563,14 +2563,14 @@ fn construct_result_calls_method(text: &str, open_paren_idx: usize, method: &str
 
 /// Local names the owner class is known by in `test`: its imported name plus any
 /// `as` alias. Empty when the class is not imported — conservative by design, so a
-/// class defined elsewhere and never imported cannot lend its identity.
+/// class defined elsewhere and never imported cannot lend its identity. Only the
+/// `imported == class` form is identity-bearing: a different class aliased *to* the
+/// owner's name (`from m import Other as OwnerClass`) refers to `Other`, not the
+/// owner, so it must not contribute a local.
 fn owner_class_locals(test: &PythonTest, class: &str) -> Vec<String> {
     let mut locals = Vec::new();
     for import in &test.imports {
-        if (import.imported == class || import.alias == class)
-            && !import.alias.is_empty()
-            && !locals.contains(&import.alias)
-        {
+        if import.imported == class && !import.alias.is_empty() && !locals.contains(&import.alias) {
             locals.push(import.alias.clone());
         }
     }
@@ -4066,6 +4066,27 @@ fn split_python_assignment(text: &str) -> Option<(&str, &str)> {
     Some((lhs.trim(), rhs.trim()))
 }
 
+/// Parse an attribute-assignment changed line `recv.attr = value` into
+/// `(receiver, attr, rhs)`. Returns `None` for non-attribute assignments — a bare
+/// local assign (`status = 0`, no `.`), an augmented assign (`x.n += 1`, whose LHS
+/// keeps the operator and fails the identifier check), a comparison, or any line
+/// without `=`. Used to scope the changed-sink receiver/value identity gate to
+/// attribute writes only; everything else keeps the existing alignment behavior.
+fn parse_attribute_assignment(line_text: &str) -> Option<(&str, &str, &str)> {
+    let (lhs, rhs) = split_python_assignment(line_text)?;
+    let (receiver, attr) = lhs.rsplit_once('.')?;
+    let receiver = receiver.trim();
+    let attr = attr.trim();
+    if receiver.is_empty()
+        || attr.is_empty()
+        || !receiver.chars().all(is_python_identifier_char)
+        || !attr.chars().all(is_python_identifier_char)
+    {
+        return None;
+    }
+    Some((receiver, attr, rhs))
+}
+
 fn first_python_string_literal(text: &str) -> Option<String> {
     let mut start = None;
     let mut escaped = false;
@@ -4493,6 +4514,29 @@ fn classify_sink_alignment(
     let method_name_observed = method_name_token
         .as_ref()
         .is_some_and(|token| any_strong_observes(std::slice::from_ref(token)));
+    // Receiver/value identity for an attribute-assignment changed sink. The bare
+    // attribute token (`status`) is collision-prone: a same-named field on an
+    // unrelated receiver (`session.status` changed, oracle `conn.status == ...`)
+    // would otherwise credit `changed_sink_token` on token coincidence. For an
+    // attribute write `recv.attr = value`, credit only when a strong oracle
+    // observes the receiver-qualified `recv.attr`, OR observes the assigned VALUE
+    // together with the attribute name (co-observation defeats a common-literal
+    // value coinciding in an unrelated oracle, while keeping legitimate
+    // `obj.attr == value` field assertions). Non-attribute changed lines (returns,
+    // method calls, comparisons) are not gated and keep prior behavior.
+    let change_only_credit_ok = match parse_attribute_assignment(line_text) {
+        None => true,
+        Some((receiver, attr, rhs)) => {
+            let qualified = [format!("{receiver}.{attr}")];
+            let mut value_tokens = significant_change_tokens(rhs);
+            value_tokens.retain(|token| token.len() >= 2);
+            let attr_token = [attr.to_string()];
+            any_strong_observes(&qualified)
+                || (!value_tokens.is_empty()
+                    && any_strong_observes(&value_tokens)
+                    && any_strong_observes(&attr_token))
+        }
+    };
     let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens) {
         ("direct", "strong_oracle_observes_owner_name")
     } else if method_name_observed && strong_test_binds_method_receiver {
@@ -4502,7 +4546,7 @@ fn classify_sink_alignment(
         )
     } else if any_strong_observes(&alias_tokens) {
         ("alias", "strong_oracle_observes_import_alias")
-    } else if any_strong_observes(&change_only) {
+    } else if any_strong_observes(&change_only) && change_only_credit_ok {
         (
             "changed_sink_token",
             "strong_oracle_observes_changed_sink_token",
@@ -6136,6 +6180,105 @@ def test_build_user_smoke():
             "a classmethod called on the owner class is receiver-bound"
         );
         assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    const SESSION_SOURCE: &str =
+        "class Session:\n    def refresh(self):\n        self.status = \"active\"\n";
+    const SESSION_CHANGED_LINE: &str = "        self.status = \"active\"";
+
+    #[test]
+    fn attribute_sink_different_receiver_and_value_does_not_credit_exposed() -> Result<(), String> {
+        // Cluster A guard: a changed attribute write `self.status = "active"` must
+        // not credit `changed_sink_token` when the strong oracle observes a
+        // DIFFERENT receiver's same-named attribute with a different value
+        // (`conn.status == "closed"`) — pure attribute-name token coincidence.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh(conn):\n    Session().refresh()\n    assert conn.status == \"closed\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a different receiver AND different value must not credit exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_sink_value_and_attr_observed_credits_exposed() -> Result<(), String> {
+        // Positive control: observing the assigned VALUE together with the
+        // attribute name (`assert s.status == "active"`) is change-specific
+        // evidence, so the changed-sink token credit stands.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh_status():\n    s = Session()\n    s.refresh()\n    assert s.status == \"active\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the assigned value and the attribute name keeps exposed"
+        );
+        assert_eq!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_sink_common_value_without_attr_does_not_credit_exposed() -> Result<(), String> {
+        // Common-literal guard: the assigned value "active" is ubiquitous;
+        // observing it on a DIFFERENT attribute (`widget.state == "active"`) must
+        // not credit, because the changed attribute name `status` is not
+        // co-observed.
+        let owners = extract_owners(Path::new("src/session.py"), SESSION_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_session.py"),
+            "from src.session import Session\n\n\ndef test_refresh_widget(widget):\n    Session().refresh()\n    assert widget.state == \"active\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/session.py"),
+            3,
+            SESSION_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed attribute write should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a common assigned value on a different attribute must not credit exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
         Ok(())
     }
 

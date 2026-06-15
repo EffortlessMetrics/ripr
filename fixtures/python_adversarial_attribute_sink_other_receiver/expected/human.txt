@@ -1,0 +1,69 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_attribute_sink_other_receiver/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/session.py:3
+
+Changed
+  after:          self.status = "active"
+
+Probe
+  family: field_construction
+  delta:  value
+  owner:  python:src/session.py::Session.refresh
+  canonical gap: gap:python:src/session.py:Session.refresh:field_value:field_construction:self.status=active
+
+Language
+  language: python
+  status: preview
+  owner kind: method
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `refresh`
+  - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "active"`
+  - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches constructed field: self.status = "active" (line 3)
+  - related test tests/test_session.py:5 test_session_refresh uses strong exact value oracle: assert conn.status == "closed"
+
+Weakness
+  - A strong Python oracle reaches `refresh`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.
+  - missing discriminator self.status == "active": changed Python field/object value at line 3 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/session.py:Session.refresh:field_value:field_construction:self.status=active
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: Session.refresh
+  changed behavior: field_value changed at src/session.py:3: `self.status = "active"`
+  current test evidence: tests/test_session.py:5 test_session_refresh currently has oracle_strength=strong, oracle_kind=exact_value: assert conn.status == "closed"
+  missing discriminator: self.status == "active"
+  recommended test shape: Strengthen the existing pytest object field assertion for `self.status == "active"`.
+  suggested assertion: Assert the observed instance field directly, e.g. `assert <instance>.status == "active"`.
+  suggested file: tests/test_session.py
+  suggested test: test_session_refresh
+  pytest node: tests/test_session.py::test_session_refresh
+  verify: pytest tests/test_session.py::test_session_refresh (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `self.status == "active"`.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
