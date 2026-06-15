@@ -1497,3 +1497,38 @@ non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
 --check` under the pinned toolchain. When a fix "doesn't work" but the builder
 insists it does, suspect your own harness before the builder — inject a unique
 string into the output to confirm your edits are even in the binary you're running.
+
+## 2026-06-15: Not every adversarial "false-`exposed`" is a bug — separate the runtime-equivalence floor from the static missing-discriminator
+
+A broad red-team round (40 traps) surfaced a large residue after the token-identity
+families were closed. Triaging by the **missing signal** — not the surface vector —
+split them three ways, and only some are `ripr`'s to fix:
+
+- **Tractable sink-precision (fix it).** The oracle observes the owner's *output* but
+  the wrong *part* of it: a sibling dict key (`{"port": 9090}` changed,
+  `cfg()["host"]` observed), a sibling list index, or an aggregate (`len(...)`). This
+  is syntactic and in-contract — credit only when a strong oracle observes the
+  *changed* element (changed key/index subscript, changed value, or whole-collection
+  comparison). Fixed via the dict/list element gate (`field_construction_credit_ok`).
+- **Runtime-equivalence floor (do NOT fix; document).** The oracle observes the
+  changed output, but only *evaluation* shows old ≡ new for the test's input
+  (operator identity at `0`/`1`, coincident slice/`len`, boolean short-circuit,
+  ASCII `lower`/`casefold`). Detecting these = running the mutant; `ripr` is static
+  and cannot, and cannot conservatively downgrade without also dropping the genuine
+  discriminators (it can't tell `compute(10,3)==7` from `apply_discount(5,100)==5`
+  without evaluation). This is the honest floor — see
+  `docs/STATIC_EXPOSURE_MODEL.md` § The static/runtime boundary.
+- **Static missing-discriminator (in scope, as a gap).** A boundary change
+  (`>= → >`) is discriminated only at `total == threshold`; a far-from-boundary test
+  is genuinely non-discriminating, but the gap is *nameable* and stays a valid
+  repair-routing candidate — not floor, not `exposed`.
+
+**The durable rule:** input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope. "Drive false-`exposed`
+to zero" is not achievable purely statically — the honest target is *zero confirmed
+in-contract false-`exposed`*, with the floor explicitly bounded. **A regression
+caught the same run:** a literal-element gate that locates the brace with `find('{')`
+mis-reads an f-string (`f"{value:.3f}"`) as a dict literal — require the expression
+to *start with* the literal opener, and re-run the full adversarial trap set after
+merge to catch downgraded positives (goldens won't cover a synthetic trap that has no
+fixture).
