@@ -6068,3 +6068,28 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0111"
+name = "gate new_unsuppressed receipt field"
+spec = "docs/specs/RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md"
+tests = [
+  "crates/ripr/src/output/gate.rs::tests::new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking",
+  "crates/ripr/src/output/gate.rs::tests::new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/calibrated-gate",
+  "fixtures/boundary_gap/expected/gate-adoption",
+]
+code = [
+  "crates/ripr/src/output/gate/model.rs",
+  "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/gate/presentation.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

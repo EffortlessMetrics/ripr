@@ -7010,6 +7010,48 @@ Field contract:
 - `warnings[]` - missing optional inputs, unsupported labels, ambiguous
   calibration, baseline limitations, or schema limitations.
 - `limits_note` - static/runtime and advisory-default boundary text.
+- `new_unsuppressed` - canonical downstream-thresholding receipt (see below).
+
+### `new_unsuppressed` receipt field
+
+Added by RIPR-SPEC-0111. Additive — does not bump `schema_version`.
+
+```json
+"new_unsuppressed": { "basis": "diff", "count": 3, "reason": null }
+```
+
+Consumers may threshold on `.new_unsuppressed.count` (e.g.
+`max_new_unsuppressed=0`). The field is a stable filter over the gate's own
+`decisions[]` — reproducible by any reader of the same receipt.
+
+**Honest definition.** `count` is the number of decisions `d` in `decisions[]`
+where ALL of the following hold:
+
+1. `d.static_class ∈ {"weakly_gripped","ungripped","reachable_unrevealed","weakly_exposed"}`
+   (policy-eligible class).
+2. `d.decision ∈ {"blocking","advisory"}` — suppressed, acknowledged, and
+   not_applicable candidates are EXCLUDED (they are handled or ineligible).
+3. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
+   `basis == "diff"`: all candidates in 1+2 count (diff scope equals "new").
+
+CRITICAL: `count` INCLUDES policy-eligible `advisory` decisions. It is NOT
+equal to `summary.blocking`. In `visible-only` mode every eligible candidate is
+advisory (`blocking=0`) but `count` is the advisory candidate count. An external
+thresholder applies its own policy; `ripr` reports the candidate count
+regardless of its own blocking/advisory label.
+
+**`basis` values.**
+
+| `basis` | Meaning |
+|---|---|
+| `"diff"` | Diff-scoped run. All surviving candidates are new by definition. |
+| `"baseline"` | Baseline-aware run (`baseline-check` or `calibrated-gate`). Only `is_baseline_new=true` candidates count. |
+| `null` | FAIL CLOSED: `config_errors` is non-empty — analysis did not run. |
+
+**Fail-closed rule.** When `config_errors` is non-empty, `basis=null`,
+`count=0`, and `reason` discloses the first config error. `count=0` with
+`basis=null` must NEVER be read as "clean/pass" — the `reason` field is
+the mandatory disclosure.
 
 Markdown should fit in a job summary. It should name the top-level decision,
 mode, counts, blocking or acknowledged seams, repair action, and limits. It

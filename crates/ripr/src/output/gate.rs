@@ -133,6 +133,7 @@ pub(crate) fn build_gate_decision_report(
         .collect::<Vec<_>>();
     decisions.sort_by(|left, right| left.id.cmp(&right.id));
     let summary = summarize_decisions(&decisions);
+    let new_unsuppressed = compute_new_unsuppressed(&decisions, &config_errors, input.mode);
     let status = top_level_status(&summary, &warnings, &config_errors, input.mode).to_string();
     Ok(GateDecisionReport {
         status,
@@ -159,6 +160,7 @@ pub(crate) fn build_gate_decision_report(
         },
         policy,
         summary,
+        new_unsuppressed,
         decisions,
         warnings,
         config_errors,
@@ -484,6 +486,7 @@ fn gate_decision(
             recommendation_calibration,
             mutation_calibration,
         },
+        is_baseline_new,
     }
 }
 
@@ -737,6 +740,53 @@ fn summarize_decisions(decisions: &[GateDecision]) -> GateSummary {
         }
     }
     summary
+}
+
+/// Compute the `new_unsuppressed` receipt field: a canonical count of
+/// policy-eligible, unhandled decisions that a downstream thresholder can use
+/// as a single stable number (`max_new_unsuppressed=0`).
+///
+/// Fail-closed: when `config_errors` is non-empty, analysis did not run and we
+/// return `basis=None, count=0, reason=<first error>` rather than a zero that
+/// looks like a clean pass.
+fn compute_new_unsuppressed(
+    decisions: &[GateDecision],
+    config_errors: &[String],
+    mode: GateMode,
+) -> NewUnsuppressed {
+    // Fail-closed: analysis did not run.
+    if let Some(first_error) = config_errors.first() {
+        return NewUnsuppressed {
+            basis: None,
+            count: 0,
+            reason: Some(format!("analysis did not run: {first_error}")),
+        };
+    }
+    // Determine basis: baseline-aware modes that actually have a baseline use
+    // "baseline"; everything else is "diff" (all surviving candidates are new).
+    let use_baseline_basis = matches!(mode, GateMode::BaselineCheck | GateMode::CalibratedGate);
+    let basis = if use_baseline_basis {
+        "baseline"
+    } else {
+        "diff"
+    };
+    // Count: decisions d where:
+    //   - candidate_class_is_policy_eligible(d.static_class) is true, AND
+    //   - d.decision ∈ {"blocking", "advisory"} (suppressed/acknowledged/not_applicable excluded), AND
+    //   - if basis=="baseline": d.is_baseline_new is true.
+    let count = decisions
+        .iter()
+        .filter(|d| {
+            candidate_class_is_policy_eligible(d.static_class.as_deref())
+                && matches!(d.decision.as_str(), "blocking" | "advisory")
+                && (!use_baseline_basis || d.is_baseline_new)
+        })
+        .count();
+    NewUnsuppressed {
+        basis: Some(basis.to_string()),
+        count: count as u64,
+        reason: None,
+    }
 }
 
 fn top_level_status(
@@ -2773,6 +2823,82 @@ mod tests {
             cap_decision.decision,
         );
         let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    // -- RIPR-SPEC-0111: new_unsuppressed receipt field --
+
+    /// Advisory candidates ARE counted in `new_unsuppressed.count` even when
+    /// `summary.blocking == 0`. In visible-only mode every policy-eligible
+    /// candidate is advisory (never blocking), so if the count equalled
+    /// `summary.blocking` it would always be 0 — a broken invariant.
+    #[test]
+    fn new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking()
+    -> Result<(), String> {
+        // visible-only: the standard fixture has 1 policy-eligible candidate
+        // that will become "advisory" (not "blocking").
+        let input = fixture_input(GateMode::VisibleOnly);
+        let report = build_gate_decision_report(&input)?;
+        // Baseline assertion: blocking is 0 (visible-only never blocks).
+        assert_eq!(
+            report.summary.blocking, 0,
+            "visible-only must have blocking=0; got {:?}",
+            report.summary,
+        );
+        // The honesty check: count > blocking because advisory items are included.
+        assert!(
+            report.new_unsuppressed.count > report.summary.blocking as u64,
+            "new_unsuppressed.count ({}) must be > summary.blocking ({}) in visible-only because advisory items are included",
+            report.new_unsuppressed.count,
+            report.summary.blocking,
+        );
+        assert_eq!(
+            report.new_unsuppressed.basis.as_deref(),
+            Some("diff"),
+            "visible-only mode must use basis=diff",
+        );
+        assert!(
+            report.new_unsuppressed.reason.is_none(),
+            "no reason expected for clean diff run",
+        );
+        Ok(())
+    }
+
+    /// `config_error` MUST produce `basis=null, count=0, reason=<disclosure>`.
+    /// This is the fail-closed sentinel: count=0 on analysis failure must NOT
+    /// look like a clean pass to a downstream thresholder.
+    #[test]
+    fn new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason()
+    -> Result<(), String> {
+        // Use calibrated-gate mode without a baseline: guaranteed config_error.
+        let input = fixture_input(GateMode::CalibratedGate);
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(
+            report.status, "config_error",
+            "expected config_error status, got {:?}",
+            report.status,
+        );
+        // Fail-closed check.
+        assert!(
+            report.new_unsuppressed.basis.is_none(),
+            "config_error must produce basis=null (fail-closed), got {:?}",
+            report.new_unsuppressed.basis,
+        );
+        assert_eq!(
+            report.new_unsuppressed.count, 0,
+            "config_error must produce count=0 (fail-closed), got {}",
+            report.new_unsuppressed.count,
+        );
+        assert!(
+            report.new_unsuppressed.reason.is_some(),
+            "config_error must disclose reason (not a fake-zero clean), got None",
+        );
+        let reason = report.new_unsuppressed.reason.as_deref().unwrap_or("");
+        assert!(
+            reason.contains("analysis did not run"),
+            "reason must start with 'analysis did not run', got {:?}",
+            reason,
+        );
         Ok(())
     }
 
