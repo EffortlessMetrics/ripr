@@ -4438,6 +4438,11 @@ fn classify_sink_alignment_with_old(
     related: &[RelatedTest],
     all_tests: &[PythonTest],
 ) -> SinkAlignment {
+    // The probe-shape delta kind gates the empty-token-delta fallback below: only a
+    // control-flow change may credit `changed_sink_token` from bare line operands
+    // when the token delta is empty (see the fallback comment). Value/effect changes
+    // are observed via the owner call, not an input operand.
+    let (_, delta_kind) = classify_probe_shape(line_text);
     // `changed_sink` describes the changed line; deduped, joined for display.
     let change_tokens = significant_change_tokens(line_text);
     let mut change_display: Vec<String> = Vec::new();
@@ -4557,11 +4562,24 @@ fn classify_sink_alignment_with_old(
                 .collect();
             // An empty token delta means the change is in non-tokenized syntax (an
             // operator like `<=` -> `<`, punctuation, ordering) that token extraction
-            // does not capture. Fall back to the full changed-line tokens so such
-            // genuine changes are not silently dropped (preserves operator-change
-            // discrimination); only filter to the delta when there is a real one.
+            // does not capture. Falling back to the full changed-line tokens is only
+            // sound for a CONTROL-FLOW change (#1278): for a predicate / error-path
+            // operator change the discriminated outcome (a taken branch, a raised
+            // exception) can be observed by an outcome oracle that matches a line
+            // token — as in `python_cross_file_construct_call`'s `pytest.raises`. For
+            // a VALUE/EFFECT change (a `return` or assignment operator edit), every
+            // line token is an unchanged INPUT operand; the changed sink is the
+            // produced value, which a discriminating test observes via the owner call
+            // (the `direct`/`alias` paths), not via an input token. Crediting
+            // `changed_sink_token` on an input operand there is the false-`exposed`
+            // (e.g. `return count + 1` -> `count - 1` with `assert count == 5`), so
+            // for non-control empty deltas we credit nothing rather than the operands.
             if delta.is_empty() {
-                change_only.clone()
+                if delta_kind == DeltaKind::Control {
+                    change_only.clone()
+                } else {
+                    Vec::new()
+                }
             } else {
                 delta
             }
@@ -6673,6 +6691,101 @@ def test_build_user_smoke():
         assert_eq!(
             finding.oracle_alignment.as_deref(),
             Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_operator_change_does_not_credit_unchanged_input_operand() -> Result<(), String> {
+        // #1278: `+` -> `-` is an operator change with an EMPTY token delta. The only
+        // strong oracle observes the UNCHANGED input parameter `count`, not the
+        // changed return value, so the test does not discriminate the change. The
+        // #1277 empty-delta fallback must NOT credit a value-family change on an
+        // input operand.
+        let source = "def next_value(count):\n    return count - 1\n";
+        let owners = extract_owners(Path::new("src/counter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_counter.py"),
+            "from src.counter import next_value\n\n\ndef test_next():\n    count = 5\n    result = next_value(count)\n    assert count == 5\n    assert result > 0\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/counter.py"),
+            2,
+            "    return count - 1",
+            Some("    return count + 1"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return body should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an operator change observed only via an unchanged input operand is not exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_operator_change_stays_exposed_when_oracle_observes_owner_output()
+    -> Result<(), String> {
+        // #1278 inverse control: the same operator change IS exposed when a strong
+        // oracle observes the owner's OUTPUT by calling it (the `direct` path), not
+        // via an input operand. This proves operator-change discrimination is
+        // preserved when the test actually exercises the changed value.
+        let source = "def next_value(count):\n    return count - 1\n";
+        let owners = extract_owners(Path::new("src/counter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_counter.py"),
+            "from src.counter import next_value\n\n\ndef test_next():\n    assert next_value(5) == 4\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/counter.py"),
+            2,
+            "    return count - 1",
+            Some("    return count + 1"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return body should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the owner's output (the call result) discriminates the operator change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_predicate_change_still_credits_outcome_oracle() -> Result<(), String> {
+        // #1278 preserve: a CONTROL-flow operator change (`<=` -> `<`) keeps the
+        // empty-delta fallback — an outcome oracle (`pytest.raises`) discriminates the
+        // changed branch, mirroring `python_cross_file_construct_call`.
+        let source = "class Formatter:\n    def __call__(self, event):\n        for key in event:\n            if any(c < \" \" for c in key):\n                raise ValueError(f'Invalid key: \"{key}\"')\n        return \",\".join(event)\n";
+        let owners = extract_owners(Path::new("src/formatter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "import pytest\n\nfrom src.formatter import Formatter\n\n\ndef test_rejects_space_in_key():\n    with pytest.raises(ValueError, match='Invalid key'):\n        Formatter()({\"bad key\": \"value\"})\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/formatter.py"),
+            4,
+            "            if any(c < \" \" for c in key):",
+            Some("            if any(c <= \" \" for c in key):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a control-flow operator change observed by an outcome oracle stays exposed"
         );
         Ok(())
     }
