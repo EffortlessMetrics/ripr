@@ -3925,6 +3925,69 @@ fn receipt_help_exits_zero_smoke() {
     );
 }
 
+/// Smoke (RIPR-SPEC-0110 control 4): `ripr receipt check --ledger` where the
+/// receipt's canonical_gap_id is NOT in the ledger exits non-zero with
+/// `orphan_receipt`.
+#[test]
+fn receipt_check_orphan_exits_nonzero() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("receipt-check-orphan");
+    std::fs::create_dir_all(&out_dir)?;
+
+    // Write a receipt for a gap that will NOT appear in the ledger.
+    let receipt_path = out_dir.join("receipt.json");
+    let receipt_json = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "receipt",
+        "canonical_gap_id": "gap:orphan:aabbccdd",
+        "verify_command": "cargo test",
+        "verify_status": "passed",
+        "written_at": "2026-06-14T00:00:00Z"
+    });
+    std::fs::write(&receipt_path, receipt_json.to_string())?;
+
+    // Write a ledger with a DIFFERENT gap — the receipt's gap is absent.
+    let ledger_path = out_dir.join("ledger.json");
+    let ledger_json = serde_json::json!([{
+        "gap_id": "gap:other:12345678",
+        "canonical_gap_id": "gap:other:12345678",
+        "kind": "MissingValueAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "return_value",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "authority_boundary": "gate_decision_artifact_only"
+    }]);
+    std::fs::write(&ledger_path, ledger_json.to_string())?;
+
+    let receipt_path_str = receipt_path.to_str().ok_or("receipt path not UTF-8")?;
+    let ledger_path_str = ledger_path.to_str().ok_or("ledger path not UTF-8")?;
+
+    let output = run_ripr(&[
+        "receipt",
+        "check",
+        "--path",
+        receipt_path_str,
+        "--ledger",
+        ledger_path_str,
+    ]);
+    // Must exit non-zero (orphan_receipt is a real error).
+    assert_failure(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("orphan_receipt"),
+        "output should mention orphan_receipt; got: {combined}"
+    );
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
 /// Smoke: `ripr agent receipt` (legacy alias) still exits non-zero with a
 /// parse error rather than panicking or silently succeeding with no args —
 /// which confirms the alias is still wired.

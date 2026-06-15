@@ -481,3 +481,11 @@ path = "docs/specs/RIPR-SPEC-0109-confidence-min-cap.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Confidence-display honesty fix: cap headline confidence_score by the weakest contributing stage's per-stage Confidence ceiling (Low=0.66, Unknown=0.50, High/Medium=1.0); applied after all existing score arithmetic; can only lower, never raise; classify untouched; seven fixture goldens re-blessed (confidence numbers only, classification byte-identical); no schema bump; no version bump; closes #1219 part D."
+
+[[artifact]]
+id = "RIPR-SPEC-0110"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Receipt-gap cross-reference (closes #1123 PR 4): adds optional --ledger flag to ripr receipt check; cross-references receipt's canonical_gap_id against live gap set from parse_gap_records_json; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed honesty rule); provides the real producer for labels deferred by #1130 no-fake-zero guard; 4 unit controls + 1 CLI smoke; no schema bump; no version bump."

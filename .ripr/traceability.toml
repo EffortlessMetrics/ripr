@@ -6041,3 +6041,26 @@ outputs = [
 metrics = [
   "confidence_min_cap_fixtures_reblessed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0110"
+name = "Receipt-gap cross-reference"
+spec = "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md"
+tests = [
+  "crates/ripr/src/app/receipt.rs::receipt_check_orphan_when_gap_absent_from_ledger",
+  "crates/ripr/src/app/receipt.rs::receipt_check_cross_reference_not_available_when_ledger_absent",
+  "crates/ripr/src/app/receipt.rs::receipt_check_ok_when_gap_present",
+  "crates/ripr/tests/cli_smoke.rs::receipt_check_orphan_exits_nonzero",
+  "crates/ripr/src/output/gap_decision_ledger.rs::ledger_summary_does_not_emit_fabricated_receipt_state_counts",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app/receipt.rs",
+  "crates/ripr/src/cli/commands/receipt.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

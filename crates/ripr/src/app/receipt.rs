@@ -8,12 +8,17 @@
 //! ## Design notes
 //!
 //! - `receipt write` does NOT parse or validate a gap ledger at this stage
-//!   (PR 3 scope: structural write + check only; cross-gap validation is PR 4).
-//! - `receipt check` validates JSON structure only; orphan/stale detection is
-//!   deferred to PR 4 (requires gap cross-reference).
+//!   (structural write only).
+//! - `receipt check` validates JSON structure always; when `--ledger` is
+//!   supplied it also cross-references the receipt's `canonical_gap_id`
+//!   against the live gap set (RIPR-SPEC-0110).
+//! - When `--ledger` is ABSENT or UNREADABLE the cross-reference result is
+//!   `not_available` — NOT `receipt_ok`. Absence of the ledger must never be
+//!   read as "the receipt is valid/fresh" (fail-closed honesty rule).
 //! - All error paths are fail-closed: on any validation failure nothing is
 //!   written and a non-zero exit is triggered via `Err(String)`.
 
+use crate::output::gap_decision_ledger::parse_gap_records_json;
 use crate::output::json;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +40,44 @@ pub(crate) struct ReceiptWriteOptions {
     pub(crate) json: bool,
 }
 
+/// The cross-reference result from comparing a receipt against the live gap set.
+///
+/// Returned by `check_receipt` when `--ledger` is provided.  When the ledger
+/// is absent or unreadable this is always `NotAvailable` (fail-closed rule:
+/// absence of the ledger must never be interpreted as "receipt is ok").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ReceiptCrossRefResult {
+    /// The ledger was not provided or could not be read.  This is the default
+    /// fail-closed value; it does NOT mean the receipt is valid or fresh.
+    NotAvailable,
+    /// `canonical_gap_id` found in the live gap set.  Gap is present.
+    ReceiptOk,
+    /// `canonical_gap_id` not found in the live gap set.  The gap disappeared
+    /// or never existed.  This is a real problem — callers must exit non-zero.
+    OrphanReceipt,
+    /// `canonical_gap_id` found but the gap's dedupe fingerprint differs from
+    /// the receipt's stored fingerprint.  The gap moved or changed identity.
+    /// This is a real problem — callers must exit non-zero.
+    ReceiptGapMismatch,
+}
+
+impl ReceiptCrossRefResult {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::NotAvailable => "not_available",
+            Self::ReceiptOk => "receipt_ok",
+            Self::OrphanReceipt => "orphan_receipt",
+            Self::ReceiptGapMismatch => "receipt_gap_mismatch",
+        }
+    }
+
+    /// Returns `true` if this result represents a real problem that should
+    /// cause a non-zero exit from `ripr receipt check`.
+    pub(crate) fn is_error(&self) -> bool {
+        matches!(self, Self::OrphanReceipt | Self::ReceiptGapMismatch)
+    }
+}
+
 /// Options for `ripr receipt check`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ReceiptCheckOptions {
@@ -42,6 +85,10 @@ pub(crate) struct ReceiptCheckOptions {
     pub(crate) gap: Option<String>,
     /// Explicit path to a receipt file.
     pub(crate) path: Option<PathBuf>,
+    /// Optional path to a gap-decision-ledger JSON file.  When provided,
+    /// the receipt's `canonical_gap_id` is cross-referenced against the live
+    /// gap set.  When absent, cross-reference result is `not_available`.
+    pub(crate) ledger: Option<PathBuf>,
 }
 
 /// Write a receipt JSON according to RIPR-SPEC-0079 and return the rendered
@@ -73,10 +120,21 @@ pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String
     json::render_pretty_with_newline(&value, "receipt")
 }
 
-/// Validate the structural integrity of a receipt JSON file and return a
-/// structured-OK message.  Does NOT cross-reference the gap ledger
-/// (orphan/stale detection is PR 4 scope).
-pub(crate) fn check_receipt(opts: &ReceiptCheckOptions) -> Result<String, String> {
+/// Validate the structural integrity of a receipt JSON file, optionally
+/// cross-referencing it against a gap-decision-ledger (RIPR-SPEC-0110).
+///
+/// Returns `(message, cross_ref_result)` on success.  The caller is
+/// responsible for exiting non-zero when `cross_ref_result.is_error()`.
+///
+/// ## Fail-closed honesty rule
+///
+/// When `opts.ledger` is `None` or the ledger file cannot be read, the
+/// `cross_ref_result` is always `ReceiptCrossRefResult::NotAvailable`.
+/// This must NEVER be interpreted as "the receipt is ok / fresh" — the
+/// absence of a ledger is not evidence of validity.
+pub(crate) fn check_receipt(
+    opts: &ReceiptCheckOptions,
+) -> Result<(String, ReceiptCrossRefResult), String> {
     let path = resolve_check_path(opts)?;
 
     let content = std::fs::read_to_string(&path).map_err(|err| {
@@ -95,10 +153,71 @@ pub(crate) fn check_receipt(opts: &ReceiptCheckOptions) -> Result<String, String
 
     validate_receipt_structure(&value, &path)?;
 
-    Ok(format!(
-        "receipt at {} is structurally valid (structural check only; orphan/stale detection requires gap cross-reference — see PR 4)",
-        path.display()
-    ))
+    // Extract the canonical_gap_id from the validated receipt.
+    let canonical_gap_id = value["canonical_gap_id"].as_str().unwrap_or("").to_string();
+
+    // Cross-reference against the ledger when provided.
+    let cross_ref = cross_reference_receipt(&canonical_gap_id, opts.ledger.as_deref());
+
+    let msg = format!(
+        "receipt at {} is structurally valid; cross_reference: {}",
+        path.display(),
+        cross_ref.as_str()
+    );
+    Ok((msg, cross_ref))
+}
+
+/// Cross-reference a receipt's `canonical_gap_id` against the live gap set in
+/// a gap-decision-ledger JSON file.
+///
+/// Returns `NotAvailable` when `ledger_path` is `None` or cannot be read.
+/// This is the fail-closed sentinel: absence of the ledger is NOT evidence
+/// that the receipt is valid/fresh.
+fn cross_reference_receipt(
+    canonical_gap_id: &str,
+    ledger_path: Option<&Path>,
+) -> ReceiptCrossRefResult {
+    let Some(path) = ledger_path else {
+        return ReceiptCrossRefResult::NotAvailable;
+    };
+
+    let contents = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return ReceiptCrossRefResult::NotAvailable,
+    };
+
+    let records = match parse_gap_records_json(&contents) {
+        Ok(r) => r,
+        Err(_) => return ReceiptCrossRefResult::NotAvailable,
+    };
+
+    // Search the live gap set for the receipt's canonical_gap_id.
+    // We match on canonical_gap_id (primary) or gap_id (secondary).
+    let matched = records.iter().find(|r| {
+        (!r.canonical_gap_id.is_empty() && r.canonical_gap_id == canonical_gap_id)
+            || (!r.gap_id.is_empty() && r.gap_id == canonical_gap_id)
+    });
+
+    match matched {
+        None => ReceiptCrossRefResult::OrphanReceipt,
+        Some(record) => {
+            // If the record carries a dedupe_fingerprint, compare it against
+            // the canonical_gap_id the receipt holds.  A mismatch means the
+            // gap moved or changed identity.  If no fingerprint is available
+            // we accept the match as-is (receipt_ok) — we do NOT invent a
+            // fingerprint that doesn't exist in the data.
+            if record
+                .anchor
+                .as_ref()
+                .and_then(|a| a.dedupe_fingerprint.as_deref())
+                .filter(|fp| !fp.is_empty() && *fp != canonical_gap_id)
+                .is_some()
+            {
+                return ReceiptCrossRefResult::ReceiptGapMismatch;
+            }
+            ReceiptCrossRefResult::ReceiptOk
+        }
+    }
 }
 
 /// Return the output path for a receipt write operation.
@@ -402,11 +521,18 @@ mod tests {
         let check_opts = ReceiptCheckOptions {
             gap: None,
             path: Some(path.clone()),
+            ledger: None,
         };
-        let result = check_receipt(&check_opts)?;
+        let (result, cross_ref) = check_receipt(&check_opts)?;
         assert!(
             result.contains("structurally valid"),
             "should report valid, got: {result}"
+        );
+        // No ledger provided → cross-reference must be not_available (fail-closed).
+        assert_eq!(
+            cross_ref,
+            ReceiptCrossRefResult::NotAvailable,
+            "cross_ref should be not_available when no ledger given"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -422,6 +548,7 @@ mod tests {
             path: Some(PathBuf::from(
                 "target/ripr/receipts/nonexistent-receipt.json",
             )),
+            ledger: None,
         };
         match check_receipt(&opts) {
             Ok(_) => Err("check_receipt should have failed for missing file".to_string()),
@@ -451,6 +578,7 @@ mod tests {
         let check_opts = ReceiptCheckOptions {
             gap: None,
             path: Some(path),
+            ledger: None,
         };
         match check_receipt(&check_opts) {
             Ok(_) => {
@@ -490,6 +618,7 @@ mod tests {
         let check_opts = ReceiptCheckOptions {
             gap: None,
             path: Some(path),
+            ledger: None,
         };
         match check_receipt(&check_opts) {
             Ok(_) => {
@@ -529,6 +658,7 @@ mod tests {
         let check_opts = ReceiptCheckOptions {
             gap: None,
             path: Some(path),
+            ledger: None,
         };
         match check_receipt(&check_opts) {
             Ok(_) => {
@@ -553,6 +683,7 @@ mod tests {
         let opts = ReceiptCheckOptions {
             gap: None,
             path: None,
+            ledger: None,
         };
         match check_receipt(&opts) {
             Ok(_) => Err("check_receipt should have failed with no path and no gap".to_string()),
@@ -564,6 +695,150 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ── RIPR-SPEC-0110 controls: cross-reference tests ────────────────────────
+
+    fn make_receipt_file(dir: &std::path::Path, gap_id: &str) -> Result<PathBuf, String> {
+        let path = dir.join("receipt.json");
+        let json = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt",
+            "canonical_gap_id": gap_id,
+            "verify_command": "cargo test",
+            "verify_status": "passed",
+            "written_at": "2026-06-14T00:00:00Z"
+        });
+        std::fs::write(&path, json.to_string())
+            .map_err(|e| format!("write receipt failed: {e}"))?;
+        Ok(path)
+    }
+
+    fn make_ledger_file(dir: &std::path::Path, gap_ids: &[&str]) -> Result<PathBuf, String> {
+        let path = dir.join("ledger.json");
+        let records: Vec<serde_json::Value> = gap_ids
+            .iter()
+            .map(|id| {
+                serde_json::json!({
+                    "gap_id": id,
+                    "canonical_gap_id": id,
+                    "kind": "MissingValueAssertion",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "scope": "repo_scoped",
+                    "evidence_class": "return_value",
+                    "gap_state": "actionable",
+                    "policy_state": "new",
+                    "repairability": "repairable",
+                    "authority_boundary": "gate_decision_artifact_only"
+                })
+            })
+            .collect();
+        let ledger = serde_json::json!(records);
+        std::fs::write(&path, ledger.to_string())
+            .map_err(|e| format!("write ledger failed: {e}"))?;
+        Ok(path)
+    }
+
+    /// Control 1 (RIPR-SPEC-0110): receipt's canonical_gap_id NOT in the live
+    /// gap set → `orphan_receipt`.
+    #[test]
+    fn receipt_check_orphan_when_gap_absent_from_ledger() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!("ripr-xref-orphan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+
+        let receipt_path = make_receipt_file(&dir, "gap:missing:aabbccdd")?;
+        // Ledger contains a DIFFERENT gap — the receipt's gap is absent.
+        let ledger_path = make_ledger_file(&dir, &["gap:other:1234abcd"])?;
+
+        let opts = ReceiptCheckOptions {
+            gap: None,
+            path: Some(receipt_path),
+            ledger: Some(ledger_path),
+        };
+        let (msg, cross_ref) = check_receipt(&opts)?;
+        assert_eq!(
+            cross_ref,
+            ReceiptCrossRefResult::OrphanReceipt,
+            "gap absent from ledger → orphan_receipt; msg: {msg}"
+        );
+        assert!(
+            msg.contains("orphan_receipt"),
+            "message should mention orphan_receipt, got: {msg}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// Control 2 (RIPR-SPEC-0110): no `--ledger` → cross-reference is
+    /// `not_available` (NEVER `receipt_ok`); structural check still exits 0.
+    /// This is the fail-closed core: ledger-absent ≠ receipt valid.
+    #[test]
+    fn receipt_check_cross_reference_not_available_when_ledger_absent() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!("ripr-xref-noledger-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+
+        let receipt_path = make_receipt_file(&dir, "gap:demo:aabbccdd")?;
+
+        let opts = ReceiptCheckOptions {
+            gap: None,
+            path: Some(receipt_path),
+            ledger: None, // ← no ledger
+        };
+        let (msg, cross_ref) = check_receipt(&opts)?;
+
+        // Must be not_available, NEVER receipt_ok.
+        assert_eq!(
+            cross_ref,
+            ReceiptCrossRefResult::NotAvailable,
+            "ledger absent → must be not_available, not receipt_ok; msg: {msg}"
+        );
+        assert_ne!(
+            cross_ref,
+            ReceiptCrossRefResult::ReceiptOk,
+            "ledger absent must NEVER produce receipt_ok"
+        );
+        assert!(
+            msg.contains("not_available"),
+            "message should contain not_available, got: {msg}"
+        );
+        // Structural check succeeds → check_receipt returns Ok (exit 0 semantics).
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// Control 3 (RIPR-SPEC-0110): receipt's canonical_gap_id IS in the live
+    /// gap set → `receipt_ok`.
+    #[test]
+    fn receipt_check_ok_when_gap_present() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!("ripr-xref-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+
+        let gap_id = "gap:present:aabbccdd";
+        let receipt_path = make_receipt_file(&dir, gap_id)?;
+        let ledger_path = make_ledger_file(&dir, &[gap_id])?;
+
+        let opts = ReceiptCheckOptions {
+            gap: None,
+            path: Some(receipt_path),
+            ledger: Some(ledger_path),
+        };
+        let (msg, cross_ref) = check_receipt(&opts)?;
+        assert_eq!(
+            cross_ref,
+            ReceiptCrossRefResult::ReceiptOk,
+            "gap present in ledger → receipt_ok; msg: {msg}"
+        );
+        assert!(
+            msg.contains("receipt_ok"),
+            "message should mention receipt_ok, got: {msg}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // ── receipt_out_path resolution ───────────────────────────────────────────

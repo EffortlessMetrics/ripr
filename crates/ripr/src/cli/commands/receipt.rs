@@ -72,8 +72,17 @@ fn run_receipt_check(args: &[String]) -> Result<(), String> {
     }
 
     let opts = parse_receipt_check_options(args)?;
-    let msg = check_receipt(&opts)?;
+    let (msg, cross_ref) = check_receipt(&opts)?;
     println!("{msg}");
+
+    // Non-zero exit when the cross-reference reveals a real problem
+    // (orphan_receipt or receipt_gap_mismatch).
+    if cross_ref.is_error() {
+        return Err(format!(
+            "receipt cross-reference failed: {}",
+            cross_ref.as_str()
+        ));
+    }
     Ok(())
 }
 
@@ -159,6 +168,7 @@ pub(in crate::cli) fn parse_receipt_check_options(
 ) -> Result<ReceiptCheckOptions, String> {
     let mut gap: Option<String> = None;
     let mut path: Option<PathBuf> = None;
+    let mut ledger: Option<PathBuf> = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -181,6 +191,16 @@ pub(in crate::cli) fn parse_receipt_check_options(
                 }
                 path = Some(PathBuf::from(value));
             }
+            "--ledger" => {
+                i += 1;
+                let value = expect_value(args, i, "--ledger")?;
+                if value.trim().is_empty() {
+                    return Err(
+                        "receipt check --ledger requires a non-empty path to a gap-decision-ledger JSON file".to_string()
+                    );
+                }
+                ledger = Some(PathBuf::from(value));
+            }
             // Also allow a bare positional path argument (spec: `ripr receipt check [<path-or-dir>]`).
             other if !other.starts_with('-') => {
                 if path.is_some() {
@@ -196,7 +216,7 @@ pub(in crate::cli) fn parse_receipt_check_options(
         i += 1;
     }
 
-    Ok(ReceiptCheckOptions { gap, path })
+    Ok(ReceiptCheckOptions { gap, path, ledger })
 }
 
 // ── help text ─────────────────────────────────────────────────────────────────
@@ -253,26 +273,31 @@ This command is the canonical receipt writer per RIPR-SPEC-0079.
 The legacy alias `ripr agent receipt` continues to work during the transition.
 "#;
 
-pub(in crate::cli) const RECEIPT_CHECK_HELP: &str = r#"Structurally validate a receipt JSON file.
+pub(in crate::cli) const RECEIPT_CHECK_HELP: &str = r#"Validate a receipt JSON file against structure and optionally the live gap set.
 
 Usage: ripr receipt check [--path <receipt_path>] [--gap <canonical_gap_id>]
+                          [--ledger <gap-decision-ledger.json>]
        ripr receipt check <receipt_path>
 
 Options:
-  --path PATH   Path to the receipt JSON file to validate.
-  --gap ID      Resolve path from canonical location
-                target/ripr/receipts/<canonical_gap_id>.json.
+  --path PATH       Path to the receipt JSON file to validate.
+  --gap ID          Resolve path from canonical location
+                    target/ripr/receipts/<canonical_gap_id>.json.
+  --ledger PATH     Path to a gap-decision-ledger JSON file.  When provided,
+                    cross-references the receipt's canonical_gap_id against the
+                    live gap set and classifies the result as:
+                      receipt_ok           — gap present in the ledger.
+                      orphan_receipt       — gap absent from the ledger (exits non-zero).
+                      receipt_gap_mismatch — gap moved/changed identity (exits non-zero).
+                    When omitted, cross-reference result is not_available.
+                    IMPORTANT: absence of --ledger is NOT interpreted as "receipt ok".
 
 When --gap is provided without --path, the path is resolved from the canonical
 location.
 
-Exits 0 if the receipt JSON is structurally valid (required fields present,
-verify_status is a known value, JSON is parseable). Exits non-zero with an
-explicit message on any error.
-
-Note: This subcommand performs structural validation only. Orphan and stale
-detection (cross-referencing the gap ledger to confirm the gap still exists)
-is deferred to PR 4 of issue #1123 and is not performed here.
+Exits 0 when structural validation passes and the cross-reference (if run) is
+receipt_ok or not_available.  Exits non-zero on structural errors or when the
+cross-reference reveals orphan_receipt or receipt_gap_mismatch.
 "#;
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -487,7 +512,39 @@ mod tests {
         let result = parse_receipt_check_options(&args(&[]))?;
         assert_eq!(result.gap, None);
         assert_eq!(result.path, None);
+        assert_eq!(result.ledger, None);
         Ok(())
+    }
+
+    #[test]
+    fn receipt_check_parse_ledger_option() -> Result<(), String> {
+        let result = parse_receipt_check_options(&args(&[
+            "--path",
+            "target/ripr/receipts/r.json",
+            "--ledger",
+            "target/ripr/reports/gap-decision-ledger.json",
+        ]))?;
+        assert_eq!(
+            result.ledger,
+            Some(PathBuf::from(
+                "target/ripr/reports/gap-decision-ledger.json"
+            ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_check_rejects_empty_ledger() -> Result<(), String> {
+        match parse_receipt_check_options(&args(&["--ledger", ""])) {
+            Ok(_) => Err("should have failed with empty ledger".to_string()),
+            Err(err) => {
+                if err.contains("non-empty") {
+                    Ok(())
+                } else {
+                    Err(format!("expected non-empty in error, got: {err}"))
+                }
+            }
+        }
     }
 
     #[test]
@@ -557,11 +614,13 @@ mod tests {
         assert!(RECEIPT_WRITE_HELP.contains("not_run"));
         assert!(RECEIPT_WRITE_HELP.contains("unknown"));
         assert!(RECEIPT_WRITE_HELP.contains("canonical_gap_id"));
-        assert!(RECEIPT_CHECK_HELP.contains("structural"));
         assert!(RECEIPT_CHECK_HELP.contains("--path"));
         assert!(RECEIPT_CHECK_HELP.contains("--gap"));
-        // Confirm orphan/stale non-goal is documented
-        assert!(RECEIPT_CHECK_HELP.contains("Orphan") || RECEIPT_CHECK_HELP.contains("orphan"));
+        assert!(RECEIPT_CHECK_HELP.contains("--ledger"));
+        // Confirm orphan outcome is documented
+        assert!(RECEIPT_CHECK_HELP.contains("orphan_receipt"));
+        // Confirm the fail-closed sentinel is documented
+        assert!(RECEIPT_CHECK_HELP.contains("not_available"));
     }
 
     #[test]
