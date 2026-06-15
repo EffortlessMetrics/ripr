@@ -8,6 +8,7 @@ mod summary;
 mod support;
 
 pub use classification::ExposureClass;
+pub(crate) use classification::NO_STATIC_PATH_NEXT_STEP;
 pub use evidence::{
     Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
     RiprEvidence, StageEvidence, StageState,

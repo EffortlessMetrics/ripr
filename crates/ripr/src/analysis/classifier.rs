@@ -1299,9 +1299,7 @@ mod tests {
         );
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
-            Some(
-                "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change."
-            )
+            Some(NO_STATIC_PATH_NEXT_STEP)
         );
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::InfectionUnknown).as_deref(),

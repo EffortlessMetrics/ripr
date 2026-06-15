@@ -497,3 +497,11 @@ path = "docs/specs/RIPR-SPEC-0112-disclose-unanalyzed-working-tree.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Honesty fix for the --base false-clean gap (closes #1291): emit unanalyzed_working_tree:true (additive JSON field + advisory human Note) when ripr check --base excludes uncommitted tracked-source changes; fail-closed (no disclosure when worktree is clean or git unavailable); 2 CLI smoke tests; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0113"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honest no_static_path messaging (P2 first-run-trust campaign): replace 'add a test' wording (implies no test exists) with 'A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace'; message-only change (no classification, no schema, no exit code change); single pub(crate) const in domain/classification.rs; ~33 golden fixtures re-blessed message-only; no schema_version bump; no version bump."

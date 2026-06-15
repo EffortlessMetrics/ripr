@@ -6117,3 +6117,32 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0113"
+name = "honest no_static_path messaging"
+spec = "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md"
+tests = [
+  "crates/ripr/src/analysis/classifier.rs::tests::recommended_next_step_returns_guidance_by_class",
+  "crates/ripr/src/output/human.rs::tests::render_emits_all_no_path_disclosure_when_all_findings_are_no_path",
+  "crates/ripr/src/output/human.rs::tests::render_emits_all_no_path_disclosure_for_infection_unknown_findings",
+]
+fixtures = [
+  "fixtures/all_no_path_disclosure",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/multi_hunk_removed_line_wrong_target",
+  "fixtures/plain_diff_multifile_boundary",
+]
+code = [
+  "crates/ripr/src/domain/classification.rs",
+  "crates/ripr/src/domain/mod.rs",
+  "crates/ripr/src/analysis/classify/decision.rs",
+  "crates/ripr/src/output/human.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

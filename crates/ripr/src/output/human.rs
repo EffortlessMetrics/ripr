@@ -96,7 +96,9 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
     }
     out.push_str(&format!(
         "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
-This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.\n",
+This is not a coverage assessment. A test may already exercise these changes through macros, \
+helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, \
+add co-located tests that observe the changed behavior.\n",
         all_no_path_count
     ));
 }
@@ -1156,8 +1158,8 @@ mod tests {
             "expected honesty note; got:\n{rendered}"
         );
         assert!(
-            rendered.contains("no co-located test was found that statically discriminates"),
-            "expected absence-of-path wording; got:\n{rendered}"
+            rendered.contains("A test may already exercise these changes through macros"),
+            "expected honest untraced-test wording; got:\n{rendered}"
         );
     }
 
