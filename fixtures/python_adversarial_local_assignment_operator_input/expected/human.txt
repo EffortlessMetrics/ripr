@@ -1,0 +1,45 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_local_assignment_operator_input/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/calc.py:2
+
+Changed
+  after:      total = base - bonus
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/calc.py::compute
+  canonical gap: gap:python:src/calc.py:compute:predicate_boundary:predicate:total=base-bonus
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `compute`
+  - infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`
+  - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches unknown sink: total = base - bonus (line 2)
+  - related test tests/test_calc.py:4 test_base_unchanged uses strong exact value oracle: assert base == 10
+
+Weakness
+  - A strong Python oracle reaches `compute`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.
+
+Repair placement
+  suggested file: tests/test_calc.py
+  suggested test: test_base_unchanged
+  pytest node: tests/test_calc.py::test_base_unchanged
+  verify: pytest tests/test_calc.py::test_base_unchanged (high)
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

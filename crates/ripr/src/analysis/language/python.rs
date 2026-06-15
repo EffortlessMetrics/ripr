@@ -4431,6 +4431,32 @@ fn classify_sink_alignment(
     classify_sink_alignment_with_old(owner, line_text, None, related, all_tests)
 }
 
+/// Whether the changed line is genuinely a control-flow construct (a predicate or
+/// error-path), for the empty-token-delta fallback gate. This mirrors the
+/// `Predicate` and `ErrorPath` conditions of [`classify_probe_shape`] WITHOUT its
+/// default arm (which returns `Control` for any unrecognized line, e.g. a plain
+/// `total = base - bonus` assignment). Keying the empty-delta operand fallback on
+/// this precise shape — not the default-polluted delta kind — is the #1288 fix:
+/// only a real branch / raise change can be discriminated by an outcome oracle that
+/// merely matches a line token; a value-producing assignment cannot.
+fn is_control_flow_change_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim_start();
+    (trimmed.contains(" if ") && trimmed.contains(" else "))
+        || trimmed.starts_with("if ")
+        || trimmed.starts_with("elif ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("match ")
+        || trimmed.starts_with("case ")
+        || trimmed.starts_with("raise ")
+        || trimmed == "raise"
+        || trimmed.starts_with("try:")
+        || trimmed.starts_with("except ")
+        || trimmed.starts_with("except* ")
+        || trimmed.starts_with("finally:")
+        || (trimmed.starts_with("with ") && trimmed.contains("raises("))
+}
+
 fn classify_sink_alignment_with_old(
     owner: &PythonOwner,
     line_text: &str,
@@ -4438,11 +4464,16 @@ fn classify_sink_alignment_with_old(
     related: &[RelatedTest],
     all_tests: &[PythonTest],
 ) -> SinkAlignment {
-    // The probe-shape delta kind gates the empty-token-delta fallback below: only a
-    // control-flow change may credit `changed_sink_token` from bare line operands
-    // when the token delta is empty (see the fallback comment). Value/effect changes
-    // are observed via the owner call, not an input operand.
-    let (_, delta_kind) = classify_probe_shape(line_text);
+    // Whether the changed line is genuinely a control-flow construct gates the
+    // empty-token-delta fallback below: only a control-flow change may credit
+    // `changed_sink_token` from bare line operands when the token delta is empty
+    // (see the fallback comment). This is a PRECISE shape check (#1288) — not
+    // `classify_probe_shape(..).1 == Control`, whose default arm also returns
+    // `Control` for unrecognized lines such as plain local assignments
+    // (`total = base - bonus`), which would wrongly keep the operand fallback and
+    // re-introduce the false-`exposed`. Value/effect changes are observed via the
+    // owner call, not an input operand.
+    let changed_line_is_control_flow = is_control_flow_change_line(line_text);
     // `changed_sink` describes the changed line; deduped, joined for display.
     let change_tokens = significant_change_tokens(line_text);
     let mut change_display: Vec<String> = Vec::new();
@@ -4575,7 +4606,7 @@ fn classify_sink_alignment_with_old(
             // (e.g. `return count + 1` -> `count - 1` with `assert count == 5`), so
             // for non-control empty deltas we credit nothing rather than the operands.
             if delta.is_empty() {
-                if delta_kind == DeltaKind::Control {
+                if changed_line_is_control_flow {
                     change_only.clone()
                 } else {
                     Vec::new()
@@ -6786,6 +6817,70 @@ def test_build_user_smoke():
             finding.class,
             ExposureClass::Exposed,
             "a control-flow operator change observed by an outcome oracle stays exposed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_assignment_operator_change_does_not_credit_input_operand() -> Result<(), String> {
+        // #1288: `total = base + bonus` -> `base - bonus` is a plain LOCAL ASSIGNMENT
+        // with an empty token delta. `classify_probe_shape` defaults it to Control, so
+        // the #1278 gate (keyed on delta_kind == Control) wrongly kept the operand
+        // fallback and credited the UNCHANGED input `base`. The precise control-flow
+        // line check must withhold the fallback for a non-control assignment.
+        let source = "def compute(base, bonus):\n    total = base - bonus\n    return total\n";
+        let owners = extract_owners(Path::new("src/calc.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_calc.py"),
+            "from src.calc import compute\n\n\ndef test_base_unchanged():\n    base = 10\n    compute(base, 3)\n    assert base == 10\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/calc.py"),
+            2,
+            "    total = base - bonus",
+            Some("    total = base + bonus"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed local assignment should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a local-assignment operator change observed only via an unchanged input operand is not exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn augmented_assignment_operator_change_does_not_credit_input_operand() -> Result<(), String> {
+        // #1288: augmented assignment `acc += step` -> `acc -= step` likewise defaults
+        // to Control in classify_probe_shape; the precise control-flow check must
+        // withhold the operand fallback for the unchanged input `step`.
+        let source = "def accumulate(values, step):\n    acc = 0\n    for value in values:\n        acc -= step\n    return acc\n";
+        let owners = extract_owners(Path::new("src/agg.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_agg.py"),
+            "from src.agg import accumulate\n\n\ndef test_step_unchanged():\n    step = 2\n    accumulate([1, 2, 3], step)\n    assert step == 2\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/agg.py"),
+            4,
+            "        acc -= step",
+            Some("        acc += step"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed augmented assignment should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an augmented-assignment operator change observed only via an unchanged input is not exposed"
         );
         Ok(())
     }
