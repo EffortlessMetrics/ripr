@@ -4557,6 +4557,90 @@ fn oracle_observes_changed_dict_element(
     false
 }
 
+/// Parse a list-literal line (a `return [...]`) into its top-level element source
+/// texts, in order. Like [`parse_dict_literal_fields`], the expression must literally
+/// START with `[` (after an optional `return `) so a subscript expression such as
+/// `arr[-1]` or an f-string is never mis-read as a list literal.
+fn parse_list_literal_elements(line: &str) -> Option<Vec<String>> {
+    let trimmed = line.trim();
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    let body = expr.strip_prefix('[')?.strip_suffix(']')?;
+    let elements: Vec<String> = top_level_python_segments(body)
+        .into_iter()
+        .map(|segment| segment.trim().to_string())
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if elements.is_empty() {
+        None
+    } else {
+        Some(elements)
+    }
+}
+
+/// For a list-literal field-construction change, the positions (indices) whose
+/// element differs between the old and new line, plus the NEW element source at
+/// those positions. Returns `None` when the change is not a list-literal change on
+/// both sides, when the lengths differ (a structural change is observed by `len`),
+/// or when nothing changed — in which case the list-element gate is a pass-through.
+fn list_changed_indices_and_values(
+    old_line: Option<&str>,
+    new_line: &str,
+) -> Option<(Vec<usize>, Vec<String>)> {
+    let old = parse_list_literal_elements(old_line?)?;
+    let new = parse_list_literal_elements(new_line)?;
+    // A length change is discriminated by `len(...)`, so it is NOT gated here.
+    if old.len() != new.len() {
+        return None;
+    }
+    let mut changed_indices = Vec::new();
+    let mut changed_values = Vec::new();
+    for (index, (old_value, new_value)) in old.iter().zip(new.iter()).enumerate() {
+        if old_value != new_value {
+            changed_indices.push(index);
+            changed_values.push(new_value.clone());
+        }
+    }
+    if changed_indices.is_empty() {
+        None
+    } else {
+        Some((changed_indices, changed_values))
+    }
+}
+
+/// Whether a strong oracle observes the CHANGED list element (#1290): a subscript of
+/// a changed index, the changed element value literal, or a whole-collection
+/// comparison. Conservative, mirroring [`oracle_observes_changed_dict_element`]: it
+/// returns `false` only for an oracle that observes purely a sibling index or an
+/// aggregate (`len(...)`).
+fn oracle_observes_changed_list_element(
+    oracle: &str,
+    changed_indices: &[usize],
+    changed_values: &[String],
+) -> bool {
+    if oracle.contains("=={")
+        || oracle.contains("== {")
+        || oracle.contains("==[")
+        || oracle.contains("== [")
+    {
+        return true;
+    }
+    for value in changed_values {
+        let literal = value.trim().trim_matches('"').trim_matches('\'');
+        if literal.len() >= 2 && oracle.contains(literal) {
+            return true;
+        }
+    }
+    for index in changed_indices {
+        if oracle.contains(&format!("[{index}]")) {
+            return true;
+        }
+    }
+    false
+}
+
 fn classify_sink_alignment_with_old(
     owner: &PythonOwner,
     line_text: &str,
@@ -4798,14 +4882,24 @@ fn classify_sink_alignment_with_old(
     // changed key, or a whole-collection comparison. Non-dict changes (and changes
     // whose changed keys cannot be localized from the paired old line) are not gated
     // and keep prior behavior (pass-through `true`).
-    let field_construction_credit_ok = match dict_changed_keys_and_values(old_line_text, line_text)
+    let field_construction_credit_ok = if let Some((changed_keys, changed_values)) =
+        dict_changed_keys_and_values(old_line_text, line_text)
     {
-        None => true,
-        Some((changed_keys, changed_values)) => strong_tests.iter().any(|test| {
+        strong_tests.iter().any(|test| {
             test.oracle.as_deref().is_some_and(|text| {
                 oracle_observes_changed_dict_element(text, &changed_keys, &changed_values)
             })
-        }),
+        })
+    } else if let Some((changed_indices, changed_values)) =
+        list_changed_indices_and_values(old_line_text, line_text)
+    {
+        strong_tests.iter().any(|test| {
+            test.oracle.as_deref().is_some_and(|text| {
+                oracle_observes_changed_list_element(text, &changed_indices, &changed_values)
+            })
+        })
+    } else {
+        true
     };
     // The dict-element gate (#1290) applies to EVERY credit branch — like the #1249
     // every-branch lesson — so a sibling-key oracle cannot sneak `exposed` through
@@ -7264,6 +7358,61 @@ def test_build_user_smoke():
             finding.class,
             ExposureClass::Exposed,
             "observing the changed key's value discriminates the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn list_changed_element_sibling_index_oracle_not_exposed() -> Result<(), String> {
+        // #1290: index 1 changed (`search` -> `browse`), but the only strong oracle
+        // observes the unchanged SIBLING index 0, so it does not discriminate.
+        let source = "def route_order():\n    return [\"index\", \"browse\", \"detail\"]\n";
+        let owners = extract_owners(Path::new("src/routes.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_routes.py"),
+            "from src.routes import route_order\n\n\ndef test_first():\n    assert route_order()[0] == \"index\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/routes.py"),
+            2,
+            "    return [\"index\", \"browse\", \"detail\"]",
+            Some("    return [\"index\", \"search\", \"detail\"]"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed list literal should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle observing a sibling list index does not discriminate the changed index"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn list_changed_element_observed_index_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: observing the changed index credits.
+        let source = "def route_order():\n    return [\"index\", \"browse\", \"detail\"]\n";
+        let owners = extract_owners(Path::new("src/routes.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_routes.py"),
+            "from src.routes import route_order\n\n\ndef test_second():\n    assert route_order()[1] == \"browse\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/routes.py"),
+            2,
+            "    return [\"index\", \"browse\", \"detail\"]",
+            Some("    return [\"index\", \"search\", \"detail\"]"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed list literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed index discriminates the change"
         );
         Ok(())
     }
