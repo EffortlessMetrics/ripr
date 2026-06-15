@@ -1,0 +1,42 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_changed_sink_non_delta_operand/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/account.py:7
+
+Changed
+  after:          return max(0, self._balance)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/account.py::Account.balance
+
+Language
+  language: python
+  status: preview
+  owner kind: method
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach weak: 1 heuristic Python test link(s) found for owner `balance`; relation is uncertain
+  - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
+  - propagation unknown: Static limit `decorator_indirection` prevents a safe Python propagation claim.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator unknown: Static limit `decorator_indirection` prevents a safe Python discriminator claim.
+  - related test tests/test_account.py:4 test_account_init uses unknown unknown oracle
+
+Weakness
+  - Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
+
+Stop reasons:
+  - static_probe_unknown
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

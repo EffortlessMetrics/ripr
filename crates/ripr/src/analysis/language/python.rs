@@ -4421,9 +4421,20 @@ fn oracle_text_observes_token(text: &str, token: &str) -> bool {
 /// (owner name, import alias, changed-sink tokens) are probed in order against
 /// the strongest related oracles, mirroring the prior boolean exactly so the
 /// derived decision is unchanged.
+#[cfg(test)]
 fn classify_sink_alignment(
     owner: &PythonOwner,
     line_text: &str,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> SinkAlignment {
+    classify_sink_alignment_with_old(owner, line_text, None, related, all_tests)
+}
+
+fn classify_sink_alignment_with_old(
+    owner: &PythonOwner,
+    line_text: &str,
+    old_line_text: Option<&str>,
     related: &[RelatedTest],
     all_tests: &[PythonTest],
 ) -> SinkAlignment {
@@ -4528,6 +4539,35 @@ fn classify_sink_alignment(
     let method_name_token = method_name_token.filter(|token| token.len() >= 2);
     alias_tokens.retain(|token| token.len() >= 2);
     change_only.retain(|token| token.len() >= 2);
+    // Delta tokens: the changed-sink-token credit must reflect what actually
+    // CHANGED on the line, not every operand on it. A token that is unchanged
+    // between the old and new line (e.g. `valid_tokens` in `token in valid_tokens`
+    // -> `token.strip() in valid_tokens`, or `_balance` in a `max(0, ...)` wrap) is
+    // not the behavior delta; an oracle observing only such an operand does not
+    // discriminate the change. When the old line is unavailable (a pure addition),
+    // every token is part of the delta.
+    let delta_tokens: Vec<String> = match old_line_text {
+        Some(old) => {
+            let old_tokens: std::collections::BTreeSet<String> =
+                significant_change_tokens(old).into_iter().collect();
+            let delta: Vec<String> = change_only
+                .iter()
+                .filter(|token| !old_tokens.contains(*token))
+                .cloned()
+                .collect();
+            // An empty token delta means the change is in non-tokenized syntax (an
+            // operator like `<=` -> `<`, punctuation, ordering) that token extraction
+            // does not capture. Fall back to the full changed-line tokens so such
+            // genuine changes are not silently dropped (preserves operator-change
+            // discrimination); only filter to the delta when there is a real one.
+            if delta.is_empty() {
+                change_only.clone()
+            } else {
+                delta
+            }
+        }
+        None => change_only.clone(),
+    };
 
     // Module owner / no usable token: the prior boolean returned `true` here, so
     // the decision must stay `observes`. Map to `unknown` with the reason that
@@ -4610,7 +4650,7 @@ fn classify_sink_alignment(
             )
         } else if any_strong_observes(&alias_tokens) {
             ("alias", "strong_oracle_observes_import_alias")
-        } else if any_strong_observes(&change_only)
+        } else if any_strong_observes(&delta_tokens)
             && change_only_credit_ok
             && (is_method_owner || free_fn_module_identity)
         {
@@ -4649,6 +4689,7 @@ fn strong_oracle_observes_owner(
     classify_sink_alignment(owner, line_text, related, all_tests).observes()
 }
 
+#[cfg(test)]
 fn classify_change(
     file: &Path,
     line: usize,
@@ -4656,10 +4697,22 @@ fn classify_change(
     owners: &[PythonOwner],
     all_tests: &[PythonTest],
 ) -> Option<Finding> {
+    classify_change_with_old(file, line, line_text, None, owners, all_tests)
+}
+
+fn classify_change_with_old(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    old_line_text: Option<&str>,
+    owners: &[PythonOwner],
+    all_tests: &[PythonTest],
+) -> Option<Finding> {
     let owner = owner_for_changed_line(file, line, owners)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
-    let alignment = classify_sink_alignment(owner, line_text, &related, all_tests);
+    let alignment =
+        classify_sink_alignment_with_old(owner, line_text, old_line_text, &related, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
@@ -5145,10 +5198,18 @@ impl LanguageAdapter for PythonAdapter {
                 continue;
             }
             for added in &changed.added_lines {
-                if let Some(finding) = classify_change(
+                // Pair the in-place removed line (same new-side position) so the
+                // classifier can credit the changed-sink token on the DELTA only.
+                let old_line_text = changed
+                    .removed_lines
+                    .iter()
+                    .find(|removed| removed.new_side_line == added.line)
+                    .map(|removed| removed.text.as_str());
+                if let Some(finding) = classify_change_with_old(
                     &changed.path,
                     added.line,
                     &added.text,
+                    old_line_text,
                     &all_owners,
                     &all_tests,
                 ) {
@@ -6463,6 +6524,71 @@ def test_build_user_smoke():
             "a changed-value token observed by a different-module test is not identity-bearing"
         );
         assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_sink_token_requires_delta_not_unchanged_operand() -> Result<(), String> {
+        // #1276: the delta is `max` (the wrap); the oracle observes the UNCHANGED
+        // operand `_balance` and never invokes the changed `balance` property, so it
+        // does not discriminate the change. Must not credit changed_sink_token.
+        let source = "class Account:\n    def __init__(self, balance):\n        self._balance = balance\n\n    @property\n    def balance(self):\n        return max(0, self._balance)\n";
+        let owners = extract_owners(Path::new("src/account.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_account.py"),
+            "from src.account import Account\n\n\ndef test_account_init():\n    account = Account(100)\n    assert account._balance == 100\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/account.py"),
+            7,
+            "        return max(0, self._balance)",
+            Some("        return self._balance"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed property body should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an unchanged operand observed by the test is not the behavior delta"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_sink_token_credits_when_oracle_observes_the_delta_value() -> Result<(), String> {
+        // Positive control: the changed VALUE "paid" IS the delta, and the oracle
+        // observes it on the same owner instance — the credit stands.
+        let source = "class Invoice:\n    def __init__(self):\n        self.status = \"open\"\n\n    def settle(self):\n        self.status = \"paid\"\n";
+        let owners = extract_owners(Path::new("src/invoice.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_invoice.py"),
+            "from src.invoice import Invoice\n\n\ndef test_settle():\n    inv = Invoice()\n    inv.settle()\n    assert inv.status == \"paid\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/invoice.py"),
+            6,
+            "        self.status = \"paid\"",
+            Some("        self.status = \"settled\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed field write should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed value (the delta) credits exposed"
+        );
+        assert_eq!(
             finding.oracle_alignment.as_deref(),
             Some("changed_sink_token")
         );
