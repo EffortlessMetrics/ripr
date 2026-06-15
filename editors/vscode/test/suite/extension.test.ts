@@ -54,6 +54,16 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyAgentReceiptCommand'));
     assert.ok(commands.includes('ripr.openRelatedTest'));
     assert.ok(commands.includes('ripr.openSettings'));
+    // Cockpit inspection commands (#1119/#1134/#1138): the top-finding copy
+    // commands, the report opener, and the top-limitation viewer. Asserting
+    // registration here proves the package.json contribution is actually wired
+    // to a registered handler (it fails closed if a contributed command is not
+    // registered) and closes the lsp-cockpit coverage gap.
+    assert.ok(commands.includes('ripr.copyTopReceiptCommand'));
+    assert.ok(commands.includes('ripr.copyTopRepairPacket'));
+    assert.ok(commands.includes('ripr.copyTopVerifyCommand'));
+    assert.ok(commands.includes('ripr.openReport'));
+    assert.ok(commands.includes('ripr.showTopLimitation'));
   });
 
   test('real extension first-pr bridge commands use safe packet artifacts', async function (this: Mocha.Context) {
