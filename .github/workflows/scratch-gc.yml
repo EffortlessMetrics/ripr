@@ -4,6 +4,14 @@ name: Scratch GC
 # depend on PR traffic (#1028). Mirrors the existing inline "Prepare scratch" step
 # in routed-rust.yml, but on a timer: idle build runners (exactly the ones that
 # would otherwise never get a PR-triggered cleanup) get swept regularly.
+#
+# Covers all three routed-rust runner pools (cx43, cpx42, cx53) — each runs the
+# same routed lanes with the same /mnt/ci-scratch layout and the same disk guard,
+# so each accumulates the same orphaned scratch dirs when a run is cancelled
+# before its cleanup step (the 2026-06-06 outage failure mode). One matrix job
+# per pool sweeps a runner in that pool; fail-fast is off so an offline pool does
+# not suppress the others. This is a GitHub-Actions-level sweep (one runner per
+# pool per fire), not a per-host daemon — see #1058 for host-level disk guards.
 
 on:
   schedule:
@@ -19,16 +27,26 @@ permissions:
 
 jobs:
   scratch-gc:
-    name: Reclaim CI scratch disk
+    name: Reclaim CI scratch disk (${{ matrix.pool }})
     if: github.repository == 'EffortlessMetrics/ripr-swarm'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pool: cx43
+            labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+          - pool: cpx42
+            labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
+          - pool: cx53
+            labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+      labels: ${{ matrix.labels }}
     timeout-minutes: 15
     steps:
       - name: Reclaim scratch and report disk
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
-          { echo '```'; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          ci-disk-guard /mnt/ci-scratch 35 || echo "::warning::/mnt/ci-scratch below 35G free after scheduled GC"
+          { echo '```'; echo "pool: ${{ matrix.pool }}"; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          ci-disk-guard /mnt/ci-scratch 35 || echo "::warning::/mnt/ci-scratch below 35G free after scheduled GC on ${{ matrix.pool }}"
