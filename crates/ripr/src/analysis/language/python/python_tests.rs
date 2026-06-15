@@ -1185,18 +1185,22 @@ fn is_known_mock_constructor_import_matches_imported_and_aliased() {
     let imported = PythonImport {
         imported: "Mock".to_string(),
         alias: "Mock".to_string(),
+        source_module: String::new(),
     };
     let aliased = PythonImport {
         imported: "MagicMock".to_string(),
         alias: "MM".to_string(),
+        source_module: String::new(),
     };
     let alias_only = PythonImport {
         imported: "Other".to_string(),
         alias: "Mock".to_string(),
+        source_module: String::new(),
     };
     let unrelated = PythonImport {
         imported: "json".to_string(),
         alias: "json".to_string(),
+        source_module: String::new(),
     };
     assert!(is_known_mock_constructor_import(&imported));
     assert!(is_known_mock_constructor_import(&aliased));
@@ -1299,14 +1303,17 @@ fn imported_module_matches_owner_compares_last_segment_to_owner_stem() {
     let dotted = PythonImport {
         imported: "src.pricing".to_string(),
         alias: "pricing".to_string(),
+        source_module: String::new(),
     };
     let plain = PythonImport {
         imported: "pricing".to_string(),
         alias: "pricing".to_string(),
+        source_module: String::new(),
     };
     let mismatched = PythonImport {
         imported: "src.tax".to_string(),
         alias: "tax".to_string(),
+        source_module: String::new(),
     };
     assert!(imported_module_matches_owner(&dotted, &owner));
     assert!(imported_module_matches_owner(&plain, &owner));
@@ -2208,6 +2215,7 @@ fn line_uses_imported_symbol_matches_attribute_access_on_imported_alias() {
     let symbol = PythonImport {
         imported: "logger".to_string(),
         alias: "log".to_string(),
+        source_module: String::new(),
     };
     // `log.warn(...)` exercises the `text.contains("{}.")` arm of
     // `line_uses_imported_symbol`, since the `(` form follows the
@@ -2318,7 +2326,9 @@ fn strong_oracle_observes_owner_distinguishes_aligned_from_orthogonal() {
         file: PathBuf::from("stop.py"),
         start_line: 1,
         end_line: 2,
-        owner_kind: None,
+        // A `__call__` owner is a method in production (its owner_kind is always
+        // set); model that here so it is not mistaken for a free function.
+        owner_kind: Some(OwnerKind::Method),
         decorators: Vec::new(),
         imports: Vec::new(),
         cli_receiver_names: Vec::new(),
@@ -2411,6 +2421,8 @@ fn strong_oracle_observes_owner_resolves_import_alias() {
         imports: vec![PythonImport {
             imported: "apply_tax".to_string(),
             alias: "taxed".to_string(),
+            // owner is tax.py — match its module so the alias is identity-bearing.
+            source_module: "tax".to_string(),
         }],
         decorators: Vec::new(),
         fixtures: Vec::new(),
@@ -2455,12 +2467,37 @@ fn align_strong(oracle: &str) -> RelatedTest {
     }
 }
 
+/// A strong related test (matching [`align_strong`]'s name/file) that imports
+/// `imported` from `module`, supplying the free-function module-identity evidence
+/// the direct/alias credit now requires. `align_owner` lives in `owner.py`, so the
+/// module is usually `"owner"`.
+fn align_importing_test(imported: &str, module: &str) -> PythonTest {
+    PythonTest {
+        name: "t".to_string(),
+        qualified_name: "t".to_string(),
+        file: PathBuf::from("t.py"),
+        line: 1,
+        body_text: String::new(),
+        imports: vec![PythonImport {
+            imported: imported.to_string(),
+            alias: imported.to_string(),
+            source_module: module.to_string(),
+        }],
+        decorators: Vec::new(),
+        fixtures: Vec::new(),
+        parametrized: false,
+        framework: "pytest",
+        assertions: Vec::new(),
+    }
+}
+
 #[test]
 fn sink_alignment_is_direct_when_oracle_names_owner() {
     let owner = align_owner("apply_discount", "apply_discount");
     let line = "return price * (1 - rate)";
     let related = [align_strong("assert apply_discount(100, 0.1) == 90")];
-    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    let all = [align_importing_test("apply_discount", "owner")];
+    let a = classify_sink_alignment(&owner, line, &related, &all);
     assert_eq!(a.oracle_alignment, "direct");
     assert_eq!(a.alignment_reason, "strong_oracle_observes_owner_name");
     assert_eq!(
@@ -2484,6 +2521,8 @@ fn sink_alignment_is_alias_when_oracle_uses_import_alias() {
         imports: vec![PythonImport {
             imported: "apply_tax".to_string(),
             alias: "taxed".to_string(),
+            // align_owner lives in owner.py — match its module for alias identity.
+            source_module: "owner".to_string(),
         }],
         decorators: Vec::new(),
         fixtures: Vec::new(),
@@ -2503,7 +2542,10 @@ fn sink_alignment_is_changed_sink_token_when_oracle_observes_changed_literal() {
     let owner = align_owner("compute", "compute");
     let line = "return base * rate";
     let related = [align_strong("assert result.rate == 0.1")];
-    let a = classify_sink_alignment(&owner, line, &related, &[]);
+    // The changed_sink_token path now requires free-function module identity, so
+    // supply a same-module import of the owner.
+    let all = [align_importing_test("compute", "owner")];
+    let a = classify_sink_alignment(&owner, line, &related, &all);
     assert_eq!(a.oracle_alignment, "changed_sink_token");
     assert_eq!(
         a.alignment_reason,

@@ -147,6 +147,10 @@ struct PythonTest {
 struct PythonImport {
     imported: String,
     alias: String,
+    /// The dotted source module of a `from M import Y` statement (e.g. `src.handler`).
+    /// Empty for a plain `import X` and for relative imports (`from . import Y`),
+    /// which therefore fail closed — they cannot lend free-function module identity.
+    source_module: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1539,10 +1543,20 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
                             .map(|name| name.to_string())
                             .unwrap_or_else(|| imported.clone()),
                         imported,
+                        // A plain `import X` has no `from` module source.
+                        source_module: String::new(),
                     });
                 }
             }
             Stmt::ImportFrom(import) => {
+                // `from src.handler import validate [as v]` — the source module
+                // (`src.handler`) is the free-function identity evidence. `None`
+                // here is a relative import (`from . import y`); leave it empty.
+                let source_module = import
+                    .module
+                    .as_ref()
+                    .map(|module| module.to_string())
+                    .unwrap_or_default();
                 for alias in &import.names {
                     let imported = alias.name.to_string();
                     imports.push(PythonImport {
@@ -1552,6 +1566,7 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
                             .map(|name| name.to_string())
                             .unwrap_or_else(|| imported.clone()),
                         imported,
+                        source_module: source_module.clone(),
                     });
                 }
             }
@@ -2456,6 +2471,44 @@ fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> 
         .file_stem()
         .and_then(|stem| stem.to_str())
         .is_some_and(|stem| import.imported.rsplit('.').next() == Some(stem))
+}
+
+/// Whether a `from M import Y` statement's source module `M` points at the owner's
+/// module. Compares the import's `source_module` last segment against the owner
+/// file stem (`from src.handler import validate` and `from handler import validate`
+/// both match an owner in `src/handler.py`). A plain `import X` or a relative
+/// import has an empty `source_module` and so never matches — fail closed.
+fn import_source_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> bool {
+    if import.source_module.is_empty() {
+        return false;
+    }
+    owner
+        .file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| import.source_module.rsplit('.').next() == Some(stem))
+}
+
+/// Free-function module-identity evidence: a strong observing test imports the
+/// owner's function *from the owner's module*. This is what distinguishes a
+/// genuine `from src.handler import validate` from a same-named function pulled in
+/// via `from src.checker import validate` — the bare function-name token alone is
+/// not identity-bearing for a free-function owner.
+fn strong_test_imports_owner_from_module(
+    strong_tests: &[&RelatedTest],
+    all_tests: &[PythonTest],
+    owner: &PythonOwner,
+) -> bool {
+    strong_tests.iter().any(|related_test| {
+        all_tests.iter().any(|test| {
+            test.name == related_test.name
+                && test.file == related_test.file
+                && test.imports.iter().any(|import| {
+                    import.imported == owner.name
+                        && import_source_module_matches_owner(import, owner)
+                })
+        })
+    })
 }
 
 fn api_client_route_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -4460,7 +4513,10 @@ fn classify_sink_alignment(
             let imported_matches = if is_method_owner {
                 owner_class_token.as_deref() == Some(import.imported.as_str())
             } else {
-                import.imported == owner_simple || import.imported == owner.name
+                // Free-function alias: require module identity, else a same-named
+                // function aliased from an unrelated module credits a false-`exposed`.
+                (import.imported == owner_simple || import.imported == owner.name)
+                    && import_source_module_matches_owner(import, owner)
             };
             if imported_matches && !import.alias.is_empty() {
                 alias_tokens.push(import.alias.clone());
@@ -4514,6 +4570,13 @@ fn classify_sink_alignment(
     let method_name_observed = method_name_token
         .as_ref()
         .is_some_and(|token| any_strong_observes(std::slice::from_ref(token)));
+    // Free-function module identity: a non-method owner's bare function-name token
+    // credits `direct` only when a strong observing test imports it from the
+    // owner's module. A same-named free function imported from a different module
+    // (`from src.checker import validate` for owner `src.handler.validate`) is not
+    // identity-bearing — the false-`exposed` guard for free functions.
+    let free_fn_module_identity =
+        !is_method_owner && strong_test_imports_owner_from_module(&strong_tests, all_tests, owner);
     // Receiver/value identity for an attribute-assignment changed sink. The bare
     // attribute token (`status`) is collision-prone: a same-named field on an
     // unrelated receiver (`session.status` changed, oracle `conn.status == ...`)
@@ -4537,23 +4600,31 @@ fn classify_sink_alignment(
                     && any_strong_observes(&attr_token))
         }
     };
-    let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens) {
-        ("direct", "strong_oracle_observes_owner_name")
-    } else if method_name_observed && strong_test_binds_method_receiver {
-        (
-            "direct",
-            "strong_oracle_observes_owner_method_on_bound_receiver",
-        )
-    } else if any_strong_observes(&alias_tokens) {
-        ("alias", "strong_oracle_observes_import_alias")
-    } else if any_strong_observes(&change_only) && change_only_credit_ok {
-        (
-            "changed_sink_token",
-            "strong_oracle_observes_changed_sink_token",
-        )
-    } else {
-        ("orthogonal", "strong_oracle_observes_different_sink")
-    };
+    let (oracle_alignment, alignment_reason) =
+        if any_strong_observes(&identity_tokens) && (is_method_owner || free_fn_module_identity) {
+            ("direct", "strong_oracle_observes_owner_name")
+        } else if method_name_observed && strong_test_binds_method_receiver {
+            (
+                "direct",
+                "strong_oracle_observes_owner_method_on_bound_receiver",
+            )
+        } else if any_strong_observes(&alias_tokens) {
+            ("alias", "strong_oracle_observes_import_alias")
+        } else if any_strong_observes(&change_only)
+            && change_only_credit_ok
+            && (is_method_owner || free_fn_module_identity)
+        {
+            // Gate the changed-sink-token path with the same free-function module
+            // identity as the direct/alias paths: a same-named free function from a
+            // different module must not credit `exposed` via this sibling branch
+            // either (the #1249 every-branch lesson). Method owners are unaffected.
+            (
+                "changed_sink_token",
+                "strong_oracle_observes_changed_sink_token",
+            )
+        } else {
+            ("orthogonal", "strong_oracle_observes_different_sink")
+        };
     SinkAlignment {
         changed_sink,
         observed_sink,
@@ -5948,7 +6019,7 @@ def test_build_user_smoke():
         );
         let tests = extract_tests(
             Path::new("tests/test_pricing.py"),
-            "def test_apply_discount():\n    assert apply_discount(100) == 90\n",
+            "from src.pricing import apply_discount\n\n\ndef test_apply_discount():\n    assert apply_discount(100) == 90\n",
         );
 
         let Some(finding) = classify_change(
@@ -6274,6 +6345,122 @@ def test_build_user_smoke():
             finding.class,
             ExposureClass::Exposed,
             "a common assigned value on a different attribute must not credit exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    const HANDLER_SOURCE: &str = "def normalize(payload):\n    return payload.strip()\n";
+    const HANDLER_CHANGED_LINE: &str = "    return payload.strip()";
+
+    #[test]
+    fn free_function_imported_from_other_module_does_not_credit_exposed() -> Result<(), String> {
+        // Cluster B guard: the changed free function is src.handler.normalize, but
+        // the only related test imports a same-named normalize from src.checker.
+        // The bare function-name token is not identity-bearing across modules.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_checker.py"),
+            "from src.checker import normalize\n\n\ndef test_checker_normalize():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a same-named free function imported from a different module is not identity-bearing"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_imported_from_owner_module_credits_exposed() -> Result<(), String> {
+        // Positive control: same-module import + a strong exact-value oracle.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_handler.py"),
+            "from src.handler import normalize\n\n\ndef test_handler_normalize():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "importing the function from the owner's module is identity-bearing"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_aliased_import_from_owner_module_credits_exposed() -> Result<(), String> {
+        // Positive control: aliased same-module import (`as norm`) keeps identity.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("tests/test_handler.py"),
+            "from src.handler import normalize as norm\n\n\ndef test_handler_normalize_alias():\n    assert norm(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an aliased same-module import is identity-bearing"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("alias"));
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_changed_value_token_from_other_module_does_not_credit_exposed()
+    -> Result<(), String> {
+        // Sibling-branch guard (#1249 lesson): even when a wrong-module test's
+        // strong oracle observes the changed VALUE token ("ok"), the
+        // changed_sink_token path must require free-function module identity too —
+        // not just the direct/alias paths.
+        let source = "def classify(payload):\n    return payload.strip() == \"ok\"\n";
+        let owners = extract_owners(Path::new("src/handler.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_checker.py"),
+            "from src.checker import classify\n\n\ndef test_checker_classify():\n    assert classify(\"ok\") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            "    return payload.strip() == \"ok\"",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside classify should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a changed-value token observed by a different-module test is not identity-bearing"
         );
         assert_ne!(
             finding.oracle_alignment.as_deref(),
