@@ -242,6 +242,12 @@ Prefer small, high-signal changes:
   partial/deferred run as complete. A fast path may be partial only if the status
   says so.
 
+When a target file is already a monolith — flagged by `cargo xtask
+module-health` (advisory, exits 0) — the first PR of a capability wave should
+be a behaviour-preserving decomposition. Zero golden drift is the proof that it
+is pure structure: each new capability then lands in a focused module with a
+clear single responsibility, and the blast radius of future changes shrinks.
+
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
 
