@@ -4689,6 +4689,77 @@ fn strong_oracle_observes_owner(
     classify_sink_alignment(owner, line_text, related, all_tests).observes()
 }
 
+/// A changed line that carries no runtime behavior, so there is no behavior delta
+/// for a test to discriminate: a blank line, a `#` comment, or a bare
+/// string-literal expression statement (a docstring or standalone string). Such a
+/// change is a no-op / equivalent mutant — `ripr` must not emit a behavior probe
+/// for it, because crediting `exposed` would imply the tests discriminate a
+/// behavior change that does not exist (#1279).
+///
+/// Conservative by construction: only blank/comment lines and lines that are
+/// ENTIRELY a single non-f-string literal qualify. f-strings are excluded (a bare
+/// f-string statement can evaluate embedded calls), multi-line docstring interiors
+/// are not detected here (only one line is in scope), and annotation-only changes
+/// are intentionally out of scope (annotations can carry runtime meaning in some
+/// frameworks).
+fn is_python_no_behavior_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.is_empty() || trimmed.starts_with('#') || is_bare_string_literal_statement(trimmed)
+}
+
+/// Whether `trimmed` (already whitespace-trimmed) is exactly one Python string
+/// literal with nothing of significance after it — a docstring or standalone
+/// string expression statement. An `f`/`F` prefix is rejected because a bare
+/// f-string can have side effects through embedded expressions; an identity-bearing
+/// prefix is only recognized when it is immediately followed by a quote (an
+/// assignment like `result = "x"` has a separating space and is never matched).
+fn is_bare_string_literal_statement(trimmed: &str) -> bool {
+    let bytes = trimmed.as_bytes();
+    let mut idx = 0;
+    // Optional string prefix (at most two letters, e.g. `r`, `b`, `rb`, `br`, `u`).
+    // `f`/`F` is deliberately absent so formatted strings fall through to `false`.
+    while idx < 2
+        && idx < bytes.len()
+        && matches!(bytes[idx], b'r' | b'R' | b'b' | b'B' | b'u' | b'U')
+    {
+        idx += 1;
+    }
+    let rest = &trimmed[idx..];
+    let rest_bytes = rest.as_bytes();
+    let quote = match rest_bytes.first() {
+        Some(&b'"') => b'"',
+        Some(&b'\'') => b'\'',
+        _ => return false,
+    };
+    let triple = rest_bytes.len() >= 3 && rest_bytes[1] == quote && rest_bytes[2] == quote;
+    if triple {
+        let body = &rest[3..];
+        let close = [quote as char, quote as char, quote as char]
+            .iter()
+            .collect::<String>();
+        match body.find(&close) {
+            Some(pos) => body[pos + 3..].trim().is_empty(),
+            None => false,
+        }
+    } else {
+        let mut escaped = false;
+        for (offset, ch) in rest.char_indices().skip(1) {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch as u32 == u32::from(quote) {
+                return rest[offset + 1..].trim().is_empty();
+            }
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 fn classify_change(
     file: &Path,
@@ -4708,6 +4779,17 @@ fn classify_change_with_old(
     owners: &[PythonOwner],
     all_tests: &[PythonTest],
 ) -> Option<Finding> {
+    // No-op / no-behavior-delta guard (#1279): a docstring-only, comment-only, or
+    // blank-line change has no runtime behavior, so there is nothing for a test to
+    // discriminate. Emit no probe — crediting `exposed` here would falsely imply the
+    // tests notice a behavior change that does not exist. The change is a no-op only
+    // when BOTH sides are non-behavioral: if real code was replaced by a docstring
+    // (old line behavioral), keep analyzing rather than silently dropping it.
+    let new_is_noop = is_python_no_behavior_line(line_text);
+    let old_is_noop = old_line_text.is_none_or(is_python_no_behavior_line);
+    if new_is_noop && old_is_noop {
+        return None;
+    }
     let owner = owner_for_changed_line(file, line, owners)?;
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
@@ -6593,6 +6675,106 @@ def test_build_user_smoke():
             Some("changed_sink_token")
         );
         Ok(())
+    }
+
+    #[test]
+    fn noop_docstring_only_change_emits_no_probe() -> Result<(), String> {
+        // #1279: a docstring-only change has no behavior delta. Even though the
+        // strong `== 80` oracle observes the owner's output, there is nothing for
+        // the test to discriminate, so no behavior probe must be emitted.
+        let source = "def discount(price):\n    \"\"\"Apply the standard discount to a price.\"\"\"\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    \"\"\"Apply the standard discount to a price.\"\"\"",
+            Some("    \"Apply a discount.\""),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a docstring-only change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn noop_comment_only_change_emits_no_probe() -> Result<(), String> {
+        // #1279: a comment-only change is likewise a no-op.
+        let source =
+            "def discount(price):\n    # apply the standard discount\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    # apply the standard discount",
+            Some("    # apply a discount"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a comment-only change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn real_body_change_in_same_function_still_classifies() -> Result<(), String> {
+        // #1279 inverse control: the no-op guard must not suppress a genuine body
+        // change. The same `discount` owner with a real return-value edit still
+        // classifies `exposed` under the strong output oracle.
+        let source = "def discount(price):\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    return price * 0.8",
+            Some("    return price * 0.9"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a real body change must still classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a real return-value change observed by a strong oracle stays exposed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_behavior_line_detection_is_conservative() {
+        // No-op shapes:
+        assert!(is_python_no_behavior_line("    \"\"\"A docstring.\"\"\""));
+        assert!(is_python_no_behavior_line("'''triple single'''"));
+        assert!(is_python_no_behavior_line("    \"single line string\""));
+        assert!(is_python_no_behavior_line("    # a comment"));
+        assert!(is_python_no_behavior_line("   "));
+        assert!(is_python_no_behavior_line("r\"raw docstring\""));
+        assert!(is_python_no_behavior_line("b\"bytes literal\""));
+        // Behavioral shapes must NOT be treated as no-ops:
+        assert!(!is_python_no_behavior_line("    return \"x\""));
+        assert!(!is_python_no_behavior_line("    result = \"x\""));
+        assert!(!is_python_no_behavior_line("    raise ValueError(\"x\")"));
+        assert!(!is_python_no_behavior_line("    f\"{compute()}\""));
+        assert!(!is_python_no_behavior_line("    rf\"{compute()}\""));
+        assert!(!is_python_no_behavior_line("    \"a\" + str(x)"));
+        assert!(!is_python_no_behavior_line("    return price * 0.8"));
     }
 
     #[test]
