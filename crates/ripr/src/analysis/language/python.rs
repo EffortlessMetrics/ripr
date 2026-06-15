@@ -4809,6 +4809,88 @@ fn is_bare_string_literal_statement(trimmed: &str) -> bool {
     }
 }
 
+/// The runtime-significant skeleton of a `def` header, used to decide whether a
+/// change touches ONLY annotations (#1289). It deliberately EXCLUDES every
+/// annotation (parameter and return) and INCLUDES everything that affects runtime
+/// dispatch: async-ness, function name, ordered parameter names, default-value
+/// source text, the positional-only / keyword-only group sizes, and the
+/// `*args`/`**kwargs` names. Two headers with equal skeletons differ only in
+/// annotations.
+type DefSignatureSkeleton = (
+    bool,                          // is_async
+    String,                        // function name
+    usize,                         // positional-only count
+    usize,                         // keyword-only count
+    Vec<(String, Option<String>)>, // ordered (param name, default-value source)
+    Option<String>,                // *args name
+    Option<String>,                // **kwargs name
+);
+
+fn def_signature_skeleton(line: &str) -> Option<DefSignatureSkeleton> {
+    let trimmed = line.trim_start();
+    if !(trimmed.starts_with("def ") || trimmed.starts_with("async def ")) {
+        return None;
+    }
+    // Synthesize a parseable statement: a `def` header alone is not a module.
+    let snippet = format!("{trimmed}\n    pass\n");
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return None;
+    };
+    let (is_async, name, args) = module.body.iter().find_map(|stmt| match stmt {
+        Stmt::FunctionDef(f) => Some((false, f.name.to_string(), &f.args)),
+        Stmt::AsyncFunctionDef(f) => Some((true, f.name.to_string(), &f.args)),
+        _ => None,
+    })?;
+    let slice = |expr: &Expr| -> String {
+        let range = expr.range();
+        snippet
+            .get(usize::from(range.start())..usize::from(range.end()))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let mut params: Vec<(String, Option<String>)> = Vec::new();
+    for arg in args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+    {
+        let default = arg.default.as_ref().map(|expr| slice(expr));
+        params.push((arg.def.arg.to_string(), default));
+    }
+    Some((
+        is_async,
+        name,
+        args.posonlyargs.len(),
+        args.kwonlyargs.len(),
+        params,
+        args.vararg.as_ref().map(|arg| arg.arg.to_string()),
+        args.kwarg.as_ref().map(|arg| arg.arg.to_string()),
+    ))
+}
+
+/// Whether the `def`-header change modifies ONLY type annotations, leaving the
+/// callable's runtime signature unchanged. Python does not enforce annotations at
+/// runtime, so such a change has no behavior delta (#1289). Fails closed: returns
+/// false when either line is not a parseable `def` header, when the lines are
+/// identical, or when anything beyond an annotation differs (e.g. a default-value
+/// change, an added/removed/renamed/reordered parameter, a `/`/`*` marker move, or
+/// an async-ness change).
+fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> bool {
+    if old_line.trim() == new_line.trim() {
+        return false;
+    }
+    match (
+        def_signature_skeleton(old_line),
+        def_signature_skeleton(new_line),
+    ) {
+        (Some(old), Some(new)) => old == new,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 fn classify_change(
     file: &Path,
@@ -4837,6 +4919,18 @@ fn classify_change_with_old(
     let new_is_noop = is_python_no_behavior_line(line_text);
     let old_is_noop = old_line_text.is_none_or(is_python_no_behavior_line);
     if new_is_noop && old_is_noop {
+        return None;
+    }
+    // Annotation-only `def`-header guard (#1289): Python does not enforce type
+    // annotations at runtime, so a `def` change that touches only parameter/return
+    // annotations — leaving the callable's runtime signature (name, parameter names
+    // and order, default VALUES, *args/**kwargs, async-ness) unchanged — has no
+    // behavior delta. Emit no probe rather than crediting `exposed` from a test that
+    // reaches the owner. Requires the paired old line; fails closed when anything
+    // beyond an annotation differs (e.g. a default-value change, which IS behavioral).
+    if let Some(old) = old_line_text
+        && is_annotation_only_def_change(old, line_text)
+    {
         return None;
     }
     let owner = owner_for_changed_line(file, line, owners)?;
@@ -6883,6 +6977,111 @@ def test_build_user_smoke():
             "an augmented-assignment operator change observed only via an unchanged input is not exposed"
         );
         Ok(())
+    }
+
+    #[test]
+    fn annotation_only_def_change_emits_no_probe() -> Result<(), String> {
+        // #1289: changing only a parameter annotation (`int` -> `str`) has no runtime
+        // behavior; Python does not enforce annotations. No probe must be emitted.
+        let source = "def discount(amount: str) -> int:\n    return amount\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount_passthrough():\n    assert discount(100) == 100\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            1,
+            "def discount(amount: str) -> int:",
+            Some("def discount(amount: int) -> int:"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "an annotation-only def change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn return_annotation_only_change_emits_no_probe() -> Result<(), String> {
+        // #1289: a return-annotation-only change is likewise a no-op.
+        let source = "def parse(text):\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/p.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_p.py"),
+            "from src.p import parse\n\n\ndef test_parse():\n    assert parse(\"4\") == 4\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/p.py"),
+            1,
+            "def parse(text) -> str:",
+            Some("def parse(text) -> int:"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a return-annotation-only change must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn default_value_change_in_def_still_classifies() -> Result<(), String> {
+        // #1289 safety: a DEFAULT-VALUE change on a def header is behavioral and must
+        // NOT be mistaken for an annotation-only change. The skeleton captures default
+        // value source text, so this differs and is still analyzed.
+        let source = "def page(size=20):\n    return size\n";
+        let owners = extract_owners(Path::new("src/page.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_page.py"),
+            "from src.page import page\n\n\ndef test_page_default():\n    assert page() == 20\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/page.py"),
+            1,
+            "def page(size=20):",
+            Some("def page(size=10):"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a default-value change is behavioral and must still classify (not suppressed as annotation-only)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_only_detection_is_conservative() {
+        // Annotation-only (suppress):
+        assert!(is_annotation_only_def_change(
+            "def f(x: int):",
+            "def f(x: str):"
+        ));
+        assert!(is_annotation_only_def_change(
+            "def f(x) -> int:",
+            "def f(x) -> str:"
+        ));
+        assert!(is_annotation_only_def_change(
+            "    def m(self, a: int, b: Dict[str, int]) -> None:",
+            "    def m(self, a: str, b: Dict[str, str]) -> None:"
+        ));
+        // NOT annotation-only (must still analyze):
+        assert!(!is_annotation_only_def_change("def f(x=1):", "def f(x=2):")); // default value
+        assert!(!is_annotation_only_def_change("def f(a):", "def f(b):")); // param rename
+        assert!(!is_annotation_only_def_change("def f(a):", "def f(a, b):")); // added param
+        assert!(!is_annotation_only_def_change(
+            "def f(x):",
+            "async def f(x):"
+        )); // async-ness
+        assert!(!is_annotation_only_def_change("def f(x):", "def f(x):")); // identical
+        assert!(!is_annotation_only_def_change(
+            "    return x + 1",
+            "    return x - 1"
+        )); // not a def
     }
 
     #[test]
