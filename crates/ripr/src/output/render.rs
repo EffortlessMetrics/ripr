@@ -864,6 +864,7 @@ mod tests {
             findings,
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         }
     }
 

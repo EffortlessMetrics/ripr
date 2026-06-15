@@ -82,6 +82,7 @@ fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         findings,
         preview_language_advisories: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
     }
 }
 

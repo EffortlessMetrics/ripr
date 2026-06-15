@@ -4104,3 +4104,101 @@ fn check_with_base_scope_does_not_show_no_scope_disclosure_smoke() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// RIPR-SPEC-0112 regression guards: --base must disclose uncommitted working-tree changes.
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD --json` with an uncommitted change to a
+/// tracked .rs file must emit `unanalyzed_working_tree: true` in JSON and the human
+/// Note in stdout. The committed diff vs HEAD is empty (no new commits), so findings
+/// are zero — this is the false-clean case the disclosure must prevent.
+#[test]
+fn check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-fires");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // Make an UNCOMMITTED edit to a tracked .rs file — this is the uncommitted change
+    // that --base HEAD will not analyze.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b + 1 }\n",
+    )
+    .unwrap();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    // JSON mode: assert unanalyzed_working_tree == true
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"unanalyzed_working_tree\": true"),
+        "check --base HEAD with uncommitted edit must emit unanalyzed_working_tree: true in JSON; got:\n{stdout}"
+    );
+    // Human mode: assert the Note is present
+    let output_human = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD"])
+        .output()
+        .unwrap();
+    let human = String::from_utf8_lossy(&output_human.stdout);
+    assert!(
+        human.contains("uncommitted changes to tracked source were not analyzed"),
+        "check --base HEAD with uncommitted edit must show Note in human output; got:\n{human}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD` with a CLEAN worktree (no uncommitted changes)
+/// must NOT show the unanalyzed-working-tree disclosure. A genuinely clean worktree
+/// means no uncommitted edits — the disclosure must not fire.
+#[test]
+fn check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-clean");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-clean-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // No uncommitted changes — worktree is clean.
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("unanalyzed_working_tree"),
+        "check --base HEAD with clean worktree must NOT emit unanalyzed_working_tree; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("uncommitted changes"),
+        "check --base HEAD with clean worktree must NOT mention uncommitted changes; got:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

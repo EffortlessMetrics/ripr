@@ -85,6 +85,13 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str("    }\n");
         out.push_str("  ]");
     }
+    // Additive advisory field — emitted when --base was used and the working tree
+    // has uncommitted changes to tracked source that were NOT analyzed.
+    // Absent when --diff was used (file diff mode) or the worktree is clean.
+    // See RIPR-SPEC-0112.
+    if output.unanalyzed_working_tree {
+        out.push_str(",\n  \"unanalyzed_working_tree\": true");
+    }
     // Additive advisory field — emitted only when preview-language files were
     // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
     if !output.preview_language_advisories.is_empty() {

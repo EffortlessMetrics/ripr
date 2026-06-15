@@ -39,6 +39,16 @@ Run `ripr check --base origin/main` to analyze your changes, or \
 An empty result here does NOT mean your changed behavior is covered.\n",
             );
         }
+        // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+        // changes were NOT analyzed. An empty result here does NOT mean those changes
+        // are covered — they were excluded from the committed-history diff.
+        if output.unanalyzed_working_tree {
+            out.push_str(
+                "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only — commit or stage these changes and re-run, \
+or analyze a committed branch with `ripr check --base origin/main`.\n",
+            );
+        }
         render_preview_language_advisories(&mut out, output);
         return out;
     }
@@ -48,6 +58,16 @@ An empty result here does NOT mean your changed behavior is covered.\n",
         out.push('\n');
     }
     render_all_no_path_disclosure(&mut out, output);
+    // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+    // changes were NOT analyzed. Fires whether or not the committed diff had findings —
+    // those uncommitted edits are still unanalyzed regardless.
+    if output.unanalyzed_working_tree {
+        out.push_str(
+            "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only; run `ripr check` (no --base) to analyze \
+your working tree.\n",
+        );
+    }
     render_preview_language_advisories(&mut out, output);
     out
 }
@@ -167,6 +187,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -729,6 +750,7 @@ mod tests {
                 enabled: true,
             }],
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -764,6 +786,7 @@ mod tests {
                 enabled: true,
             }],
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -790,6 +813,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -822,6 +846,7 @@ mod tests {
                 enabled: true,
             }],
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -852,6 +877,7 @@ mod tests {
                 enabled: false,
             }],
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -904,6 +930,7 @@ mod tests {
                 enabled: false,
             }],
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -972,6 +999,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1015,6 +1043,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1045,6 +1074,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1076,6 +1106,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1110,6 +1141,7 @@ mod tests {
             findings: vec![unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1147,6 +1179,7 @@ mod tests {
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1178,6 +1211,7 @@ mod tests {
             findings: vec![sample_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1205,6 +1239,7 @@ mod tests {
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1229,6 +1264,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1258,6 +1294,7 @@ mod tests {
             findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1286,6 +1323,7 @@ mod tests {
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);

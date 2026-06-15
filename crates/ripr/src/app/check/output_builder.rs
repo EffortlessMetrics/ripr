@@ -16,5 +16,6 @@ pub(super) fn check_output_from_analysis(
         findings: analysis.findings,
         preview_language_advisories: analysis.preview_language_advisories,
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
     }
 }

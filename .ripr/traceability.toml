@@ -6093,3 +6093,27 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0112"
+name = "disclose unanalyzed working tree when using --base"
+spec = "docs/specs/RIPR-SPEC-0112-disclose-unanalyzed-working-tree.md"
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure",
+  "crates/ripr/tests/cli_smoke.rs::check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/analysis/diff/load.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json/report.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0112-disclose-unanalyzed-working-tree.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

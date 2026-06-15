@@ -7,12 +7,12 @@
 # must name the owner and reason instead of drifting into domain or analysis
 # logic unnoticed.
 
-crates/ripr/src/analysis/diff/load.rs|Command::new|15|analysis/diff|RIPR-SPEC-0084: git diff adapter resolves the real default base branch (symbolic-ref, origin/main, origin/master, local main/master) and fail-closes with a named message; production helpers (run_git_diff, git_symbolic_ref_quiet, git_ref_exists) plus test module temp-repo setup.
+crates/ripr/src/analysis/diff/load.rs|Command::new|16|analysis/diff|RIPR-SPEC-0084: git diff adapter resolves the real default base branch (symbolic-ref, origin/main, origin/master, local main/master) and fail-closes with a named message; production helpers (run_git_diff, git_symbolic_ref_quiet, git_ref_exists) plus test module temp-repo setup. RIPR-SPEC-0112: working_tree_has_tracked_changes (git status --porcelain) discloses when --base excludes uncommitted edits.
 crates/ripr/src/analysis/diff/load.rs|use std::process::Command|2|analysis/diff|Git diff adapter and its test module both import Command directly.
 crates/ripr/src/cli/commands.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
 crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|First-pr setup preflight validates git worktree, base/head refs, and diff range before assigning repair work; unit tests initialize temp git repos for those fail-closed packets.
 crates/ripr/src/output/first_pr.rs|use std::process::Command|1|first-pr/front-door-polish|First-pr setup preflight imports Command for bounded git probes and temp-git test setup.
-crates/ripr/tests/cli_smoke.rs|Command::new|5|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides; +2 for RIPR-SPEC-0083 regression guard smoke tests.
+crates/ripr/tests/cli_smoke.rs|Command::new|8|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides; +2 for RIPR-SPEC-0083 regression guard smoke tests; +3 for RIPR-SPEC-0112 unanalyzed-working-tree smoke tests (2 invocations in fires test + 1 in clean-worktree test).
 crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
 editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.

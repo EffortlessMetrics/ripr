@@ -900,6 +900,34 @@ requires no disclosure.
 - `category` — always `"no_scope_disclosure"` for machine filtering
 - `why` — advisory rationale string guiding the user to the correct invocation
 
+### `unanalyzed_working_tree` (top-level additive boolean, RIPR-SPEC-0112)
+
+Added as an additive optional top-level boolean. Emitted (as `true`) only when
+ALL of the following are true:
+
+1. `ripr check --base <rev>` was invoked (i.e. `--base` was explicit).
+2. `--diff <file>` was NOT also supplied.
+3. The working tree has at least one uncommitted change to a tracked source
+   file, as reported by `git status --porcelain`.
+
+Absent (not emitted) when `false`. Does not bump `schema_version`.
+
+This field closes the false-clean gap where `ripr check --base HEAD` with an
+uncommitted `.rs` edit returns 0 probes and exit 0 — a result that is honest
+for the committed diff but misleading if the user assumes it covers their
+working-tree change. When `unanalyzed_working_tree: true` is present, the
+result is NOT a clean pass for the uncommitted changes.
+
+Example:
+
+```json
+"unanalyzed_working_tree": true
+```
+
+The field is absent when the worktree is clean, when `--diff <file>` was used
+instead of `--base`, or when `git status --porcelain` cannot be run
+(fail-closed: no fabricated disclosure).
+
 ## Enums
 
 `classification` values:

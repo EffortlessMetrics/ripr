@@ -152,6 +152,7 @@ mod tests {
             ],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -271,6 +272,7 @@ mod tests {
             ],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -436,6 +438,7 @@ mod tests {
             ],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1039,6 +1042,7 @@ mod tests {
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         }
     }
 
@@ -1109,6 +1113,7 @@ mod tests {
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1153,6 +1158,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1205,6 +1211,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1236,6 +1243,7 @@ mod tests {
             findings: vec![],
             preview_language_advisories: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);

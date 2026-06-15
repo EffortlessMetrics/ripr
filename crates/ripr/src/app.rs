@@ -131,6 +131,12 @@ pub struct CheckOutput {
     /// state does NOT mean the changed behavior is covered — it means nothing
     /// was analyzed. See RIPR-SPEC-0083.
     pub no_scope_provided: bool,
+    /// When `true`, `--base` was used to analyze committed history AND the
+    /// working tree has uncommitted changes to tracked source files that were
+    /// NOT part of the analyzed diff. An empty result in this state does NOT
+    /// mean the working-tree changes are covered — they were silently excluded
+    /// from the analysis. See RIPR-SPEC-0112.
+    pub unanalyzed_working_tree: bool,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

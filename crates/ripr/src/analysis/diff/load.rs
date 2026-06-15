@@ -107,6 +107,26 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
     )
 }
 
+/// Return `true` when the working tree at `root` has uncommitted changes to
+/// tracked source files (staged or unstaged).
+///
+/// Runs `git status --porcelain` and treats any output line as a change.
+/// Fail-closed: if git cannot be run or the directory is not a git repo,
+/// returns `false` (does NOT fabricate a disclosure).
+///
+/// RIPR-SPEC-0112: used to disclose when `--base` analyzed committed history
+/// while uncommitted working-tree changes were silently excluded.
+pub fn working_tree_has_tracked_changes(root: &Path) -> bool {
+    let result = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(root)
+        .output();
+    match result {
+        Ok(out) if out.status.success() => !out.stdout.is_empty(),
+        _ => false,
+    }
+}
+
 fn run_git_diff(root: &Path, range: &str, extra_args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
         .arg("diff")

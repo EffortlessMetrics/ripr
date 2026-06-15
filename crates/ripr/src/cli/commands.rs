@@ -3429,6 +3429,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
+    // Capture root and diff_file before input is moved into the analysis call.
+    // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
+    let input_root = input.root.clone();
+    let input_diff_file_is_some = input.diff_file.is_some();
     let mut output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
@@ -3445,6 +3449,19 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
     if !scope_explicitly_provided && output.findings.is_empty() {
         output.no_scope_provided = true;
+    }
+    // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
+    // diff) AND the working tree has uncommitted changes to tracked source files.
+    // Those changes were NOT analyzed. A zero-finding result in this state must NOT
+    // be read as a clean pass — the user's uncommitted edits were excluded from the diff.
+    // Fires independent of findings.is_empty() (honest whether or not committed diff
+    // had findings), but the false-clean risk is highest when findings are empty.
+    // Does NOT fire when --diff was used (file-based diff; no live worktree scope).
+    if base_explicitly_provided
+        && !input_diff_file_is_some
+        && analysis::working_tree_has_tracked_changes(&input_root)
+    {
+        output.unanalyzed_working_tree = true;
     }
     write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
     Ok(())
