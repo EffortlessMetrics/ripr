@@ -5429,6 +5429,13 @@ fn analyze_call_args(args: &str) -> Option<CallArgShape> {
         if trimmed.starts_with('*') {
             return None; // *args / **kwargs unpack: binding is undecidable
         }
+        // A `#` inside an argument segment is an inline comment (legal in a
+        // multi-line call). A comment can hide a `)` that `split_top_level_args`
+        // already mis-counted, or carry text that inflates `positional_count`,
+        // so the binding is ambiguous — fail open rather than risk a false-clean.
+        if trimmed.contains('#') {
+            return None;
+        }
         match call_segment_keyword_name(trimmed) {
             Some(name) => keywords.push(name.to_string()),
             None => positional_count += 1,
@@ -5496,6 +5503,14 @@ fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<&'a str> {
         if let Some(prev) = body[..name_start].chars().next_back()
             && (prev == '_' || prev == '.' || prev.is_alphanumeric())
         {
+            continue;
+        }
+        // The match must be live code, not a mention inside a comment or a
+        // string literal. A `# comment` or an unclosed quote on the same line
+        // before the name means this occurrence is not an executable call; a
+        // comment containing `)` would otherwise break `matching_call_paren` and
+        // a string mention would invent a call that does not run.
+        if line_prefix_looks_like_comment_or_string(body, name_start) {
             continue;
         }
         let rest = &body[name_end..];
@@ -5875,7 +5890,29 @@ fn classify_change_with_old(
         && matches!(class, ExposureClass::WeaklyExposed)
         && has_oracle_eligible_relation
     {
-        python_missing_discriminators(&family, line, line_text, owner, flow_sink.as_ref())
+        if let Some(params) = &changed_default_override {
+            // The override downgrade names a specific, actionable missing
+            // discriminator — "call the owner WITHOUT the changed-default
+            // parameter(s)" — that the generic `python_missing_discriminators`
+            // cannot derive for a `def` header (no comparison operator to read).
+            // Populate it directly so the structured field (repair card,
+            // recommended_next_step) carries the omission guidance, not just the
+            // top-level `missing` string.
+            vec![MissingDiscriminatorFact {
+                value: format!(
+                    "call `{}` without {}",
+                    owner.name,
+                    format_param_name_list(params)
+                ),
+                reason: format!(
+                    "changed default parameter(s) {} at line {line} are always explicitly bound, so the default is never exercised",
+                    format_param_name_list(params)
+                ),
+                flow_sink: flow_sink.clone(),
+            }]
+        } else {
+            python_missing_discriminators(&family, line, line_text, owner, flow_sink.as_ref())
+        }
     } else {
         Vec::new()
     };
@@ -8113,10 +8150,25 @@ def test_build_user_smoke():
         ) else {
             return Err("a default-value change should classify".to_string());
         };
-        assert_ne!(
+        assert_eq!(
             finding.class,
-            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
             "an explicit kwarg override does not exercise the changed default"
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("without `verbose`")),
+            "the downgrade must name the parameter to test by omission"
+        );
+        assert!(
+            finding
+                .activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.value == "call `render` without `verbose`"),
+            "the structured missing discriminator must carry the omission guidance"
         );
         Ok(())
     }
@@ -8141,10 +8193,25 @@ def test_build_user_smoke():
         ) else {
             return Err("a default-value change should classify".to_string());
         };
-        assert_ne!(
+        assert_eq!(
             finding.class,
-            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
             "an explicit positional override does not exercise the changed default"
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("without `verbose`")),
+            "the downgrade must name the parameter to test by omission"
+        );
+        assert!(
+            finding
+                .activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.value == "call `render` without `verbose`"),
+            "the structured missing discriminator must carry the omission guidance"
         );
         Ok(())
     }
@@ -8230,6 +8297,9 @@ def test_build_user_smoke():
         // *args / **kwargs unpacking is undecidable -> None (fail open).
         assert!(analyze_call_args("*args").is_none());
         assert!(analyze_call_args("a, **kwargs").is_none());
+        // An inline `# comment` in the arglist makes binding ambiguous -> None
+        // (fail open, never a false-clean from a comment-parsed `)` or text).
+        assert!(analyze_call_args("a  # note with ) paren").is_none());
         Ok(())
     }
 
@@ -8240,6 +8310,17 @@ def test_build_user_smoke():
         let calls = free_function_call_arglists(body, "render");
         // `obj.render(...)` (method access) and `renderer(...)` (longer name) excluded.
         assert_eq!(calls, vec!["\"Sam\"", "\"Z\", verbose=False"]);
+    }
+
+    #[test]
+    fn free_function_call_arglists_skips_comment_and_string_mentions() {
+        // A `# comment` or string literal that mentions the owner name must not be
+        // read as a live call: a comment with `)` would otherwise break paren
+        // matching and a string mention would invent a call that does not run.
+        let body = "render(\"Sam\")\n# see also render(other)\nx = \"render(unparsed)\"\n";
+        let calls = free_function_call_arglists(body, "render");
+        // Only the first, real call is captured.
+        assert_eq!(calls, vec!["\"Sam\""]);
     }
 
     #[test]
