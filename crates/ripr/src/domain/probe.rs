@@ -64,6 +64,10 @@ pub enum StopReason {
     InfectionEvidenceUnknown,
     PropagationEvidenceUnknown,
     StaticProbeUnknown,
+    /// A bounded transitive-reach walk found a candidate path (test -> ... ->
+    /// owner) that ripr cannot fully resolve (lexical-only, name-match only).
+    /// Classification stays `no_static_path`. See RIPR-SPEC-0114.
+    TransitiveReachUnresolved,
 }
 
 impl StopReason {
@@ -80,6 +84,7 @@ impl StopReason {
             StopReason::InfectionEvidenceUnknown => "infection_evidence_unknown",
             StopReason::PropagationEvidenceUnknown => "propagation_evidence_unknown",
             StopReason::StaticProbeUnknown => "static_probe_unknown",
+            StopReason::TransitiveReachUnresolved => "transitive_reach_unresolved",
         }
     }
 

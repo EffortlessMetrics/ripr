@@ -505,3 +505,11 @@ path = "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Honest no_static_path messaging (P2 first-run-trust campaign): replace 'add a test' wording (implies no test exists) with 'A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace'; message-only change (no classification, no schema, no exit code change); single pub(crate) const in domain/classification.rs; ~33 golden fixtures re-blessed message-only; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0114"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach limitation (P3 slice-a, first-run-trust campaign): when a no_static_path finding has no related tests but a bounded BFS walk (depth<=3) over lexical call facts finds a candidate path test->...->owner, name the limitation as static_limit_kind=rust_transitive_reach_unresolved; fail-closed (classification NEVER promoted, message uses 'may' language, walk stops at macros/externals/depth>3); additive static_limit_kind value only (no schema_version bump, no version bump); 7 unit tests in classify/transitive_reach.rs; 2 pure-example fixtures."

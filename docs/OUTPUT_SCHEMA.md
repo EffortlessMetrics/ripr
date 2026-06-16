@@ -976,6 +976,7 @@ instead of `--base`, or when `git status --porcelain` cannot be run
 - `unresolved_pytest_fixture`
 - `unsupported_syntax`
 - `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
+- `rust_transitive_reach_unresolved` — (RIPR-SPEC-0114, additive) A test appears to call public API that may transitively reach the changed Rust owner through a pub->pub(crate) helper chain or similar internal call graph, but ripr cannot fully resolve the path (macros, generics, trait dispatch, or depth>3 stop the walk). Classification stays `no_static_path`; this is a named limitation, not a coverage claim.
 
 Reserved `flow_sink` values:
 

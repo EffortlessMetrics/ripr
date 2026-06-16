@@ -9,7 +9,9 @@
 //! diff, dispatches to this adapter, and applies sort + summary on the
 //! returned findings.
 
-use super::super::{AnalysisOptions, classifier, diff::ChangedFile, probes, rust_index, workspace};
+use super::super::{
+    AnalysisOptions, classifier, classify, diff::ChangedFile, probes, rust_index, workspace,
+};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::facts::FunctionSummary;
 use crate::config::OraclePolicy;
@@ -109,6 +111,25 @@ fn cross_language_limit_kind(
     }
 }
 
+/// Extract the bare function name from a probe's owner SymbolId for the
+/// transitive-reach walk. The SymbolId format is "path::fn_name" or
+/// "path::module::fn_name"; we return the last segment.
+/// Returns None when the owner id is absent or the name is empty.
+fn owner_name_from_id(
+    owner: &Option<crate::domain::SymbolId>,
+    _file: &std::path::Path,
+) -> Option<String> {
+    let id = owner.as_ref()?;
+    // SymbolId format: "crates/ripr/src/lib.rs::pricing::score" or similar.
+    // Take the last "::"-delimited segment.
+    let name = id.0.split("::").last().unwrap_or("");
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
 /// Reference adapter for Rust.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RustAdapter;
@@ -165,6 +186,26 @@ impl LanguageAdapter for RustAdapter {
                 let mut finding = classifier::classify_probe(&probe, &index);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
+                // RIPR-SPEC-0114: when the direct-call classifier finds no related
+                // test (no_static_path + empty related_tests), run the bounded
+                // transitive-reach walk. If a candidate path is found, name the
+                // limitation. Classification NEVER changes (fail-closed).
+                if finding.class == ExposureClass::NoStaticPath
+                    && finding.related_tests.is_empty()
+                    && finding.static_limit_kind.is_none()
+                    && owner_name_from_id(&probe.owner, &probe.location.file).is_some_and(
+                        |owner_name| classify::has_transitive_candidate(&owner_name, &index),
+                    )
+                {
+                    finding.static_limit_kind =
+                        Some(StaticLimitKind::RustTransitiveReachUnresolved);
+                    finding
+                        .stop_reasons
+                        .push(crate::domain::StopReason::TransitiveReachUnresolved);
+                    finding
+                        .evidence
+                        .push(classify::RUST_TRANSITIVE_REACH_MESSAGE.to_string());
+                }
                 // Fail closed on cross-language seams: when the probe owner
                 // carries an FFI/binding attribute, replace any Rust-gap
                 // static_limit_kind with the cross-language limitation so
@@ -212,6 +253,23 @@ impl LanguageAdapter for RustAdapter {
                 let mut finding = classifier::classify_probe(&probe, &index);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
+                // RIPR-SPEC-0114: transitive-reach walk for repo-mode (same logic as diff-mode).
+                if finding.class == ExposureClass::NoStaticPath
+                    && finding.related_tests.is_empty()
+                    && finding.static_limit_kind.is_none()
+                    && owner_name_from_id(&probe.owner, &probe.location.file).is_some_and(
+                        |owner_name| classify::has_transitive_candidate(&owner_name, &index),
+                    )
+                {
+                    finding.static_limit_kind =
+                        Some(StaticLimitKind::RustTransitiveReachUnresolved);
+                    finding
+                        .stop_reasons
+                        .push(crate::domain::StopReason::TransitiveReachUnresolved);
+                    finding
+                        .evidence
+                        .push(classify::RUST_TRANSITIVE_REACH_MESSAGE.to_string());
+                }
                 // Fail closed on cross-language seams (#910).
                 if let Some(limit) = cross_language_limit_kind(&probe, &index, &finding.class) {
                     finding.static_limit_kind = Some(limit);

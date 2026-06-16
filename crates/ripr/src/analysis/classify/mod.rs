@@ -7,6 +7,7 @@ mod reach;
 mod related_tests;
 mod reveal;
 mod text;
+mod transitive_reach;
 
 pub(in crate::analysis) use activation::activation_evidence;
 pub(in crate::analysis) use context::ProbeContext;
@@ -22,3 +23,7 @@ pub(in crate::analysis) use reveal::reveal_evidence;
 // RIPR-SPEC-0106: re-export the variant parsers so test_grip_evidence.rs can
 // apply variant-binding without reaching into the private `text` submodule.
 pub(in crate::analysis) use text::{enum_variant_values, exact_error_variant};
+// RIPR-SPEC-0114: bounded transitive-reach walk for Rust no_static_path findings.
+pub(in crate::analysis) use transitive_reach::{
+    RUST_TRANSITIVE_REACH_MESSAGE, has_transitive_candidate,
+};

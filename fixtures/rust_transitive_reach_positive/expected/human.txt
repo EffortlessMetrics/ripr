@@ -1,0 +1,76 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_transitive_reach_positive/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 0 unknown
+
+WARNING fixtures/rust_transitive_reach_positive/input/src/internal.rs:2
+
+Changed
+  before: if a > b {
+  after:  if a >= b {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/internal.rs::inner
+
+Static exposure
+  no_static_path (warning, confidence 0.48)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation yes: Changed behavior appears to influence returned value: a - b
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches returned value: a - b (line 3)
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Stop reasons:
+  - transitive_reach_unresolved
+
+Next step
+  ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+
+WARNING fixtures/rust_transitive_reach_positive/input/src/internal.rs:2
+
+Changed
+  before: if a > b {
+  expr:   if a > b {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/internal.rs::inner
+
+Static exposure
+  no_static_path (warning, confidence 0.48)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation yes: Changed behavior appears to influence returned value: a - b
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches returned value: a - b (line 3)
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Stop reasons:
+  - transitive_reach_unresolved
+
+Next step
+  ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+
+
+Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.

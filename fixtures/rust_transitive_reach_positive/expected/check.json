@@ -1,0 +1,108 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_transitive_reach_positive/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":2,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_internal.rs:predicate:114f2322",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_internal.rs:predicate:114f2322",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_transitive_reach_positive/input/src/internal.rs",
+        "line": 2,
+        "expression": "if a >= b {"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No tests were found, so activation/infection cannot be estimated"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: a - b"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No tests were found, so activation/infection cannot be estimated", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: a - b (line 3)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"a - b","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed."],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["transitive_reach_unresolved"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "static_limit_kind": "rust_transitive_reach_unresolved"
+    },
+    {
+      "id": "probe:src_internal.rs:predicate:10b08bc9",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_internal.rs:predicate:10b08bc9",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_transitive_reach_positive/input/src/internal.rs",
+        "line": 2,
+        "expression": "if a > b {"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No tests were found, so activation/infection cannot be estimated"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: a - b"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No tests were found, so activation/infection cannot be estimated", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: a - b (line 3)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"a - b","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed."],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["transitive_reach_unresolved"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "static_limit_kind": "rust_transitive_reach_unresolved"
+    }
+  ]
+}

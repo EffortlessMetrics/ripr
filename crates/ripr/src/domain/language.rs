@@ -130,6 +130,13 @@ pub enum StaticLimitKind {
     /// behavior is not statically known — verify the external oracle rather
     /// than adding a Rust test.
     CrossLanguageOracleVisibilityUnresolved,
+    /// A test appears to call public API that may transitively reach the
+    /// changed owner through a `pub -> pub(crate)` helper chain or similar
+    /// internal call graph, but ripr's lexical call facts cannot fully resolve
+    /// the path (macro invocations, generics, trait dispatch, or depth > 3
+    /// stop the walk). The classification stays `no_static_path` -- this label
+    /// is a named limitation, not a coverage claim. See RIPR-SPEC-0114.
+    RustTransitiveReachUnresolved,
 }
 
 impl StaticLimitKind {
@@ -149,6 +156,7 @@ impl StaticLimitKind {
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved => {
                 "cross_language_oracle_visibility_unresolved"
             }
+            StaticLimitKind::RustTransitiveReachUnresolved => "rust_transitive_reach_unresolved",
         }
     }
 }
@@ -238,6 +246,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved.as_str(),
             "cross_language_oracle_visibility_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustTransitiveReachUnresolved.as_str(),
+            "rust_transitive_reach_unresolved"
         );
     }
 }
