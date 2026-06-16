@@ -1532,3 +1532,29 @@ mis-reads an f-string (`f"{value:.3f}"`) as a dict literal — require the expre
 to *start with* the literal opener, and re-run the full adversarial trap set after
 merge to catch downgraded positives (goldens won't cover a synthetic trap that has no
 fixture).
+
+## 2026-06-16: "Observed but not reached" is a distinct, tractable false-`exposed` family from "observed the wrong part"
+
+Trap 45 (changed default value not exercised) is a *third* tractable sink-precision
+shape, orthogonal to the dict/list/f-string "wrong part of the output" gates. Here the
+oracle observes the owner's output *correctly and exactly*, but the changed code path
+is **never reached**: `def render(name, verbose=True)` changes its default, yet the
+only strong test calls `render("Sam", verbose=False)` — binding the parameter
+explicitly, so the default is irrelevant and the assertion passes identically before
+and after. This is *static and in-contract* (no evaluation needed — argument binding is
+syntactic), so it is `ripr`'s to fix, unlike the runtime-equivalence floor. The
+mirror image of error-path Class C (`raise` change on an untaken branch): both are
+"strong oracle reaches the owner but the *specific changed behavior* is not exercised."
+
+**Implementation rule that keeps it honest (fail open, never false-clean):** block
+`exposed` only when you can *positively prove* every strong reaching call overrides the
+changed default. Concretely (`changed_default_overridden_params`): (a) restrict to a
+*pure* default-value change (added/removed default, rename, or method/classmethod owner
+→ fail open — a method's implicit `self`/`cls` shifts positional indexing); (b) require
+**each** strong related test to contain at least one *directly analyzable* `owner(...)`
+call — if a strong test reaches the owner via an alias/wrapper the scanner can't
+resolve, fail open (it might omit the parameter and be the real discriminator); (c)
+treat `*args`/`**kwargs` unpacking or any unparseable call as fail-open. A coarse
+"does any related test omit the param" gate is *not* safe — a sibling override test plus
+an aliased omitting test would wrongly block. Per-candidate "must have a direct call I
+can read" is what avoids the false-clean.

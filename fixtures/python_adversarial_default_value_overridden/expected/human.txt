@@ -1,0 +1,45 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_default_value_overridden/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/render.py:1
+
+Changed
+  after:  def render(name, verbose=True):
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/render.py::render
+  canonical gap: gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `render`
+  - infection yes: Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`
+  - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches unknown sink: def render(name, verbose=True): (line 1)
+  - related test tests/test_render.py:4 test_render_explicit_verbose_false uses strong exact value oracle: assert render("Sam", verbose=False) == "Sam"
+
+Weakness
+  - A strong Python oracle reaches `render`, but every related call passes `verbose` explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `render` without `verbose` to exercise the changed default.
+
+Repair placement
+  suggested file: tests/test_render.py
+  suggested test: test_render_explicit_verbose_false
+  pytest node: tests/test_render.py::test_render_explicit_verbose_false
+  verify: pytest tests/test_render.py::test_render_explicit_verbose_false (high)
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

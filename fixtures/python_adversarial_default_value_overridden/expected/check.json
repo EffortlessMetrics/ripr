@@ -1,0 +1,103 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_default_value_overridden/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_render.py:python_preview:bc1138cb",
+      "canonical_gap_id": "gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true",
+        "language": "python",
+        "file": "src/render.py",
+        "owner": "render",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "def_render_name_verbose=true"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_render.py:python_preview:bc1138cb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/render.py",
+        "line": 1,
+        "expression": "def render(name, verbose=True):",
+        "owner": "python:src/render.py::render"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `render`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `render`", "infection yes: Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`", "propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: def render(name, verbose=True): (line 1)", "related test tests/test_render.py:4 test_render_explicit_verbose_false uses strong exact value oracle: assert render(\"Sam\", verbose=False) == \"Sam\""],
+      "flow_sinks": [
+        {"kind":"unknown","text":"def render(name, verbose=True):","line":1}
+      ],
+      "evidence": ["owner: render", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_render.py", "suggested_test_name: test_render_explicit_verbose_false", "suggested_test_node_id: tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command: pytest tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_render_explicit_verbose_false)", "test_verify_command: pytest tests/test_render.py::test_render_explicit_verbose_false (test_render_explicit_verbose_false)", "related_test_relation: syntactic_call (test_render_explicit_verbose_false)", "test_oracle: exact_value strong (test_render_explicit_verbose_false)"],
+      "missing": ["A strong Python oracle reaches `render`, but every related call passes `verbose` explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `render` without `verbose` to exercise the changed default."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_render_explicit_verbose_false",
+          "file": "tests/test_render.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert render(\"Sam\", verbose=False) == \"Sam\""
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_render.py",
+        "suggested_test_name": "test_render_explicit_verbose_false",
+        "suggested_test_node_id": "tests/test_render.py::test_render_explicit_verbose_false",
+        "verify_command": "pytest tests/test_render.py::test_render_explicit_verbose_false",
+        "verify_command_confidence": "high"
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "render, name, verbose",
+      "observed_sink": "assert render(\"Sam\", verbose=False) == \"Sam\"",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/render.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

@@ -5258,6 +5258,336 @@ fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> bool {
     }
 }
 
+/// A parameter whose default VALUE changed in a `def`-header diff, with the
+/// position metadata needed to decide whether a call binds it.
+struct ChangedDefaultParam {
+    name: String,
+    /// 0-based index in the full ordered parameter list (posonly ++ args ++ kwonly).
+    index: usize,
+    /// Whether a positional argument at `index` can bind this parameter. False for
+    /// a keyword-only parameter, which a positional argument can never reach.
+    positionally_bindable: bool,
+}
+
+/// The parameters whose default VALUE changed between two `def` headers, when the
+/// change is a PURE default-value change (value -> different value) and nothing
+/// else about the runtime signature differs. Returns None — leaving classification
+/// untouched — for a non-`def` line, an added/removed default (which changes
+/// requiredness, not just a value), a renamed/reordered/added parameter, an
+/// async-ness change, or a `*args`/`**kwargs` change, or when no default value
+/// actually changed. Fails closed: anything it cannot prove is a pure
+/// default-value change yields None.
+fn changed_default_value_params(
+    old_line: &str,
+    new_line: &str,
+) -> Option<Vec<ChangedDefaultParam>> {
+    let (old_async, old_name, old_pos, old_kw, old_params, old_va, old_kwa) =
+        def_signature_skeleton(old_line)?;
+    let (new_async, new_name, new_pos, new_kw, new_params, new_va, new_kwa) =
+        def_signature_skeleton(new_line)?;
+    if old_async != new_async
+        || old_name != new_name
+        || old_pos != new_pos
+        || old_kw != new_kw
+        || old_va != new_va
+        || old_kwa != new_kwa
+        || old_params.len() != new_params.len()
+    {
+        return None;
+    }
+    let positional_capacity = new_params.len().saturating_sub(new_kw);
+    let mut changed = Vec::new();
+    for (index, (old_param, new_param)) in old_params.iter().zip(new_params.iter()).enumerate() {
+        if old_param.0 != new_param.0 {
+            return None; // renamed / reordered parameter
+        }
+        match (&old_param.1, &new_param.1) {
+            (Some(old_default), Some(new_default)) if old_default != new_default => {
+                changed.push(ChangedDefaultParam {
+                    name: new_param.0.clone(),
+                    index,
+                    positionally_bindable: index < positional_capacity,
+                });
+            }
+            (Some(_), Some(_)) | (None, None) => {}
+            // Added or removed default changes requiredness, not just a value.
+            (Some(_), None) | (None, Some(_)) => return None,
+        }
+    }
+    (!changed.is_empty()).then_some(changed)
+}
+
+/// The argument shape of a single call: how many positional arguments precede any
+/// keyword arguments, and the set of keyword-argument names.
+struct CallArgShape {
+    positional_count: usize,
+    keywords: Vec<String>,
+}
+
+impl CallArgShape {
+    fn binds(&self, param: &ChangedDefaultParam) -> bool {
+        if self.keywords.iter().any(|name| name == &param.name) {
+            return true;
+        }
+        param.positionally_bindable && param.index < self.positional_count
+    }
+}
+
+/// Splits a call's argument-list text into top-level argument segments, respecting
+/// quotes and nested brackets: `a, g(b, c), d=1` -> `["a", " g(b, c)", " d=1"]`.
+fn split_top_level_args(args: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (idx, ch) in args.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                segments.push(&args[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    segments.push(&args[start..]);
+    segments
+}
+
+/// The keyword-argument name of a single call-argument segment (`rate=0.2` ->
+/// `Some("rate")`), or None when the segment is positional. Guards against
+/// comparison operators (`x == 1`, `a != b`, `n <= 3`) so a positional boolean
+/// expression is not misread as a keyword binding.
+fn call_segment_keyword_name(segment: &str) -> Option<&str> {
+    let chars: Vec<(usize, char)> = segment.char_indices().collect();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    for (position, (idx, ch)) in chars.iter().copied().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            '=' if depth == 0 => {
+                let prev = position.checked_sub(1).map(|p| chars[p].1);
+                let next = chars.get(position + 1).map(|(_, c)| *c);
+                if matches!(prev, Some('=' | '!' | '<' | '>')) || next == Some('=') {
+                    continue; // part of ==, !=, <=, >=
+                }
+                let field = segment[..idx].trim();
+                return is_simple_python_identifier(field).then_some(field);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parses a call's argument-list text into a positional/keyword shape. Returns
+/// None for any shape this conservative parser cannot fully account for — an
+/// `*args` / `**kwargs` unpacking — so the caller fails open (keeps the existing
+/// classification) rather than guessing a binding.
+fn analyze_call_args(args: &str) -> Option<CallArgShape> {
+    let mut positional_count = 0usize;
+    let mut keywords = Vec::new();
+    for segment in split_top_level_args(args) {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('*') {
+            return None; // *args / **kwargs unpack: binding is undecidable
+        }
+        match call_segment_keyword_name(trimmed) {
+            Some(name) => keywords.push(name.to_string()),
+            None => positional_count += 1,
+        }
+    }
+    Some(CallArgShape {
+        positional_count,
+        keywords,
+    })
+}
+
+/// The byte index of the `)` that closes the `(` at `open_idx`, respecting quotes
+/// and nesting. None if unbalanced.
+fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (offset, ch) in text[open_idx..].char_indices() {
+        let idx = open_idx + offset;
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The argument-list text of every direct free-function call to `name` in `body`
+/// (`render(...)` but not `obj.render(...)` and not `renderer(...)`). Balanced-paren
+/// aware; skips calls whose parentheses are unbalanced in the captured body text.
+fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<&'a str> {
+    let mut arglists = Vec::new();
+    if name.is_empty() {
+        return arglists;
+    }
+    let mut search_from = 0usize;
+    while let Some(rel) = body[search_from..].find(name) {
+        let name_start = search_from + rel;
+        let name_end = name_start + name.len();
+        search_from = name_end;
+        // Word boundary before the name: not part of a longer identifier, and not a
+        // method/attribute access (`obj.render`).
+        if let Some(prev) = body[..name_start].chars().next_back()
+            && (prev == '_' || prev == '.' || prev.is_alphanumeric())
+        {
+            continue;
+        }
+        let rest = &body[name_end..];
+        // Not part of a longer identifier after the name (`renderer`).
+        if let Some(next) = rest.chars().next()
+            && (next == '_' || next.is_alphanumeric())
+        {
+            continue;
+        }
+        let trimmed = rest.trim_start();
+        if !trimmed.starts_with('(') {
+            continue;
+        }
+        let open_idx = name_end + (rest.len() - trimmed.len());
+        let Some(close_idx) = matching_call_paren(body, open_idx) else {
+            continue;
+        };
+        arglists.push(&body[open_idx + 1..close_idx]);
+        search_from = close_idx + 1;
+    }
+    arglists
+}
+
+/// Whether a changed default VALUE in a `def` header is left UN-exercised by every
+/// strong related oracle. When the change is a pure default-value change and every
+/// strong related test that calls the owner binds the changed parameter(s)
+/// explicitly (keyword or positional), the changed default is never reached, so a
+/// strong observing oracle cannot discriminate it (#1289 trap 45) — returns
+/// Some(changed-param names) naming what to exercise by omission. Returns None (no
+/// block) when the change is not a pure default-value change, when no owner call
+/// can be analyzed, or when at least one strong call omits a changed parameter.
+/// Fails open: any untracked shape yields None so a genuine exposure is never
+/// suppressed. Scoped to free-function owners — a method/classmethod has an
+/// implicit `self`/`cls` that shifts positional binding, so those fail open.
+fn changed_default_overridden_params(
+    old_line_text: Option<&str>,
+    new_line_text: &str,
+    owner: &PythonOwner,
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> Option<Vec<String>> {
+    let old_line = old_line_text?;
+    if matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    ) {
+        return None;
+    }
+    let changed = changed_default_value_params(old_line, new_line_text)?;
+    let mut saw_strong = false;
+    for candidate in related_candidates {
+        if !candidate.relation.uses_oracle() {
+            continue;
+        }
+        let is_strong = strongest_assertion(&candidate.test.assertions).is_some_and(|assertion| {
+            assertion.oracle_strength.rank() >= OracleStrength::Strong.rank()
+        });
+        if !is_strong {
+            continue;
+        }
+        saw_strong = true;
+        let arglists = free_function_call_arglists(&candidate.test.body_text, &owner.name);
+        if arglists.is_empty() {
+            // A strong related test that reaches the owner without a direct
+            // `owner(...)` call (an alias, wrapper, or indirection this scanner does
+            // not resolve) might exercise the default. Fail open so a genuine
+            // exposure is never suppressed.
+            return None;
+        }
+        for arglist in arglists {
+            let Some(shape) = analyze_call_args(arglist) else {
+                return None; // unanalyzable call -> fail open
+            };
+            if changed.iter().any(|param| !shape.binds(param)) {
+                return None; // some changed default is omitted -> exercised
+            }
+        }
+    }
+    if !saw_strong {
+        return None; // no strong oracle -> the exposed branch is unreachable anyway
+    }
+    Some(changed.into_iter().map(|param| param.name).collect())
+}
+
+/// Backtick-quotes and comma-joins parameter names for a `missing` message.
+fn format_param_name_list(params: &[String]) -> String {
+    params
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(test)]
 fn classify_change(
     file: &Path,
@@ -5333,6 +5663,16 @@ fn classify_change_with_old(
             OracleKind::ExactErrorVariant | OracleKind::BroadError
         );
 
+    // A changed default VALUE is discriminated only by a call that OMITS the
+    // parameter (and so reaches the default). If every strong related test binds
+    // the changed parameter explicitly — `render("Sam", verbose=False)` for a
+    // `verbose=True` default change — the changed default is never exercised, so a
+    // strong observing oracle does not discriminate it (#1289 trap 45). Block
+    // `exposed` in that case and name the parameter(s) to test by omission.
+    let changed_default_override =
+        changed_default_overridden_params(old_line_text, line_text, owner, &related_candidates);
+    let changed_default_exercised_ok = changed_default_override.is_none();
+
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if static_limit
         .is_some()
     {
@@ -5384,6 +5724,7 @@ fn classify_change_with_old(
     } else if strongest_strength >= OracleStrength::Strong.rank()
         && alignment.observes()
         && error_path_oracle_ok
+        && changed_default_exercised_ok
     {
         (
             ExposureClass::Exposed,
@@ -5394,6 +5735,28 @@ fn classify_change_with_old(
                 "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
                 owner.name,
                 strongest_kind.as_str()
+            )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && alignment.observes()
+        && error_path_oracle_ok
+        && let Some(params) = &changed_default_override
+    {
+        // A strong oracle observes the owner's output, but every reaching call binds
+        // the changed-default parameter(s), so the changed default is never
+        // exercised. Fail closed to weakly_exposed and name the parameter(s) to test
+        // by omission (#1289 trap 45).
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![format!(
+                "A strong Python oracle reaches `{}`, but every related call passes {} explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `{}` without {} to exercise the changed default.",
+                owner.name,
+                format_param_name_list(params),
+                owner.name,
+                format_param_name_list(params),
             )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
@@ -7726,6 +8089,157 @@ def test_build_user_smoke():
             "an exception oracle observes the changed raise"
         );
         Ok(())
+    }
+
+    #[test]
+    fn changed_default_explicit_kwarg_override_not_exposed() -> Result<(), String> {
+        // #1289 trap 45: the `verbose` default changes (False -> True), but the only
+        // strong oracle calls `render("Sam", verbose=False)`, explicitly overriding
+        // the parameter. The changed default is never exercised, so the test passes
+        // identically before and after — not discriminated.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_explicit_verbose_false():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an explicit kwarg override does not exercise the changed default"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_explicit_positional_override_not_exposed() -> Result<(), String> {
+        // #1289 trap 45: a positional argument at `verbose`'s index (1) overrides the
+        // changed default just as a kwarg would.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_positional_false():\n    assert render(\"Sam\", False) == \"Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an explicit positional override does not exercise the changed default"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_used_by_omission_stays_exposed() -> Result<(), String> {
+        // #1289 trap 45 preserve: when the call OMITS the parameter, the changed
+        // default IS exercised, and a strong oracle observing the output discriminates
+        // it. Must stay exposed.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_default_verbose():\n    assert render(\"Sam\") == \"[debug] Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "omitting the parameter exercises the changed default under a strong oracle"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_value_params_detects_pure_value_change_only() -> Result<(), String> {
+        // Pure default-value change -> the changed parameter is reported.
+        let Some(changed) = changed_default_value_params(
+            "def render(name, verbose=False):",
+            "def render(name, verbose=True):",
+        ) else {
+            return Err(
+                "a value-to-value default change is a pure default-value change".to_string(),
+            );
+        };
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].name, "verbose");
+        assert_eq!(changed[0].index, 1);
+        assert!(changed[0].positionally_bindable);
+        // No default change at all -> None.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x=1):").is_none());
+        // Added default (requiredness change) -> None, fail open.
+        assert!(changed_default_value_params("def f(x):", "def f(x=1):").is_none());
+        // Removed default -> None, fail open.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x):").is_none());
+        // Param rename alongside a default change -> None (not a pure value change).
+        assert!(changed_default_value_params("def f(a=1):", "def f(b=2):").is_none());
+        // Added parameter -> None.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x=1, y=2):").is_none());
+        // Not a def header -> None.
+        assert!(changed_default_value_params("    return x + 1", "    return x - 1").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn analyze_call_args_classifies_positional_and_keyword() -> Result<(), String> {
+        let Some(shape) = analyze_call_args("\"Sam\", verbose=False") else {
+            return Err("positional + kwarg call is tractable".to_string());
+        };
+        assert_eq!(shape.positional_count, 1);
+        assert_eq!(shape.keywords, vec!["verbose".to_string()]);
+        // Comparison operators are not keyword bindings.
+        let Some(cmp) = analyze_call_args("x == 1, y") else {
+            return Err("comparison-operand call is tractable".to_string());
+        };
+        assert_eq!(cmp.positional_count, 2);
+        assert!(cmp.keywords.is_empty());
+        // Nested calls and brackets stay one positional argument each.
+        let Some(nested) = analyze_call_args("g(a, b), [1, 2], k=3") else {
+            return Err("nested-argument call is tractable".to_string());
+        };
+        assert_eq!(nested.positional_count, 2);
+        assert_eq!(nested.keywords, vec!["k".to_string()]);
+        // *args / **kwargs unpacking is undecidable -> None (fail open).
+        assert!(analyze_call_args("*args").is_none());
+        assert!(analyze_call_args("a, **kwargs").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_call_arglists_matches_only_direct_calls() {
+        let body =
+            "render(\"Sam\")\nobj.render(\"X\")\nrenderer(\"Y\")\nrender(\"Z\", verbose=False)\n";
+        let calls = free_function_call_arglists(body, "render");
+        // `obj.render(...)` (method access) and `renderer(...)` (longer name) excluded.
+        assert_eq!(calls, vec!["\"Sam\"", "\"Z\", verbose=False"]);
     }
 
     #[test]
