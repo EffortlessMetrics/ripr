@@ -10660,6 +10660,40 @@ fn validate_evidence_promotion_honesty_corpus_at(
             }
         }
 
+        // Semantic assertion (RIPR-SPEC-0108 + 0115): a charter case may require
+        // that a finding's `evidence` discloses the concrete transitive-reach
+        // WITNESS — the "Where to look" pointer naming the witnessing test and
+        // entry symbol. This guards against a re-bless that drops the witness
+        // line back to the bare 0114 limitation message, regressing the
+        // first-run-trust UX RIPR-SPEC-0115 added. The recognized prose begins
+        // with the prefix shared in `crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX`
+        // (ripr crate); kept here as a literal because xtask cannot import that
+        // pub(crate) const — the assertion itself fails loudly if the prose drifts.
+        let must_disclose_witness = case
+            .get("must_disclose_witness")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if must_disclose_witness {
+            const WITNESS_PREFIX: &str = "For example, the test ";
+            let discloses = findings.iter().any(|f| {
+                f.get("evidence")
+                    .and_then(Value::as_array)
+                    .is_some_and(|ev| {
+                        ev.iter()
+                            .filter_map(Value::as_str)
+                            .any(|line| line.starts_with(WITNESS_PREFIX))
+                    })
+            });
+            if !discloses {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                     `must_disclose_witness` requires a finding whose evidence names the \
+                     transitive-reach witness (prefix `{WITNESS_PREFIX}`) but none does — a \
+                     re-bless dropped the RIPR-SPEC-0115 'Where to look' pointer (fail-closed regression)"
+                ));
+            }
+        }
+
         if must_remain_non_promoted {
             non_promoted_languages.insert(language.to_string());
 

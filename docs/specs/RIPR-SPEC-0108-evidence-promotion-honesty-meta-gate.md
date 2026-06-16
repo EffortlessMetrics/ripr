@@ -84,6 +84,12 @@ says it was re-blessed to."
    bare class — e.g. dropping `rust_transitive_reach_unresolved` so a transitive
    reach reads as genuinely untested. A missing or empty `expected_limit_kind`
    is itself a violation.
+4c. `must_disclose_witness` cases (additive, RIPR-SPEC-0115): asserts at least one
+   finding's `evidence` contains the concrete transitive-reach *witness* pointer
+   (the "Where to look" line naming the witnessing test and entry symbol, prose
+   beginning `For example, the test `). Independent of the other assertions; guards
+   against a re-bless that drops the witness back to the bare 0114 limitation
+   message, regressing the first-run-trust UX.
 5. PARITY checks: every `source_fixture` must exist, have `expected/check.json`,
    and NOT be in the manifest-only denylist (so it stays covered by `goldens check`).
    Each of {python, typescript, rust} must have ≥1 non-promoted case; rust and
@@ -131,7 +137,7 @@ charter member additionally asserts a named limitation via `must_emit_limitation
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved`) |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
 
 ### Control cases (expected_promoted)
 
