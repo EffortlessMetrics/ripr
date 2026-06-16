@@ -1373,6 +1373,21 @@ fn is_test_file_matches_test_and_spec_suffixes() {
 }
 
 #[test]
+fn is_test_file_matches_test_directory_convention() {
+    // AVA / Mocha / node:test: feature-named source under test/ or tests/.
+    assert!(is_test_file(Path::new("test/body-size.ts")));
+    assert!(is_test_file(Path::new("tests/utils.ts")));
+    assert!(is_test_file(Path::new("src/__tests__/Header.tsx")));
+    assert!(is_test_file(Path::new("packages/core/test/index.mjs")));
+    // Component match, not substring — these are NOT tests.
+    assert!(!is_test_file(Path::new("src/latest/feature.ts")));
+    assert!(!is_test_file(Path::new("test-utils/helper.ts")));
+    assert!(!is_test_file(Path::new("src/contest.ts")));
+    // Non-TS/JS files under test/ are not source test files.
+    assert!(!is_test_file(Path::new("test/fixtures/data.json")));
+}
+
+#[test]
 fn line_for_offset_counts_newlines() {
     let source = "line1\nline2\nline3\n";
     assert_eq!(line_for_offset(source, 0), 1);
