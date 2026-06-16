@@ -97,6 +97,20 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
+    // RIPR-SPEC-0115: when the transitive-reach limitation named a witnessing
+    // test, surface it in human output as a concrete "Where to look" pointer.
+    // The witness prose lives in `evidence` (0114's limitation channel); we
+    // recognize it by the shared prefix so the JSON evidence and the human line
+    // stay single-sourced.
+    if let Some(witness) = finding
+        .evidence
+        .iter()
+        .find(|line| line.starts_with(crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX))
+    {
+        out.push_str("\nWhere to look\n");
+        out.push_str(&format!("  {witness}\n"));
+    }
+
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {

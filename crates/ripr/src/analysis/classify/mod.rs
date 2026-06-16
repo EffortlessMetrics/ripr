@@ -24,6 +24,8 @@ pub(in crate::analysis) use reveal::reveal_evidence;
 // apply variant-binding without reaching into the private `text` submodule.
 pub(in crate::analysis) use text::{enum_variant_values, exact_error_variant};
 // RIPR-SPEC-0114: bounded transitive-reach walk for Rust no_static_path findings.
+// RIPR-SPEC-0115: the walk now returns a witness so the limitation can name the
+// witnessing test (file:line) and the entry public-API symbol.
 pub(in crate::analysis) use transitive_reach::{
-    RUST_TRANSITIVE_REACH_MESSAGE, has_transitive_candidate,
+    RUST_TRANSITIVE_REACH_MESSAGE, find_transitive_witness, transitive_reach_witness_pointer,
 };

@@ -35,6 +35,9 @@ Weakness
 Stop reasons:
   - transitive_reach_unresolved
 
+Where to look
+  For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed.
+
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
 
@@ -68,6 +71,9 @@ Weakness
 
 Stop reasons:
   - transitive_reach_unresolved
+
+Where to look
+  For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed.
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.

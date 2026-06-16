@@ -22,3 +22,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0115: transitive-reach limitation now names the witnessing test (file:line) and entry symbol in evidence; class and static_limit_kind unchanged (message-only drift)
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0115: human output now surfaces the transitive-reach witness under a 'Where to look' section (file:line + entry symbol); JSON evidence single-sourced via shared prefix
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

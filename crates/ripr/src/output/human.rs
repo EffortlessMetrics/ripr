@@ -515,6 +515,30 @@ mod tests {
         assert!(output.contains("  - static_probe_unknown"));
     }
 
+    // RIPR-SPEC-0115: a transitive-reach witness line in `evidence` (recognized
+    // by the shared prefix) renders as a concrete "Where to look" pointer.
+    #[test]
+    fn human_output_surfaces_transitive_reach_witness_as_where_to_look() {
+        let mut finding = sample_finding();
+        finding.evidence.push(
+            "For example, the test `test_uses_outer` (tests/it.rs:12) calls `outer`, an entry \
+             point that may lead here. Inspect it to judge whether this change is observed."
+                .to_string(),
+        );
+        let output = render_finding(&finding);
+        assert!(output.contains("Where to look\n"));
+        assert!(output.contains("the test `test_uses_outer` (tests/it.rs:12) calls `outer`"));
+        assert!(output.contains("may lead here"));
+    }
+
+    // No witness line -> no "Where to look" section (fail-closed: only render
+    // when the limitation actually named a witness).
+    #[test]
+    fn human_output_omits_where_to_look_without_witness() {
+        let output = render_finding(&sample_finding());
+        assert!(!output.contains("Where to look"));
+    }
+
     fn add_perl_preview_card_inputs(finding: &mut Finding) {
         finding.id = "probe:lib_My_App_pm:8:perl_return".to_string();
         finding.canonical_gap = Some(FindingCanonicalGap {

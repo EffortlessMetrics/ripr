@@ -6152,12 +6152,12 @@ id = "RIPR-SPEC-0114"
 name = "rust transitive-reach limitation"
 spec = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_calls_outer_which_calls_owner_then_transitive_candidate_found",
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_no_path_to_owner_then_no_transitive_candidate",
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_at_depth_3_then_transitive_candidate_found",
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_depth_4_then_no_transitive_candidate",
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_call_in_test_calls_then_macro_is_skipped",
-  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_callee_not_in_crate_then_walk_stops_fail_closed",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_calls_outer_which_calls_owner_then_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_no_path_to_owner_then_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_at_depth_3_then_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_depth_4_then_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_call_in_test_calls_then_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_callee_not_in_crate_then_witness_is_none",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::wire_message_contains_honest_may_language_and_no_coverage_claim",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
 ]
@@ -6174,6 +6174,40 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0115"
+name = "rust transitive-reach witness"
+spec = "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md"
+tests = [
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_calls_outer_which_calls_owner_then_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_no_path_to_owner_then_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_two_witnesses_then_first_by_file_line_is_selected",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_uses_may_language_and_no_coverage_claim",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_normalizes_backslashes_in_path",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_reports_plural_other_tests",
+  "crates/ripr/src/output/human.rs::tests::human_output_surfaces_transitive_reach_witness_as_where_to_look",
+  "crates/ripr/src/output/human.rs::tests::human_output_omits_where_to_look_without_witness",
+]
+fixtures = [
+  "fixtures/rust_transitive_reach_positive",
+  "fixtures/rust_transitive_reach_negative",
+]
+code = [
+  "crates/ripr/src/analysis/classify/transitive_reach.rs",
+  "crates/ripr/src/analysis/classify/mod.rs",
+  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/domain/classification.rs",
+  "crates/ripr/src/domain/mod.rs",
+  "crates/ripr/src/output/human/sections.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md",
 ]
 metrics = [
   "unit_test_pass_rate",

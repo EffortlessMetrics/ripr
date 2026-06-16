@@ -30,7 +30,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"a - b","line":3}
       ],
-      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed."],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed.", "For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed."],
       "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
       "assertion_texts": {
       },
@@ -79,7 +79,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"a - b","line":3}
       ],
-      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed."],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed.", "For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed."],
       "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
       "assertion_texts": {
       },

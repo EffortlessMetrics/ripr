@@ -8,6 +8,14 @@ A test may already exercise it through macros, helper-call chains, or integratio
 ripr's static model does not yet trace. If none does, add a co-located test that reaches and \
 observes the changed behavior so a discriminator exists.";
 
+/// RIPR-SPEC-0115: stable leading phrase of the transitive-reach *witness*
+/// pointer. The producer (`analysis::classify::transitive_reach`) begins the
+/// pointer with this phrase, and the human renderer (`output::human`) recognizes
+/// it in `Finding.evidence` to surface a concrete "Where to look" line. Shared
+/// here in `domain/` so the producer and renderer agree on one literal across
+/// the analysis/output seam (reuse, don't fork).
+pub(crate) const TRANSITIVE_REACH_WITNESS_PREFIX: &str = "For example, the test ";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExposureClass {
     Exposed,

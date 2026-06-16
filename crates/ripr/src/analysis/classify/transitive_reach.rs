@@ -18,24 +18,50 @@
 
 use crate::analysis::facts::{CallFact, FunctionSummary, RustIndex, TestFact};
 use std::collections::{HashSet, VecDeque};
+use std::path::PathBuf;
 
 /// Maximum call-hop depth for the transitive walk.
 const MAX_TRANSITIVE_DEPTH: usize = 3;
 
-/// Determines whether any test in the index may transitively reach a function
-/// named `owner_name` via a bounded BFS over lexical call facts.
+/// A concrete pointer to the test that witnessed a transitive-reach candidate
+/// path, captured so the limitation message can name something the user can
+/// open and inspect (RIPR-SPEC-0115).
 ///
-/// Returns `true` when a candidate path (test -> ... -> owner) is found within
-/// `MAX_TRANSITIVE_DEPTH` hops using same-crate production functions only.
-/// Returns `false` when no such candidate path exists.
+/// This is a *candidate* witness: the test calls `entry_symbol`, an in-crate
+/// entry point from which a bounded name-only BFS reaches the changed owner. It
+/// is NOT a confirmed reaching test and is deliberately kept out of
+/// `related_tests` (the verified-relation channel).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::analysis) struct TransitiveWitness {
+    pub test_name: String,
+    pub test_file: PathBuf,
+    pub test_line: usize,
+    /// The non-macro, non-direct callee the test invoked that began the walk
+    /// reaching the owner (the "public-API entry point").
+    pub entry_symbol: String,
+    /// Number of *other* distinct tests (beyond this named one) that also
+    /// witnessed a candidate path. Used only to note the count, not enumerate.
+    pub other_test_count: usize,
+}
+
+/// Finds a deterministic witnessing test for a transitive-reach candidate path
+/// to a function named `owner_name`, via a bounded BFS over lexical call facts.
+///
+/// Returns `Some(witness)` when at least one test reaches the owner (test ->
+/// ... -> owner) within `MAX_TRANSITIVE_DEPTH` hops using same-crate production
+/// functions only; the named witness is selected deterministically (see below).
+/// Returns `None` when no such candidate path exists.
 ///
 /// The caller is responsible for wiring the result into `static_limit_kind`
 /// ONLY when the finding's class is `no_static_path` and `related_tests` is
 /// empty - i.e. only after the direct-call classifier has already returned
-/// empty-handed.
-pub(in crate::analysis) fn has_transitive_candidate(owner_name: &str, index: &RustIndex) -> bool {
+/// empty-handed. Classification NEVER changes.
+pub(in crate::analysis) fn find_transitive_witness(
+    owner_name: &str,
+    index: &RustIndex,
+) -> Option<TransitiveWitness> {
     if owner_name.is_empty() {
-        return false;
+        return None;
     }
 
     // Collect all tests from the index (flat tests vec + per-file tests).
@@ -48,7 +74,13 @@ pub(in crate::analysis) fn has_transitive_candidate(owner_name: &str, index: &Ru
         .flat_map(|file| file.functions.iter().filter(|f| !f.is_test))
         .collect();
 
+    // One witness per test: the lexicographically-smallest entry symbol from
+    // that test which reaches the owner. Collected as a sortable 4-tuple so the
+    // named witness is stable across index iteration order (goldens depend on
+    // this determinism).
+    let mut witnesses: Vec<(PathBuf, usize, String, String)> = Vec::new();
     for test in &all_tests {
+        let mut entry: Option<&str> = None;
         for callee in &test.calls {
             // Skip macro invocations.
             if is_macro_call(&callee.name) {
@@ -61,12 +93,64 @@ pub(in crate::analysis) fn has_transitive_candidate(owner_name: &str, index: &Ru
             }
             // BFS from this callee through the production call graph.
             if bfs_reaches_owner(&callee.name, owner_name, &prod_fns) {
-                return true;
+                match entry {
+                    Some(current) if current <= callee.name.as_str() => {}
+                    _ => entry = Some(callee.name.as_str()),
+                }
             }
+        }
+        if let Some(symbol) = entry {
+            witnesses.push((
+                test.file.clone(),
+                test.start_line,
+                test.name.clone(),
+                symbol.to_string(),
+            ));
         }
     }
 
-    false
+    if witnesses.is_empty() {
+        return None;
+    }
+    witnesses.sort();
+    let other_test_count = witnesses.len() - 1;
+    let (test_file, test_line, test_name, entry_symbol) = witnesses.into_iter().next()?;
+    Some(TransitiveWitness {
+        test_name,
+        test_file,
+        test_line,
+        entry_symbol,
+        other_test_count,
+    })
+}
+
+/// Builds the concrete witness pointer appended after
+/// [`RUST_TRANSITIVE_REACH_MESSAGE`]. Names the witnessing test (file:line) and
+/// the entry symbol, using candidate ("may lead here") language only - it never
+/// claims the test reaches, covers, or exercises the change.
+///
+/// The rendered file path normalizes `\\` to `/` so Windows-blessed goldens
+/// match on Linux CI.
+pub(in crate::analysis) fn transitive_reach_witness_pointer(witness: &TransitiveWitness) -> String {
+    let location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.test_line
+    );
+    let others = match witness.other_test_count {
+        0 => String::new(),
+        1 => " (and 1 other test)".to_string(),
+        n => format!(" (and {n} other tests)"),
+    };
+    format!(
+        "{}`{}` ({}) calls `{}`, an entry point that may lead here{}. \
+         Inspect it to judge whether this change is observed.",
+        crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX,
+        witness.test_name,
+        location,
+        witness.entry_symbol,
+        others
+    )
 }
 
 /// Collect all tests from the index, deduplicating by (name, file).
@@ -187,11 +271,15 @@ mod tests {
     }
 
     fn make_test(name: &str, calls: Vec<&str>) -> TestFact {
+        make_test_at(name, "tests/it.rs", 1, calls)
+    }
+
+    fn make_test_at(name: &str, file: &str, start_line: usize, calls: Vec<&str>) -> TestFact {
         TestFact {
             name: name.to_string(),
-            file: PathBuf::from("tests/it.rs"),
-            start_line: 1,
-            end_line: 5,
+            file: PathBuf::from(file),
+            start_line,
+            end_line: start_line + 4,
             body: String::new(),
             calls: calls
                 .into_iter()
@@ -230,23 +318,36 @@ mod tests {
         }
     }
 
-    // (a) Candidate path found -> limitation should fire.
+    // (a) Candidate path found -> witness captured naming the test + entry symbol.
     // test calls `outer`, `outer` calls `inner` (the changed owner).
     #[test]
-    fn given_test_calls_outer_which_calls_owner_then_transitive_candidate_found() {
+    fn given_test_calls_outer_which_calls_owner_then_witness_is_captured() {
         let outer = make_fn("outer", vec!["inner"]);
         let index = index_with(
             vec![outer],
             vec![make_test("test_uses_outer", vec!["outer"])],
         );
 
-        assert!(has_transitive_candidate("inner", &index));
+        let witness = find_transitive_witness("inner", &index);
+        assert_eq!(
+            witness.as_ref().map(|w| w.test_name.as_str()),
+            Some("test_uses_outer")
+        );
+        assert_eq!(
+            witness.as_ref().map(|w| w.test_file.clone()),
+            Some(PathBuf::from("tests/it.rs"))
+        );
+        assert_eq!(
+            witness.as_ref().map(|w| w.entry_symbol.as_str()),
+            Some("outer")
+        );
+        assert_eq!(witness.as_ref().map(|w| w.other_test_count), Some(0));
     }
 
-    // (b) No path -> limitation must NOT fire.
+    // (b) No path -> witness must be None.
     // test calls `unrelated`, no path to owner `inner`.
     #[test]
-    fn given_no_path_to_owner_then_no_transitive_candidate() {
+    fn given_no_path_to_owner_then_witness_is_none() {
         let unrelated = make_fn("unrelated", vec!["helper"]);
         let helper = make_fn("helper", vec![]);
         let index = index_with(
@@ -254,14 +355,89 @@ mod tests {
             vec![make_test("test_unrelated", vec!["unrelated"])],
         );
 
-        assert!(!has_transitive_candidate("inner", &index));
+        assert!(find_transitive_witness("inner", &index).is_none());
     }
 
-    // (c-i) Path exists at exactly depth=3 -> candidate IS found (boundary is depth > 3 not >= 3).
-    // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> check fn_c.calls: includes inner.
-    // At depth=3 we pop fn_c, iterate its calls: inner == owner_name -> true.
+    // (a') Two witnessing tests -> the first by (file, line, name) is named and
+    // the count of others is reported. `tests/a.rs` sorts before `tests/b.rs`.
     #[test]
-    fn given_path_at_depth_3_then_transitive_candidate_found() {
+    fn given_two_witnesses_then_first_by_file_line_is_selected() {
+        let outer = make_fn("outer", vec!["inner"]);
+        let index = index_with(
+            vec![outer],
+            vec![
+                make_test_at("test_b", "tests/b.rs", 1, vec!["outer"]),
+                make_test_at("test_a", "tests/a.rs", 1, vec!["outer"]),
+            ],
+        );
+
+        let witness = find_transitive_witness("inner", &index);
+        assert_eq!(
+            witness.as_ref().map(|w| w.test_file.clone()),
+            Some(PathBuf::from("tests/a.rs"))
+        );
+        assert_eq!(
+            witness.as_ref().map(|w| w.test_name.as_str()),
+            Some("test_a")
+        );
+        assert_eq!(witness.as_ref().map(|w| w.other_test_count), Some(1));
+    }
+
+    // The witness pointer names the test/entry symbol with candidate language
+    // only: it must say "may lead here" and must NOT claim the test reaches,
+    // covers, or exercises the change.
+    #[test]
+    fn witness_pointer_uses_may_language_and_no_coverage_claim() {
+        let witness = TransitiveWitness {
+            test_name: "test_uses_outer".to_string(),
+            test_file: PathBuf::from("tests/it.rs"),
+            test_line: 12,
+            entry_symbol: "outer".to_string(),
+            other_test_count: 0,
+        };
+        let pointer = transitive_reach_witness_pointer(&witness);
+        assert!(pointer.contains("test_uses_outer"));
+        assert!(pointer.contains("tests/it.rs:12"));
+        assert!(pointer.contains("outer"));
+        assert!(pointer.contains("may lead here"));
+        assert!(!pointer.contains("reaches"));
+        assert!(!pointer.contains("covers"));
+        assert!(!pointer.contains("exercise"));
+    }
+
+    // The rendered location normalizes backslashes so Windows-blessed goldens
+    // match on Linux CI.
+    #[test]
+    fn witness_pointer_normalizes_backslashes_in_path() {
+        let witness = TransitiveWitness {
+            test_name: "t".to_string(),
+            test_file: PathBuf::from("tests\\sub\\it.rs"),
+            test_line: 3,
+            entry_symbol: "outer".to_string(),
+            other_test_count: 0,
+        };
+        let pointer = transitive_reach_witness_pointer(&witness);
+        assert!(pointer.contains("tests/sub/it.rs:3"));
+        assert!(!pointer.contains('\\'));
+    }
+
+    // Plural form when more than one other test witnesses.
+    #[test]
+    fn witness_pointer_reports_plural_other_tests() {
+        let witness = TransitiveWitness {
+            test_name: "t".to_string(),
+            test_file: PathBuf::from("tests/it.rs"),
+            test_line: 1,
+            entry_symbol: "outer".to_string(),
+            other_test_count: 2,
+        };
+        assert!(transitive_reach_witness_pointer(&witness).contains("and 2 other tests"));
+    }
+
+    // (c-i) Path exists at exactly depth=3 -> witness captured (boundary is depth > 3 not >= 3).
+    // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> check fn_c.calls: includes inner.
+    #[test]
+    fn given_path_at_depth_3_then_witness_is_captured() {
         let fn_a = make_fn("fn_a", vec!["fn_b"]);
         let fn_b = make_fn("fn_b", vec!["fn_c"]);
         let fn_c = make_fn("fn_c", vec!["inner"]);
@@ -270,16 +446,18 @@ mod tests {
             vec![make_test("test_depth3", vec!["fn_a"])],
         );
         // fn_a(1) -> fn_b(2) -> fn_c(3): at depth=3 we look at fn_c.calls -> inner.
-        assert!(has_transitive_candidate("inner", &index));
+        let witness = find_transitive_witness("inner", &index);
+        assert_eq!(
+            witness.as_ref().map(|w| w.entry_symbol.as_str()),
+            Some("fn_a")
+        );
     }
 
     // (c-ii) Path at depth=4 -> exceeds MAX_TRANSITIVE_DEPTH=3, NOT found.
-    // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> fn_d(4) -> inner at depth 4 is skipped.
-    // Wait: depth=4 means we pop fn_d at depth=4. 4 > 3 -> continue (skip). inner NOT found.
-    // Actually: fn_c is popped at depth=3, its calls include fn_d -> push fn_d at depth=4.
+    // fn_c is popped at depth=3, its calls include fn_d -> push fn_d at depth=4.
     // fn_d is popped at depth=4, 4 > 3 -> continue. inner NOT reached.
     #[test]
-    fn given_path_depth_4_then_no_transitive_candidate() {
+    fn given_path_depth_4_then_witness_is_none() {
         let fn_a = make_fn("fn_a", vec!["fn_b"]);
         let fn_b = make_fn("fn_b", vec!["fn_c"]);
         let fn_c = make_fn("fn_c", vec!["fn_d"]);
@@ -288,27 +466,27 @@ mod tests {
             vec![fn_a, fn_b, fn_c, fn_d],
             vec![make_test("test_too_deep", vec!["fn_a"])],
         );
-        assert!(!has_transitive_candidate("inner", &index));
+        assert!(find_transitive_witness("inner", &index).is_none());
     }
 
-    // (c-iii) Macro call in chain is skipped; other paths still work.
+    // (c-iii) Macro call in chain is skipped; no path found through a macro entry.
     #[test]
-    fn given_macro_call_in_test_calls_then_macro_is_skipped() {
+    fn given_macro_call_in_test_calls_then_witness_is_none() {
         // test calls only a macro -> no path found.
         let index = index_with(
             vec![make_fn("inner", vec![])],
             vec![make_test("test_macro_only", vec!["vec!"])],
         );
-        assert!(!has_transitive_candidate("inner", &index));
+        assert!(find_transitive_witness("inner", &index).is_none());
     }
 
     // (c-iv) Callee not found in-crate -> walk stops there (fail closed).
     #[test]
-    fn given_callee_not_in_crate_then_walk_stops_fail_closed() {
+    fn given_callee_not_in_crate_then_witness_is_none() {
         let outer = make_fn("outer", vec!["external_lib_helper"]);
         // external_lib_helper is NOT in production functions.
         let index = index_with(vec![outer], vec![make_test("test_ext", vec!["outer"])]);
-        assert!(!has_transitive_candidate("inner", &index));
+        assert!(find_transitive_witness("inner", &index).is_none());
     }
 
     #[test]

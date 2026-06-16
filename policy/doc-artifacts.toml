@@ -513,3 +513,11 @@ path = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Rust transitive-reach limitation (P3 slice-a, first-run-trust campaign): when a no_static_path finding has no related tests but a bounded BFS walk (depth<=3) over lexical call facts finds a candidate path test->...->owner, name the limitation as static_limit_kind=rust_transitive_reach_unresolved; fail-closed (classification NEVER promoted, message uses 'may' language, walk stops at macros/externals/depth>3); additive static_limit_kind value only (no schema_version bump, no version bump); 7 unit tests in classify/transitive_reach.rs; 2 pure-example fixtures."
+
+[[artifact]]
+id = "RIPR-SPEC-0115"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach witness (P3.1, first-run-trust 'visibility before inference'): the 0114 BFS now returns the witnessing test (file:line) and the entry public-API symbol instead of a bare bool, so the limitation names something concrete to open; the human renderer surfaces it under a 'Where to look' section and the JSON evidence carries the same prose, single-sourced via the shared domain prefix const TRANSITIVE_REACH_WITNESS_PREFIX; fail-closed (classification stays no_static_path, witness NOT added to related_tests, 'may lead here' candidate language, all 0114 boundaries inherited); evidence-message-only (no new struct/JSON field, no schema_version bump, no version bump); deterministic witness ordering for golden stability; positive fixture re-blessed message-only, negative fixture unchanged."
