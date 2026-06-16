@@ -1558,3 +1558,19 @@ treat `*args`/`**kwargs` unpacking or any unparseable call as fail-open. A coars
 "does any related test omit the param" gate is *not* safe — a sibling override test plus
 an aliased omitting test would wrongly block. Per-candidate "must have a direct call I
 can read" is what avoids the false-clean.
+
+## 2026-06-16: Annotation-only suppression is safe at module scope, not in class bodies
+
+The #1289 annotation-only no-probe family splits cleanly on owner scope. At **module
+scope**, Python annotations are never enforced at runtime, so an annotation-only change
+(identical target name and value, only the annotation text differs) has no behavior
+delta and can be safely suppressed — mirror the `def`-header skeleton pattern
+(`variable_annotation_skeleton` re-parses the line as an `AnnAssign` and compares the
+target+value, excluding the annotation). Inside a **class body**, the same change is
+behavioral: `@dataclass`, Pydantic `BaseModel`, and `attrs` drive runtime validation and
+coercion from field annotations, so suppressing there would be a false-clean. The guard
+is therefore `owner.is_module_owner()` first, and fails closed for every class body
+until base-class tracking exists. This is the recurring rule for the whole annotation
+family: the suppression's safety comes from *where* the annotation lives, not just from
+*what* changed. (See `docs/DEFERRED.md` § python-annotation-only-no-probe for the two
+remaining open sub-cases: class-body annotations and multiline-docstring interiors.)

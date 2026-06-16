@@ -5116,8 +5116,10 @@ fn strong_oracle_observes_owner(
 /// ENTIRELY a single non-f-string literal qualify. f-strings are excluded (a bare
 /// f-string statement can evaluate embedded calls), multi-line docstring interiors
 /// are not detected here (only one line is in scope), and annotation-only changes
-/// are intentionally out of scope (annotations can carry runtime meaning in some
-/// frameworks).
+/// are handled by the dedicated `is_annotation_only_*_change` guards in
+/// `classify_change_with_old` (def headers via #1294; module-scope bare variables
+/// via #1289 — class-body variable annotations remain out of scope because
+/// `@dataclass`/Pydantic make them runtime-meaningful).
 fn is_python_no_behavior_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.is_empty() || trimmed.starts_with('#') || is_bare_string_literal_statement(trimmed)
@@ -5252,6 +5254,74 @@ fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> bool {
     match (
         def_signature_skeleton(old_line),
         def_signature_skeleton(new_line),
+    ) {
+        (Some(old), Some(new)) => old == new,
+        _ => false,
+    }
+}
+
+/// The runtime-significant skeleton of a bare variable annotation line
+/// (`x: int = 5` or `x: int`), used to decide whether a change touches ONLY the
+/// annotation (#1289). Includes the target name and the optional value source
+/// text; EXCLUDES the annotation. Two lines with equal skeletons differ only in
+/// annotation, so a value/target change is NOT annotation-only. A simple-name
+/// target only (`x`, not `obj.attr`); attribute annotations live inside class
+/// bodies, which this suppression does not reach (it is module-scope only).
+type VariableAnnotationSkeleton = (String, Option<String>); // (target name, value source)
+
+fn variable_annotation_skeleton(line: &str) -> Option<VariableAnnotationSkeleton> {
+    let trimmed = line.trim();
+    // Cheap reject: must contain a `:` before any `=` (or no `=` at all) and
+    // start with an identifier char. This avoids parsing plain assignments.
+    let name_end = trimmed.find(':').filter(|&idx| {
+        trimmed[..idx]
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+    })?;
+    if name_end == 0 {
+        return None;
+    }
+    // Synthesize a parseable statement: an annotated assignment is a module body.
+    let snippet = format!("{trimmed}\n");
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return None;
+    };
+    let stmt = module.body.first()?;
+    let Stmt::AnnAssign(assign) = stmt else {
+        return None;
+    };
+    // Simple-name target only; an attribute target (`obj.attr: int`) is not a
+    // bare module-scope variable and is left to classify normally.
+    let Expr::Name(target) = &*assign.target else {
+        return None;
+    };
+    let slice = |expr: &Expr| -> String {
+        let range = expr.range();
+        snippet
+            .get(usize::from(range.start())..usize::from(range.end()))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let value = assign.value.as_deref().map(slice);
+    Some((target.id.to_string(), value))
+}
+
+/// Whether a bare variable annotation change modifies ONLY the annotation,
+/// leaving the runtime binding (target name and value) unchanged. Python does
+/// not enforce annotations at runtime at module scope, so such a change has no
+/// behavior delta (#1289). Fails closed: returns false when either line is not
+/// a parseable bare-variable annotation, when the lines are identical, or when
+/// anything beyond the annotation differs (a value change, a target rename, an
+/// added/removed value, or an attribute target).
+fn is_annotation_only_var_change(old_line: &str, new_line: &str) -> bool {
+    if old_line.trim() == new_line.trim() {
+        return false;
+    }
+    match (
+        variable_annotation_skeleton(old_line),
+        variable_annotation_skeleton(new_line),
     ) {
         (Some(old), Some(new)) => old == new,
         _ => false,
@@ -5646,6 +5716,22 @@ fn classify_change_with_old(
         return None;
     }
     let owner = owner_for_changed_line(file, line, owners)?;
+    // Bare-variable annotation-only suppression at MODULE SCOPE only (#1289):
+    // Python does not enforce type annotations at runtime at module scope, so a
+    // module-scope annotated-variable change that touches ONLY the annotation
+    // (identical target name and value) has no behavior delta — emit no probe.
+    // Class-body annotation changes are deliberately NOT suppressed: `@dataclass`,
+    // Pydantic `BaseModel`, and `attrs` make annotations runtime-meaningful
+    // (they drive validation/coercion), and base-class tracking does not exist
+    // yet, so the safe stance is to fail closed for every class body. Also fails
+    // closed when anything beyond the annotation differs (value, target) or the
+    // line is not a parseable annotated assignment.
+    if owner.is_module_owner()
+        && let Some(old) = old_line_text
+        && is_annotation_only_var_change(old, line_text)
+    {
+        return None;
+    }
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
     let alignment =
@@ -7864,6 +7950,158 @@ def test_build_user_smoke():
             "    return x + 1",
             "    return x - 1"
         )); // not a def
+    }
+
+    #[test]
+    fn bare_var_annotation_only_change_at_module_scope_emits_no_probe() -> Result<(), String> {
+        // #1289: a module-scope annotated variable whose ONLY change is the
+        // annotation (`int` -> `str`, value unchanged) has no runtime behavior —
+        // Python does not enforce annotations at module scope. No probe.
+        let source = "CACHE_TTL: str = 30\n\n\ndef get_ttl():\n    return CACHE_TTL\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_ttl\n\n\ndef test_ttl():\n    assert get_ttl() == 30\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "CACHE_TTL: str = 30",
+            Some("CACHE_TTL: int = 30"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a module-scope annotation-only var change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_annotation_only_change_no_value_emits_no_probe() -> Result<(), String> {
+        // #1289: a pure annotation with no value (`x: int` -> `x: str`) is also a
+        // no-op at module scope when only the annotation differs.
+        let source = "LABEL: str\n\n\ndef get_label():\n    return LABEL\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_label\n\n\ndef test_label():\n    assert get_label() == \"x\"\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "LABEL: str",
+            Some("LABEL: int"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a pure annotation change (no value) at module scope must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_value_change_still_classifies() -> Result<(), String> {
+        // #1289 safety: a VALUE change on an annotated variable is behavioral
+        // and must NOT be suppressed. The skeleton captures the value source, so
+        // `= 5` vs `= 6` differs and the line is still analyzed.
+        let source = "LIMIT: int = 6\n\n\ndef get_limit():\n    return LIMIT\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_limit\n\n\ndef test_limit():\n    assert get_limit() == 6\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "LIMIT: int = 6",
+            Some("LIMIT: int = 5"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a value change is behavioral and must still classify (not suppressed as annotation-only)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_annotation_change_in_class_body_still_classifies() -> Result<(), String> {
+        // #1289 safety: an annotation-only change INSIDE a class body is NOT
+        // suppressed — `@dataclass`/Pydantic make class-body annotations
+        // runtime-meaningful, and base-class tracking does not exist yet. The
+        // guard is module-scope only; fail closed for class bodies.
+        let source =
+            "class Config:\n    ttl: str = 30\n\n    def get(self):\n        return self.ttl\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import Config\n\n\ndef test_ttl():\n    assert Config().get() == 30\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            2,
+            "    ttl: str = 30",
+            Some("    ttl: int = 30"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a class-body annotation-only change must still classify (fail closed for class bodies)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn non_annotation_assignment_still_classifies() -> Result<(), String> {
+        // #1289 safety: a plain assignment (`x = 5`, no annotation) is not an
+        // annotated variable and must classify normally.
+        let source = "COUNT = 6\n\n\ndef get_count():\n    return COUNT\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_count\n\n\ndef test_count():\n    assert get_count() == 6\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "COUNT = 6",
+            Some("COUNT = 5"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a plain assignment (no annotation) must still classify"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn is_annotation_only_var_change_is_conservative() {
+        // Annotation-only (suppress):
+        assert!(is_annotation_only_var_change("x: int = 5", "x: str = 5")); // value identical
+        assert!(is_annotation_only_var_change("x: int", "x: str")); // no value either side
+        assert!(is_annotation_only_var_change(
+            "MAX: List[int] = []",
+            "MAX: List[str] = []"
+        )); // subscripted annotation, value identical
+        // NOT annotation-only (must still analyze):
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int = 6")); // value changed
+        assert!(!is_annotation_only_var_change("x: int", "x: int = 5")); // value added
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int")); // value removed
+        assert!(!is_annotation_only_var_change("a: int = 5", "b: int = 5")); // target rename
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int = 5")); // identical
+        assert!(!is_annotation_only_var_change("x = 5", "x = 6")); // not an annotation
+        assert!(!is_annotation_only_var_change(
+            "    return x + 1",
+            "    return x - 1"
+        )); // not an assignment at all
     }
 
     #[test]
