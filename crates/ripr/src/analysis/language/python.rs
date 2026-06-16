@@ -4669,6 +4669,13 @@ fn fstring_template(line: &str) -> Option<(String, Vec<String>)> {
         return None;
     }
     let body = rest.strip_prefix(quote)?.strip_suffix(quote)?;
+    // Fail open on f-string shapes this simple parser does not model precisely, so the
+    // gate never downgrades on a mis-parse: escaped braces (`{{` / `}}`), a leftover
+    // quote from a triple-quoted string, or nested interpolation/format-spec
+    // (`{value:{width}}`). When unsupported, return `None` and the gate is a no-op.
+    if body.contains("{{") || body.contains("}}") || body.starts_with(quote) {
+        return None;
+    }
     let mut literals = String::new();
     let mut interpolations = Vec::new();
     let mut depth = 0usize;
@@ -4677,17 +4684,17 @@ fn fstring_template(line: &str) -> Option<(String, Vec<String>)> {
         match ch {
             '{' => {
                 depth += 1;
-                if depth == 1 {
-                    current.clear();
-                    continue;
+                if depth > 1 {
+                    // Nested interpolation / format-spec — unsupported, fail open.
+                    return None;
                 }
+                continue;
             }
             '}' if depth >= 1 => {
                 depth -= 1;
-                if depth == 0 {
-                    interpolations.push(current.clone());
-                    continue;
-                }
+                interpolations.push(current.clone());
+                current.clear();
+                continue;
             }
             _ => {}
         }
@@ -4717,6 +4724,33 @@ fn fstring_change_is_length_invariant(old_line: &str, new_line: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether an oracle observes the owner's output ONLY through a `len(...)` aggregate
+/// — i.e. it calls `len(` and does NOT also observe the output exactly. An oracle
+/// that compares against a string literal, or that contains the changed f-string
+/// literal text, observes the changed output and is therefore NOT a pure aggregate
+/// (so the #1290 1b gate must not downgrade it). Conservative by design: anything
+/// other than a clear length-only observation keeps the credit.
+fn oracle_is_pure_len_aggregate(oracle: &str, changed_literals: &str) -> bool {
+    if !oracle.contains("len(") {
+        return false;
+    }
+    // An exact string-equality comparison observes the produced string, not just its
+    // length.
+    if oracle.contains("== \"")
+        || oracle.contains("== '")
+        || oracle.contains("==\"")
+        || oracle.contains("=='")
+    {
+        return false;
+    }
+    // The changed literal text appearing in the oracle means it observes the change.
+    let trimmed = changed_literals.trim();
+    if trimmed.len() >= 2 && oracle.contains(trimmed) {
+        return false;
+    }
+    true
 }
 
 fn classify_sink_alignment_with_old(
@@ -4988,14 +5022,20 @@ fn classify_sink_alignment_with_old(
     // credit. Pass-through `true` for any non-f-string change.
     let fstring_credit_ok = match old_line_text {
         Some(old) if fstring_change_is_length_invariant(old, line_text) => {
-            // Credit stands unless EVERY strong oracle is a `len(...)` aggregate, which
-            // cannot discriminate a length-invariant f-string change. A string-equality
-            // oracle (no `len(`) keeps the credit. (`strong_tests` is non-empty here —
-            // the empty case returned `unknown` above.)
+            // Credit stands unless EVERY strong oracle is a PURE `len(...)` aggregate,
+            // which cannot discriminate a length-invariant f-string change. An oracle
+            // that ALSO observes the output exactly (a string-equality comparison, or
+            // the changed literal text) keeps the credit — fail open so this narrow
+            // false-`exposed` fix never introduces a false negative (e.g.
+            // `assert len(f(x)) == 4 and f(x) == "NO:7"`). (`strong_tests` is non-empty
+            // here — the empty case returned `unknown` above.)
+            let new_literals = fstring_template(line_text)
+                .map(|(literals, _)| literals)
+                .unwrap_or_default();
             !strong_tests.iter().all(|test| {
                 test.oracle
                     .as_deref()
-                    .is_some_and(|text| text.contains("len("))
+                    .is_some_and(|text| oracle_is_pure_len_aggregate(text, &new_literals))
             })
         }
         _ => true,
@@ -7712,6 +7752,68 @@ def test_build_user_smoke():
             "    return x + 1",
             "    return x - 1"
         ));
+        // Fail open on unsupported shapes (escaped / nested braces) -> no template.
+        assert_eq!(fstring_template("    return f\"{{OK}}:{code}\""), None);
+        assert_eq!(fstring_template("    return f\"{value:{width}}\""), None);
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{{OK}}:{code}\"",
+            "    return f\"{{NO}}:{code}\""
+        ));
+    }
+
+    #[test]
+    fn oracle_pure_len_aggregate_detection() {
+        // Pure length-only observation:
+        assert!(oracle_is_pure_len_aggregate(
+            "len(status_label(7)) == 4",
+            "NO:"
+        ));
+        // Also observes the output exactly -> NOT pure aggregate (keeps credit):
+        assert!(!oracle_is_pure_len_aggregate(
+            "len(status_label(7)) == 4 and status_label(7) == \"NO:7\"",
+            "NO:"
+        ));
+        // Contains the changed literal -> NOT pure aggregate:
+        assert!(!oracle_is_pure_len_aggregate(
+            "status_label(7).startswith(\"NO:\")",
+            "NO:"
+        ));
+        // No len at all -> not a len aggregate:
+        assert!(!oracle_is_pure_len_aggregate(
+            "status_label(7) == \"NO:7\"",
+            "NO:"
+        ));
+    }
+
+    #[test]
+    fn fstring_len_plus_exact_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 1b hardening: when the test observes BOTH len() AND the exact output
+        // (in separate assertions), the exact-value assertion is the strong oracle and
+        // must keep the credit — the len-aggregate gate must not downgrade it. (A single
+        // `assert a and b` is `smoke_only`/weak for an unrelated reason, so the
+        // discriminating form uses separate assertions.)
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_both():\n    assert len(status_label(7)) == 4\n    assert status_label(7) == \"NO:7\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle that also observes the exact output is not a pure len aggregate"
+        );
+        Ok(())
     }
 
     #[test]
