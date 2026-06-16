@@ -64,6 +64,16 @@
       "source_fixture": "fixtures/typescript_strong_oracle",
       "control": "must_stay_exposed",
       "expected_promoted": true
+    },
+    {
+      "id": "rust_transitive_reach_named_limitation",
+      "language": "rust",
+      "source_fixture": "fixtures/rust_transitive_reach_positive",
+      "vector": "transitive_reach_named_not_silently_clean",
+      "must_emit_limitation": true,
+      "expected_limit_kind": "rust_transitive_reach_unresolved",
+      "must_remain_non_promoted": true,
+      "expected_max_class": "no_static_path"
     }
   ]
 }

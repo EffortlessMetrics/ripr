@@ -10625,6 +10625,41 @@ fn validate_evidence_promotion_honesty_corpus_at(
             .and_then(Value::as_bool)
             .unwrap_or(false);
 
+        // Semantic assertion (RIPR-SPEC-0108 + 0114/0115): a charter case may
+        // require that a specific named limitation is still emitted. This guards
+        // against a dishonest re-bless that silently drops `static_limit_kind`
+        // back to a bare `no_static_path` — the exact fail-closed regression the
+        // transitive-reach limitation was added to prevent. Independent of the
+        // promotion checks below, so a case can assert both at once.
+        let must_emit_limitation = case
+            .get("must_emit_limitation")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if must_emit_limitation {
+            let expected_limit_kind = case
+                .get("expected_limit_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if expected_limit_kind.is_empty() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}`: `must_emit_limitation` is true \
+                     but `expected_limit_kind` is missing or empty"
+                ));
+            } else {
+                let has_limit = findings.iter().any(|f| {
+                    f.get("static_limit_kind").and_then(Value::as_str) == Some(expected_limit_kind)
+                });
+                if !has_limit {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                         `must_emit_limitation` requires a finding with static_limit_kind \
+                         `{expected_limit_kind}` but none is present — a re-bless silently dropped \
+                         the named limitation (fail-closed regression)"
+                    ));
+                }
+            }
+        }
+
         if must_remain_non_promoted {
             non_promoted_languages.insert(language.to_string());
 

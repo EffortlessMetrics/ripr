@@ -77,6 +77,13 @@ says it was re-blessed to."
    severity ordering `exposed > weakly_exposed > reachable_unrevealed/no_static_path > *_unknown`.
 4. `expected_promoted` (control) cases: asserts at least one finding's
    `classification` is `exposed` (must-not-over-correct guard).
+4b. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115): asserts at
+   least one finding carries `static_limit_kind == expected_limit_kind`. This is
+   an independent assertion (a case may combine it with `must_remain_non_promoted`)
+   and guards against a re-bless that silently drops a named limitation back to a
+   bare class — e.g. dropping `rust_transitive_reach_unresolved` so a transitive
+   reach reads as genuinely untested. A missing or empty `expected_limit_kind`
+   is itself a violation.
 5. PARITY checks: every `source_fixture` must exist, have `expected/check.json`,
    and NOT be in the manifest-only denylist (so it stays covered by `goldens check`).
    Each of {python, typescript, rust} must have ≥1 non-promoted case; rust and
@@ -111,8 +118,9 @@ corpus prevents the same regression in future.
 ### Corpus manifest
 
 `fixtures/evidence-promotion-honesty-corpus/corpus.json` — cross-language
-pinned adversarial corpus with 5 non-promoted charter members (python ×2,
-typescript ×1, rust ×2) and 3 control cases (rust ×2, typescript ×1).
+pinned adversarial corpus with 6 non-promoted charter members (python ×2,
+typescript ×1, rust ×3) and 3 control cases (rust ×2, typescript ×1). One rust
+charter member additionally asserts a named limitation via `must_emit_limitation`.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -123,6 +131,7 @@ typescript ×1, rust ×2) and 3 control cases (rust ×2, typescript ×1).
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved`) |
 
 ### Control cases (expected_promoted)
 
