@@ -4641,6 +4641,84 @@ fn oracle_observes_changed_list_element(
     false
 }
 
+/// Split an f-string source (`f"..."`/`f'...'`, optional `r` prefix) into its
+/// concatenated literal text and its ordered `{...}` interpolation substrings.
+/// Returns `None` if the line (after an optional `return `) is not a single f-string.
+fn fstring_template(line: &str) -> Option<(String, Vec<String>)> {
+    let trimmed = line.trim();
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    // Accept f / rf / fr prefixes (case-insensitive), then a quote.
+    let lower = expr.to_ascii_lowercase();
+    let prefix_len = if lower.starts_with("f\"") || lower.starts_with("f'") {
+        1
+    } else if lower.starts_with("rf\"")
+        || lower.starts_with("rf'")
+        || lower.starts_with("fr\"")
+        || lower.starts_with("fr'")
+    {
+        2
+    } else {
+        return None;
+    };
+    let rest = &expr[prefix_len..];
+    let quote = rest.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let body = rest.strip_prefix(quote)?.strip_suffix(quote)?;
+    let mut literals = String::new();
+    let mut interpolations = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for ch in body.chars() {
+        match ch {
+            '{' => {
+                depth += 1;
+                if depth == 1 {
+                    current.clear();
+                    continue;
+                }
+            }
+            '}' if depth >= 1 => {
+                depth -= 1;
+                if depth == 0 {
+                    interpolations.push(current.clone());
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        if depth == 0 {
+            literals.push(ch);
+        } else {
+            current.push(ch);
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    Some((literals, interpolations))
+}
+
+/// Whether an f-string change is output-length-invariant: the interpolations are
+/// identical (so the runtime-substituted text is unchanged) and the literal text has
+/// the same length. When true, a `len(...)` oracle provably cannot discriminate the
+/// change, so observing the owner's output only through `len` is not a discriminator.
+/// A format-spec change (`:.2f` -> `:.3f`) alters an interpolation, so it is NOT
+/// length-invariant and is never gated here.
+fn fstring_change_is_length_invariant(old_line: &str, new_line: &str) -> bool {
+    match (fstring_template(old_line), fstring_template(new_line)) {
+        (Some((old_literals, old_interps)), Some((new_literals, new_interps))) => {
+            old_interps == new_interps
+                && old_literals.chars().count() == new_literals.chars().count()
+        }
+        _ => false,
+    }
+}
+
 fn classify_sink_alignment_with_old(
     owner: &PythonOwner,
     line_text: &str,
@@ -4901,28 +4979,55 @@ fn classify_sink_alignment_with_old(
     } else {
         true
     };
-    // The dict-element gate (#1290) applies to EVERY credit branch — like the #1249
-    // every-branch lesson — so a sibling-key oracle cannot sneak `exposed` through
-    // the direct/alias/changed_sink_token path of a localized dict-literal change.
-    // It is a pass-through `true` for any non-dict change.
+    // F-string aggregate gate (#1290 1b): a length-invariant f-string change (only
+    // literal text changed, interpolations unchanged) observed SOLELY through a
+    // `len(...)` aggregate is not discriminated — the output length is identical, so
+    // `len` cannot notice the change. Downgrade only when every strong oracle is such
+    // a length aggregate; a string-equality oracle (`== "..."`) or a format-spec
+    // change (which alters an interpolation, so it is not length-invariant) keeps the
+    // credit. Pass-through `true` for any non-f-string change.
+    let fstring_credit_ok = match old_line_text {
+        Some(old) if fstring_change_is_length_invariant(old, line_text) => {
+            // Credit stands unless EVERY strong oracle is a `len(...)` aggregate, which
+            // cannot discriminate a length-invariant f-string change. A string-equality
+            // oracle (no `len(`) keeps the credit. (`strong_tests` is non-empty here —
+            // the empty case returned `unknown` above.)
+            !strong_tests.iter().all(|test| {
+                test.oracle
+                    .as_deref()
+                    .is_some_and(|text| text.contains("len("))
+            })
+        }
+        _ => true,
+    };
+    // The literal-element and f-string gates (#1290) apply to EVERY credit branch —
+    // like the #1249 every-branch lesson — so a sibling-key / aggregate-only oracle
+    // cannot sneak `exposed` through the direct/alias/changed_sink_token path of a
+    // localized literal change. Both are pass-through `true` for unrelated changes.
     let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens)
         && (is_method_owner || free_fn_module_identity)
         && field_construction_credit_ok
+        && fstring_credit_ok
     {
         ("direct", "strong_oracle_observes_owner_name")
     } else if method_name_observed
         && strong_test_binds_method_receiver
         && field_construction_credit_ok
+        && fstring_credit_ok
     {
         (
             "direct",
             "strong_oracle_observes_owner_method_on_bound_receiver",
         )
-    } else if any_strong_observes(&alias_tokens) && field_construction_credit_ok {
+    } else if any_strong_observes(&alias_tokens)
+        && field_construction_credit_ok
+        && fstring_credit_ok
+    {
         ("alias", "strong_oracle_observes_import_alias")
     } else if any_strong_observes(&delta_tokens)
         && change_only_credit_ok
         && field_construction_credit_ok
+        && fstring_credit_ok
         && (is_method_owner || free_fn_module_identity)
     {
         // Gate the changed-sink-token path with the same free-function module
@@ -7452,6 +7557,89 @@ def test_build_user_smoke():
             "a genuine f-string discriminator must not be downgraded by the dict-element gate"
         );
         Ok(())
+    }
+
+    #[test]
+    fn fstring_length_invariant_change_via_len_aggregate_not_exposed() -> Result<(), String> {
+        // #1290 1b: `f"OK:{code}"` -> `f"NO:{code}"` changes only equal-length literal
+        // text (interpolation unchanged), so output length is invariant. The only
+        // strong oracle is `len(...)`, which cannot discriminate it.
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_len():\n    assert len(status_label(7)) == 4\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a length-invariant f-string change observed only via len() is not discriminated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_length_invariant_change_with_string_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 1b preserve: the same length-invariant change observed by an exact
+        // string comparison IS discriminated.
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_exact():\n    assert status_label(7) == \"NO:7\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an exact string oracle observes the changed f-string output"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_format_spec_change_is_not_length_invariant() {
+        // #1290 1b: a format-spec change alters an interpolation, so it is NOT
+        // length-invariant — a `len` oracle could discriminate it, and it must not be
+        // gated. (Trap 58 / 53 preservation.)
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{value:.2f}\"",
+            "    return f\"{value:.3f}\""
+        ));
+        // Equal-length literal-only change IS length-invariant.
+        assert!(fstring_change_is_length_invariant(
+            "    return f\"OK:{code}\"",
+            "    return f\"NO:{code}\""
+        ));
+        // A literal change that alters length is NOT invariant (len can discriminate).
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{x}\"",
+            "    return f\"{x}!\""
+        ));
+        // Non-f-string lines are never invariant.
+        assert!(!fstring_change_is_length_invariant(
+            "    return x + 1",
+            "    return x - 1"
+        ));
     }
 
     #[test]
