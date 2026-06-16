@@ -192,3 +192,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+#1162 explain enhancement: human output now shows the named static limitation + plain-English meaning (additive 'Static limitation' section, message-only)
+
+Command:
+`cargo xtask goldens bless python_missing_import_graph_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

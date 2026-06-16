@@ -97,6 +97,19 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
+    // #1162 explain enhancement: when a named static limitation is present,
+    // surface its plain-English meaning (not just the snake_case token) so a CLI
+    // reader understands *why* ripr could not resolve the path. Fail-closed
+    // disclosure only — `describe()` asserts no coverage.
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        out.push_str("\nStatic limitation\n");
+        out.push_str(&format!(
+            "  {} \u{2014} {}\n",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
+    }
+
     // RIPR-SPEC-0115: when the transitive-reach limitation named a witnessing
     // test, surface it in human output as a concrete "Where to look" pointer.
     // The witness prose lives in `evidence` (0114's limitation channel); we

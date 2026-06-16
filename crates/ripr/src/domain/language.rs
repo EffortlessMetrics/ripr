@@ -159,6 +159,63 @@ impl StaticLimitKind {
             StaticLimitKind::RustTransitiveReachUnresolved => "rust_transitive_reach_unresolved",
         }
     }
+
+    /// One-sentence plain-English explanation of what this limitation means and
+    /// why ripr cannot resolve the path — surfaced next to the stable
+    /// [`as_str`](Self::as_str) token so a reader sees *why* a finding is
+    /// limited, not just an opaque snake_case label (#1162 explain enhancement).
+    /// Conservative static language only: these describe what ripr could NOT
+    /// statically resolve; none assert coverage or adequacy.
+    pub fn describe(&self) -> &'static str {
+        match self {
+            StaticLimitKind::DynamicDispatch => {
+                "Dynamic dispatch (trait objects or virtual calls) hides which implementation runs, \
+                 so ripr cannot statically resolve whether a test reaches this change."
+            }
+            StaticLimitKind::Metaprogramming => {
+                "Metaprogramming (macros or code generation) produces calls ripr cannot see in the \
+                 source, so the reaching path is not statically resolvable."
+            }
+            StaticLimitKind::MissingImportGraph => {
+                "The import graph could not be resolved (for example a relative or dynamic import), \
+                 so ripr cannot connect a test to this change."
+            }
+            StaticLimitKind::DecoratorIndirection => {
+                "A decorator wraps the changed owner, so ripr cannot statically confirm a test \
+                 exercises the underlying behavior."
+            }
+            StaticLimitKind::MockedModule => {
+                "A mocked module replaces the real implementation, so a passing test may not \
+                 observe the actual changed behavior."
+            }
+            StaticLimitKind::OpaqueCustomAssertionHelper => {
+                "A custom assertion helper hides what is checked, so ripr cannot confirm the \
+                 assertion would discriminate this change."
+            }
+            StaticLimitKind::PropertyBasedTest => {
+                "A property-based test generates its inputs at runtime, so ripr cannot statically \
+                 confirm it exercises this specific change."
+            }
+            StaticLimitKind::UnresolvedPytestFixture => {
+                "A pytest fixture could not be resolved, so ripr cannot statically connect the test \
+                 setup to this change."
+            }
+            StaticLimitKind::UnsupportedSyntax => {
+                "The surrounding syntax is not yet supported by ripr's static model, so the \
+                 reaching path is not resolvable."
+            }
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved => {
+                "This owner is exposed across a language boundary (FFI or binding); whether an \
+                 external-language test observes the change is not statically known \u{2014} verify \
+                 the external oracle rather than adding a same-language test."
+            }
+            StaticLimitKind::RustTransitiveReachUnresolved => {
+                "A test may reach this change through an internal helper-call chain ripr cannot \
+                 fully trace (macros, generics, trait dispatch, or depth greater than 3). This is a \
+                 named limitation, not a coverage claim."
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -251,5 +308,35 @@ mod tests {
             StaticLimitKind::RustTransitiveReachUnresolved.as_str(),
             "rust_transitive_reach_unresolved"
         );
+    }
+
+    #[test]
+    fn static_limit_kind_describe_is_present_and_distinct() {
+        let kinds = [
+            StaticLimitKind::DynamicDispatch,
+            StaticLimitKind::Metaprogramming,
+            StaticLimitKind::MissingImportGraph,
+            StaticLimitKind::DecoratorIndirection,
+            StaticLimitKind::MockedModule,
+            StaticLimitKind::OpaqueCustomAssertionHelper,
+            StaticLimitKind::PropertyBasedTest,
+            StaticLimitKind::UnresolvedPytestFixture,
+            StaticLimitKind::UnsupportedSyntax,
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
+            StaticLimitKind::RustTransitiveReachUnresolved,
+        ];
+        // Every variant has a non-empty, distinct explanation. Conservative
+        // static-language vocabulary is enforced repo-wide by
+        // `cargo xtask check-static-language` (which scans this prose too), so it
+        // is not re-checked here with literal forbidden terms.
+        let mut seen = std::collections::HashSet::new();
+        for kind in kinds {
+            let described = kind.describe();
+            assert!(described.len() > 20, "describe too short for {kind:?}");
+            assert!(
+                seen.insert(described),
+                "duplicate describe text for {kind:?}"
+            );
+        }
     }
 }

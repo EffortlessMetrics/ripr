@@ -46,6 +46,9 @@ Weakness
 Stop reasons:
   - static_probe_unknown
 
+Static limitation
+  unsupported_syntax — The surrounding syntax is not yet supported by ripr's static model, so the reaching path is not resolvable.
+
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
   authority: preview_advisory_only (typescript/preview)

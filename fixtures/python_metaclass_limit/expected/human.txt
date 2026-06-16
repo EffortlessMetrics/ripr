@@ -35,6 +35,9 @@ Weakness
 Stop reasons:
   - static_probe_unknown
 
+Static limitation
+  metaprogramming — Metaprogramming (macros or code generation) produces calls ripr cannot see in the source, so the reaching path is not statically resolvable.
+
 
 Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.
 
