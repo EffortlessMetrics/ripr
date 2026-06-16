@@ -1614,13 +1614,70 @@ fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
         "expected cross_language_oracle_visibility_unresolved in stdout:\n{stdout}"
     );
 
-    // Section 4: Recommended first command.
+    // Section 4: Recommended first command. The exact wording is
+    // worktree-state-aware (see doctor_recommends_commit_first_on_dirty_worktree);
+    // here we only require the diff-first command to be present.
     assert!(
-        stdout.contains("Recommended first command: ripr check --base origin/main"),
-        "expected 'Recommended first command: ripr check --base origin/main' in stdout:\n{stdout}"
+        stdout.contains("ripr check --base origin/main"),
+        "expected the diff-first recommended command in stdout:\n{stdout}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_recommends_commit_first_on_dirty_worktree() -> Result<(), String> {
+    // First-run honesty: doctor must not route a user with uncommitted edits to
+    // `ripr check --base origin/main`, which analyzes committed history only and
+    // would silently exclude their draft (the RIPR-SPEC-0112 dirty-worktree case).
+    let root = unique_temp_workspace("doctor-dirty-wt");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"doctor-dirty-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 1 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+    let root_str = root.display().to_string();
+
+    // CLEAN worktree: recommend the diff-first command directly.
+    let clean = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&clean);
+    let clean_out = String::from_utf8_lossy(&clean.stdout);
+    assert!(
+        clean_out.contains("Recommended first command: ripr check --base origin/main"),
+        "clean worktree must recommend the diff-first command directly:\n{clean_out}"
+    );
+
+    // DIRTY worktree: route the user to commit/stage first.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 2 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let dirty = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&dirty);
+    let dirty_out = String::from_utf8_lossy(&dirty.stdout);
+    assert!(
+        dirty_out.contains("commit or stage your changes"),
+        "dirty worktree must recommend commit/stage first:\n{dirty_out}"
+    );
+    assert!(
+        !dirty_out.contains("Recommended first command: ripr check --base origin/main"),
+        "dirty worktree must NOT give the unconditional clean recommendation:\n{dirty_out}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
 

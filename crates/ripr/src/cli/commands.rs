@@ -3893,7 +3893,19 @@ fn print_doctor_start_here_guidance(root: &Path) {
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
-    println!("- Recommended first command: ripr check --base origin/main");
+    // First-run honesty: when the working tree has uncommitted changes,
+    // `ripr check --base origin/main` analyzes committed history only and would
+    // silently exclude the user's draft (the RIPR-SPEC-0112 dirty-worktree case).
+    // Route them to the command that actually covers their edits instead of the
+    // one that looks clean while ignoring them. Reuses the same helper as the
+    // check-time disclosure (reuse, don't fork).
+    if analysis::working_tree_has_tracked_changes(root) {
+        println!(
+            "- Recommended first command: commit or stage your changes, then `ripr check --base origin/main`. Uncommitted edits are not in scope — `--base` compares committed history (ripr is diff-first; there is no working-tree mode yet)."
+        );
+    } else {
+        println!("- Recommended first command: ripr check --base origin/main");
+    }
 }
 
 /// Language-to-status mapping used by the doctor first-run diagnosis.
