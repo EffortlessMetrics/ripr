@@ -251,11 +251,29 @@ pub(crate) fn render_review_comments_json_with_scope(
         "comments": comments,
         "summary_only": summary_only,
         "suppressed": suppressed,
-        "warnings": warnings,
+        "warnings": review_warnings_json(&warnings),
         "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
     });
 
     super::json::render_pretty(&value, "review comments")
+}
+
+/// Render free-text selection warnings as schema-conformant warning objects.
+///
+/// The review-comments schema (`schemas/ripr/review-comments.schema.json`)
+/// requires each `warnings` entry to be an object `{ kind, message }` with `kind`
+/// drawn from a fixed enum. The selection layer carries warnings as plain strings
+/// (latency/cap notes), so we wrap each as `kind: "other"` — the schema's
+/// catch-all for general analysis notes. Empty strings are dropped (the schema
+/// requires a non-empty `message`). This keeps the emitted JSON valid even when a
+/// warning fires (e.g. a bounded-latency note on a slow runner), instead of
+/// emitting a bare string that fails the `--check` contract.
+fn review_warnings_json(warnings: &[String]) -> Vec<Value> {
+    warnings
+        .iter()
+        .filter(|warning| !warning.trim().is_empty())
+        .map(|warning| json!({ "kind": "other", "message": warning }))
+        .collect()
 }
 
 pub(crate) fn render_gap_record_review_comments_json(
@@ -1727,12 +1745,35 @@ mod tests {
             serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
         assert_eq!(value["summary"]["comments"], 0);
         assert_eq!(value["summary"]["summary_only"], 0);
+        // RIPR-SPEC schema: warnings are objects { kind, message }, not bare strings.
+        assert_eq!(value["warnings"][0]["kind"], "other");
         assert!(
-            value["warnings"][0]
+            value["warnings"][0]["message"]
                 .as_str()
                 .is_some_and(|warning| warning.contains("fallback seams were suppressed"))
         );
         Ok(())
+    }
+
+    #[test]
+    fn review_warnings_json_wraps_strings_as_schema_objects_and_drops_empties() {
+        let objects = review_warnings_json(&[
+            "bounded by latency budget".to_string(),
+            "   ".to_string(),
+            "another note".to_string(),
+        ]);
+        // Empty/whitespace-only warnings are dropped (schema requires non-empty message).
+        assert_eq!(objects.len(), 2);
+        for object in &objects {
+            assert_eq!(object["kind"], "other");
+            assert!(
+                object["message"]
+                    .as_str()
+                    .is_some_and(|message| !message.is_empty())
+            );
+        }
+        assert_eq!(objects[0]["message"], "bounded by latency budget");
+        assert_eq!(objects[1]["message"], "another note");
     }
 
     #[test]
@@ -2476,7 +2517,7 @@ mod tests {
                 assert!(
                     warnings
                         .iter()
-                        .filter_map(Value::as_str)
+                        .filter_map(|warning| warning.get("message").and_then(Value::as_str))
                         .any(|warning| warning.contains(seam_id)),
                     "{} warnings should mention {}",
                     artifact,
