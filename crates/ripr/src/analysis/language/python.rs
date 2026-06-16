@@ -5280,6 +5280,18 @@ fn classify_change_with_old(
         .max_by_key(|test| test.oracle_strength.rank())
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
+    // A raise / error-path change is discriminated only by an oracle that observes the
+    // RAISED exception (`pytest.raises` / `assertRaises`). A strong normal-path value
+    // oracle reaches the owner but never triggers the changed raise — e.g.
+    // `raise ValueError` -> `KeyError` on an `if not text:` branch, with a test that
+    // only calls `parse("42")` — so it does not discriminate the change (#1290 Class C).
+    // Require an exception-observing oracle for an ErrorPath change before crediting
+    // `exposed`; otherwise it falls through to the strong-but-orthogonal weak branch.
+    let error_path_oracle_ok = !matches!(family, ProbeFamily::ErrorPath)
+        || matches!(
+            strongest_kind,
+            OracleKind::ExactErrorVariant | OracleKind::BroadError
+        );
 
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if static_limit
         .is_some()
@@ -5329,7 +5341,10 @@ fn classify_change_with_old(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank() && alignment.observes() {
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && alignment.observes()
+        && error_path_oracle_ok
+    {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -7612,6 +7627,63 @@ def test_build_user_smoke():
             finding.class,
             ExposureClass::Exposed,
             "an exact string oracle observes the changed f-string output"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn error_path_change_with_value_oracle_not_exposed() -> Result<(), String> {
+        // #1290 Class C: a `raise` type change on an untaken branch, observed only by a
+        // normal-path value oracle (the test never triggers the raise), is not
+        // discriminated.
+        let source = "def parse(text):\n    if not text:\n        raise KeyError(\"empty\")\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/parseint.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_parseint.py"),
+            "from src.parseint import parse\n\n\ndef test_parse_ok():\n    assert parse(\"42\") == 42\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/parseint.py"),
+            3,
+            "        raise KeyError(\"empty\")",
+            Some("        raise ValueError(\"empty\")"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed raise should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a raise change observed only by a normal-path value oracle is not discriminated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn error_path_change_with_exception_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 Class C preserve: the same raise change IS exposed when the test
+        // observes the raised exception via pytest.raises.
+        let source = "def parse(text):\n    if not text:\n        raise KeyError(\"empty\")\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/parseint.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_parseint.py"),
+            "import pytest\n\nfrom src.parseint import parse\n\n\ndef test_parse_empty():\n    with pytest.raises(KeyError, match=\"empty\"):\n        parse(\"\")\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/parseint.py"),
+            3,
+            "        raise KeyError(\"empty\")",
+            Some("        raise ValueError(\"empty\")"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed raise should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an exception oracle observes the changed raise"
         );
         Ok(())
     }
