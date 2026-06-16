@@ -94,6 +94,19 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
     if all_no_path_count != s.findings {
         return;
     }
+    // Honesty guard (dogfood: anyhow `Chain::len`): the unknown classes
+    // (`static_unknown` / `infection_unknown` / `propagation_unknown`) can carry
+    // `reach: yes` — a test DOES reach the change, ripr just could not classify
+    // or propagate it. Claiming "no static test path" for the diff then
+    // contradicts the finding's own reach evidence. A reaching test IS a static
+    // test path, so suppress the all-no-path note whenever any finding reaches.
+    if output
+        .findings
+        .iter()
+        .any(|finding| finding.ripr.reach.state == crate::domain::StageState::Yes)
+    {
+        return;
+    }
     out.push_str(&format!(
         "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
 This is not a coverage assessment. A test may already exercise these changes through macros, \
@@ -1214,6 +1227,40 @@ mod tests {
             rendered
                 .contains("ripr found no static test path for any of the 1 changed expression(s)"),
             "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_a_finding_reaches() {
+        // Honesty (dogfood: anyhow Chain::len): an unknown-class finding can carry
+        // reach=yes (a test DOES reach the change). Claiming "no static test path"
+        // then contradicts the finding's own reach evidence, so the all-no-path
+        // note must be suppressed when any finding reaches.
+        let mut finding = unknown_finding();
+        finding.ripr.reach.state = StageState::Yes;
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any"),
+            "must not claim no-static-path when a finding reaches; got:\n{rendered}"
         );
     }
 

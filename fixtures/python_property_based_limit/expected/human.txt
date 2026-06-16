@@ -40,6 +40,4 @@ Static limitation
   property_based_test — A property-based test generates its inputs at runtime, so ripr cannot statically confirm it exercises this specific change.
 
 
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.
-
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
