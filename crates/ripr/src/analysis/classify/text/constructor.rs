@@ -31,6 +31,24 @@ pub(in crate::analysis) fn error_constructor_payloads(text: &str) -> Vec<ErrorCo
     payloads
 }
 
+pub(in crate::analysis) fn error_result_payload_literal_sets(text: &str) -> Vec<Vec<String>> {
+    let mut payloads = result_error_open_indices(text)
+        .into_iter()
+        .filter_map(|open| {
+            let arguments = delimited_contents_at(text, open)?;
+            let literals = string_literals(&arguments);
+            (!literals.is_empty()).then_some(literals)
+        })
+        .collect::<Vec<_>>();
+    payloads.sort();
+    payloads.dedup();
+    payloads
+}
+
+pub(in crate::analysis) fn rust_string_literals(text: &str) -> Vec<String> {
+    string_literals(text)
+}
+
 fn constructor_open_indices(text: &str) -> Vec<usize> {
     let mut indices = Vec::new();
     let mut in_string = false;
@@ -82,6 +100,69 @@ fn constructor_open_indices(text: &str) -> Vec<usize> {
         }
     }
     indices
+}
+
+fn result_error_open_indices(text: &str) -> Vec<usize> {
+    let mut indices = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut chars = text.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if in_line_comment {
+            if ch == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+        if in_block_comment {
+            if ch == '*'
+                && let Some((_, '/')) = chars.peek().copied()
+            {
+                let _ = chars.next();
+                in_block_comment = false;
+            }
+            continue;
+        }
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '/' => match chars.peek().copied() {
+                Some((_, '/')) => {
+                    let _ = chars.next();
+                    in_line_comment = true;
+                }
+                Some((_, '*')) => {
+                    let _ = chars.next();
+                    in_block_comment = true;
+                }
+                _ => {}
+            },
+            'E' if text[index..].starts_with("Err(") && token_boundary_before(text, index) => {
+                indices.push(index + "Err".len());
+            }
+            _ => {}
+        }
+    }
+    indices
+}
+
+fn token_boundary_before(text: &str, index: usize) -> bool {
+    index == 0
+        || !text[..index]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn constructor_path_before_open(text: &str, open: usize) -> Option<String> {
@@ -291,6 +372,37 @@ mod tests {
                 "comments should not add string literals: {:?}",
                 payloads[0].string_literals
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn result_error_payload_literals_read_err_arguments_only() -> Result<(), String> {
+        let payloads = error_result_payload_literal_sets(
+            r#"assert_eq!(validate(), Err("$.mode did not match".to_string()), "outside message");"#,
+        );
+        if payloads != vec![vec!["$.mode did not match".to_string()]] {
+            return Err(format!("unexpected payloads: {payloads:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn result_error_payload_literals_ignore_comments_and_strings() -> Result<(), String> {
+        let payloads = error_result_payload_literal_sets(
+            r#"
+// Err("comment")
+/* Err("block comment") */
+let text = "Err(\"string literal\")";
+return Err(format!("{path} schema uses non-local ref {reference}"));
+"#,
+        );
+        if payloads
+            != vec![vec![
+                "{path} schema uses non-local ref {reference}".to_string(),
+            ]]
+        {
+            return Err(format!("unexpected payloads: {payloads:?}"));
         }
         Ok(())
     }

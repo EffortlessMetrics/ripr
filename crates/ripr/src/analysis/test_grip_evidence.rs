@@ -3889,7 +3889,10 @@ fn error_variant_oracle_matches_seam_variant(seam: &RepoSeam, oracle_text: &str)
             // Fail-closed: if unparseable, return false.
             match exact_error_variant(variant) {
                 Some(v) => v,
-                None => return error_constructor_payload_oracle_matches_seam(variant, oracle_text),
+                None => {
+                    return error_constructor_payload_oracle_matches_seam(variant, oracle_text)
+                        || error_string_payload_oracle_matches_seam(variant, oracle_text);
+                }
             }
         }
         _ => return false,
@@ -3926,6 +3929,167 @@ fn error_constructor_payload_oracle_matches_seam(seam_text: &str, oracle_text: &
                 oracle.path == seam.path && oracle.string_literals == seam.string_literals
             })
         })
+}
+
+fn error_string_payload_oracle_matches_seam(seam_text: &str, oracle_text: &str) -> bool {
+    use super::classify::error_result_payload_literal_sets;
+
+    let seam_payloads = error_result_payload_literal_sets(seam_text);
+    if seam_payloads.is_empty() {
+        return false;
+    }
+    let oracle_payloads = oracle_string_payload_literal_sets(oracle_text);
+    seam_payloads.iter().any(|seam| {
+        oracle_payloads
+            .iter()
+            .any(|oracle| payload_literals_match(seam, oracle))
+    })
+}
+
+fn oracle_string_payload_literal_sets(oracle_text: &str) -> Vec<Vec<String>> {
+    use super::classify::{error_result_payload_literal_sets, rust_string_literals};
+    use super::extract::equality_assertion_arguments;
+
+    let result_payloads = error_result_payload_literal_sets(oracle_text);
+    if !result_payloads.is_empty() {
+        return result_payloads;
+    }
+    let Some(args) = equality_assertion_arguments(oracle_text) else {
+        return Vec::new();
+    };
+    args.into_iter()
+        .take(2)
+        .filter_map(|arg| {
+            let literals = rust_string_literals(&arg);
+            (!literals.is_empty()).then_some(literals)
+        })
+        .collect()
+}
+
+fn payload_literals_match(seam_literals: &[String], oracle_literals: &[String]) -> bool {
+    seam_literals
+        .iter()
+        .filter(|literal| payload_literal_has_fixed_text(literal))
+        .any(|seam_literal| {
+            oracle_literals
+                .iter()
+                .filter(|literal| payload_literal_has_fixed_text(literal))
+                .any(|oracle_literal| format_literal_matches(seam_literal, oracle_literal))
+        })
+}
+
+fn format_literal_matches(pattern: &str, observed: &str) -> bool {
+    if pattern == observed {
+        return true;
+    }
+    let fragments = format_literal_fixed_fragments(pattern);
+    if !fragments.removed_placeholder {
+        return false;
+    }
+    let meaningful = fragments
+        .values
+        .iter()
+        .filter(|fragment| substantial_literal_fragment(fragment))
+        .collect::<Vec<_>>();
+    if meaningful.is_empty() {
+        return false;
+    }
+    let mut search_from = 0usize;
+    let last_index = meaningful.len().saturating_sub(1);
+    for (index, fragment) in meaningful.iter().enumerate() {
+        let fragment = fragment.as_str();
+        let Some(relative) = observed[search_from..].find(fragment) else {
+            return false;
+        };
+        let absolute = search_from + relative;
+        if index == 0 && !fragments.starts_with_placeholder && absolute != 0 {
+            return false;
+        }
+        let fragment_end = absolute + fragment.len();
+        if index == last_index && !fragments.ends_with_placeholder && fragment_end != observed.len()
+        {
+            return false;
+        }
+        search_from = fragment_end;
+    }
+    true
+}
+
+fn payload_literal_has_fixed_text(literal: &str) -> bool {
+    format_literal_fixed_fragments(literal)
+        .values
+        .iter()
+        .any(|fragment| fragment.chars().any(|ch| ch.is_alphanumeric()))
+}
+
+struct FormatLiteralFragments {
+    values: Vec<String>,
+    removed_placeholder: bool,
+    starts_with_placeholder: bool,
+    ends_with_placeholder: bool,
+}
+
+fn format_literal_fixed_fragments(pattern: &str) -> FormatLiteralFragments {
+    let mut fragments = Vec::new();
+    let mut current = String::new();
+    let mut removed_placeholder = false;
+    let mut saw_content = false;
+    let mut starts_with_placeholder = false;
+    let mut ends_with_placeholder = false;
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                if matches!(chars.peek(), Some('{')) {
+                    let _ = chars.next();
+                    current.push('{');
+                    saw_content = true;
+                    ends_with_placeholder = false;
+                    continue;
+                }
+                if !current.is_empty() {
+                    fragments.push(std::mem::take(&mut current));
+                }
+                if !saw_content {
+                    starts_with_placeholder = true;
+                }
+                saw_content = true;
+                removed_placeholder = true;
+                ends_with_placeholder = true;
+                for inner in chars.by_ref() {
+                    if inner == '}' {
+                        break;
+                    }
+                }
+            }
+            '}' => {
+                if matches!(chars.peek(), Some('}')) {
+                    let _ = chars.next();
+                    current.push('}');
+                    saw_content = true;
+                    ends_with_placeholder = false;
+                }
+            }
+            _ => {
+                current.push(ch);
+                saw_content = true;
+                ends_with_placeholder = false;
+            }
+        }
+    }
+    if !current.is_empty() {
+        fragments.push(current);
+    }
+    FormatLiteralFragments {
+        values: fragments,
+        removed_placeholder,
+        starts_with_placeholder,
+        ends_with_placeholder,
+    }
+}
+
+fn substantial_literal_fragment(fragment: &str) -> bool {
+    fragment.chars().filter(|ch| ch.is_alphanumeric()).count() >= 8
 }
 
 /// Returns true when `oracle_kind` is an acceptable discriminator for `seam_kind`.
@@ -4815,6 +4979,228 @@ fn duplicate_allow_id_reports_exact_error_payload() {
         if error_constructor_payload_oracle_matches_seam(multi_arg_seam, partially_shared_multi_arg)
         {
             return Err("partially shared constructor literals must not match".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_string_error_payload_seam_when_test_asserts_exact_err_then_discriminate_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/artifact_sample_schema_support.rs");
+        let prod_src = r#"
+pub fn schema_covers_sample_value(path: &str, missing: &[&str]) -> Result<(), String> {
+    if !missing.is_empty() {
+        return Err(format!(
+            "{path} is missing schema-required keys: {}",
+            missing.join(", ")
+        ));
+    }
+    Ok(())
+}
+"#;
+        let tests = PathBuf::from("tests/artifact_sample_schema_support_tests.rs");
+        let tests_src = r#"
+use artifact_sample_schema_support::schema_covers_sample_value;
+
+#[test]
+fn artifact_sample_validator_reports_object_shape_errors() {
+    assert_eq!(
+        schema_covers_sample_value("$", &["name"]),
+        Err("$ is missing schema-required keys: name".to_string())
+    );
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(
+            &[PathBuf::from("src/artifact_sample_schema_support.rs")],
+            &index,
+        );
+        let error_seam = seams
+            .iter()
+            .find(|seam| {
+                seam.kind() == SeamKind::ErrorVariant
+                    && seam.expression().contains("schema-required keys")
+            })
+            .ok_or_else(|| "expected string payload error_variant seam".to_string())?;
+
+        let evidence = evidence_for_seam(error_seam, &index);
+        if evidence.discriminate.state != StageState::Yes {
+            return Err(format!(
+                "expected discriminate=Yes for exact Err(String) payload assertion, got {} ({})",
+                evidence.discriminate.state.as_str(),
+                evidence.discriminate.summary
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_bound_string_error_payload_assertion_then_discriminate_is_yes() -> Result<(), String> {
+        let prod = PathBuf::from("src/artifact_sample_schema_support.rs");
+        let prod_src = r#"
+pub fn schema_covers_sample_value(path: &str, reference: &str) -> Result<(), String> {
+    return Err(format!("{path} schema uses non-local ref {reference}"));
+}
+"#;
+        let tests = PathBuf::from("tests/artifact_sample_schema_support_tests.rs");
+        let tests_src = r#"
+use artifact_sample_schema_support::schema_covers_sample_value;
+
+#[test]
+fn artifact_sample_validator_reports_ref_errors() {
+    let path = "$";
+    let reference = "other.json";
+    let err = schema_covers_sample_value(path, reference)
+        .expect_err("non-local schema refs should fail validation");
+    assert_eq!(err, format!("{path} schema uses non-local ref {reference}"));
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(
+            &[PathBuf::from("src/artifact_sample_schema_support.rs")],
+            &index,
+        );
+        let error_seam = seams
+            .iter()
+            .find(|seam| {
+                seam.kind() == SeamKind::ErrorVariant
+                    && seam.expression().contains("schema uses non-local ref")
+            })
+            .ok_or_else(|| "expected string payload error_variant seam".to_string())?;
+
+        let evidence = evidence_for_seam(error_seam, &index);
+        if evidence.discriminate.state != StageState::Yes {
+            return Err(format!(
+                "expected discriminate=Yes for bound exact string payload assertion, got {} ({})",
+                evidence.discriminate.state.as_str(),
+                evidence.discriminate.summary
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn string_error_payload_match_ignores_assertion_message_and_thin_templates()
+    -> Result<(), String> {
+        let seam = r#"return Err(format!("{path} is missing schema-required keys: {}", missing.join(", ")));"#;
+        let matching_oracle = r#"assert_eq!(validate(), Err("$ is missing schema-required keys: name".to_string()));"#;
+        if !error_string_payload_oracle_matches_seam(seam, matching_oracle) {
+            return Err("format payload should match concrete asserted Err string".to_string());
+        }
+
+        let assertion_message_only = r#"assert_eq!(validate(), Err("$ has unrelated error".to_string()), "$ is missing schema-required keys: name");"#;
+        if error_string_payload_oracle_matches_seam(seam, assertion_message_only) {
+            return Err("assertion message must not satisfy string error payload".to_string());
+        }
+
+        let thin_template = r#"return Err(format!("{}"));"#;
+        let observed = r#"assert_eq!(validate(), Err("anything".to_string()));"#;
+        if error_string_payload_oracle_matches_seam(thin_template, observed) {
+            return Err(
+                "format templates without meaningful fixed text must fail closed".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn string_error_payload_match_accepts_multiline_any_of_assertion() -> Result<(), String> {
+        let seam = r#"return Err(format!(
+            "{path} did not match any anyOf branch: {}",
+            errors.join("; ")
+        ))"#;
+        let matching_oracle = r##"assert_eq!(
+            schema_covers_sample_value(&any_of_schema, &any_of_schema, &json_value(r#""check""#), "$.mode"),
+            Err("$.mode did not match any anyOf branch: $.mode has value \"check\", expected const \"allow\"; $.mode has value \"check\", expected const \"audit\"".to_string())
+        );"##;
+        if !error_string_payload_oracle_matches_seam(seam, matching_oracle) {
+            return Err("real cargo-allow anyOf payload assertion should match".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn string_error_payload_match_requires_exact_plain_payload() -> Result<(), String> {
+        let seam = r#"return Err("permission denied".to_string());"#;
+        let containing_oracle =
+            r#"assert_eq!(validate(), Err("not permission denied".to_string()));"#;
+        if error_string_payload_oracle_matches_seam(seam, containing_oracle) {
+            return Err("plain error payloads must not match by substring".to_string());
+        }
+
+        let exact_oracle = r#"assert_eq!(validate(), Err("permission denied".to_string()));"#;
+        if !error_string_payload_oracle_matches_seam(seam, exact_oracle) {
+            return Err("plain error payloads should still match exact assertions".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn string_error_payload_match_fails_closed_for_unmatched_payload_shapes() -> Result<(), String>
+    {
+        let cases = [
+            (
+                "non Err seam",
+                r#"return Ok(());"#,
+                r#"assert_eq!(validate(), Err("permission denied".to_string()));"#,
+                false,
+            ),
+            (
+                "oracle without payload literal",
+                r#"return Err("permission denied".to_string());"#,
+                r#"assert!(validate().is_err());"#,
+                false,
+            ),
+            (
+                "missing required format fragment",
+                r#"return Err(format!("schema-required {path} keys missing"));"#,
+                r#"assert_eq!(validate(), Err("schema-required $".to_string()));"#,
+                false,
+            ),
+            (
+                "first required format fragment absent",
+                r#"return Err(format!("schema-required {path} keys missing"));"#,
+                r#"assert_eq!(validate(), Err("prefix $ keys missing".to_string()));"#,
+                false,
+            ),
+            (
+                "shared delimiter literal is auxiliary",
+                r#"return Err(format!("left payload {}", values.join(", ")));"#,
+                r#"assert_eq!(validate(), Err(format!("right payload {}", values.join(", "))));"#,
+                false,
+            ),
+            (
+                "leading fixed fragment is anchored",
+                r#"return Err(format!("permission denied: {reason}"));"#,
+                r#"assert_eq!(validate(), Err("not permission denied: root".to_string()));"#,
+                false,
+            ),
+            (
+                "trailing fixed fragment is anchored",
+                r#"return Err(format!("{path} permission denied"));"#,
+                r#"assert_eq!(validate(), Err("$.mode permission denied extra".to_string()));"#,
+                false,
+            ),
+            (
+                "leading placeholder can precede fixed text",
+                r#"return Err(format!("{path} schema uses non-local ref {reference}"));"#,
+                r#"assert_eq!(validate(), Err("$ schema uses non-local ref other.json".to_string()));"#,
+                true,
+            ),
+            (
+                "escaped braces remain fixed text",
+                r#"return Err(format!("schema {{required}} {path} keys missing"));"#,
+                r#"assert_eq!(validate(), Err("schema {required} $.mode keys missing".to_string()));"#,
+                true,
+            ),
+        ];
+        for (label, seam, oracle, expected) in cases {
+            let actual = error_string_payload_oracle_matches_seam(seam, oracle);
+            if actual != expected {
+                return Err(format!(
+                    "{label}: expected {expected}, got {actual} for seam {seam:?} and oracle {oracle:?}"
+                ));
+            }
         }
         Ok(())
     }
