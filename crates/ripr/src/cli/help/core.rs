@@ -111,10 +111,14 @@ Options:
 Environment variables:
   RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
                                     before check fails closed as
-                                    diff_scope_oversized. Default: 2000.
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 2000.
   RIPR_MAX_DIFF_INDEX_FILES         Maximum Rust files loaded into the diff
                                     index before check fails closed as
-                                    diff_scope_oversized. Default: 800.
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 800.
 
 Examples:
   ripr check

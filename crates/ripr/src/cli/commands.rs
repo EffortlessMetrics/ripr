@@ -3441,18 +3441,33 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
     let input_root = input.root.clone();
     let input_diff_file_is_some = input.diff_file.is_some();
-    let mut output = if format.is_repo_seam_inventory() {
+    let limited_check_input = input.clone();
+    let output_result = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
         // `CheckOutput` carries only the fields these renderers read.
-        app::repo_seam_inventory_input(input)
+        Ok(app::repo_seam_inventory_input(input))
     } else if format.is_repo_scope() {
-        app::check_workspace_repo_with_config(input, &config)?
+        app::check_workspace_repo_with_config(input, &config)
     } else if worktree_explicitly_provided {
-        app::check_workspace_worktree_with_config(input, &config)?
+        app::check_workspace_worktree_with_config(input, &config)
     } else {
-        app::check_workspace_with_config(input, &config)?
+        app::check_workspace_with_config(input, &config)
+    };
+    let mut output = match output_result {
+        Ok(output) => output,
+        Err(err) => {
+            if matches!(format, OutputFormat::Json)
+                && let Some(rendered) = output::limited_check::render_diff_scope_limited_check_json(
+                    &limited_check_input,
+                    &err,
+                )?
+            {
+                write_stdout_chunked(&rendered)?;
+            }
+            return Err(err);
+        }
     };
     // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
     // The guidance fires only when scope was NOT explicitly provided — it must
@@ -4642,6 +4657,50 @@ mod tests {
         std::fs::remove_dir_all(root)
             .map_err(|err| format!("failed to remove temp sample workspace: {err}"))?;
         Ok(())
+    }
+
+    #[test]
+    fn check_json_returns_limited_artifact_error_for_oversized_diff() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("oversized-diff");
+        let diff = root.join("oversized.diff");
+        std::fs::create_dir_all(&root)
+            .map_err(|err| format!("failed to create oversized diff root: {err}"))?;
+        std::fs::write(&diff, oversized_rust_diff(2001))
+            .map_err(|err| format!("failed to write oversized diff: {err}"))?;
+        let root_arg = root.to_string_lossy().into_owned();
+        let diff_arg = diff.to_string_lossy().into_owned();
+
+        let result = check(&[
+            "--root".to_string(),
+            root_arg,
+            "--diff".to_string(),
+            diff_arg,
+            "--json".to_string(),
+        ]);
+
+        let cleanup = std::fs::remove_dir_all(&root)
+            .map_err(|err| format!("failed to remove oversized diff root: {err}"));
+        assert!(
+            matches!(result, Err(ref message) if message.contains("diff_scope_oversized")),
+            "expected diff_scope_oversized error, got {result:?}"
+        );
+        cleanup
+    }
+
+    fn oversized_rust_diff(changed_lines: usize) -> String {
+        let mut diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             index 0000000..1111111 100644\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,{changed_lines} @@\n",
+        );
+        for index in 0..changed_lines {
+            diff.push_str(&format!(
+                "+pub fn generated_{index}() -> usize {{ {index} }}\n"
+            ));
+        }
+        diff
     }
 
     #[test]

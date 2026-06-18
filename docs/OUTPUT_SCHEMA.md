@@ -67,6 +67,24 @@ omitted when no supported alignment item is present, so existing consumers can
 continue to read `findings` directly. Raw findings remain unchanged and are
 repeated only as supporting evidence for the canonical item.
 
+When Rust diff-scoped analysis stops at a configured budget before probe
+expansion, `ripr check --json` still exits non-zero, but it writes a limited
+check artifact to stdout before reporting the error on stderr. This artifact
+preserves the normal check envelope (`schema_version`, `tool`, `mode`, `root`,
+`summary`, and `findings`) and adds:
+
+- `analysis_scope.run_status: "diff_scope_oversized"`
+- `analysis_scope.basis: "rust_diff_scope_budget"`
+- `analysis_scope.downstream_consumable: false`
+- `analysis_scope.limitation: "diff_scope_oversized"`
+- `analysis_scope.repair_route: "analysis/diff-scope-budget"`
+- `run_limitations[]` with the same category, run status, repair route, and the
+  budget diagnostic message
+
+Consumers must not treat a limited `diff_scope_oversized` artifact as a clean
+or complete analysis. The zero summary and empty `findings` array mean analysis
+did not run far enough to classify probes, not that the diff has no findings.
+
 ```json
 {
   "finding_alignment": {

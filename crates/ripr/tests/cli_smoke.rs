@@ -266,6 +266,40 @@ fn check_json_output_has_stable_contract_fields() {
 }
 
 #[test]
+fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr_with_env(
+        &["check", "--root", &root, "--diff", &diff, "--json"],
+        &[("RIPR_MAX_DIFF_CHANGED_RUST_LINES", "1")],
+    );
+    assert_failure(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("limited stdout should parse as JSON: {err}\n{stdout}"))?;
+    assert_eq!(value["schema_version"], "0.2");
+    assert_eq!(
+        value["analysis_scope"]["run_status"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["analysis_scope"]["downstream_consumable"], false);
+    assert_eq!(
+        value["run_limitations"][0]["category"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["run_limitations"][0]["downstream_consumable"], false);
+    assert_eq!(value["findings"].as_array().map(Vec::len), Some(0));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("diff_scope_oversized"),
+        "stderr should still report failed analysis: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
 fn diff_json_reports_changed_surface_before_full_repo_context() -> Result<(), String> {
     let workspace = unique_temp_workspace("diff-first");
     std::fs::create_dir_all(workspace.join("src")).map_err(|e| format!("create src dir: {e}"))?;
