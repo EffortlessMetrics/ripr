@@ -644,11 +644,14 @@ fn extract_parser_oracles(
         let range = macro_call.syntax().text_range();
         let assertion_text = slice_macro_call_text(text, range.start(), range.end());
         let mut classification = classify_assertion(&assertion_text);
-        // Upgrade ExactValue assertions on unwrap_err-bound variables to
-        // ExactErrorVariant when the assertion names a specific error variant
-        // (RIPR-SPEC-0106, Part A).
-        if classification.kind == OracleKind::ExactValue
-            && is_unwrap_err_bound_error_assertion(&assertion_text, &bound_error_vars)
+        // Upgrade exact assertions on unwrap_err-bound variables to
+        // ExactErrorVariant when the assertion pins a specific error result
+        // (RIPR-SPEC-0106, Part A). Constructor-payload equality reaches this
+        // point as WholeObjectEquality.
+        if matches!(
+            classification.kind,
+            OracleKind::ExactValue | OracleKind::WholeObjectEquality
+        ) && is_unwrap_err_bound_error_assertion(&assertion_text, &bound_error_vars)
         {
             classification.kind = OracleKind::ExactErrorVariant;
             classification.strength = OracleStrength::Strong;

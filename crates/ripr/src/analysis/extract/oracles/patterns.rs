@@ -1,6 +1,7 @@
 use super::arguments::{
     comparable_expression, custom_assertion_arguments, equality_assertion_arguments,
 };
+use crate::analysis::classify::error_constructor_call_paths;
 
 pub(super) fn is_snapshot_assertion(line: &str) -> bool {
     let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
@@ -50,13 +51,14 @@ pub(super) fn is_exact_error_variant_assertion(line: &str) -> bool {
 }
 
 /// Returns true when `line` is an assertion on a variable known to hold an
-/// unwrap_err result AND names a specific error variant.
+/// unwrap_err result and pins a specific error result.
 ///
 /// This recognizes the two-line pattern:
 /// ```text
 /// let err = f(-1).unwrap_err();
 /// assert_eq!(err, MyError::Negative);          // ← this line
 /// assert!(matches!(err, MyError::Negative));   // ← or this line
+/// assert_eq!(err, MyError::new("negative"));   // ← or constructor equality
 /// ```
 /// `bound_error_vars` is the set of variable names bound by `.unwrap_err()`
 /// or `.expect_err(...)` earlier in the same test body.
@@ -69,12 +71,14 @@ pub(crate) fn is_unwrap_err_bound_error_assertion(
     }
     // The line must be an assertion macro invocation.
     let is_assert = line.contains("assert_eq!")
-        || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
         || line.contains("assert!");
     if !is_assert {
         return false;
+    }
+    if is_bound_error_equality_assertion(line, bound_error_vars) {
+        return true;
     }
     // Must name at least one enum variant (SomeThing::Variant pattern with uppercase last component).
     if !contains_named_enum_variant(line) {
@@ -84,6 +88,33 @@ pub(crate) fn is_unwrap_err_bound_error_assertion(
     bound_error_vars
         .iter()
         .any(|var| line_references_variable(line, var))
+}
+
+fn is_bound_error_equality_assertion(
+    line: &str,
+    bound_error_vars: &std::collections::BTreeSet<String>,
+) -> bool {
+    let Some(args) = equality_assertion_arguments(line) else {
+        return false;
+    };
+    let (Some(left), Some(right)) = (args.first(), args.get(1)) else {
+        return false;
+    };
+    let left = comparable_expression(left);
+    let right = comparable_expression(right);
+    bound_error_vars.iter().any(|var| {
+        let var = comparable_expression(var);
+        (left == var && expression_pins_specific_error(&right))
+            || (right == var && expression_pins_specific_error(&left))
+    })
+}
+
+fn expression_pins_specific_error(expression: &str) -> bool {
+    contains_named_enum_variant(expression) || contains_error_constructor_call(expression)
+}
+
+fn contains_error_constructor_call(expression: &str) -> bool {
+    !error_constructor_call_paths(expression).is_empty()
 }
 
 /// Returns true when the line contains a path-qualified enum variant:
@@ -261,6 +292,36 @@ mod spec_0106_tests {
             ),
             "matches! variant assertion on bound var must be recognized"
         );
+    }
+
+    #[test]
+    fn is_unwrap_err_bound_error_assertion_upgrades_constructor_payload_equality()
+    -> Result<(), String> {
+        let bound = vars(&["err"]);
+        if !is_unwrap_err_bound_error_assertion(
+            r#"assert_eq!(err, CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#,
+            &bound,
+        ) {
+            return Err(
+                "exact constructor-payload equality on bound error must be recognized".to_string(),
+            );
+        }
+        if is_unwrap_err_bound_error_assertion("assert_eq!(err, expected_error);", &bound) {
+            return Err(
+                "opaque expected variables must not be promoted to exact error variants"
+                    .to_string(),
+            );
+        }
+        if is_unwrap_err_bound_error_assertion(
+            r#"assert_ne!(err, CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#,
+            &bound,
+        ) {
+            return Err("negative constructor-payload assertions must not be promoted".to_string());
+        }
+        if is_unwrap_err_bound_error_assertion("assert_ne!(err, CalcError::Negative);", &bound) {
+            return Err("negative enum-variant assertions must not be promoted".to_string());
+        }
+        Ok(())
     }
 
     // Control 3 (GENERIC): generic assertion without variant token → no upgrade.

@@ -3889,7 +3889,7 @@ fn error_variant_oracle_matches_seam_variant(seam: &RepoSeam, oracle_text: &str)
             // Fail-closed: if unparseable, return false.
             match exact_error_variant(variant) {
                 Some(v) => v,
-                None => return false,
+                None => return error_constructor_payload_oracle_matches_seam(variant, oracle_text),
             }
         }
         _ => return false,
@@ -3911,6 +3911,21 @@ fn error_variant_oracle_matches_seam_variant(seam: &RepoSeam, oracle_text: &str)
 
     // Credit only when the oracle names the seam's exact variant.
     oracle_variants.iter().any(|v| v == &seam_variant)
+}
+
+fn error_constructor_payload_oracle_matches_seam(seam_text: &str, oracle_text: &str) -> bool {
+    use super::classify::error_constructor_payloads;
+
+    let seam_payloads = error_constructor_payloads(seam_text);
+    let oracle_payloads = error_constructor_payloads(oracle_text);
+    seam_payloads
+        .iter()
+        .filter(|seam| !seam.string_literals.is_empty())
+        .any(|seam| {
+            oracle_payloads.iter().any(|oracle| {
+                oracle.path == seam.path && oracle.string_literals == seam.string_literals
+            })
+        })
 }
 
 /// Returns true when `oracle_kind` is an acceptable discriminator for `seam_kind`.
@@ -4704,6 +4719,102 @@ fn parse_returns_revoked_token_on_empty() {
                 evidence.discriminate.state.as_str(),
                 evidence.discriminate.summary
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_error_constructor_payload_seam_when_test_asserts_exact_payload_then_discriminate_evidence_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/entry_validation.rs");
+        let prod_src = r#"
+#[derive(Debug, PartialEq, Eq)]
+pub struct CargoAllowError(String);
+
+impl CargoAllowError {
+    pub fn new(message: String) -> Self {
+        Self(message)
+    }
+}
+
+pub fn validate_allow_entry_identity(id: &str, already_seen: bool) -> Result<(), CargoAllowError> {
+    if already_seen {
+        return Err(CargoAllowError::new(format!("duplicate allow id `{}`", id)));
+    }
+    Ok(())
+}
+"#;
+        let tests = PathBuf::from("tests/entry_validation_tests.rs");
+        let tests_src = r#"
+use entry_validation::{CargoAllowError, validate_allow_entry_identity};
+
+#[test]
+fn duplicate_allow_id_reports_exact_error_payload() {
+    let duplicate_id = "duplicate";
+    let err = validate_allow_entry_identity(duplicate_id, true)
+        .expect_err("duplicate allow ids should fail identity validation");
+    assert_eq!(
+        err,
+        CargoAllowError::new(format!("duplicate allow id `{}`", duplicate_id))
+    );
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/entry_validation.rs")], &index);
+        let error_seam = seams
+            .iter()
+            .find(|seam| {
+                seam.kind() == SeamKind::ErrorVariant
+                    && seam.expression().contains("CargoAllowError::new")
+            })
+            .ok_or_else(|| "expected CargoAllowError::new error_variant seam".to_string())?;
+
+        let evidence = evidence_for_seam(error_seam, &index);
+        if evidence.discriminate.state != StageState::Yes {
+            return Err(format!(
+                "expected discriminate=Yes for exact constructor payload assertion, got {} ({})",
+                evidence.discriminate.state.as_str(),
+                evidence.discriminate.summary
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn error_constructor_payload_match_requires_same_constructor_and_literal() -> Result<(), String>
+    {
+        let seam = r#"return Err(CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#;
+        let matching_oracle =
+            r#"assert_eq!(err, CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#;
+        if !error_constructor_payload_oracle_matches_seam(seam, matching_oracle) {
+            return Err("same constructor and payload literal should match".to_string());
+        }
+
+        let different_payload =
+            r#"assert_eq!(err, CargoAllowError::new(format!("unknown allow id `{}`", id)));"#;
+        if error_constructor_payload_oracle_matches_seam(seam, different_payload) {
+            return Err("different payload literal must not match".to_string());
+        }
+
+        let different_constructor =
+            r#"assert_eq!(err, OtherAllowError::new(format!("duplicate allow id `{}`", id)));"#;
+        if error_constructor_payload_oracle_matches_seam(seam, different_constructor) {
+            return Err("different constructor path must not match".to_string());
+        }
+        let assertion_message_only = r#"assert_eq!(err, CargoAllowError::new(format!("unknown allow id `{}`", id)), "duplicate allow id `{}`");"#;
+        if error_constructor_payload_oracle_matches_seam(seam, assertion_message_only) {
+            return Err(
+                "assertion message literals must not satisfy constructor payload".to_string(),
+            );
+        }
+
+        let multi_arg_seam =
+            r#"return Err(CargoAllowError::new("E_DUPLICATE", "duplicate allow id"));"#;
+        let partially_shared_multi_arg =
+            r#"assert_eq!(err, CargoAllowError::new("E_DUPLICATE", "unknown allow id"));"#;
+        if error_constructor_payload_oracle_matches_seam(multi_arg_seam, partially_shared_multi_arg)
+        {
+            return Err("partially shared constructor literals must not match".to_string());
         }
         Ok(())
     }

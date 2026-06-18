@@ -11,29 +11,104 @@ use crate::analysis::extract::text::extract_identifier_tokens;
 pub(crate) fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFact> {
     let bound_error_vars = unwrap_err_bound_variables(body);
     let mut out = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
-        let trimmed = line.trim();
-        if is_assertion_line(trimmed) {
-            let mut classification = classify_assertion(trimmed);
-            // RIPR-SPEC-0106: upgrade ExactValue assertions on unwrap_err-bound
+    let mut lines = body.lines().enumerate().peekable();
+    while let Some((offset, line)) = lines.next() {
+        let mut trimmed = line.trim().to_string();
+        if is_assertion_line(&trimmed) {
+            collect_multiline_assertion(&mut trimmed, &mut lines);
+            let mut classification = classify_assertion(&trimmed);
+            // RIPR-SPEC-0106: upgrade exact assertions on unwrap_err-bound
             // variables to ExactErrorVariant so the ErrorVariant seam can credit
-            // them as a kind-matching discriminator.
-            if classification.kind == OracleKind::ExactValue
-                && is_unwrap_err_bound_error_assertion(trimmed, &bound_error_vars)
+            // them as a kind-matching discriminator. Constructor-payload
+            // equality is classified as WholeObjectEquality before this
+            // binding-aware pass, so include it here.
+            if matches!(
+                classification.kind,
+                OracleKind::ExactValue | OracleKind::WholeObjectEquality
+            ) && is_unwrap_err_bound_error_assertion(&trimmed, &bound_error_vars)
             {
                 classification.kind = OracleKind::ExactErrorVariant;
                 classification.strength = OracleStrength::Strong;
             }
+            let observed_tokens = extract_identifier_tokens(&trimmed);
             out.push(OracleFact {
                 line: start_line + offset,
-                text: trimmed.to_string(),
+                text: trimmed,
                 kind: classification.kind,
                 strength: classification.strength,
-                observed_tokens: extract_identifier_tokens(trimmed),
+                observed_tokens,
             });
         }
     }
     out
+}
+
+fn collect_multiline_assertion<'a, I>(statement: &mut String, lines: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = (usize, &'a str)>,
+{
+    while delimiter_depth(statement) > 0 {
+        let Some((_, next_line)) = lines.peek() else {
+            return;
+        };
+        statement.push('\n');
+        statement.push_str(next_line.trim());
+        let _ = lines.next();
+    }
+}
+
+fn delimiter_depth(text: &str) -> i32 {
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if in_line_comment {
+            if ch == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+        if in_block_comment {
+            if ch == '*'
+                && let Some('/') = chars.peek().copied()
+            {
+                let _ = chars.next();
+                in_block_comment = false;
+            }
+            continue;
+        }
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '/' => match chars.peek().copied() {
+                Some('/') => {
+                    let _ = chars.next();
+                    in_line_comment = true;
+                }
+                Some('*') => {
+                    let _ = chars.next();
+                    in_block_comment = true;
+                }
+                _ => {}
+            },
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    depth
 }
 
 /// Scan a test body for `let <var> = <expr>.unwrap_err()` and
@@ -44,14 +119,14 @@ pub(crate) fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFac
 /// (RIPR-SPEC-0106, Part A).
 pub(crate) fn unwrap_err_bound_variables(body: &str) -> std::collections::BTreeSet<String> {
     let mut vars = std::collections::BTreeSet::new();
-    // Split into statement-sized chunks on `;`/`{`/`}`/newline so a
+    // Split into statement-sized chunks on `;`/`{`/`}` so a
     // `let <ident> = <expr>.unwrap_err()` binding is recognized regardless of
     // source formatting — not only when `let` begins a trimmed source line.
     // Without this, a single-line test body (`fn t() { let e = f().unwrap_err();
     // assert_eq!(e, E::V); }`, e.g. un-rustfmt'd) hides the binding, the
     // assertion is never upgraded to ExactErrorVariant, and the seam carries a
     // contradictory `missing_discriminators` line despite being discriminated.
-    for stmt in body.split([';', '{', '}', '\n']) {
+    for stmt in body.split([';', '{', '}']) {
         if let Some(binding) = let_binding_substring(stmt)
             && let Some(var) = extract_unwrap_err_binding(binding)
         {
@@ -216,6 +291,53 @@ mod spec_0106_scan_tests {
             Some(OracleKind::ExactErrorVariant),
             "assert_eq!(err, CalcError::Negative) on unwrap_err binding must be ExactErrorVariant"
         );
+    }
+
+    #[test]
+    fn extract_assertions_upgrades_expect_err_constructor_payload_equality_to_exact_error_variant()
+    -> Result<(), String> {
+        let body = r#"
+            let duplicate_id = "duplicate";
+            let err = validate(duplicate_id)
+                .expect_err("duplicate should fail");
+            assert_eq!(
+                err,
+                CargoAllowError::new(format!("duplicate allow id `{}`", duplicate_id))
+            );
+        "#;
+        let facts = extract_assertions(body, 1);
+        let got = facts
+            .iter()
+            .find(|fact| fact.text.contains("CargoAllowError::new"))
+            .ok_or_else(|| "must find constructor-payload equality assertion".to_string())?;
+        if got.kind != OracleKind::ExactErrorVariant {
+            return Err(format!(
+                "constructor-payload equality on expect_err binding must be ExactErrorVariant, got {:?}",
+                got.kind
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn extract_assertions_does_not_collect_after_line_comment_delimiter() -> Result<(), String> {
+        let body = r#"
+            assert!(first_observed); // (
+            assert!(second_observed);
+        "#;
+        let facts = extract_assertions(body, 1);
+        if facts.len() != 2 {
+            return Err(format!(
+                "line comment delimiter should not join assertions: {facts:?}"
+            ));
+        }
+        if facts[0].text.contains("second_observed") {
+            return Err(format!(
+                "first assertion should not consume the second assertion: {:?}",
+                facts[0]
+            ));
+        }
+        Ok(())
     }
 
     // Formatting robustness: a single-line test body (`let` not at the start of
