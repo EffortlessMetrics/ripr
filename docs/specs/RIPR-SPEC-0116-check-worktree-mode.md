@@ -1,6 +1,6 @@
 # RIPR-SPEC-0116: `check --worktree` Mode
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -12,7 +12,9 @@ Linked issues:
 
 Linked PRs:
 
-- This PR
+- [#1325](https://github.com/EffortlessMetrics/ripr-swarm/pull/1325) -
+  implemented explicit `ripr check --base <rev> --worktree` tracked-worktree
+  diff mode and dirty `doctor` guidance.
 
 Support-tier impact:
 

@@ -1,6 +1,6 @@
 # RIPR-SPEC-0112: Disclose Unanalyzed Working Tree When Using `--base`
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -12,7 +12,9 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- [#1295](https://github.com/EffortlessMetrics/ripr-swarm/pull/1295) -
+  implemented the `unanalyzed_working_tree` disclosure for committed-history
+  `--base` runs with uncommitted tracked edits.
 
 Support-tier impact:
 
