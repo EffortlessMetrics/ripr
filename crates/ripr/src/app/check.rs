@@ -1,6 +1,7 @@
 use super::{CheckInput, CheckOutput};
 use crate::analysis::{
     AnalysisResult, run_analysis_with_oracle_policy, run_repo_analysis_with_oracle_policy,
+    run_worktree_analysis_with_oracle_policy,
 };
 use crate::config::RiprConfig;
 use crate::domain::Summary;
@@ -33,6 +34,13 @@ pub(crate) fn check_workspace_with_config(
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
     run_check(input, config, AnalysisMode::Diff)
+}
+
+pub(crate) fn check_workspace_worktree_with_config(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<CheckOutput, String> {
+    run_check(input, config, AnalysisMode::Worktree)
 }
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
@@ -76,6 +84,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
 
 enum AnalysisMode {
     Diff,
+    Worktree,
     Repo,
 }
 
@@ -87,6 +96,11 @@ fn run_check(
     let options = options_builder::analysis_options_from_input_and_config(&input, config);
     let analysis = match mode {
         AnalysisMode::Diff => run_analysis_with_oracle_policy(
+            &options,
+            config.oracles(),
+            config.languages().enabled(),
+        )?,
+        AnalysisMode::Worktree => run_worktree_analysis_with_oracle_policy(
             &options,
             config.oracles(),
             config.languages().enabled(),

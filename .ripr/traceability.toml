@@ -6213,3 +6213,34 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0116"
+name = "check worktree mode"
+spec = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::check_worktree_base_head_analyzes_uncommitted_tracked_edit",
+  "crates/ripr/tests/cli_smoke.rs::check_worktree_base_head_clean_worktree_has_no_scope_or_unanalyzed_disclosure",
+  "crates/ripr/tests/cli_smoke.rs::doctor_recommends_worktree_check_on_dirty_worktree",
+  "crates/ripr/tests/cli_smoke.rs::check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure",
+  "crates/ripr/src/cli/commands.rs::tests::check_rejects_diff_file_plus_worktree_mode",
+  "crates/ripr/src/analysis/diff/load.rs::tests::tracked_change_detector_ignores_untracked_only_files",
+  "crates/ripr/src/analysis/diff/load.rs::tests::tracked_change_detector_detects_tracked_edit",
+  "crates/ripr/src/analysis/diff/load.rs::tests::tracked_change_detector_ignores_parent_repo_changes_outside_root",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
+  "crates/ripr/src/analysis/diff/load.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help/core.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

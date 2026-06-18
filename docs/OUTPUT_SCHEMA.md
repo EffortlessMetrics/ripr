@@ -925,8 +925,9 @@ Example:
 ```
 
 The field is absent when the worktree is clean, when `--diff <file>` was used
-instead of `--base`, or when `git status --porcelain` cannot be run
-(fail-closed: no fabricated disclosure).
+instead of `--base`, when `--worktree` was used to include staged and unstaged
+tracked edits in the analyzed diff, or when `git status --porcelain` cannot be
+run (fail-closed: no fabricated disclosure).
 
 ## Enums
 

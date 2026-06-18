@@ -3334,7 +3334,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
     // RIPR-SPEC-0083: track whether the user provided any analysis scope.
-    // Starts false; set true when --diff or --base is parsed from argv.
+    // Starts false; set true when --diff, --base, or --worktree is parsed from argv.
     // --mode is a SPEED TIER on the diff path, NOT a scope provider — a bare
     // `ripr check --mode fast` analyzes nothing and must still show the no-scope
     // disclosure. When still false at analysis time, the output discloses that
@@ -3345,6 +3345,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // running analysis. An explicit bad --base keeps its error; only the
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
+    let mut worktree_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3362,6 +3363,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
                 scope_explicitly_provided = true;
+            }
+            "--worktree" => {
+                scope_explicitly_provided = true;
+                worktree_explicitly_provided = true;
             }
             "--mode" => {
                 i += 1;
@@ -3404,6 +3409,9 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     if !base_explicitly_provided && input.diff_file.is_none() {
         input.base = None;
     }
+    if worktree_explicitly_provided && input.diff_file.is_some() {
+        return Err("check --worktree cannot be combined with --diff".to_string());
+    }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
@@ -3441,6 +3449,8 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         app::repo_seam_inventory_input(input)
     } else if format.is_repo_scope() {
         app::check_workspace_repo_with_config(input, &config)?
+    } else if worktree_explicitly_provided {
+        app::check_workspace_worktree_with_config(input, &config)?
     } else {
         app::check_workspace_with_config(input, &config)?
     };
@@ -3458,6 +3468,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // had findings), but the false-clean risk is highest when findings are empty.
     // Does NOT fire when --diff was used (file-based diff; no live worktree scope).
     if base_explicitly_provided
+        && !worktree_explicitly_provided
         && !input_diff_file_is_some
         && analysis::working_tree_has_tracked_changes(&input_root)
     {
@@ -3900,8 +3911,9 @@ fn print_doctor_start_here_guidance(root: &Path) {
     // one that looks clean while ignoring them. Reuses the same helper as the
     // check-time disclosure (reuse, don't fork).
     if analysis::working_tree_has_tracked_changes(root) {
+        println!("- Recommended first command: ripr check --base HEAD --worktree");
         println!(
-            "- Recommended first command: commit or stage your changes, then `ripr check --base origin/main`. Uncommitted edits are not in scope — `--base` compares committed history (ripr is diff-first; there is no working-tree mode yet)."
+            "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
         );
     } else {
         println!("- Recommended first command: ripr check --base origin/main");
@@ -9458,6 +9470,17 @@ language = "rust"
             check(&args(&["--wat"])),
             Err("unknown check argument \"--wat\"".to_string())
         );
+    }
+
+    #[test]
+    fn check_rejects_diff_file_plus_worktree_mode() -> Result<(), String> {
+        let result = check(&args(&["--diff", "change.patch", "--worktree"]));
+        match result {
+            Err(message) if message == "check --worktree cannot be combined with --diff" => Ok(()),
+            other => Err(format!(
+                "expected --diff plus --worktree rejection, got {other:?}"
+            )),
+        }
     }
 
     #[test]

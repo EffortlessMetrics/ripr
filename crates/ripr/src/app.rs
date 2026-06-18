@@ -10,7 +10,10 @@ mod selector;
 
 pub use crate::output::format::OutputFormat;
 pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};
-pub(crate) use check::{check_workspace_repo_with_config, check_workspace_with_config};
+pub(crate) use check::{
+    check_workspace_repo_with_config, check_workspace_with_config,
+    check_workspace_worktree_with_config,
+};
 pub(crate) use context::collect_context_with_config;
 pub use context::{collect_context, collect_context_with_input};
 pub(crate) use explain::explain_finding_with_config;

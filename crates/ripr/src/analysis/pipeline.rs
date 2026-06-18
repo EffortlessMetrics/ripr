@@ -30,7 +30,28 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         options.base.as_deref(),
         options.diff_file.as_ref(),
     )?;
-    let changed_files = diff::parse_unified_diff(&diff_text);
+    run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
+}
+
+pub(crate) fn run_worktree_pipeline_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+) -> Result<AnalysisResult, String> {
+    if options.diff_file.is_some() {
+        return Err("worktree diff mode cannot be combined with --diff".to_string());
+    }
+    let diff_text = diff::load_worktree_diff(&options.root, options.base.as_deref())?;
+    run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
+}
+
+fn run_pipeline_for_diff_text(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    diff_text: &str,
+) -> Result<AnalysisResult, String> {
+    let changed_files = diff::parse_unified_diff(diff_text);
 
     let mut findings: Vec<Finding> = Vec::new();
     let mut total_changed_files: usize = 0;

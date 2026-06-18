@@ -521,3 +521,11 @@ path = "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Rust transitive-reach witness (P3.1, first-run-trust 'visibility before inference'): the 0114 BFS now returns the witnessing test (file:line) and the entry public-API symbol instead of a bare bool, so the limitation names something concrete to open; the human renderer surfaces it under a 'Where to look' section and the JSON evidence carries the same prose, single-sourced via the shared domain prefix const TRANSITIVE_REACH_WITNESS_PREFIX; fail-closed (classification stays no_static_path, witness NOT added to related_tests, 'may lead here' candidate language, all 0114 boundaries inherited); evidence-message-only (no new struct/JSON field, no schema_version bump, no version bump); deterministic witness ordering for golden stability; positive fixture re-blessed message-only, negative fixture unchanged."
+
+[[artifact]]
+id = "RIPR-SPEC-0116"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Explicit check --worktree mode (closes #1296): add an opt-in live tracked-worktree diff source using git diff <base>, including staged and unstaged tracked edits while preserving committed-history --base and file-based --diff behavior; --diff plus --worktree is rejected; dirty doctor guidance recommends ripr check --base HEAD --worktree; no schema_version bump, no version bump."
