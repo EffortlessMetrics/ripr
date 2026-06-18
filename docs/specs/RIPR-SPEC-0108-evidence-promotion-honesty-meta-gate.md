@@ -123,10 +123,11 @@ corpus prevents the same regression in future.
 
 ### Corpus manifest
 
-`fixtures/evidence-promotion-honesty-corpus/corpus.json` — cross-language
-pinned adversarial corpus with 6 non-promoted charter members (python ×2,
-typescript ×1, rust ×3) and 3 control cases (rust ×2, typescript ×1). One rust
-charter member additionally asserts a named limitation via `must_emit_limitation`.
+`fixtures/evidence-promotion-honesty-corpus/corpus.json` -- cross-language
+pinned adversarial corpus with 7 non-promoted charter members (python x2,
+typescript x1, rust x4) and 3 control cases (rust x2, typescript x1). Two Rust
+reach-limitation charter members additionally assert named limitations via
+`must_emit_limitation`.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -138,6 +139,7 @@ charter member additionally asserts a named limitation via `must_emit_limitation
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
+| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_emit_limitation: rust_macro_reach_unresolved` + `must_disclose_witness`) |
 
 ### Control cases (expected_promoted)
 

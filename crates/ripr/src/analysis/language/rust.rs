@@ -13,9 +13,9 @@ use super::super::{
     AnalysisOptions, classifier, classify, diff::ChangedFile, probes, rust_index, workspace,
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
-use crate::analysis::facts::FunctionSummary;
+use crate::analysis::facts::{FunctionSummary, RustIndex};
 use crate::config::OraclePolicy;
-use crate::domain::{ExposureClass, StaticLimitKind};
+use crate::domain::{ExposureClass, Finding, Probe, StaticLimitKind, StopReason};
 use std::path::Path;
 
 /// Default ceiling on the number of Rust files a diff-scoped analysis will
@@ -39,6 +39,10 @@ const DIFF_CHANGED_RUST_LINE_LIMIT: usize = 2_000;
 /// Env override for [`DIFF_CHANGED_RUST_LINE_LIMIT`]. Operators can raise it
 /// for larger runners or lower it to exercise the guard.
 const DIFF_CHANGED_RUST_LINE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_CHANGED_RUST_LINES";
+const NO_TESTS_INFECTION_SUMMARY: &str =
+    "No tests were found, so activation/infection cannot be estimated";
+const NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY: &str =
+    "No statically reachable test path was found, so activation/infection cannot be estimated";
 
 fn diff_index_file_limit() -> Result<usize, String> {
     diff_index_file_limit_from_env(std::env::var(DIFF_INDEX_FILE_LIMIT_ENV))
@@ -193,6 +197,54 @@ fn owner_name_from_id(
     }
 }
 
+fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: &RustIndex) {
+    if !(finding.class == ExposureClass::NoStaticPath
+        && finding.related_tests.is_empty()
+        && finding.static_limit_kind.is_none())
+    {
+        return;
+    }
+
+    let Some(owner_name) = owner_name_from_id(&probe.owner, &probe.location.file) else {
+        return;
+    };
+
+    if let Some(witness) = classify::find_transitive_witness(&owner_name, index) {
+        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding
+            .stop_reasons
+            .push(StopReason::TransitiveReachUnresolved);
+        finding
+            .evidence
+            .push(classify::RUST_TRANSITIVE_REACH_MESSAGE.to_string());
+        finding
+            .evidence
+            .push(classify::transitive_reach_witness_pointer(&witness));
+    } else if let Some(witness) = classify::find_macro_reach_witness(&owner_name, index) {
+        replace_macro_witness_infection_summary(finding);
+        finding.static_limit_kind = Some(StaticLimitKind::RustMacroReachUnresolved);
+        finding.stop_reasons.push(StopReason::MacroReachUnresolved);
+        finding
+            .evidence
+            .push(classify::RUST_MACRO_REACH_MESSAGE.to_string());
+        finding
+            .evidence
+            .push(classify::macro_reach_witness_pointer(&witness));
+    }
+}
+
+fn replace_macro_witness_infection_summary(finding: &mut Finding) {
+    if finding.ripr.infect.summary == NO_TESTS_INFECTION_SUMMARY {
+        finding.ripr.infect.summary =
+            NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY.to_string();
+    }
+    for evidence in &mut finding.evidence {
+        if evidence == NO_TESTS_INFECTION_SUMMARY {
+            *evidence = NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY.to_string();
+        }
+    }
+}
+
 /// Reference adapter for Rust.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RustAdapter;
@@ -257,24 +309,10 @@ impl LanguageAdapter for RustAdapter {
                 // RIPR-SPEC-0115: the walk returns the witnessing test so the
                 // limitation can name something concrete to open (file:line +
                 // entry symbol). The witness is NOT added to related_tests.
-                if finding.class == ExposureClass::NoStaticPath
-                    && finding.related_tests.is_empty()
-                    && finding.static_limit_kind.is_none()
-                    && let Some(owner_name) = owner_name_from_id(&probe.owner, &probe.location.file)
-                    && let Some(witness) = classify::find_transitive_witness(&owner_name, &index)
-                {
-                    finding.static_limit_kind =
-                        Some(StaticLimitKind::RustTransitiveReachUnresolved);
-                    finding
-                        .stop_reasons
-                        .push(crate::domain::StopReason::TransitiveReachUnresolved);
-                    finding
-                        .evidence
-                        .push(classify::RUST_TRANSITIVE_REACH_MESSAGE.to_string());
-                    finding
-                        .evidence
-                        .push(classify::transitive_reach_witness_pointer(&witness));
-                }
+                // RIPR-SPEC-0117: when no lexical transitive path is available,
+                // name a macro-reach limitation only when a same-repo macro
+                // definition lexically mentions the changed owner.
+                apply_rust_no_static_path_limit(&mut finding, &probe, &index);
                 // Fail closed on cross-language seams: when the probe owner
                 // carries an FFI/binding attribute, replace any Rust-gap
                 // static_limit_kind with the cross-language limitation so
@@ -322,25 +360,9 @@ impl LanguageAdapter for RustAdapter {
                 let mut finding = classifier::classify_probe(&probe, &index);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
-                // RIPR-SPEC-0114 + 0115: transitive-reach walk for repo-mode (same logic as diff-mode).
-                if finding.class == ExposureClass::NoStaticPath
-                    && finding.related_tests.is_empty()
-                    && finding.static_limit_kind.is_none()
-                    && let Some(owner_name) = owner_name_from_id(&probe.owner, &probe.location.file)
-                    && let Some(witness) = classify::find_transitive_witness(&owner_name, &index)
-                {
-                    finding.static_limit_kind =
-                        Some(StaticLimitKind::RustTransitiveReachUnresolved);
-                    finding
-                        .stop_reasons
-                        .push(crate::domain::StopReason::TransitiveReachUnresolved);
-                    finding
-                        .evidence
-                        .push(classify::RUST_TRANSITIVE_REACH_MESSAGE.to_string());
-                    finding
-                        .evidence
-                        .push(classify::transitive_reach_witness_pointer(&witness));
-                }
+                // RIPR-SPEC-0114 + 0115 + 0117: no_static_path limitation
+                // disclosure for repo-mode (same logic as diff-mode).
+                apply_rust_no_static_path_limit(&mut finding, &probe, &index);
                 // Fail closed on cross-language seams (#910).
                 if let Some(limit) = cross_language_limit_kind(&probe, &index, &finding.class) {
                     finding.static_limit_kind = Some(limit);

@@ -472,7 +472,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 status = "accepted"
 owner = "product-swarm"
-standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (5 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
+standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (7 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
 
 [[artifact]]
 id = "RIPR-SPEC-0109"
@@ -529,3 +529,11 @@ path = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Explicit check --worktree mode (closes #1296): add an opt-in live tracked-worktree diff source using git diff <base>, including staged and unstaged tracked edits while preserving committed-history --base and file-based --diff behavior; --diff plus --worktree is rejected; dirty doctor guidance recommends ripr check --base HEAD --worktree; no schema_version bump, no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0117"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0117-rust-macro-reach-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust macro-reach limitation (P3 macro-boundary slice, closes #1292 partially): when no_static_path has no related tests and the 0114 lexical transitive walk does not find a path, name a same-repo macro boundary as static_limit_kind=rust_macro_reach_unresolved only when the macro definition lexically mentions the changed owner; fail-closed (classification stays no_static_path, witness is not related_tests, no macro expansion, no repair packet, no schema_version bump)."

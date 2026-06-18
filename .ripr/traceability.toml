@@ -6244,3 +6244,37 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0117"
+name = "rust macro-reach limitation"
+spec = "docs/specs/RIPR-SPEC-0117-rust-macro-reach-limitation.md"
+tests = [
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_entry_path_stops_at_owner_macro_then_macro_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_definition_does_not_name_owner_then_macro_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_invokes_owner_macro_directly_then_macro_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_witness_pointer_uses_may_language_and_no_coverage_claim",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
+]
+fixtures = [
+  "fixtures/rust_macro_reach_limitation",
+  "fixtures/evidence-promotion-honesty-corpus",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs",
+  "crates/ripr/src/analysis/classify/mod.rs",
+  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/output/human/sections.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0117-rust-macro-reach-limitation.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "policy/output_contracts.txt",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+  "honesty_corpus_pass_rate",
+]

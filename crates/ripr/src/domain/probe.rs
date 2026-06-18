@@ -68,6 +68,11 @@ pub enum StopReason {
     /// owner) that ripr cannot fully resolve (lexical-only, name-match only).
     /// Classification stays `no_static_path`. See RIPR-SPEC-0114.
     TransitiveReachUnresolved,
+    /// A Rust reach walk found a candidate test entry path that stops at a
+    /// same-repo macro invocation whose definition lexically names the changed
+    /// owner. ripr does not expand the macro; classification stays
+    /// `no_static_path`. See RIPR-SPEC-0117.
+    MacroReachUnresolved,
 }
 
 impl StopReason {
@@ -85,6 +90,7 @@ impl StopReason {
             StopReason::PropagationEvidenceUnknown => "propagation_evidence_unknown",
             StopReason::StaticProbeUnknown => "static_probe_unknown",
             StopReason::TransitiveReachUnresolved => "transitive_reach_unresolved",
+            StopReason::MacroReachUnresolved => "macro_reach_unresolved",
         }
     }
 

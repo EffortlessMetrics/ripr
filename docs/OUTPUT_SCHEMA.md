@@ -828,7 +828,9 @@ The evidence-first fields are additive in schema `0.2`:
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
   `decorator_indirection`, `mocked_module`,
   `opaque_custom_assertion_helper`, `property_based_test`,
-  `unresolved_pytest_fixture`, or `unsupported_syntax`.
+  `unresolved_pytest_fixture`, `unsupported_syntax`,
+  `cross_language_oracle_visibility_unresolved`,
+  `rust_transitive_reach_unresolved`, or `rust_macro_reach_unresolved`.
 
 ### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
 
@@ -979,6 +981,8 @@ run (fail-closed: no fabricated disclosure).
 - `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
 - `rust_transitive_reach_unresolved` — (RIPR-SPEC-0114, additive) A test appears to call public API that may transitively reach the changed Rust owner through a pub->pub(crate) helper chain or similar internal call graph, but ripr cannot fully resolve the path (macros, generics, trait dispatch, or depth>3 stop the walk). Classification stays `no_static_path`; this is a named limitation, not a coverage claim.
 
+- `rust_macro_reach_unresolved` -- (RIPR-SPEC-0117, additive) A test appears to call a Rust entry point whose path toward the changed owner stops at a same-repo macro invocation. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
 Reserved `flow_sink` values:
 
 - `return_value`
@@ -1056,6 +1060,7 @@ while `call_effect` remains the fallback for other observable calls.
 - `feature_unknown`
 - `async_boundary_opaque`
 - `no_changed_rust_line`
+- `macro_reach_unresolved`
 - `infection_evidence_unknown`
 - `propagation_evidence_unknown`
 - `static_probe_unknown`

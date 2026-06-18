@@ -110,10 +110,10 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         ));
     }
 
-    // RIPR-SPEC-0115: when the transitive-reach limitation named a witnessing
-    // test, surface it in human output as a concrete "Where to look" pointer.
-    // The witness prose lives in `evidence` (0114's limitation channel); we
-    // recognize it by the shared prefix so the JSON evidence and the human line
+    // RIPR-SPEC-0115/0117: when a Rust no_static_path limitation named a
+    // witnessing test, surface it in human output as a concrete "Where to look"
+    // pointer. The witness prose lives in `evidence` (the limitation channel);
+    // we recognize it by the shared prefix so JSON evidence and human output
     // stay single-sourced.
     if let Some(witness) = finding
         .evidence

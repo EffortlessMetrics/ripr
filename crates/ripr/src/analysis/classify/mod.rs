@@ -30,5 +30,6 @@ pub(in crate::analysis) use text::{
 // RIPR-SPEC-0115: the walk now returns a witness so the limitation can name the
 // witnessing test (file:line) and the entry public-API symbol.
 pub(in crate::analysis) use transitive_reach::{
-    RUST_TRANSITIVE_REACH_MESSAGE, find_transitive_witness, transitive_reach_witness_pointer,
+    RUST_MACRO_REACH_MESSAGE, RUST_TRANSITIVE_REACH_MESSAGE, find_macro_reach_witness,
+    find_transitive_witness, macro_reach_witness_pointer, transitive_reach_witness_pointer,
 };

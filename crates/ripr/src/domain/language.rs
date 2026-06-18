@@ -137,6 +137,12 @@ pub enum StaticLimitKind {
     /// stop the walk). The classification stays `no_static_path` -- this label
     /// is a named limitation, not a coverage claim. See RIPR-SPEC-0114.
     RustTransitiveReachUnresolved,
+    /// A Rust test reaches an entry point whose path toward the changed owner
+    /// stops at a same-repo macro invocation that ripr does not expand. The
+    /// macro definition lexically mentions the changed owner, but the
+    /// classification stays `no_static_path`; this label names the unresolved
+    /// macro edge, not a coverage claim. See RIPR-SPEC-0117.
+    RustMacroReachUnresolved,
 }
 
 impl StaticLimitKind {
@@ -157,6 +163,7 @@ impl StaticLimitKind {
                 "cross_language_oracle_visibility_unresolved"
             }
             StaticLimitKind::RustTransitiveReachUnresolved => "rust_transitive_reach_unresolved",
+            StaticLimitKind::RustMacroReachUnresolved => "rust_macro_reach_unresolved",
         }
     }
 
@@ -213,6 +220,11 @@ impl StaticLimitKind {
                 "A test may reach this change through an internal helper-call chain ripr cannot \
                  fully trace (macros, generics, trait dispatch, or depth greater than 3). This is a \
                  named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustMacroReachUnresolved => {
+                "A test may reach this change through a Rust macro path ripr cannot expand. The \
+                 classification stays no_static_path because the macro edge is unresolved; this is \
+                 a named limitation, not a coverage claim."
             }
         }
     }
@@ -308,6 +320,10 @@ mod tests {
             StaticLimitKind::RustTransitiveReachUnresolved.as_str(),
             "rust_transitive_reach_unresolved"
         );
+        assert_eq!(
+            StaticLimitKind::RustMacroReachUnresolved.as_str(),
+            "rust_macro_reach_unresolved"
+        );
     }
 
     #[test]
@@ -324,6 +340,7 @@ mod tests {
             StaticLimitKind::UnsupportedSyntax,
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
             StaticLimitKind::RustTransitiveReachUnresolved,
+            StaticLimitKind::RustMacroReachUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
         // static-language vocabulary is enforced repo-wide by
