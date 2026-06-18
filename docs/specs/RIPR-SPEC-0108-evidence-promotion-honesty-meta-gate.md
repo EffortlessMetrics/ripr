@@ -124,8 +124,8 @@ corpus prevents the same regression in future.
 ### Corpus manifest
 
 `fixtures/evidence-promotion-honesty-corpus/corpus.json` -- cross-language
-pinned adversarial corpus with 7 non-promoted charter members (python x2,
-typescript x1, rust x4) and 3 control cases (rust x2, typescript x1). Two Rust
+pinned adversarial corpus with 8 non-promoted charter members (python x2,
+typescript x2, rust x4) and 3 control cases (rust x2, typescript x1). Two Rust
 reach-limitation charter members additionally assert named limitations via
 `must_emit_limitation`.
 
@@ -136,6 +136,7 @@ reach-limitation charter members additionally assert named limitations via
 | py_token_substring | python | python_adversarial_buffer_token | token_substring_coincidence |
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
+| ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |

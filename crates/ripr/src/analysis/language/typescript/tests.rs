@@ -4968,6 +4968,30 @@ fn ava_is_assertion_extracts_exact_value_oracle() {
     assert!(!assertion.has_dynamic_matcher_arg);
 }
 
+/// AVA `t.not(actual, expected)` reaches the observed value but only proves a
+/// non-equality relation. It must stay weak relational evidence rather than a
+/// strong exact-value oracle.
+#[test]
+fn ava_not_assertion_extracts_relational_oracle() {
+    let source = "t.not(score(10, 3), 8);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "not");
+    assert_eq!(assertion.oracle_kind, OracleKind::RelationalCheck);
+    assert_eq!(assertion.oracle_strength, OracleStrength::Weak);
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("score(10, 3)")
+    );
+    assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("8"));
+    assert_eq!(assertion_oracle_text(assertion), "t.not(...)");
+    assert!(!assertion.has_dynamic_matcher_arg);
+}
+
 /// End-to-end: a full AVA `test('name', t => { t.is(...) })` call has its
 /// callback receiver (`t`) extracted and threaded so the inner `t.is(...)` is
 /// credited as an exact-value oracle.
@@ -5045,20 +5069,13 @@ fn ava_truthy_is_smoke_only() {
     assert_eq!(assertions[0].oracle_strength, OracleStrength::Smoke);
 }
 
-/// Tape / node:test equality aliases use the same receiver-gated path as AVA:
-/// `t.equal(...)`, `t.strictEqual(...)`, their negated forms, and deep-equality
+/// Tape / node:test positive equality aliases use the same receiver-gated path
+/// as AVA: `t.equal(...)`, `t.strictEqual(...)`, and positive deep-equality
 /// forms are exact-value oracles when the receiver matches the test callback
 /// parameter.
 #[test]
 fn tape_equal_aliases_extract_exact_value_oracles() {
-    for method in [
-        "equal",
-        "notEqual",
-        "strictEqual",
-        "notStrictEqual",
-        "deepEqual",
-        "notDeepEqual",
-    ] {
+    for method in ["equal", "strictEqual", "deepEqual"] {
         let source = format!("t.{method}(score(10, 3), 7);");
         let allocator = Allocator::default();
         let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
@@ -5078,6 +5095,36 @@ fn tape_equal_aliases_extract_exact_value_oracles() {
             Some("score(10, 3)")
         );
         assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("7"));
+        assert_eq!(assertion_oracle_text(assertion), format!("t.{method}(...)"));
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Tape / node:test negated equality aliases are not exact-value oracles. They
+/// observe that the value is not equal to another value, so they stay weak
+/// relational evidence.
+#[test]
+fn tape_negated_equal_aliases_extract_relational_oracles() {
+    for method in ["notEqual", "notStrictEqual", "notDeepEqual"] {
+        let source = format!("t.{method}(score(10, 3), 8);");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::RelationalCheck);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Weak);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("8"));
         assert_eq!(assertion_oracle_text(assertion), format!("t.{method}(...)"));
         assert!(!assertion.has_dynamic_matcher_arg);
     }

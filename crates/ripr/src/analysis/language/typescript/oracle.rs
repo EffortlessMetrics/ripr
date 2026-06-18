@@ -32,18 +32,23 @@ pub(crate) fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) 
 /// Map an AVA / `node:test`-style assertion method (`t.is`, `t.deepEqual`, ...)
 /// to an oracle kind + strength. AVA's `t.is(actual, expected)` is the structural
 /// equivalent of Jest's `expect(actual).toBe(expected)` — an exact-value
-/// discriminator. Unknown methods return `Unknown` (fail-closed): a strong
-/// oracle is only credited for an explicitly recognized exact-value form.
+/// discriminator. Negated equality (`t.not(...)`, `t.notDeepEqual(...)`, and
+/// tape/node aliases) reaches the value but does not pin the exact expected
+/// discriminator, so it stays relational/weak. Unknown methods return `Unknown`
+/// (fail-closed): a strong oracle is only credited for an explicitly recognized
+/// exact-value form.
 pub(crate) fn oracle_for_ava_assertion(method: &str) -> (OracleKind, OracleStrength) {
     match method {
-        // Exact equality / inequality — discriminates a value change.
-        // `is` / `not` are AVA; `equal` / `strictEqual` and their negated
-        // forms are tape / node:test style aliases; `deepEqual` /
-        // `notDeepEqual` are shared. The implementation treats exact and deep
-        // equality alike (as `oracle_for_matcher` does for Jest's `toBe` /
-        // `toEqual` / `toStrictEqual`).
-        "is" | "not" | "equal" | "notEqual" | "strictEqual" | "notStrictEqual" | "deepEqual"
-        | "notDeepEqual" => (OracleKind::ExactValue, OracleStrength::Strong),
+        // Positive equality / deep equality — discriminates an exact value.
+        "is" | "equal" | "strictEqual" | "deepEqual" => {
+            (OracleKind::ExactValue, OracleStrength::Strong)
+        }
+        // Negated equality — observes a relationship but not the exact changed
+        // value. Keeping this weak prevents non-equality from becoming an
+        // exact-value discriminator.
+        "not" | "notEqual" | "notStrictEqual" | "notDeepEqual" => {
+            (OracleKind::RelationalCheck, OracleStrength::Weak)
+        }
         // Truthiness — does not pin the exact changed value. `truthy` / `falsy`
         // / `pass` / `fail` / `assert` are AVA; `ok` / `notOk` are tape.
         "true" | "false" | "truthy" | "falsy" | "pass" | "fail" | "assert" | "ok" | "notOk" => {

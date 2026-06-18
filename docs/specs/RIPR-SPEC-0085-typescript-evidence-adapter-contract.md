@@ -200,10 +200,12 @@ its receiver is not the test parameter. The argument order is
 `expected_value_or_variant` = arg 1 when it is a concrete literal.
 
 ```text
-t.is / t.not                        -> exact_value (strong)      # AVA
-t.equal / t.notEqual                -> exact_value (strong)      # tape / node:test
-t.strictEqual / t.notStrictEqual    -> exact_value (strong)      # tape / node:test
-t.deepEqual / t.notDeepEqual        -> exact_value (strong)      # shared
+t.is                                -> exact_value (strong)      # AVA
+t.not                               -> relational_check (weak)   # AVA
+t.equal / t.strictEqual             -> exact_value (strong)      # tape / node:test
+t.notEqual / t.notStrictEqual       -> relational_check (weak)   # tape / node:test
+t.deepEqual                         -> exact_value (strong)      # shared
+t.notDeepEqual                      -> relational_check (weak)   # shared
 t.truthy / t.falsy / t.pass / t.fail / t.assert / t.ok / t.notOk -> smoke_only (smoke)
 t.throws / t.throwsAsync / t.notThrows / t.notThrowsAsync -> broad_error (weak)
 t.regex / t.notRegex / t.like / t.notLike -> relational_check (weak)
@@ -211,8 +213,9 @@ t.regex / t.notRegex / t.like / t.notLike -> relational_check (weak)
 ```
 
 The v1 TypeScript adapter does not emit a separate `deep_value` oracle kind:
-deep equality forms are represented as `exact_value` / strong when the matcher is
-recognized and receiver-gated.
+positive deep equality forms are represented as `exact_value` / strong when the
+matcher is recognized and receiver-gated. Negated deep equality is relational /
+weak because it proves non-equality rather than the exact changed value.
 
 An unrecognized `t.method(...)` is **not** credited as an oracle (it yields
 no assertion at all), so a method ripr does not understand can never inflate

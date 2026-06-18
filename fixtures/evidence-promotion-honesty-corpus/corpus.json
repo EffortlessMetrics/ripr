@@ -29,6 +29,14 @@
       "must_remain_non_promoted": true
     },
     {
+      "id": "ts_negated_t_oracle",
+      "language": "typescript",
+      "source_fixture": "fixtures/typescript_negated_t_oracle",
+      "vector": "negated_equality_not_exact_value",
+      "expected_max_class": "weakly_exposed",
+      "must_remain_non_promoted": true
+    },
+    {
       "id": "rust_weak_error_oracle",
       "language": "rust",
       "source_fixture": "fixtures/weak_error_oracle",
