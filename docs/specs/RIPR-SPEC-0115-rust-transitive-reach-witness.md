@@ -117,7 +117,7 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 - The witness pointer NEVER says the test "reaches", "covers", "tests", or "exercises" the change.
   It says the test calls an entry symbol that "may lead here".
 - All RIPR-SPEC-0114 boundaries are inherited unchanged: name-only matching over lexical call
-  facts, depth ≤ 3, stop at macros, stop at out-of-crate callees.
+  facts, depth ≤ 5, stop at macros, stop at out-of-crate callees.
 
 ### Wire format
 
@@ -147,17 +147,23 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
    includes "the test `test_uses_outer` (tests/it.rs:NN) calls `outer`, an entry point that may
    lead here." Fixture: `fixtures/rust_transitive_reach_positive/` (re-blessed: message-only drift).
 
-2. **Negative (no witness)**: no test reaches the owner. Result: bare `no_static_path`, no
+2. **Test-helper public API chain (witness named)**: an integration test calls a helper,
+   the helper calls a public API function, and that API flows through internal helpers to
+   the changed owner within the bounded walk. Result: `no_static_path` +
+   `static_limit_kind: rust_transitive_reach_unresolved`, and the evidence names the helper
+   entry point. Fixture: `fixtures/rust_transitive_reach_test_helper_chain/`.
+
+3. **Negative (no witness)**: no test reaches the owner. Result: bare `no_static_path`, no
    `static_limit_kind`, no witness. Fixture: `fixtures/rust_transitive_reach_negative/` (unchanged).
 
-3. **Deterministic selection**: two tests (`test_a` in `tests/a.rs`, `test_b` in `tests/b.rs`) both
+4. **Deterministic selection**: two tests (`test_a` in `tests/a.rs`, `test_b` in `tests/b.rs`) both
    reach the owner. The named witness is `test_a` (sorts first by file), and the message notes "and
    1 other test".
 
-4. **Honest language**: the witness pointer contains "may lead here" and does NOT contain
+5. **Honest language**: the witness pointer contains "may lead here" and does NOT contain
    "reaches", "covers", "tests", or "exercises".
 
-5. **Class invariance**: in every case above, `classification` stays `no_static_path`; the witness
+6. **Class invariance**: in every case above, `classification` stays `no_static_path`; the witness
    never appears in `related_tests`.
 
 ## Required Evidence
@@ -170,6 +176,8 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
   post-classify guards now consume the witness to build the evidence string).
 - Positive fixture re-blessed (message-only drift; class + static_limit_kind unchanged), recorded
   via `cargo xtask goldens bless rust_transitive_reach_positive --reason <reason>`.
+- Test-helper public API fixture added:
+  `fixtures/rust_transitive_reach_test_helper_chain/`.
 - Negative fixture unchanged.
 - Unit tests: witness captured on a positive path; `None` on no path; deterministic selection
   across two witnesses; witness-pointer message contains "may lead here" and none of the forbidden
@@ -186,10 +194,10 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
   — deterministic witness ordering
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_uses_may_language_and_no_coverage_claim`
   — message honesty (contains "may lead here"; excludes reaches/covers/tests/exercises)
-- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_at_depth_3_then_witness_is_captured`
-  — depth-3 boundary still returns a witness
-- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_depth_4_then_witness_is_none`
-  — depth-4 boundary returns `None`
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_at_depth_5_then_witness_is_captured`
+  — depth-5 boundary still returns a witness
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_depth_6_then_witness_is_none`
+  — depth-6 boundary returns `None`
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_call_in_test_calls_then_witness_is_none`
   — macro entry skipped
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_callee_not_in_crate_then_witness_is_none`
@@ -213,6 +221,7 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 | JSON renderer | already handles `static_limit_kind` / `evidence` generically (no change) |
 | Human renderer (`Where to look` section) | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture (re-blessed) | `fixtures/rust_transitive_reach_positive/` |
+| Test-helper public API fixture | `fixtures/rust_transitive_reach_test_helper_chain/` |
 | Negative fixture (unchanged) | `fixtures/rust_transitive_reach_negative/` |
 
 ## CI Proof

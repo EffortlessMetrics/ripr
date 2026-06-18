@@ -140,6 +140,7 @@ reach-limitation charter members additionally assert named limitations via
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
+| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_emit_limitation: rust_macro_reach_unresolved` + `must_disclose_witness`) |
 
 ### Control cases (expected_promoted)

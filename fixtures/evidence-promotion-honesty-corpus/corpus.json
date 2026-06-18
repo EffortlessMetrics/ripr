@@ -85,6 +85,17 @@
       "expected_max_class": "no_static_path"
     },
     {
+      "id": "rust_transitive_reach_test_helper_chain_named_limitation",
+      "language": "rust",
+      "source_fixture": "fixtures/rust_transitive_reach_test_helper_chain",
+      "vector": "test_helper_public_api_transitive_reach_named_not_silently_clean",
+      "must_emit_limitation": true,
+      "expected_limit_kind": "rust_transitive_reach_unresolved",
+      "must_disclose_witness": true,
+      "must_remain_non_promoted": true,
+      "expected_max_class": "no_static_path"
+    },
+    {
       "id": "rust_macro_reach_named_limitation",
       "language": "rust",
       "source_fixture": "fixtures/rust_macro_reach_limitation",

@@ -8,10 +8,10 @@
 //! ## Fail-closed design (RIPR-SPEC-0114)
 //!
 //! - The walk is pure NAME matching over lexical call facts - no AST resolution.
-//! - Depth is bounded at 3 hops (`MAX_TRANSITIVE_DEPTH`).
+//! - Depth is bounded at 5 hops (`MAX_TRANSITIVE_DEPTH`).
 //! - The walk stops (and NAMES the limitation) at any boundary:
 //!   macro invocations (`name!`), callee names not found in the production
-//!   function set, or depth > 3.
+//!   function set, or depth > 5.
 //! - Finding classification NEVER changes: `no_static_path` stays `no_static_path`.
 //!   This check only sets `static_limit_kind` to name the limitation.
 //! - If no candidate transitive path is found the finding is left exactly as-is.
@@ -21,7 +21,7 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 
 /// Maximum call-hop depth for the transitive walk.
-const MAX_TRANSITIVE_DEPTH: usize = 3;
+const MAX_TRANSITIVE_DEPTH: usize = 5;
 
 /// A concrete pointer to the test that witnessed a transitive-reach candidate
 /// path, captured so the limitation message can name something the user can
@@ -881,18 +881,20 @@ mod tests {
         assert!(transitive_reach_witness_pointer(&witness).contains("and 2 other tests"));
     }
 
-    // (c-i) Path exists at exactly depth=3 -> witness captured (boundary is depth > 3 not >= 3).
-    // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> check fn_c.calls: includes inner.
+    // (c-i) Path exists at exactly depth=5 -> witness captured (boundary is depth > 5 not >= 5).
+    // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> fn_d(4) -> fn_e(5)
+    // -> check fn_e.calls: includes inner.
     #[test]
-    fn given_path_at_depth_3_then_witness_is_captured() {
+    fn given_path_at_depth_5_then_witness_is_captured() {
         let fn_a = make_fn("fn_a", vec!["fn_b"]);
         let fn_b = make_fn("fn_b", vec!["fn_c"]);
-        let fn_c = make_fn("fn_c", vec!["inner"]);
+        let fn_c = make_fn("fn_c", vec!["fn_d"]);
+        let fn_d = make_fn("fn_d", vec!["fn_e"]);
+        let fn_e = make_fn("fn_e", vec!["inner"]);
         let index = index_with(
-            vec![fn_a, fn_b, fn_c],
-            vec![make_test("test_depth3", vec!["fn_a"])],
+            vec![fn_a, fn_b, fn_c, fn_d, fn_e],
+            vec![make_test("test_depth5", vec!["fn_a"])],
         );
-        // fn_a(1) -> fn_b(2) -> fn_c(3): at depth=3 we look at fn_c.calls -> inner.
         let witness = find_transitive_witness("inner", &index);
         assert_eq!(
             witness.as_ref().map(|w| w.entry_symbol.as_str()),
@@ -900,17 +902,19 @@ mod tests {
         );
     }
 
-    // (c-ii) Path at depth=4 -> exceeds MAX_TRANSITIVE_DEPTH=3, NOT found.
-    // fn_c is popped at depth=3, its calls include fn_d -> push fn_d at depth=4.
-    // fn_d is popped at depth=4, 4 > 3 -> continue. inner NOT reached.
+    // (c-ii) Path at depth=6 -> exceeds MAX_TRANSITIVE_DEPTH=5, NOT found.
+    // fn_e is popped at depth=5, its calls include fn_f -> push fn_f at depth=6.
+    // fn_f is popped at depth=6, 6 > 5 -> continue. inner NOT reached.
     #[test]
-    fn given_path_depth_4_then_witness_is_none() {
+    fn given_path_depth_6_then_witness_is_none() {
         let fn_a = make_fn("fn_a", vec!["fn_b"]);
         let fn_b = make_fn("fn_b", vec!["fn_c"]);
         let fn_c = make_fn("fn_c", vec!["fn_d"]);
-        let fn_d = make_fn("fn_d", vec!["inner"]);
+        let fn_d = make_fn("fn_d", vec!["fn_e"]);
+        let fn_e = make_fn("fn_e", vec!["fn_f"]);
+        let fn_f = make_fn("fn_f", vec!["inner"]);
         let index = index_with(
-            vec![fn_a, fn_b, fn_c, fn_d],
+            vec![fn_a, fn_b, fn_c, fn_d, fn_e, fn_f],
             vec![make_test("test_too_deep", vec!["fn_a"])],
         );
         assert!(find_transitive_witness("inner", &index).is_none());
@@ -1050,14 +1054,16 @@ mod tests {
         let fn_a = make_fn("fn_a", vec!["fn_b", "missing_helper"]);
         let fn_b = make_fn("fn_b", vec!["fn_c"]);
         let fn_c = make_fn("fn_c", vec!["fn_d"]);
-        let fn_d = make_fn_with_body(
-            "fn_d",
+        let fn_d = make_fn("fn_d", vec!["fn_e"]);
+        let fn_e = make_fn("fn_e", vec!["fn_f"]);
+        let fn_f = make_fn_with_body(
+            "fn_f",
             vec![],
-            "fn fn_d() -> i32 {\n    call_inner!()\n}".to_string(),
+            "fn fn_f() -> i32 {\n    call_inner!()\n}".to_string(),
         );
         let source = "macro_rules! call_inner {\n    () => { inner() };\n}".to_string();
         let index = index_with_source(
-            vec![fn_a, fn_b, fn_c, fn_d],
+            vec![fn_a, fn_b, fn_c, fn_d, fn_e, fn_f],
             vec![make_test("test_too_deep", vec!["fn_a"])],
             source,
         );

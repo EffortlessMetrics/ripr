@@ -1,0 +1,8 @@
+[package]
+name = "rust_transitive_reach_test_helper_chain_fixture"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "rust_transitive_reach_test_helper_chain_fixture"
+path = "src/lib.rs"
