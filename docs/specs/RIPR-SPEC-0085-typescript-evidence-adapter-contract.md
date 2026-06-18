@@ -173,13 +173,51 @@ the file extension alone.
 
 ```text
 expect(value).toBe(...)            -> exact_value
-expect(value).toEqual(...)         -> deep_value
-expect(value).toStrictEqual(...)   -> deep_value
+expect(value).toEqual(...)         -> exact_value
+expect(value).toStrictEqual(...)   -> exact_value
 expect(fn).toThrow(...)            -> error_variant
 await expect(p).rejects.toThrow(...) -> promise_rejection
-assert.equal / strictEqual / deepStrictEqual -> exact_value / deep_value
-t.equal / t.deepEqual              -> exact_value / deep_value
+assert.equal / strictEqual / deepStrictEqual -> exact_value
+t.equal / t.deepEqual              -> exact_value
 ```
+
+#### Execution-context (`t.*`) assertion shapes
+
+AVA, tape, and `node:test` do not use the global `expect(...)`; they assert
+on the execution context passed as the test callback's first parameter
+(conventionally `t`):
+
+```text
+test('name', t => { t.is(actual, expected) })
+```
+
+These are recognized **only** when the member object identifier matches the
+callback's first parameter name (extracted from the `test(...)` / `it(...)`
+callback). This receiver gate is the fail-closed guard: an unrelated
+`helper.is(a, b)` or `validator.equal(x, y)` is **not** an assertion, because
+its receiver is not the test parameter. The argument order is
+`(actual, expected[, message])`, so `observed_expression` = arg 0 and
+`expected_value_or_variant` = arg 1 when it is a concrete literal.
+
+```text
+t.is / t.not                        -> exact_value (strong)      # AVA
+t.equal / t.notEqual                -> exact_value (strong)      # tape / node:test
+t.strictEqual / t.notStrictEqual    -> exact_value (strong)      # tape / node:test
+t.deepEqual / t.notDeepEqual        -> exact_value (strong)      # shared
+t.truthy / t.falsy / t.pass / t.fail / t.assert / t.ok / t.notOk -> smoke_only (smoke)
+t.throws / t.throwsAsync / t.notThrows / t.notThrowsAsync -> broad_error (weak)
+t.regex / t.notRegex / t.like / t.notLike -> relational_check (weak)
+<any other t.method>                -> not an oracle (fail-closed)
+```
+
+The v1 TypeScript adapter does not emit a separate `deep_value` oracle kind:
+deep equality forms are represented as `exact_value` / strong when the matcher is
+recognized and receiver-gated.
+
+An unrecognized `t.method(...)` is **not** credited as an oracle (it yields
+no assertion at all), so a method ripr does not understand can never inflate
+a finding to `exposed`. A callback that takes no receiver parameter (the
+Jest/Vitest convention) never attempts `t.*` matching.
 
 Each extracted oracle carries `file:line`, `oracle_kind`,
 `observed_expression`, `expected_value_or_variant`, `confidence`, and a

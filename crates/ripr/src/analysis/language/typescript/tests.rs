@@ -3667,6 +3667,66 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
 }
 
 #[test]
+fn classify_change_exposed_t_assertion_uses_execution_context_label() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/lib.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "alpha".to_string(),
+        local_name: "alpha".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/lib.test.ts"),
+        line: 1,
+        body_text: "const result = applyDiscount(50, 100); t.is(result, 90);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "is".to_string(),
+            argument_count: 2,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("result".to_string()),
+            expected_value_or_variant: Some("90".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        "    if (amount >= threshold) {",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding for the changed line".to_string())?;
+    assert!(matches!(finding.class, ExposureClass::Exposed));
+    assert_eq!(finding.related_tests.len(), 1);
+    assert_eq!(
+        finding.related_tests[0].oracle.as_deref(),
+        Some("t.is(...)")
+    );
+    assert_evidence_contains(&finding, "gap_state: already_observed");
+    assert_evidence_contains(
+        &finding,
+        "why_not_actionable: related TypeScript `t.*` evidence already has a strong exact oracle",
+    );
+    Ok(())
+}
+
+#[test]
 fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), String> {
     let owner = TypeScriptOwner {
         name: "applyDiscount".to_string(),
@@ -4794,7 +4854,8 @@ fn oracle_metadata_emitted_for_literal_expected_value() {
     let file = PathBuf::from("tests/clamp.test.ts");
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1, "should extract one assertion");
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -4838,7 +4899,8 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_variable_expected() {
     let source = "expect(clamp(-5, 0, 10)).toBe(expected);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -4858,7 +4920,8 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_call_expression() {
     let source = "expect(getValue()).toBe(computeExpected(0));";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert!(assertion.has_dynamic_matcher_arg);
@@ -4871,13 +4934,196 @@ fn oracle_metadata_no_dynamic_flag_for_no_arg_matchers() {
     let source = "expect(result).toBeTruthy();\nexpect(fn).toThrow();";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     for assertion in &assertions {
         assert!(
             !assertion.has_dynamic_matcher_arg,
             "no-arg matchers should not set has_dynamic_matcher_arg: {assertion:?}"
         );
     }
+}
+
+/// AVA `t.is(actual, expected)` is recognized as an exact-value oracle when the
+/// receiver matches the test callback's first parameter. Observed = arg 0
+/// (`actual`), expected = arg 1 literal, mirroring Jest's
+/// `expect(actual).toBe(expected)`.
+#[test]
+fn ava_is_assertion_extracts_exact_value_oracle() {
+    let source = "t.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "is");
+    assert_eq!(assertion.oracle_kind, OracleKind::ExactValue);
+    assert_eq!(assertion.oracle_strength, OracleStrength::Strong);
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("score(10, 3)")
+    );
+    assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("7"));
+    assert!(!assertion.has_dynamic_matcher_arg);
+}
+
+/// End-to-end: a full AVA `test('name', t => { t.is(...) })` call has its
+/// callback receiver (`t`) extracted and threaded so the inner `t.is(...)` is
+/// credited as an exact-value oracle.
+#[test]
+fn ava_test_call_threads_callback_receiver() {
+    let source = "test('scores the difference', t => { t.is(score(10, 3), 7); });";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let call = parse_result
+        .program
+        .body
+        .iter()
+        .find_map(|stmt| match stmt {
+            Statement::ExpressionStatement(stmt) => match &stmt.expression {
+                Expression::CallExpression(call) => Some(call),
+                _ => None,
+            },
+            _ => None,
+        });
+    assert!(call.is_some(), "expected a test() call expression");
+    let Some(call) = call else { return };
+    let result = test_name_and_assertions_from_call(call, source);
+    assert!(result.is_some(), "should recognize the AVA test call");
+    let Some((name, assertions)) = result else {
+        return;
+    };
+    assert_eq!(name, "scores the difference");
+    assert_eq!(assertions.len(), 1, "AVA assertion should be threaded");
+    assert_eq!(assertions[0].oracle_kind, OracleKind::ExactValue);
+    assert_eq!(assertions[0].oracle_strength, OracleStrength::Strong);
+}
+
+/// Fail-closed: an AVA assertion is only credited when its receiver is the test
+/// callback's parameter. A same-named method on an unrelated object
+/// (`helper.is(...)`) is NOT an AVA assertion.
+#[test]
+fn ava_assertion_requires_matching_receiver() {
+    let source = "helper.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert!(
+        assertions.is_empty(),
+        "wrong receiver must not be credited as an AVA assertion: {assertions:?}"
+    );
+}
+
+/// Fail-closed: an unrecognized method on the AVA receiver yields no oracle (no
+/// assertion), so an unknown discriminator is never over-credited.
+#[test]
+fn ava_unknown_method_not_credited() {
+    let source = "t.frobnicate(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert!(
+        assertions.is_empty(),
+        "unknown AVA method must not be credited: {assertions:?}"
+    );
+}
+
+/// AVA `t.truthy(...)` is a smoke-only oracle — it reaches but does not pin the
+/// exact changed value, so it must not be promoted to a strong exact oracle.
+#[test]
+fn ava_truthy_is_smoke_only() {
+    let source = "t.truthy(score(10, 3));";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1);
+    assert_eq!(assertions[0].oracle_kind, OracleKind::SmokeOnly);
+    assert_eq!(assertions[0].oracle_strength, OracleStrength::Smoke);
+}
+
+/// Tape / node:test equality aliases use the same receiver-gated path as AVA:
+/// `t.equal(...)`, `t.strictEqual(...)`, their negated forms, and deep-equality
+/// forms are exact-value oracles when the receiver matches the test callback
+/// parameter.
+#[test]
+fn tape_equal_aliases_extract_exact_value_oracles() {
+    for method in [
+        "equal",
+        "notEqual",
+        "strictEqual",
+        "notStrictEqual",
+        "deepEqual",
+        "notDeepEqual",
+    ] {
+        let source = format!("t.{method}(score(10, 3), 7);");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::ExactValue);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Strong);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("7"));
+        assert_eq!(assertion_oracle_text(assertion), format!("t.{method}(...)"));
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Tape `t.ok(...)` / `t.notOk(...)` reach the value but do not pin the changed
+/// discriminator, so they remain smoke-only.
+#[test]
+fn tape_ok_aliases_are_smoke_only() {
+    for method in ["ok", "notOk"] {
+        let source = format!("t.{method}(score(10, 3));");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::SmokeOnly);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Smoke);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert!(assertion.expected_value_or_variant.is_none());
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Without a receiver (Jest/Vitest callbacks take no execution context), AVA
+/// matching is never attempted — `t.is(...)` here is just an unrelated call.
+#[test]
+fn ava_assertion_not_attempted_without_receiver() {
+    let source = "t.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    assert!(
+        assertions.is_empty(),
+        "no receiver means no AVA assertion: {assertions:?}"
+    );
 }
 
 /// `typescript_dynamic_assertion_unresolved` limitation emitted when a direct

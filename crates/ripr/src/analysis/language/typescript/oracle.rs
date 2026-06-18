@@ -29,6 +29,38 @@ pub(crate) fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) 
     }
 }
 
+/// Map an AVA / `node:test`-style assertion method (`t.is`, `t.deepEqual`, ...)
+/// to an oracle kind + strength. AVA's `t.is(actual, expected)` is the structural
+/// equivalent of Jest's `expect(actual).toBe(expected)` — an exact-value
+/// discriminator. Unknown methods return `Unknown` (fail-closed): a strong
+/// oracle is only credited for an explicitly recognized exact-value form.
+pub(crate) fn oracle_for_ava_assertion(method: &str) -> (OracleKind, OracleStrength) {
+    match method {
+        // Exact equality / inequality — discriminates a value change.
+        // `is` / `not` are AVA; `equal` / `strictEqual` and their negated
+        // forms are tape / node:test style aliases; `deepEqual` /
+        // `notDeepEqual` are shared. The implementation treats exact and deep
+        // equality alike (as `oracle_for_matcher` does for Jest's `toBe` /
+        // `toEqual` / `toStrictEqual`).
+        "is" | "not" | "equal" | "notEqual" | "strictEqual" | "notStrictEqual" | "deepEqual"
+        | "notDeepEqual" => (OracleKind::ExactValue, OracleStrength::Strong),
+        // Truthiness — does not pin the exact changed value. `truthy` / `falsy`
+        // / `pass` / `fail` / `assert` are AVA; `ok` / `notOk` are tape.
+        "true" | "false" | "truthy" | "falsy" | "pass" | "fail" | "assert" | "ok" | "notOk" => {
+            (OracleKind::SmokeOnly, OracleStrength::Smoke)
+        }
+        // Error assertions — broad until the thrown payload is inspected.
+        "throws" | "throwsAsync" | "notThrows" | "notThrowsAsync" => {
+            (OracleKind::BroadError, OracleStrength::Weak)
+        }
+        // Partial / pattern checks.
+        "regex" | "notRegex" | "like" | "notLike" => {
+            (OracleKind::RelationalCheck, OracleStrength::Weak)
+        }
+        _ => (OracleKind::Unknown, OracleStrength::Unknown),
+    }
+}
+
 pub(crate) fn weak_oracle_missing_summary(
     owner_name: &str,
     oracle_kind: &OracleKind,
@@ -99,76 +131,110 @@ pub(crate) fn weak_oracle_recommendation(
 pub(crate) fn collect_expect_assertions_in_statements(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
     source: &str,
+    receiver: Option<&str>,
 ) -> Vec<TypeScriptAssertion> {
     let mut out = Vec::new();
     for stmt in statements {
-        collect_expect_assertions_in_statement(stmt, source, &mut out);
+        collect_expect_assertions_in_statement(stmt, source, receiver, &mut out);
     }
     out
+}
+
+/// Try the Jest `expect(...).matcher(...)` shape, then — when the test exposes
+/// an AVA-style callback receiver (`t`) — the `t.is(...)` shape.
+fn assertion_from_expression_any(
+    expr: &Expression<'_>,
+    source: &str,
+    receiver: Option<&str>,
+) -> Option<TypeScriptAssertion> {
+    expect_assertion_from_expression(expr, source)
+        .or_else(|| receiver.and_then(|r| ava_assertion_from_expression(expr, source, r)))
 }
 
 pub(crate) fn collect_expect_assertions_in_statement(
     stmt: &Statement<'_>,
     source: &str,
+    receiver: Option<&str>,
     out: &mut Vec<TypeScriptAssertion>,
 ) {
     match stmt {
         Statement::BlockStatement(block) => {
-            collect_expect_assertions_from_statement_vec(&block.body, source, out);
+            collect_expect_assertions_from_statement_vec(&block.body, source, receiver, out);
         }
         Statement::ExpressionStatement(expr_stmt) => {
-            if let Some(assertion) = expect_assertion_from_expression(&expr_stmt.expression, source)
+            if let Some(assertion) =
+                assertion_from_expression_any(&expr_stmt.expression, source, receiver)
             {
                 out.push(assertion);
             }
         }
         Statement::ReturnStatement(return_stmt) => {
             if let Some(argument) = &return_stmt.argument
-                && let Some(assertion) = expect_assertion_from_expression(argument, source)
+                && let Some(assertion) = assertion_from_expression_any(argument, source, receiver)
             {
                 out.push(assertion);
             }
         }
         Statement::IfStatement(if_stmt) => {
-            collect_expect_assertions_in_statement(&if_stmt.consequent, source, out);
+            collect_expect_assertions_in_statement(&if_stmt.consequent, source, receiver, out);
             if let Some(alternate) = &if_stmt.alternate {
-                collect_expect_assertions_in_statement(alternate, source, out);
+                collect_expect_assertions_in_statement(alternate, source, receiver, out);
             }
         }
         Statement::DoWhileStatement(do_while) => {
-            collect_expect_assertions_in_statement(&do_while.body, source, out);
+            collect_expect_assertions_in_statement(&do_while.body, source, receiver, out);
         }
         Statement::WhileStatement(while_stmt) => {
-            collect_expect_assertions_in_statement(&while_stmt.body, source, out);
+            collect_expect_assertions_in_statement(&while_stmt.body, source, receiver, out);
         }
         Statement::ForStatement(for_stmt) => {
-            collect_expect_assertions_in_statement(&for_stmt.body, source, out);
+            collect_expect_assertions_in_statement(&for_stmt.body, source, receiver, out);
         }
         Statement::ForInStatement(for_in) => {
-            collect_expect_assertions_in_statement(&for_in.body, source, out);
+            collect_expect_assertions_in_statement(&for_in.body, source, receiver, out);
         }
         Statement::ForOfStatement(for_of) => {
-            collect_expect_assertions_in_statement(&for_of.body, source, out);
+            collect_expect_assertions_in_statement(&for_of.body, source, receiver, out);
         }
         Statement::LabeledStatement(labeled) => {
-            collect_expect_assertions_in_statement(&labeled.body, source, out);
+            collect_expect_assertions_in_statement(&labeled.body, source, receiver, out);
         }
         Statement::SwitchStatement(switch_stmt) => {
             for case in &switch_stmt.cases {
-                collect_expect_assertions_from_statement_vec(&case.consequent, source, out);
+                collect_expect_assertions_from_statement_vec(
+                    &case.consequent,
+                    source,
+                    receiver,
+                    out,
+                );
             }
         }
         Statement::TryStatement(try_stmt) => {
-            collect_expect_assertions_from_statement_vec(&try_stmt.block.body, source, out);
+            collect_expect_assertions_from_statement_vec(
+                &try_stmt.block.body,
+                source,
+                receiver,
+                out,
+            );
             if let Some(handler) = &try_stmt.handler {
-                collect_expect_assertions_from_statement_vec(&handler.body.body, source, out);
+                collect_expect_assertions_from_statement_vec(
+                    &handler.body.body,
+                    source,
+                    receiver,
+                    out,
+                );
             }
             if let Some(finalizer) = &try_stmt.finalizer {
-                collect_expect_assertions_from_statement_vec(&finalizer.body, source, out);
+                collect_expect_assertions_from_statement_vec(
+                    &finalizer.body,
+                    source,
+                    receiver,
+                    out,
+                );
             }
         }
         Statement::WithStatement(with_stmt) => {
-            collect_expect_assertions_in_statement(&with_stmt.body, source, out);
+            collect_expect_assertions_in_statement(&with_stmt.body, source, receiver, out);
         }
         _ => {}
     }
@@ -177,10 +243,11 @@ pub(crate) fn collect_expect_assertions_in_statement(
 pub(crate) fn collect_expect_assertions_from_statement_vec(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
     source: &str,
+    receiver: Option<&str>,
     out: &mut Vec<TypeScriptAssertion>,
 ) {
     for stmt in statements {
-        collect_expect_assertions_in_statement(stmt, source, out);
+        collect_expect_assertions_in_statement(stmt, source, receiver, out);
     }
 }
 
@@ -243,6 +310,72 @@ pub(crate) fn expect_assertion_from_expression(
         oracle_strength,
         mock_payload,
         error_payload,
+        observed_expression,
+        expected_value_or_variant,
+        has_dynamic_matcher_arg,
+        oracle_confidence,
+    })
+}
+
+/// Match an AVA / `node:test`-style assertion `<receiver>.method(actual, expected?)`
+/// where `receiver` is the test callback's first parameter (the `t` in
+/// `test('name', t => { t.is(...) })`). Requiring the exact receiver identifier
+/// keeps this fail-closed: an unrelated `map.is(other)` or `validator.is(v, ty)`
+/// is NOT matched, and an unrecognized method returns `None`.
+pub(crate) fn ava_assertion_from_expression(
+    expr: &Expression<'_>,
+    source: &str,
+    receiver: &str,
+) -> Option<TypeScriptAssertion> {
+    let expr = match expr {
+        Expression::AwaitExpression(await_expr) => &await_expr.argument,
+        _ => expr,
+    };
+    let Expression::CallExpression(call) = expr else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(member) = &call.callee else {
+        return None;
+    };
+    let Expression::Identifier(object) = &member.object else {
+        return None;
+    };
+    if object.name.as_str() != receiver {
+        return None;
+    }
+    let method = member.property.name.as_str();
+    let (oracle_kind, oracle_strength) = oracle_for_ava_assertion(method);
+    if matches!(oracle_kind, OracleKind::Unknown) {
+        // Fail closed: only an explicitly recognized AVA assertion counts.
+        return None;
+    }
+
+    // AVA arg order is (actual, expected[, message]). Observed = actual (arg 0);
+    // expected value = arg 1 when it is a concrete literal.
+    let observed_expression = call
+        .arguments
+        .first()
+        .and_then(|arg| source_text_for_argument(arg, source));
+    let expected_arg = call.arguments.get(1);
+    let expected_is_literal = expected_arg.is_some_and(|arg| is_literal_argument(arg));
+    let expected_value_or_variant = if expected_is_literal {
+        expected_arg.and_then(|arg| source_text_for_argument(arg, source))
+    } else {
+        None
+    };
+    let has_dynamic_matcher_arg = expected_arg.is_some() && !expected_is_literal;
+
+    let oracle_confidence =
+        derive_oracle_confidence(&oracle_strength, &expected_value_or_variant, method);
+
+    Some(TypeScriptAssertion {
+        matcher: method.to_string(),
+        argument_count: call.arguments.len(),
+        line: line_for_offset(source, call.span.start as usize),
+        oracle_kind,
+        oracle_strength,
+        mock_payload: None,
+        error_payload: None,
         observed_expression,
         expected_value_or_variant,
         has_dynamic_matcher_arg,
@@ -618,6 +751,9 @@ pub(crate) fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     if let Some(error_payload) = &assertion.error_payload {
         return error_payload.oracle_text();
     }
+    if is_execution_context_assertion_matcher(&assertion.matcher) {
+        return format!("t.{}(...)", assertion.matcher);
+    }
     if matches!(assertion.matcher.as_str(), "toThrow" | "toThrowError")
         && assertion.argument_count == 0
     {
@@ -625,6 +761,36 @@ pub(crate) fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     } else {
         format!("expect(...).{}(...)", assertion.matcher)
     }
+}
+
+pub(crate) fn is_execution_context_assertion_matcher(matcher: &str) -> bool {
+    matches!(
+        matcher,
+        "is" | "not"
+            | "equal"
+            | "notEqual"
+            | "strictEqual"
+            | "notStrictEqual"
+            | "deepEqual"
+            | "notDeepEqual"
+            | "true"
+            | "false"
+            | "truthy"
+            | "falsy"
+            | "pass"
+            | "fail"
+            | "assert"
+            | "ok"
+            | "notOk"
+            | "throws"
+            | "throwsAsync"
+            | "notThrows"
+            | "notThrowsAsync"
+            | "regex"
+            | "notRegex"
+            | "like"
+            | "notLike"
+    )
 }
 
 /// Emit the additive oracle metadata evidence lines for an assertion

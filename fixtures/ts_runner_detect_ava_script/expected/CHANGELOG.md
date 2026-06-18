@@ -58,3 +58,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+AVA t.is exact-value oracle now recognized (RIPR-SPEC-0085 execution-context t.* shapes): weakly_exposed -> exposed, oracle exact_value/strong; stays preview_advisory_only
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_script --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Render receiver-gated AVA evidence as t.is(...) and label already-observed actionability as TypeScript t.* evidence while keeping preview advisory.
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_script --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
