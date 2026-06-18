@@ -30,6 +30,16 @@ const DIFF_INDEX_FILE_LIMIT: usize = 800;
 /// runners raise it; CI can lower it to exercise the guard.
 const DIFF_INDEX_FILE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_INDEX_FILES";
 
+/// Default ceiling on the number of added/removed Rust diff lines that may be
+/// expanded into probes. Large code-motion PRs can touch only one indexed file
+/// but still create thousands of probe/classifier records, exhausting
+/// constrained runners before an artifact is written (#1324).
+const DIFF_CHANGED_RUST_LINE_LIMIT: usize = 2_000;
+
+/// Env override for [`DIFF_CHANGED_RUST_LINE_LIMIT`]. Operators can raise it
+/// for larger runners or lower it to exercise the guard.
+const DIFF_CHANGED_RUST_LINE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_CHANGED_RUST_LINES";
+
 fn diff_index_file_limit() -> Result<usize, String> {
     diff_index_file_limit_from_env(std::env::var(DIFF_INDEX_FILE_LIMIT_ENV))
 }
@@ -37,23 +47,76 @@ fn diff_index_file_limit() -> Result<usize, String> {
 fn diff_index_file_limit_from_env(
     value: Result<String, std::env::VarError>,
 ) -> Result<usize, String> {
+    positive_limit_from_env(DIFF_INDEX_FILE_LIMIT_ENV, DIFF_INDEX_FILE_LIMIT, value)
+}
+
+fn diff_changed_rust_line_limit() -> Result<usize, String> {
+    diff_changed_rust_line_limit_from_env(std::env::var(DIFF_CHANGED_RUST_LINE_LIMIT_ENV))
+}
+
+fn diff_changed_rust_line_limit_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    positive_limit_from_env(
+        DIFF_CHANGED_RUST_LINE_LIMIT_ENV,
+        DIFF_CHANGED_RUST_LINE_LIMIT,
+        value,
+    )
+}
+
+fn positive_limit_from_env(
+    env_name: &str,
+    default: usize,
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
     match value {
         Ok(raw) => {
-            let parsed = raw.trim().parse::<usize>().map_err(|err| {
-                format!("{DIFF_INDEX_FILE_LIMIT_ENV} must be a positive integer: {err}")
-            })?;
+            let parsed = raw
+                .trim()
+                .parse::<usize>()
+                .map_err(|err| format!("{env_name} must be a positive integer: {err}"))?;
             if parsed == 0 {
-                return Err(format!(
-                    "{DIFF_INDEX_FILE_LIMIT_ENV} must be a positive integer"
-                ));
+                return Err(format!("{env_name} must be a positive integer"));
             }
             Ok(parsed)
         }
-        Err(std::env::VarError::NotPresent) => Ok(DIFF_INDEX_FILE_LIMIT),
-        Err(std::env::VarError::NotUnicode(_)) => {
-            Err(format!("{DIFF_INDEX_FILE_LIMIT_ENV} must be valid UTF-8"))
-        }
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
     }
+}
+
+fn changed_rust_line_count(changed_files: &[ChangedFile]) -> usize {
+    changed_files
+        .iter()
+        .filter(|file| route(&file.path) == Some(LanguageId::Rust))
+        .map(|file| {
+            file.added_lines
+                .len()
+                .saturating_add(file.removed_lines.len())
+        })
+        .sum()
+}
+
+fn enforce_changed_rust_line_limit(
+    changed_files: &[ChangedFile],
+    line_limit: usize,
+) -> Result<(), String> {
+    let changed_line_count = changed_rust_line_count(changed_files);
+    if changed_line_count <= line_limit {
+        return Ok(());
+    }
+    let changed_file_count = changed_files
+        .iter()
+        .filter(|file| route(&file.path) == Some(LanguageId::Rust))
+        .count();
+    Err(format!(
+        "diff_scope_oversized: {changed_line_count} changed Rust lines across \
+         {changed_file_count} Rust files exceed the {DIFF_CHANGED_RUST_LINE_LIMIT_ENV} \
+         limit ({line_limit}); analysis was not run to protect runner memory before \
+         probe expansion. Repair route: reduce the diff scope, split the extraction \
+         PR, run a narrower diff, or raise the limit via \
+         {DIFF_CHANGED_RUST_LINE_LIMIT_ENV}=<number>."
+    ))
 }
 
 /// Returns `true` when the owner function carries an FFI or language-binding
@@ -150,6 +213,7 @@ impl LanguageAdapter for RustAdapter {
             .filter(|file| self.accepts_path(&file.path))
             .map(|file| file.path.clone())
             .collect::<Vec<_>>();
+        enforce_changed_rust_line_limit(changed_files, diff_changed_rust_line_limit()?)?;
         let rust_files = workspace::discover_rust_files(&options.root)?;
         let index_files = workspace::select_rust_files_for_mode(
             &rust_files,
@@ -295,9 +359,11 @@ impl LanguageAdapter for RustAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        DIFF_INDEX_FILE_LIMIT, cross_language_limit_kind, diff_index_file_limit_from_env,
-        owner_has_ffi_attr,
+        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, changed_rust_line_count,
+        cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
+        diff_index_file_limit_from_env, enforce_changed_rust_line_limit, owner_has_ffi_attr,
     };
+    use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{FunctionSummary, RustIndex};
     use crate::domain::{
         DeltaKind, ExposureClass, Probe, ProbeFamily, ProbeId, SourceLocation, StaticLimitKind,
@@ -348,6 +414,89 @@ mod tests {
             matches!(&result, Err(err) if err.contains("valid UTF-8")),
             "non-unicode must error with a UTF-8 message, got {result:?}"
         );
+    }
+
+    #[test]
+    fn diff_changed_rust_line_limit_defaults_when_unset() -> Result<(), String> {
+        let parsed = diff_changed_rust_line_limit_from_env(Err(VarError::NotPresent))?;
+        if parsed != DIFF_CHANGED_RUST_LINE_LIMIT {
+            return Err(format!(
+                "expected default {DIFF_CHANGED_RUST_LINE_LIMIT}, got {parsed}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_changed_rust_line_limit_parses_positive_override() -> Result<(), String> {
+        let parsed = diff_changed_rust_line_limit_from_env(Ok("  1500 ".to_string()))?;
+        if parsed != 1500 {
+            return Err(format!("expected parsed limit 1500, got {parsed}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_line_count_ignores_non_rust_paths() -> Result<(), String> {
+        let files = vec![
+            changed_file("src/lib.rs", 2, 1),
+            changed_file("tests/example.test.ts", 30, 30),
+        ];
+
+        let count = changed_rust_line_count(&files);
+        if count != 3 {
+            return Err(format!(
+                "expected only Rust changed lines to count, got {count}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_line_limit_rejects_oversized_diff_before_probe_expansion() -> Result<(), String>
+    {
+        let files = vec![changed_file("src/lib.rs", 2, 1)];
+
+        let message = match enforce_changed_rust_line_limit(&files, 2) {
+            Ok(()) => return Err("three changed Rust lines should exceed limit two".to_string()),
+            Err(message) => message,
+        };
+
+        for needle in [
+            "diff_scope_oversized",
+            "3 changed Rust lines across 1 Rust files",
+            "RIPR_MAX_DIFF_CHANGED_RUST_LINES",
+            "split the extraction PR",
+        ] {
+            if !message.contains(needle) {
+                return Err(format!("missing `{needle}` in message: {message}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_rust_line_limit_accepts_at_limit() -> Result<(), String> {
+        let files = vec![changed_file("src/lib.rs", 1, 1)];
+        enforce_changed_rust_line_limit(&files, 2)
+    }
+
+    fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {
+        ChangedFile {
+            path: PathBuf::from(path),
+            added_lines: changed_lines(added),
+            removed_lines: changed_lines(removed),
+        }
+    }
+
+    fn changed_lines(count: usize) -> Vec<ChangedLine> {
+        (1..=count)
+            .map(|line| ChangedLine {
+                line,
+                text: "let value = input + 1;".to_string(),
+                new_side_line: line,
+            })
+            .collect()
     }
 
     // --- FFI / cross-language guard tests (#910) ---

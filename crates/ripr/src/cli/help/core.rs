@@ -108,6 +108,14 @@ Options:
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 
+Environment variables:
+  RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
+                                    before check fails closed as
+                                    diff_scope_oversized. Default: 2000.
+  RIPR_MAX_DIFF_INDEX_FILES         Maximum Rust files loaded into the diff
+                                    index before check fails closed as
+                                    diff_scope_oversized. Default: 800.
+
 Examples:
   ripr check
   ripr check --base HEAD~1
