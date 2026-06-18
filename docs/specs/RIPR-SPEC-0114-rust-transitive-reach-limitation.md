@@ -1,6 +1,6 @@
 # RIPR-SPEC-0114: Rust Transitive-Reach Limitation
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -14,7 +14,8 @@ Linked issues:
 
 Linked PRs:
 
-- P3 slice-a (this PR)
+- [#1305](https://github.com/EffortlessMetrics/ripr-swarm/pull/1305) -
+  implemented the fail-closed Rust transitive-reach limitation.
 
 Support-tier impact:
 

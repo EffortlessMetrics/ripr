@@ -1,6 +1,6 @@
 # RIPR-SPEC-0115: Rust Transitive-Reach Witness
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -16,7 +16,8 @@ Linked issues:
 
 Linked PRs:
 
-- P3.1 slice (this PR)
+- [#1310](https://github.com/EffortlessMetrics/ripr-swarm/pull/1310) -
+  names the transitive-reach witness test and entry symbol.
 
 Support-tier impact:
 

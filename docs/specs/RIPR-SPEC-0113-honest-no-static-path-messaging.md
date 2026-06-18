@@ -1,6 +1,6 @@
 # RIPR-SPEC-0113: Honest `no_static_path` Messaging
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -12,7 +12,9 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- [#1300](https://github.com/EffortlessMetrics/ripr-swarm/pull/1300) -
+  implemented honest `no_static_path` messaging and re-blessed affected
+  fixtures.
 
 Support-tier impact:
 
@@ -167,6 +169,6 @@ propagation_unknown / static_unknown`, the footer Note becomes:
 
 - Gate: 0 golden drift after re-bless; all message-only (no classification
   drift).
-- Promote to accepted when behavioral repro shows honest "A test may already
-  exercise it..." wording in human and JSON output for a `no_static_path`
-  finding.
+- Accepted after #1300 proved the honest "A test may already exercise it..."
+  wording in human and JSON output for `no_static_path` findings without
+  classification drift.
