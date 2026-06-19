@@ -31,6 +31,9 @@ Policy impact:
 - `check-evidence-promotion-honesty --pinned-external`: executes exact
   real-repo launch points against the current RIPR binary and asserts the same
   semantic product expectations.
+- The command writes a typed corpus result envelope at
+  `target/ripr/reports/corpus-summary.{json,md}` so infrastructure, budget,
+  golden, and semantic failures do not collapse into one generic failure.
 - New corpus manifest: `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
 - Every corpus case declares a `tier`: `pure` for tiny checked-in fixtures, or
   `pinned_external` for exact-repo cases with repo, command, commit, patch, and
@@ -157,6 +160,49 @@ It asserts that RIPR sees `src/eval.rs`, does not report a clean empty result,
 emits `rust_transitive_reach_unresolved`, stays at or below `no_static_path`,
 does not emit a repair packet, and discloses scope plus a witness.
 
+### Corpus summary envelope
+
+Every `check-evidence-promotion-honesty` run writes:
+
+```text
+target/ripr/reports/corpus-summary.json
+target/ripr/reports/corpus-summary.md
+```
+
+The JSON report uses `schema_version: "0.1"` and `kind: "corpus_summary"`.
+Each case carries:
+
+```yaml
+id:
+language:
+tier:
+status: pass | fail | not_run
+result_kind:
+message:
+runtime_ms:
+artifact_bytes:
+```
+
+Pinned external cases are `not_run` unless `--pinned-external` selects them.
+That state is visible but does not fail the pure PR gate. Failures must be
+classified into one of:
+
+```text
+semantic_failure
+golden_drift
+setup_failure
+network_unavailable
+runtime_budget_exceeded
+artifact_budget_exceeded
+unexpected_limitation
+unexpected_promotion
+```
+
+This separation is part of the product contract: a clone/fetch/cache/setup
+problem must not look like a passing product case or an analyzer semantic
+regression, and a golden re-bless drift must not look like external network
+unavailability.
+
 ### Design: share invariant + corpus, NOT per-language matchers
 
 Each language keeps its own taxonomy and matcher functions. The gate enforces
@@ -196,6 +242,11 @@ reports. Pinned external cases are exact real-repo launch points and must name
 the upstream repository, command template, exact 40-hex commit, checked-in
 patch, runtime budget, and artifact-size budget before the gate will accept
 them.
+
+The corpus summary envelope is the canonical result/failure projection for this
+corpus runner. The older `evidence-promotion-honesty.md` and
+`evidence-promotion-pinned-external.{json,md}` reports remain detailed
+gate-specific artifacts.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -294,6 +345,10 @@ the gate has over-corrected or the fixture needs re-blessing
 | Mark `tier: pinned_external` without repo/command/commit/patch/budgets -> gate fails naming missing metadata | Real-repo pinning contract |
 | Complete `tier: pinned_external` metadata with an exact repo, command template, 40-hex commit, existing patch, and positive budgets -> validator accepts the case | External corpus contract |
 | `cargo xtask check-evidence-promotion-honesty --pinned-external --clone --case rust_semver_matches_greater_external_limitation` | First real-repo launch point executes and enforces semver limitation expectations |
+| `target/ripr/reports/corpus-summary.{json,md}` exists after the gate | Corpus result envelope projection |
+| `evidence_promotion_corpus_summary_report_writes_pure_and_not_run_external_cases` | Pure run reports passing pure cases and visible not-run pinned external cases |
+| `evidence_promotion_corpus_summary_reports_pinned_external_setup_failure` | Malformed pinned-external setup metadata still writes the corpus summary with `setup_failure` instead of exiting before the envelope exists |
+| `evidence_promotion_corpus_summary_classifies_failure_kinds` | Summary envelope distinguishes golden drift, setup, budget, unexpected-limitation, and unexpected-promotion failures |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
 | `evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers` | Validator rejects missing/unknown tiers and external metadata on pure cases |
 | `evidence_promotion_honesty_rejects_incomplete_pinned_external_tier` | Validator rejects branch-floating or budgetless external cases |
@@ -313,6 +368,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | Corpus manifest | `fixtures/evidence-promotion-honesty-corpus/corpus.json` |
 | First external patch | `fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff` |
 | Gate implementation | `xtask/src/main.rs::check_evidence_promotion_honesty` |
+| Corpus summary writer | `xtask/src/main.rs::write_evidence_promotion_corpus_summary_report` |
 | Pinned external runner | `xtask/src/main.rs::run_evidence_promotion_pinned_external_cases` |
 | Corpus validator | `xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at` |
 | Manifest-only denylist | `xtask/src/main.rs::is_manifest_only_fixture_dir` |

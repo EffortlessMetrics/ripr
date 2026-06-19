@@ -1109,9 +1109,9 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
             "non_mutating_check",
-            "target/ripr/reports/evidence-promotion-honesty.md and optional evidence-promotion-pinned-external.{json,md}",
+            "target/ripr/reports/evidence-promotion-honesty.md, target/ripr/reports/corpus-summary.{json,md}, and optional target/ripr/reports/evidence-promotion-pinned-external.{json,md}",
             false,
-            "Reads byte-pinned golden check.json files for pure charter members and asserts semantic promotion honesty; with --pinned-external, runs exact external repo+commit+patch cases through the current ripr binary using an opt-in clone/cache path.",
+            "Reads byte-pinned golden check.json files for pure charter members, writes a typed corpus summary envelope, and asserts semantic promotion honesty; with --pinned-external, runs exact external repo+commit+patch cases through the current ripr binary using an opt-in clone/cache path.",
         ),
         command_entry(
             "check-traceability",

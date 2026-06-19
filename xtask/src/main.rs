@@ -10444,6 +10444,8 @@ fn validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
 const EVIDENCE_PROMOTION_CHECKOUT_ROOT: &str = "target/ripr/evidence-promotion-honesty/checkouts";
 const EVIDENCE_PROMOTION_EXTERNAL_JSON: &str = "evidence-promotion-pinned-external.json";
 const EVIDENCE_PROMOTION_EXTERNAL_MD: &str = "evidence-promotion-pinned-external.md";
+const CORPUS_SUMMARY_JSON: &str = "corpus-summary.json";
+const CORPUS_SUMMARY_MD: &str = "corpus-summary.md";
 
 #[derive(Clone)]
 struct EvidencePromotionHonestyOptions {
@@ -10564,6 +10566,7 @@ struct EvidencePromotionExternalCase {
 struct EvidencePromotionExternalRun {
     id: String,
     status: String,
+    result_kind: String,
     runtime_ms: u128,
     artifact_bytes: u64,
     checkout: String,
@@ -10571,10 +10574,27 @@ struct EvidencePromotionExternalRun {
 }
 
 impl EvidencePromotionExternalRun {
-    fn terminal(case: &EvidencePromotionExternalCase, status: &str, violation: String) -> Self {
+    fn terminal(
+        case: &EvidencePromotionExternalCase,
+        result_kind: &str,
+        violation: String,
+    ) -> Self {
         Self {
             id: case.id.clone(),
-            status: status.to_string(),
+            status: "fail".to_string(),
+            result_kind: result_kind.to_string(),
+            runtime_ms: 0,
+            artifact_bytes: 0,
+            checkout: String::new(),
+            violations: vec![violation],
+        }
+    }
+
+    fn runner_failure(result_kind: &str, violation: String) -> Self {
+        Self {
+            id: "__runner__".to_string(),
+            status: "fail".to_string(),
+            result_kind: result_kind.to_string(),
             runtime_ms: 0,
             artifact_bytes: 0,
             checkout: String::new(),
@@ -10583,22 +10603,61 @@ impl EvidencePromotionExternalRun {
     }
 }
 
+#[derive(Clone)]
+struct EvidencePromotionCorpusCaseMeta {
+    id: String,
+    language: String,
+    tier: String,
+}
+
+struct CorpusSummaryCase {
+    id: String,
+    language: String,
+    tier: String,
+    status: String,
+    result_kind: String,
+    message: String,
+    runtime_ms: Option<u128>,
+    artifact_bytes: Option<u64>,
+}
+
 fn run_evidence_promotion_pinned_external_cases(
     corpus_path: &Path,
     options: &EvidencePromotionHonestyOptions,
-) -> Result<Vec<String>, String> {
-    let cases = load_evidence_promotion_pinned_external_cases(corpus_path, options)?;
+) -> Result<Vec<EvidencePromotionExternalRun>, String> {
+    let cases = match load_evidence_promotion_pinned_external_cases(corpus_path, options) {
+        Ok(cases) => cases,
+        Err(err) => {
+            let runs = vec![EvidencePromotionExternalRun::runner_failure(
+                "setup_failure",
+                err.clone(),
+            )];
+            write_evidence_promotion_external_report(&runs, std::slice::from_ref(&err))?;
+            return Ok(runs);
+        }
+    };
     if cases.is_empty() {
         let reason = if let Some(id) = &options.only_case {
             format!("no pinned_external evidence-promotion case matched `{id}`")
         } else {
             "no pinned_external evidence-promotion cases found".to_string()
         };
-        write_evidence_promotion_external_report(&[], std::slice::from_ref(&reason))?;
-        return Ok(vec![reason]);
+        let runs = vec![EvidencePromotionExternalRun::runner_failure(
+            "setup_failure",
+            reason.clone(),
+        )];
+        write_evidence_promotion_external_report(&runs, std::slice::from_ref(&reason))?;
+        return Ok(runs);
     }
 
-    build_ripr_for_evidence_promotion_external()?;
+    if let Err(err) = build_ripr_for_evidence_promotion_external() {
+        let runs = vec![EvidencePromotionExternalRun::runner_failure(
+            "setup_failure",
+            err.clone(),
+        )];
+        write_evidence_promotion_external_report(&runs, std::slice::from_ref(&err))?;
+        return Ok(runs);
+    }
     let binary = PathBuf::from("target")
         .join("debug")
         .join(format!("ripr{}", std::env::consts::EXE_SUFFIX));
@@ -10610,7 +10669,7 @@ fn run_evidence_promotion_pinned_external_cases(
         runs.push(run);
     }
     write_evidence_promotion_external_report(&runs, &all_violations)?;
-    Ok(all_violations)
+    Ok(runs)
 }
 
 fn load_evidence_promotion_pinned_external_cases(
@@ -10774,7 +10833,8 @@ fn run_evidence_promotion_external_case(
         .join(evidence_promotion_checkout_name(case));
     let checkout_display = normalize_path(&checkout);
     if let Err(err) = prepare_evidence_promotion_checkout(case, options, &checkout) {
-        return EvidencePromotionExternalRun::terminal(case, "setup_failure", err);
+        let result_kind = evidence_promotion_external_failure_kind(std::slice::from_ref(&err));
+        return EvidencePromotionExternalRun::terminal(case, &result_kind, err);
     }
     let result = run_evidence_promotion_external_check(case, options, binary, &checkout, &patch);
     let cleanup_result = clean_evidence_promotion_checkout(case, &checkout);
@@ -10785,14 +10845,18 @@ fn run_evidence_promotion_external_case(
         }
         (Ok(mut run), Err(err)) => {
             run.checkout = checkout_display;
-            run.status = "cleanup_failure".to_string();
+            run.status = "fail".to_string();
+            run.result_kind = "setup_failure".to_string();
             run.violations.push(err);
             run
         }
-        (Err(err), Ok(())) => EvidencePromotionExternalRun::terminal(case, "semantic_failure", err),
+        (Err(err), Ok(())) => {
+            let result_kind = evidence_promotion_external_failure_kind(std::slice::from_ref(&err));
+            EvidencePromotionExternalRun::terminal(case, &result_kind, err)
+        }
         (Err(err), Err(cleanup_err)) => EvidencePromotionExternalRun::terminal(
             case,
-            "cleanup_failure",
+            "setup_failure",
             format!("{err}; {cleanup_err}"),
         ),
     }
@@ -11062,7 +11126,12 @@ fn run_evidence_promotion_external_check(
         status: if violations.is_empty() {
             "pass".to_string()
         } else {
-            "semantic_failure".to_string()
+            "fail".to_string()
+        },
+        result_kind: if violations.is_empty() {
+            "pass".to_string()
+        } else {
+            evidence_promotion_external_failure_kind(&violations)
         },
         runtime_ms,
         artifact_bytes,
@@ -11211,6 +11280,56 @@ fn evidence_promotion_external_semantic_violations(
     violations
 }
 
+fn evidence_promotion_external_failure_kind(violations: &[String]) -> String {
+    evidence_promotion_failure_kind(violations, false)
+}
+
+fn evidence_promotion_pure_failure_kind(violations: &[String]) -> String {
+    evidence_promotion_failure_kind(violations, true)
+}
+
+fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> String {
+    let joined = violations.join("\n").to_ascii_lowercase();
+    if joined.contains("runtime budget exceeded") || joined.contains("timed out") {
+        "runtime_budget_exceeded".to_string()
+    } else if joined.contains("artifact bytes") || joined.contains("artifact budget") {
+        "artifact_budget_exceeded".to_string()
+    } else if joined.contains("clone failed") || joined.contains("fetch of exact commit failed") {
+        "network_unavailable".to_string()
+    } else if joined.contains("promoted to exposed")
+        || joined.contains("classification `exposed`")
+        || joined.contains("exceeds maximum")
+    {
+        "unexpected_promotion".to_string()
+    } else if joined.contains("static_limit_kind")
+        || joined.contains("must_emit_limitation")
+        || joined.contains("named limitation")
+    {
+        "unexpected_limitation".to_string()
+    } else if pure_case
+        && (joined.contains("re-bless")
+            || joined.contains("expected/check.json")
+            || joined.contains("must_not_report_clean")
+            || joined.contains("must_disclose_scope")
+            || joined.contains("must_not_emit_repair_packet")
+            || joined.contains("must_disclose_witness"))
+    {
+        "golden_drift".to_string()
+    } else if joined.contains("missing")
+        || joined.contains("unknown tier")
+        || joined.contains("path does not exist")
+        || joined.contains("patch did not apply")
+        || joined.contains("failed to resolve patch")
+        || joined.contains("unsupported language")
+        || joined.contains("checkout")
+        || joined.contains("setup")
+    {
+        "setup_failure".to_string()
+    } else {
+        "semantic_failure".to_string()
+    }
+}
+
 fn directory_size_bytes(path: &Path) -> Result<u64, String> {
     if !path.exists() {
         return Ok(0);
@@ -11271,6 +11390,7 @@ fn write_evidence_promotion_external_report(
             serde_json::json!({
                 "id": run.id,
                 "status": run.status,
+                "result_kind": run.result_kind,
                 "runtime_ms": run.runtime_ms,
                 "artifact_bytes": run.artifact_bytes,
                 "checkout": run.checkout,
@@ -11315,12 +11435,12 @@ fn write_evidence_promotion_external_report(
         markdown.push('\n');
     }
     markdown.push_str("## Cases\n\n");
-    markdown.push_str("| Case | Status | Runtime ms | Artifact bytes |\n");
-    markdown.push_str("|---|---:|---:|---:|\n");
+    markdown.push_str("| Case | Status | Result kind | Runtime ms | Artifact bytes |\n");
+    markdown.push_str("|---|---:|---:|---:|---:|\n");
     for run in runs {
         markdown.push_str(&format!(
-            "| `{}` | `{}` | {} | {} |\n",
-            run.id, run.status, run.runtime_ms, run.artifact_bytes
+            "| `{}` | `{}` | `{}` | {} | {} |\n",
+            run.id, run.status, run.result_kind, run.runtime_ms, run.artifact_bytes
         ));
     }
     markdown.push('\n');
@@ -11328,16 +11448,299 @@ fn write_evidence_promotion_external_report(
     Ok(())
 }
 
+fn load_evidence_promotion_corpus_case_metadata(
+    corpus_path: &Path,
+) -> Result<Vec<EvidencePromotionCorpusCaseMeta>, String> {
+    let corpus_text = read_text_lossy(corpus_path)?;
+    let corpus_value: Value = serde_json::from_str(&corpus_text)
+        .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
+    let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
+        return Err(format!(
+            "{} has no `cases` array",
+            normalize_path(corpus_path)
+        ));
+    };
+    Ok(cases
+        .iter()
+        .map(|case| EvidencePromotionCorpusCaseMeta {
+            id: case
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("<missing-id>")
+                .to_string(),
+            language: case
+                .get("language")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+            tier: case
+                .get("tier")
+                .and_then(Value::as_str)
+                .unwrap_or("<missing-tier>")
+                .to_string(),
+        })
+        .collect())
+}
+
+fn evidence_promotion_case_violations(id: &str, violations: &[String]) -> Vec<String> {
+    let needle = format!("`{id}`");
+    violations
+        .iter()
+        .filter(|violation| violation.contains(&needle))
+        .cloned()
+        .collect()
+}
+
+fn evidence_promotion_unmatched_violations(
+    metadata: &[EvidencePromotionCorpusCaseMeta],
+    violations: &[String],
+) -> Vec<String> {
+    violations
+        .iter()
+        .filter(|violation| {
+            !metadata
+                .iter()
+                .any(|case| violation.contains(&format!("`{}`", case.id)))
+        })
+        .cloned()
+        .collect()
+}
+
+fn build_evidence_promotion_corpus_summary_cases(
+    metadata: &[EvidencePromotionCorpusCaseMeta],
+    pure_violations: &[String],
+    external_runs: &[EvidencePromotionExternalRun],
+    options: &EvidencePromotionHonestyOptions,
+) -> Vec<CorpusSummaryCase> {
+    let mut cases = Vec::new();
+    for case in metadata {
+        if case.tier == "pinned_external" {
+            let selected = options
+                .only_case
+                .as_ref()
+                .is_none_or(|selected| selected == &case.id);
+            if options.run_pinned_external && selected {
+                if let Some(run) = external_runs.iter().find(|run| run.id == case.id) {
+                    cases.push(CorpusSummaryCase {
+                        id: case.id.clone(),
+                        language: case.language.clone(),
+                        tier: case.tier.clone(),
+                        status: run.status.clone(),
+                        result_kind: run.result_kind.clone(),
+                        message: if run.violations.is_empty() {
+                            "case passed semantic expectations".to_string()
+                        } else {
+                            run.violations.join("; ")
+                        },
+                        runtime_ms: Some(run.runtime_ms),
+                        artifact_bytes: Some(run.artifact_bytes),
+                    });
+                } else {
+                    cases.push(CorpusSummaryCase {
+                        id: case.id.clone(),
+                        language: case.language.clone(),
+                        tier: case.tier.clone(),
+                        status: "fail".to_string(),
+                        result_kind: "setup_failure".to_string(),
+                        message: "selected pinned_external case did not produce a run record"
+                            .to_string(),
+                        runtime_ms: None,
+                        artifact_bytes: None,
+                    });
+                }
+            } else {
+                cases.push(CorpusSummaryCase {
+                    id: case.id.clone(),
+                    language: case.language.clone(),
+                    tier: case.tier.clone(),
+                    status: "not_run".to_string(),
+                    result_kind: "not_run".to_string(),
+                    message: if options.run_pinned_external {
+                        "case filtered by --case".to_string()
+                    } else {
+                        "pinned external cases require --pinned-external".to_string()
+                    },
+                    runtime_ms: None,
+                    artifact_bytes: None,
+                });
+            }
+        } else {
+            let case_violations = evidence_promotion_case_violations(&case.id, pure_violations);
+            cases.push(CorpusSummaryCase {
+                id: case.id.clone(),
+                language: case.language.clone(),
+                tier: case.tier.clone(),
+                status: if case_violations.is_empty() {
+                    "pass".to_string()
+                } else {
+                    "fail".to_string()
+                },
+                result_kind: if case_violations.is_empty() {
+                    "pass".to_string()
+                } else {
+                    evidence_promotion_pure_failure_kind(&case_violations)
+                },
+                message: if case_violations.is_empty() {
+                    "case passed semantic expectations".to_string()
+                } else {
+                    case_violations.join("; ")
+                },
+                runtime_ms: None,
+                artifact_bytes: None,
+            });
+        }
+    }
+
+    for violation in evidence_promotion_unmatched_violations(metadata, pure_violations) {
+        cases.push(CorpusSummaryCase {
+            id: "__corpus__".to_string(),
+            language: "unknown".to_string(),
+            tier: "corpus".to_string(),
+            status: "fail".to_string(),
+            result_kind: evidence_promotion_pure_failure_kind(std::slice::from_ref(&violation)),
+            message: violation,
+            runtime_ms: None,
+            artifact_bytes: None,
+        });
+    }
+    for run in external_runs
+        .iter()
+        .filter(|run| run.id.starts_with("__") && !run.violations.is_empty())
+    {
+        cases.push(CorpusSummaryCase {
+            id: run.id.clone(),
+            language: "unknown".to_string(),
+            tier: "pinned_external".to_string(),
+            status: run.status.clone(),
+            result_kind: run.result_kind.clone(),
+            message: run.violations.join("; "),
+            runtime_ms: Some(run.runtime_ms),
+            artifact_bytes: Some(run.artifact_bytes),
+        });
+    }
+
+    cases
+}
+
+fn write_evidence_promotion_corpus_summary_report(
+    corpus_path: &Path,
+    pure_violations: &[String],
+    external_runs: &[EvidencePromotionExternalRun],
+    options: &EvidencePromotionHonestyOptions,
+) -> Result<(), String> {
+    ensure_reports_dir()?;
+    let metadata = load_evidence_promotion_corpus_case_metadata(corpus_path)?;
+    let cases = build_evidence_promotion_corpus_summary_cases(
+        &metadata,
+        pure_violations,
+        external_runs,
+        options,
+    );
+    let failed = cases.iter().filter(|case| case.status == "fail").count();
+    let passed = cases.iter().filter(|case| case.status == "pass").count();
+    let not_run = cases.iter().filter(|case| case.status == "not_run").count();
+    let status = if failed == 0 { "pass" } else { "fail" };
+
+    let json_cases = cases
+        .iter()
+        .map(|case| {
+            serde_json::json!({
+                "id": case.id,
+                "language": case.language,
+                "tier": case.tier,
+                "status": case.status,
+                "result_kind": case.result_kind,
+                "message": case.message,
+                "runtime_ms": case.runtime_ms,
+                "artifact_bytes": case.artifact_bytes,
+            })
+        })
+        .collect::<Vec<_>>();
+    let json_report = serde_json::json!({
+        "schema_version": "0.1",
+        "kind": "corpus_summary",
+        "corpus": "evidence-promotion-honesty",
+        "status": status,
+        "cases_total": cases.len(),
+        "cases_passed": passed,
+        "cases_failed": failed,
+        "cases_not_run": not_run,
+        "failure_kinds": [
+            "semantic_failure",
+            "golden_drift",
+            "setup_failure",
+            "network_unavailable",
+            "runtime_budget_exceeded",
+            "artifact_budget_exceeded",
+            "unexpected_limitation",
+            "unexpected_promotion"
+        ],
+        "cases": json_cases,
+    });
+    write_report(
+        CORPUS_SUMMARY_JSON,
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&json_report)
+                .map_err(|err| format!("serialize corpus summary report: {err}"))?
+        ),
+    )?;
+
+    let mut markdown = format!(
+        "# Corpus Summary\n\nStatus: `{status}`\n\nCorpus: `evidence-promotion-honesty`\n\nCases: `{}` total, `{passed}` passed, `{failed}` failed, `{not_run}` not run.\n\n",
+        cases.len()
+    );
+    markdown.push_str("## Failure Kinds\n\n");
+    for kind in [
+        "semantic_failure",
+        "golden_drift",
+        "setup_failure",
+        "network_unavailable",
+        "runtime_budget_exceeded",
+        "artifact_budget_exceeded",
+        "unexpected_limitation",
+        "unexpected_promotion",
+    ] {
+        markdown.push_str("- `");
+        markdown.push_str(kind);
+        markdown.push_str("`\n");
+    }
+    markdown.push_str("\n## Cases\n\n");
+    markdown.push_str("| Case | Tier | Status | Result kind | Message |\n");
+    markdown.push_str("|---|---|---:|---|---|\n");
+    for case in &cases {
+        markdown.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} |\n",
+            case.id,
+            case.tier,
+            case.status,
+            case.result_kind,
+            markdown_cell(&case.message)
+        ));
+    }
+    markdown.push('\n');
+    write_report(CORPUS_SUMMARY_MD, &markdown)?;
+    Ok(())
+}
+
 fn check_evidence_promotion_honesty(args: &[String]) -> Result<(), String> {
     let options = parse_evidence_promotion_honesty_args(args)?;
     let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
-    let mut violations = Vec::new();
-    validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
+    let mut pure_violations = Vec::new();
+    validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut pure_violations)?;
+    let mut external_runs = Vec::new();
     if options.run_pinned_external {
-        violations.extend(run_evidence_promotion_pinned_external_cases(
-            corpus_path,
-            &options,
-        )?);
+        external_runs = run_evidence_promotion_pinned_external_cases(corpus_path, &options)?;
+    }
+    write_evidence_promotion_corpus_summary_report(
+        corpus_path,
+        &pure_violations,
+        &external_runs,
+        &options,
+    )?;
+    let mut violations = pure_violations.clone();
+    for run in &external_runs {
+        violations.extend(run.violations.iter().cloned());
     }
 
     let report = if violations.is_empty() {
@@ -73159,6 +73562,313 @@ mod tests {
         assert!(report.contains("repair_packet_ready=true"), "{report}");
         assert!(report.contains("must_disclose_witness"), "{report}");
         assert!(report.contains("promoted to exposed"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_corpus_summary_report_writes_pure_and_not_run_external_cases()
+    -> Result<(), String> {
+        with_temp_cwd("evidence-promotion-corpus-summary", |root| {
+            let corpus = root.join(super::EVIDENCE_PROMOTION_HONESTY_CORPUS);
+            let py_fixture = root.join("fixtures/py");
+            let ts_fixture = root.join("fixtures/ts");
+            let rust_fixture = root.join("fixtures/rust");
+            let rust_control_fixture = root.join("fixtures/rust-control");
+            let ts_control_fixture = root.join("fixtures/ts-control");
+            let patch_path = root
+                .join("fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff");
+
+            write(&patch_path, "diff --git a/src/lib.rs b/src/lib.rs\n");
+            for (fixture, classification) in [
+                (&py_fixture, "weakly_exposed"),
+                (&ts_fixture, "weakly_exposed"),
+                (&rust_fixture, "no_static_path"),
+                (&rust_control_fixture, "exposed"),
+                (&ts_control_fixture, "exposed"),
+            ] {
+                write_evidence_promotion_check(fixture, classification)?;
+            }
+
+            let corpus_json = serde_json::json!({
+                "cases": [
+                    {
+                        "id": "py_non_promoted",
+                        "language": "python",
+                        "tier": "pure",
+                        "source_fixture": py_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "ts_non_promoted",
+                        "language": "typescript",
+                        "tier": "pure",
+                        "source_fixture": ts_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "rust_non_promoted",
+                        "language": "rust",
+                        "tier": "pure",
+                        "source_fixture": rust_fixture,
+                        "must_remain_non_promoted": true,
+                        "expected_max_class": "no_static_path"
+                    },
+                    {
+                        "id": "rust_semver_external",
+                        "language": "rust",
+                        "tier": "pinned_external",
+                        "external_repo": "https://github.com/dtolnay/semver",
+                        "external_command": "ripr check --root {checkout} --diff {external_patch} --mode fast --json",
+                        "external_commit": "0123456789abcdef0123456789abcdef01234567",
+                        "external_patch": "fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff",
+                        "runtime_budget_seconds": 120,
+                        "artifact_budget_bytes": 10485760,
+                        "must_not_report_clean": true
+                    },
+                    {
+                        "id": "rust_control",
+                        "language": "rust",
+                        "tier": "pure",
+                        "source_fixture": rust_control_fixture,
+                        "expected_promoted": true
+                    },
+                    {
+                        "id": "ts_control",
+                        "language": "typescript",
+                        "tier": "pure",
+                        "source_fixture": ts_control_fixture,
+                        "expected_promoted": true
+                    }
+                ]
+            });
+            write(
+                &corpus,
+                &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+            );
+
+            super::check_evidence_promotion_honesty(&[])?;
+            let summary_path = root.join("target/ripr/reports/corpus-summary.json");
+            let summary_text = fs::read_to_string(&summary_path)
+                .map_err(|err| format!("read {}: {err}", summary_path.display()))?;
+            let summary: Value = serde_json::from_str(&summary_text)
+                .map_err(|err| format!("parse corpus summary: {err}"))?;
+
+            assert_eq!(
+                summary.get("kind").and_then(Value::as_str),
+                Some("corpus_summary")
+            );
+            assert_eq!(summary.get("status").and_then(Value::as_str), Some("pass"));
+            assert_eq!(summary.get("cases_failed").and_then(Value::as_u64), Some(0));
+            assert_eq!(
+                summary.get("cases_not_run").and_then(Value::as_u64),
+                Some(1)
+            );
+            let cases = summary
+                .get("cases")
+                .and_then(Value::as_array)
+                .ok_or_else(|| "corpus summary cases array missing".to_string())?;
+            let external = cases
+                .iter()
+                .find(|case| case.get("id").and_then(Value::as_str) == Some("rust_semver_external"))
+                .ok_or_else(|| "external case summary missing".to_string())?;
+            assert_eq!(
+                external.get("status").and_then(Value::as_str),
+                Some("not_run")
+            );
+            assert_eq!(
+                external.get("result_kind").and_then(Value::as_str),
+                Some("not_run")
+            );
+            assert!(
+                cases.iter().any(|case| {
+                    case.get("id").and_then(Value::as_str) == Some("rust_non_promoted")
+                        && case.get("status").and_then(Value::as_str) == Some("pass")
+                        && case.get("result_kind").and_then(Value::as_str) == Some("pass")
+                }),
+                "expected passing pure rust case in {summary_text}"
+            );
+
+            let summary_md = fs::read_to_string(root.join("target/ripr/reports/corpus-summary.md"))
+                .map_err(|err| format!("read corpus summary markdown: {err}"))?;
+            assert!(summary_md.contains("Status: `pass`"));
+            assert!(summary_md.contains("`not_run`"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_promotion_corpus_summary_reports_pinned_external_setup_failure()
+    -> Result<(), String> {
+        with_temp_cwd("evidence-promotion-corpus-summary-setup-failure", |root| {
+            let corpus = root.join(super::EVIDENCE_PROMOTION_HONESTY_CORPUS);
+            let py_fixture = root.join("fixtures/py");
+            let ts_fixture = root.join("fixtures/ts");
+            let rust_fixture = root.join("fixtures/rust");
+            let rust_control_fixture = root.join("fixtures/rust-control");
+            let ts_control_fixture = root.join("fixtures/ts-control");
+            let patch_path = root
+                .join("fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff");
+
+            write(&patch_path, "diff --git a/src/lib.rs b/src/lib.rs\n");
+            for (fixture, classification) in [
+                (&py_fixture, "weakly_exposed"),
+                (&ts_fixture, "weakly_exposed"),
+                (&rust_fixture, "no_static_path"),
+                (&rust_control_fixture, "exposed"),
+                (&ts_control_fixture, "exposed"),
+            ] {
+                write_evidence_promotion_check(fixture, classification)?;
+            }
+
+            let corpus_json = serde_json::json!({
+                "cases": [
+                    {
+                        "id": "py_non_promoted",
+                        "language": "python",
+                        "tier": "pure",
+                        "source_fixture": py_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "ts_non_promoted",
+                        "language": "typescript",
+                        "tier": "pure",
+                        "source_fixture": ts_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "rust_non_promoted",
+                        "language": "rust",
+                        "tier": "pure",
+                        "source_fixture": rust_fixture,
+                        "must_remain_non_promoted": true,
+                        "expected_max_class": "no_static_path"
+                    },
+                    {
+                        "id": "rust_bad_external",
+                        "language": "rust",
+                        "tier": "pinned_external",
+                        "external_command": "ripr check --root {checkout} --diff {external_patch} --mode fast --json",
+                        "external_commit": "0123456789abcdef0123456789abcdef01234567",
+                        "external_patch": "fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff",
+                        "runtime_budget_seconds": 120,
+                        "artifact_budget_bytes": 10485760,
+                        "must_not_report_clean": true
+                    },
+                    {
+                        "id": "rust_control",
+                        "language": "rust",
+                        "tier": "pure",
+                        "source_fixture": rust_control_fixture,
+                        "expected_promoted": true
+                    },
+                    {
+                        "id": "ts_control",
+                        "language": "typescript",
+                        "tier": "pure",
+                        "source_fixture": ts_control_fixture,
+                        "expected_promoted": true
+                    }
+                ]
+            });
+            write(
+                &corpus,
+                &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+            );
+
+            let err = super::check_evidence_promotion_honesty(&["--pinned-external".to_string()])
+                .expect_err("malformed pinned_external case should fail");
+            assert!(
+                err.contains("missing required string `external_repo`"),
+                "{err}"
+            );
+
+            let summary_path = root.join("target/ripr/reports/corpus-summary.json");
+            let summary_text = fs::read_to_string(&summary_path)
+                .map_err(|err| format!("read {}: {err}", summary_path.display()))?;
+            let summary: Value = serde_json::from_str(&summary_text)
+                .map_err(|err| format!("parse corpus summary: {err}"))?;
+            assert_eq!(summary.get("status").and_then(Value::as_str), Some("fail"));
+            let cases = summary
+                .get("cases")
+                .and_then(Value::as_array)
+                .ok_or_else(|| "corpus summary cases array missing".to_string())?;
+            assert!(
+                cases.iter().any(|case| {
+                    case.get("id").and_then(Value::as_str) == Some("rust_bad_external")
+                        && case.get("status").and_then(Value::as_str) == Some("fail")
+                        && case.get("result_kind").and_then(Value::as_str) == Some("setup_failure")
+                }),
+                "expected selected pinned_external case setup failure in {summary_text}"
+            );
+            assert!(
+                cases.iter().any(|case| {
+                    case.get("id").and_then(Value::as_str) == Some("__runner__")
+                        && case.get("result_kind").and_then(Value::as_str) == Some("setup_failure")
+                }),
+                "expected runner setup failure in {summary_text}"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_promotion_corpus_summary_classifies_failure_kinds() {
+        assert_eq!(
+            super::evidence_promotion_pure_failure_kind(&[
+                r#"case `pure_clean`: `must_not_report_clean` failed after a re-bless"#.to_string()
+            ]),
+            "golden_drift"
+        );
+        assert_eq!(
+            super::evidence_promotion_pure_failure_kind(&[
+                r#"case `pure_promoted`: finding has classification `exposed`"#.to_string()
+            ]),
+            "unexpected_promotion"
+        );
+        assert_eq!(
+            super::evidence_promotion_pure_failure_kind(&[
+                r#"case `pure_setup`: source_fixture `fixtures/missing` does not exist"#
+                    .to_string()
+            ]),
+            "setup_failure"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "clone failed: could not resolve host".to_string()
+            ]),
+            "network_unavailable"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "runtime budget exceeded by timeout after 120000ms".to_string()
+            ]),
+            "runtime_budget_exceeded"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "artifact bytes 11 exceeded budget 10".to_string()
+            ]),
+            "artifact_budget_exceeded"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "expected static_limit_kind `rust_transitive_reach_unresolved` was not emitted"
+                    .to_string()
+            ]),
+            "unexpected_limitation"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "finding `probe` promoted to exposed".to_string()
+            ]),
+            "unexpected_promotion"
+        );
+        assert_eq!(
+            super::evidence_promotion_external_failure_kind(&[
+                "must_not_report_clean requires findings".to_string()
+            ]),
+            "semantic_failure"
+        );
     }
 
     #[test]
