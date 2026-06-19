@@ -77,14 +77,19 @@ says it was re-blessed to."
    severity ordering `exposed > weakly_exposed > reachable_unrevealed/no_static_path > *_unknown`.
 4. `expected_promoted` (control) cases: asserts at least one finding's
    `classification` is `exposed` (must-not-over-correct guard).
-4b. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115): asserts at
+4b. `must_not_report_clean` cases (additive, first-run trust): asserts the
+   byte-pinned golden still reports at least one finding (`summary.findings > 0`
+   and non-empty `findings[]`). This guards against a re-bless that makes a
+   known unresolved edge disappear into a clean-looking empty result instead of
+   emitting a named limitation.
+4c. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115): asserts at
    least one finding carries `static_limit_kind == expected_limit_kind`. This is
    an independent assertion (a case may combine it with `must_remain_non_promoted`)
    and guards against a re-bless that silently drops a named limitation back to a
    bare class — e.g. dropping `rust_transitive_reach_unresolved` so a transitive
    reach reads as genuinely untested. A missing or empty `expected_limit_kind`
    is itself a violation.
-4c. `must_disclose_witness` cases (additive, RIPR-SPEC-0115): asserts at least one
+4d. `must_disclose_witness` cases (additive, RIPR-SPEC-0115): asserts at least one
    finding's `evidence` contains the concrete transitive-reach *witness* pointer
    (the "Where to look" line naming the witnessing test and entry symbol, prose
    beginning `For example, the test `). Independent of the other assertions; guards
@@ -124,10 +129,11 @@ corpus prevents the same regression in future.
 ### Corpus manifest
 
 `fixtures/evidence-promotion-honesty-corpus/corpus.json` -- cross-language
-pinned adversarial corpus with 8 non-promoted charter members (python x2,
-typescript x2, rust x4) and 3 control cases (rust x2, typescript x1). Two Rust
-reach-limitation charter members additionally assert named limitations via
-`must_emit_limitation`.
+pinned adversarial corpus with 9 non-promoted charter members (python x2,
+typescript x2, rust x5) and 3 control cases (rust x2, typescript x1). Three Rust
+reach-limitation charter members additionally assert non-clean output, named
+limitations, and witness disclosure via `must_not_report_clean`,
+`must_emit_limitation`, and `must_disclose_witness`.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -139,9 +145,9 @@ reach-limitation charter members additionally assert named limitations via
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
-| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
-| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_emit_limitation: rust_macro_reach_unresolved` + `must_disclose_witness`) |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
+| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
+| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_disclose_witness`) |
 
 ### Control cases (expected_promoted)
 
@@ -205,6 +211,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `cargo run -p xtask -- check-evidence-promotion-honesty` | End-to-end gate pass |
 | Flip charter golden to `exposed` → gate fails naming it | Dishonest re-bless proof |
 | Flip control golden to `weakly_exposed` → gate fails naming it | Over-correct guard proof |
+| Flip named-limitation golden to zero findings -> gate fails naming `must_not_report_clean` | False-clean re-bless proof |
 | `cargo xtask check-fixture-contracts` | Corpus structural validity |
 | `cargo xtask check-command-catalog` | Command registration |
 | `cargo xtask check-workflows` | CI registration |

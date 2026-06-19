@@ -10443,7 +10443,7 @@ fn check_evidence_promotion_honesty() -> Result<(), String> {
     validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
 
     let report = if violations.is_empty() {
-        "pass: all charter members at expected class; no promoted case carries exposed; all controls retain exposed".to_string()
+        "pass: all charter members at expected class; no clean-guard case lost its findings; no promoted case carries exposed; all controls retain exposed".to_string()
     } else {
         format!("FAIL: {}", violations.join("; "))
     };
@@ -10615,6 +10615,27 @@ fn validate_evidence_promotion_honesty_corpus_at(
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+
+        let must_not_report_clean = case
+            .get("must_not_report_clean")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if must_not_report_clean {
+            let summary_findings = check_json
+                .get("summary")
+                .and_then(|summary| summary.get("findings"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            if summary_findings == 0 || findings.is_empty() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                     `must_not_report_clean` requires at least one reported finding, but \
+                     summary.findings={summary_findings} and findings.len()={} -- a re-bless \
+                     made a known gap read clean (false-clean regression)",
+                    findings.len()
+                ));
+            }
+        }
 
         let must_remain_non_promoted = case
             .get("must_remain_non_promoted")
@@ -71630,6 +71651,105 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_rejects_clean_report_for_clean_guard_case() -> Result<(), String>
+    {
+        let root = temp_dir("evidence-promotion-honesty-clean-guard");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_clean_fixture = root.join("fixtures/rust-clean");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, summary_findings, findings) in [
+            (
+                &py_fixture,
+                1,
+                serde_json::json!([{"id":"py","classification":"weakly_exposed"}]),
+            ),
+            (
+                &ts_fixture,
+                1,
+                serde_json::json!([{"id":"ts","classification":"weakly_exposed"}]),
+            ),
+            (&rust_clean_fixture, 0, serde_json::json!([])),
+            (
+                &rust_control_fixture,
+                1,
+                serde_json::json!([{"id":"rust-control","classification":"exposed"}]),
+            ),
+            (
+                &ts_control_fixture,
+                1,
+                serde_json::json!([{"id":"ts-control","classification":"exposed"}]),
+            ),
+        ] {
+            let check_json = serde_json::json!({
+                "summary": {"findings": summary_findings},
+                "findings": findings
+            });
+            write(
+                &fixture.join("expected/check.json"),
+                &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+            );
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_clean_guard",
+                    "language": "rust",
+                    "source_fixture": rust_clean_fixture,
+                    "must_not_report_clean": true,
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("rust_clean_guard")
+                    && violation.contains("must_not_report_clean")
+                    && violation.contains("summary.findings=0")
+            }),
+            "expected clean-guard violation, got {violations:?}"
+        );
+        Ok(())
     }
 
     #[test]

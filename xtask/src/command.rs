@@ -1111,7 +1111,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/evidence-promotion-honesty.md",
             false,
-            "Reads byte-pinned golden check.json files for each charter member and asserts that must_remain_non_promoted cases show no `exposed` finding and control cases retain at least one `exposed` finding; catches a dishonest golden re-bless that would bypass goldens check.",
+            "Reads byte-pinned golden check.json files for each charter member and asserts that must_not_report_clean cases still emit findings, must_remain_non_promoted cases show no `exposed` finding, and control cases retain at least one `exposed` finding; catches dishonest golden re-blesses that would bypass goldens check.",
         ),
         command_entry(
             "check-traceability",
