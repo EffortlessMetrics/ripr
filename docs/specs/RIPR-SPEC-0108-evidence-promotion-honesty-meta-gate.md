@@ -96,10 +96,15 @@ says it was re-blessed to."
    against a re-bless that drops the witness back to the bare 0114 limitation
    message, regressing the first-run-trust UX.
 4e. `must_disclose_scope` cases (additive, first-run trust): asserts the
-   byte-pinned `expected/check.json` still carries the report-level scope header
-   (`schema_version`, `tool`, `mode`, `root`, and `base`). This guards against a
-   re-bless that keeps findings or named limitations but removes the
-   machine-readable statement of the analyzed scope.
+    byte-pinned `expected/check.json` still carries the report-level scope header
+    (`schema_version`, `tool`, `mode`, `root`, and `base`). This guards against a
+    re-bless that keeps findings or named limitations but removes the
+    machine-readable statement of the analyzed scope.
+4f. `must_not_emit_repair_packet` cases (additive, delegation honesty): asserts
+    the byte-pinned `expected/check.json` does not contain
+    `repair_packet_ready=true` anywhere in the report. This guards against a
+    named limitation or non-promoted case becoming delegatable without the full
+    repair-packet contract.
 5. PARITY checks: every `source_fixture` must exist, have `expected/check.json`,
    and NOT be in the manifest-only denylist (so it stays covered by `goldens check`).
    Each of {python, typescript, rust} must have ≥1 non-promoted case; rust and
@@ -138,8 +143,8 @@ pinned adversarial corpus with 9 non-promoted charter members (python x2,
 typescript x2, rust x5) and 3 control cases (rust x2, typescript x1). Three Rust
 reach-limitation charter members additionally assert non-clean output, named
 limitations, witness disclosure, and report scope disclosure via
-`must_not_report_clean`, `must_emit_limitation`, `must_disclose_witness`, and
-`must_disclose_scope`.
+`must_not_report_clean`, `must_emit_limitation`, `must_disclose_witness`,
+`must_disclose_scope`, and `must_not_emit_repair_packet`.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -151,9 +156,9 @@ limitations, witness disclosure, and report scope disclosure via
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
-| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_disclose_witness`) |
-| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_disclose_witness`) |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
+| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
+| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
 
 ### Control cases (expected_promoted)
 
@@ -220,8 +225,10 @@ the gate has over-corrected or the fixture needs re-blessing
 | Flip control golden to `weakly_exposed` → gate fails naming it | Over-correct guard proof |
 | Flip named-limitation golden to zero findings -> gate fails naming `must_not_report_clean` | False-clean re-bless proof |
 | Remove `schema_version`/`tool`/`mode`/`root`/`base` from a scope-guard golden -> gate fails naming `must_disclose_scope` | Scope-disclosure re-bless proof |
+| Set `repair_packet_ready=true` in a named-limitation golden -> gate fails naming `must_not_emit_repair_packet` | False-delegation re-bless proof |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
 | `evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case` | Validator rejects scope-guard cases without a report scope header |
+| `evidence_promotion_honesty_rejects_packet_ready_limitation_case` | Validator rejects packet-ready delegation for opted-in limitation cases |
 | `cargo xtask check-fixture-contracts` | Corpus structural validity |
 | `cargo xtask check-command-catalog` | Command registration |
 | `cargo xtask check-workflows` | CI registration |

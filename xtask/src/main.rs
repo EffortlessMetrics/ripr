@@ -10528,6 +10528,41 @@ fn evidence_class_severity(class: &str) -> u8 {
     }
 }
 
+fn json_bool_field_paths(value: &Value, field: &str, expected: bool) -> Vec<String> {
+    fn walk(value: &Value, field: &str, expected: bool, path: &str, paths: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    let child_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    if key == field && child.as_bool() == Some(expected) {
+                        paths.push(child_path.clone());
+                    }
+                    walk(child, field, expected, &child_path, paths);
+                }
+            }
+            Value::Array(items) => {
+                for (index, child) in items.iter().enumerate() {
+                    let child_path = if path.is_empty() {
+                        format!("[{index}]")
+                    } else {
+                        format!("{path}[{index}]")
+                    };
+                    walk(child, field, expected, &child_path, paths);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut paths = Vec::new();
+    walk(value, field, expected, "", &mut paths);
+    paths
+}
+
 fn validate_evidence_promotion_honesty_corpus_at(
     corpus_path: &Path,
     violations: &mut Vec<String>,
@@ -10717,6 +10752,29 @@ fn validate_evidence_promotion_honesty_corpus_at(
                          the named limitation (fail-closed regression)"
                     ));
                 }
+            }
+        }
+
+        // Semantic assertion (RIPR-SPEC-0108): named limitation cases may
+        // require every projection surface to stay non-packet-ready. This is
+        // independent from classification: a `no_static_path` result that
+        // quietly grows `repair_packet_ready=true` is still a false delegation
+        // authority regression.
+        let must_not_emit_repair_packet = case
+            .get("must_not_emit_repair_packet")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if must_not_emit_repair_packet {
+            let packet_ready_paths =
+                json_bool_field_paths(&check_json, "repair_packet_ready", true);
+            if !packet_ready_paths.is_empty() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                     `must_not_emit_repair_packet` forbids `repair_packet_ready=true`, \
+                     but found it at {} -- a named limitation became delegatable without \
+                     the required repair-packet contract",
+                    packet_ready_paths.join(", ")
+                ));
             }
         }
 
@@ -71953,6 +72011,108 @@ mod tests {
         assert!(report.contains("mode"));
         assert!(report.contains("root"));
         assert!(report.contains("base"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_rejects_packet_ready_limitation_case() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-no-packet-guard");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_packet_fixture = root.join("fixtures/rust-packet");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, findings) in [
+            (
+                &py_fixture,
+                serde_json::json!([{"id":"py","classification":"weakly_exposed"}]),
+            ),
+            (
+                &ts_fixture,
+                serde_json::json!([{"id":"ts","classification":"weakly_exposed"}]),
+            ),
+            (
+                &rust_packet_fixture,
+                serde_json::json!([{
+                    "id": "rust-packet",
+                    "classification": "no_static_path",
+                    "preview_actionability": {
+                        "repair_packet_ready": true
+                    }
+                }]),
+            ),
+            (
+                &rust_control_fixture,
+                serde_json::json!([{"id":"rust-control","classification":"exposed"}]),
+            ),
+            (
+                &ts_control_fixture,
+                serde_json::json!([{"id":"ts-control","classification":"exposed"}]),
+            ),
+        ] {
+            let check_json = serde_json::json!({
+                "summary": {"findings": 1},
+                "findings": findings
+            });
+            write(
+                &fixture.join("expected/check.json"),
+                &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+            );
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_packet_guard",
+                    "language": "rust",
+                    "source_fixture": rust_packet_fixture,
+                    "must_not_emit_repair_packet": true,
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(
+            report.contains("rust_packet_guard")
+                && report.contains("must_not_emit_repair_packet")
+                && report.contains("findings[0].preview_actionability.repair_packet_ready"),
+            "expected packet-ready guard violation, got {violations:?}"
+        );
         Ok(())
     }
 
