@@ -99,7 +99,7 @@ pub(crate) enum XtaskCommand {
     CheckPrShape,
     CheckGenerated,
     CheckCommandCatalog,
-    CheckEvidencePromotionHonesty,
+    CheckEvidencePromotionHonesty(Vec<String>),
     CheckBadgeDiffPolicy,
     CheckGeneratedClean,
     CheckVerificationContracts(Vec<String>),
@@ -218,7 +218,7 @@ impl XtaskCommand {
             "check-spec-format" => Self::CheckSpecFormat,
             "check-spec-numbering" => Self::CheckSpecNumbering,
             "check-fixture-contracts" => Self::CheckFixtureContracts,
-            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty,
+            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty(rest),
             "check-traceability" | "check-spec-ids" | "check-behavior-manifest" => {
                 Self::CheckTraceability
             }
@@ -389,7 +389,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-spec-format",
         "check-spec-numbering",
         "check-fixture-contracts",
-        "check-evidence-promotion-honesty",
+        "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
         "check-traceability",
         "check-spec-ids",
         "check-behavior-manifest",
@@ -1107,11 +1107,11 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Checks fixture contracts.",
         ),
         command_entry(
-            "check-evidence-promotion-honesty",
+            "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
             "non_mutating_check",
-            "target/ripr/reports/evidence-promotion-honesty.md",
+            "target/ripr/reports/evidence-promotion-honesty.md and optional evidence-promotion-pinned-external.{json,md}",
             false,
-            "Reads byte-pinned golden check.json files for each charter member and asserts that must_not_report_clean cases still emit findings, must_remain_non_promoted cases show no `exposed` finding, and control cases retain at least one `exposed` finding; catches dishonest golden re-blesses that would bypass goldens check.",
+            "Reads byte-pinned golden check.json files for pure charter members and asserts semantic promotion honesty; with --pinned-external, runs exact external repo+commit+patch cases through the current ripr binary using an opt-in clone/cache path.",
         ),
         command_entry(
             "check-traceability",

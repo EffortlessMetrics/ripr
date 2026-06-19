@@ -26,11 +26,14 @@ Support-tier impact:
 Policy impact:
 
 - No new crates, binaries, functions, LSP servers, or analyzer behavior changes.
-- New xtask command `check-evidence-promotion-honesty`: reads byte-pinned golden
-  `expected/check.json` for each charter member and asserts the invariant.
+- `check-evidence-promotion-honesty`: reads byte-pinned golden
+  `expected/check.json` for each pure charter member and asserts the invariant.
+- `check-evidence-promotion-honesty --pinned-external`: executes exact
+  real-repo launch points against the current RIPR binary and asserts the same
+  semantic product expectations.
 - New corpus manifest: `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
 - Every corpus case declares a `tier`: `pure` for tiny checked-in fixtures, or
-  `pinned_external` for future exact-repo cases with repo, commit, patch, and
+  `pinned_external` for exact-repo cases with repo, command, commit, patch, and
   budget metadata.
 - Registered in CI (routed-rust.yml and ci.yml) next to `check-fixture-contracts`.
 - `evidence-promotion-honesty-corpus` added to `is_manifest_only_fixture_dir`
@@ -78,9 +81,9 @@ says it was re-blessed to."
 2a. Validates the case tier before trusting the expectation:
    - `pure` cases are checked-in tiny examples and must not carry
      pinned-external metadata.
-   - `pinned_external` cases must carry `external_repo`, a 40-hex
-     `external_commit`, an existing `external_patch`, `runtime_budget_seconds`,
-     and `artifact_budget_bytes`.
+   - `pinned_external` cases must carry `external_repo`, `external_command`, a
+     40-hex `external_commit`, an existing `external_patch`,
+     `runtime_budget_seconds`, and `artifact_budget_bytes`.
    - Missing or unknown tiers fail the gate. A future real-repo case may not
      enter the corpus as an unbounded or branch-floating claim.
 3. `must_remain_non_promoted` cases: asserts NO finding's `classification` is
@@ -124,6 +127,36 @@ says it was re-blessed to."
    showing `exposed` / a control losing `exposed` / a language missing coverage
    → non-zero exit + report under `target/ripr/reports/`.
 
+### Pinned external execution
+
+`cargo xtask check-evidence-promotion-honesty --pinned-external` executes
+`tier: pinned_external` cases from the same corpus. Clone and network access are
+never part of the default gate: `--clone` is required to create or refresh the
+bounded checkout cache under
+`target/ripr/evidence-promotion-honesty/checkouts`. Without `--clone`, the
+runner may only reuse an existing checkout that already contains the exact
+commit.
+
+The runner:
+
+1. Reuses or clones the external repository into the bounded cache.
+2. Checks out the exact 40-character commit and cleans the checkout.
+3. Verifies and applies the checked-in patch.
+4. Builds the current `ripr` binary once.
+5. Runs `ripr check --root {checkout} --diff {external_patch} --mode fast --json`.
+6. Enforces runtime and artifact-size budgets.
+7. Enforces semantic assertions such as non-clean output, scope disclosure,
+   named limitation, non-promotion, witness disclosure, and no repair packet.
+8. Resets and cleans the checkout after the run.
+
+The first pinned external case is
+`rust_semver_matches_greater_external_limitation` against `dtolnay/semver` at
+commit `2c18cc482244f4bb9cc65003b07426c18a79a190`, with the checked-in patch
+`fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff`.
+It asserts that RIPR sees `src/eval.rs`, does not report a clean empty result,
+emits `rust_transitive_reach_unresolved`, stays at or below `no_static_path`,
+does not emit a repair packet, and discloses scope plus a witness.
+
 ### Design: share invariant + corpus, NOT per-language matchers
 
 Each language keeps its own taxonomy and matcher functions. The gate enforces
@@ -150,18 +183,19 @@ corpus prevents the same regression in future.
 ### Corpus manifest
 
 `fixtures/evidence-promotion-honesty-corpus/corpus.json` -- cross-language
-pinned adversarial corpus with 9 non-promoted charter members (python x2,
-typescript x2, rust x5) and 3 control cases (rust x2, typescript x1). Three Rust
-reach-limitation charter members additionally assert non-clean output, named
-limitations, witness disclosure, and report scope disclosure via
-`must_not_report_clean`, `must_emit_limitation`, `must_disclose_witness`,
-`must_disclose_scope`, and `must_not_emit_repair_packet`.
+pinned adversarial corpus with 9 pure non-promoted charter members (python x2,
+typescript x2, rust x5), 3 pure control cases (rust x2, typescript x1), and 1
+pinned external real-repo case. Three Rust reach-limitation charter members
+additionally assert non-clean output, named limitations, witness disclosure, and
+report scope disclosure via `must_not_report_clean`, `must_emit_limitation`,
+`must_disclose_witness`, `must_disclose_scope`, and
+`must_not_emit_repair_packet`.
 
-All current cases are tier `pure`: tiny checked-in fixtures with byte-pinned
-`expected/check.json` reports. The manifest also reserves tier
-`pinned_external` for future real-repo cases, but those entries must name the
-exact upstream repository, exact 40-hex commit, checked-in patch, runtime budget,
-and artifact-size budget before the gate will accept them.
+Pure cases are tiny checked-in fixtures with byte-pinned `expected/check.json`
+reports. Pinned external cases are exact real-repo launch points and must name
+the upstream repository, command template, exact 40-hex commit, checked-in
+patch, runtime budget, and artifact-size budget before the gate will accept
+them.
 
 ### Charter members (must_remain_non_promoted)
 
@@ -177,6 +211,12 @@ and artifact-size budget before the gate will accept them.
 | rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
 
+### Pinned external cases
+
+| id | language | external repo | commit | vector |
+|---|---|---|---|---|
+| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved`, not clean or actionable |
+
 ### Control cases (expected_promoted)
 
 | id | language | source_fixture |
@@ -189,18 +229,22 @@ and artifact-size budget before the gate will accept them.
 
 `validate_evidence_promotion_honesty_corpus` is called from
 `check_fixture_contracts()` to verify the corpus is structurally valid (no
-duplicate ids, all fixtures exist, all have `expected/check.json`, no fixture is
-manifest-only, parity language coverage). This runs in CI as part of the
-existing `check-fixture-contracts` gate. The same validator rejects missing or
-unknown case tiers, rejects pinned-external metadata on `pure` cases, and
-rejects `pinned_external` cases that lack exact repo/commit/patch/budget
-metadata.
+duplicate ids, pure fixtures exist, pure fixtures have `expected/check.json`, no
+pure fixture is manifest-only, parity language coverage). This runs in CI as
+part of the existing `check-fixture-contracts` gate. The same validator rejects
+missing or unknown case tiers, rejects pinned-external metadata on `pure` cases,
+and rejects `pinned_external` cases that lack exact repo/command/commit/patch
+and budget metadata. Pinned external cases do not need checked-in golden output;
+their semantic assertions are enforced by opt-in execution against the current
+binary.
 
 ## Non-Goals
 
 - Does NOT unify per-language matcher functions; each language keeps its own
   taxonomy.
-- Does NOT run mutants; reads byte-pinned goldens only.
+- Does NOT run mutants. The default pure gate reads byte-pinned goldens; the
+  opt-in pinned external lane runs the current RIPR binary against exact
+  real-repo launch points.
 - Does NOT re-classify any finding.
 - Does NOT bump schema_version, crate version, or touch release workflows.
 - Does NOT replace `goldens check`; composes with it.
@@ -247,12 +291,15 @@ the gate has over-corrected or the fixture needs re-blessing
 | Remove `schema_version`/`tool`/`mode`/`root`/`base` from a scope-guard golden -> gate fails naming `must_disclose_scope` | Scope-disclosure re-bless proof |
 | Set `repair_packet_ready=true` in a named-limitation golden -> gate fails naming `must_not_emit_repair_packet` | False-delegation re-bless proof |
 | Omit `tier` or use an unknown value -> gate fails naming the case | Corpus tier contract |
-| Mark `tier: pinned_external` without repo/commit/patch/budgets -> gate fails naming missing metadata | Real-repo pinning contract |
-| Complete `tier: pinned_external` metadata with an exact repo, 40-hex commit, existing patch, and positive budgets -> validator accepts the case | Future external corpus contract |
+| Mark `tier: pinned_external` without repo/command/commit/patch/budgets -> gate fails naming missing metadata | Real-repo pinning contract |
+| Complete `tier: pinned_external` metadata with an exact repo, command template, 40-hex commit, existing patch, and positive budgets -> validator accepts the case | External corpus contract |
+| `cargo xtask check-evidence-promotion-honesty --pinned-external --clone --case rust_semver_matches_greater_external_limitation` | First real-repo launch point executes and enforces semver limitation expectations |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
 | `evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers` | Validator rejects missing/unknown tiers and external metadata on pure cases |
 | `evidence_promotion_honesty_rejects_incomplete_pinned_external_tier` | Validator rejects branch-floating or budgetless external cases |
 | `evidence_promotion_honesty_accepts_complete_pinned_external_tier` | Validator accepts complete pinned external metadata |
+| `evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape` | Semantic assertion accepts the current semver limitation shape |
+| `evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet` | Semantic assertion rejects false clean, false promotion, missing witness, and false packet readiness |
 | `evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case` | Validator rejects scope-guard cases without a report scope header |
 | `evidence_promotion_honesty_rejects_packet_ready_limitation_case` | Validator rejects packet-ready delegation for opted-in limitation cases |
 | `cargo xtask check-fixture-contracts` | Corpus structural validity |
@@ -264,7 +311,9 @@ the gate has over-corrected or the fixture needs re-blessing
 | Component | Location |
 |---|---|
 | Corpus manifest | `fixtures/evidence-promotion-honesty-corpus/corpus.json` |
+| First external patch | `fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff` |
 | Gate implementation | `xtask/src/main.rs::check_evidence_promotion_honesty` |
+| Pinned external runner | `xtask/src/main.rs::run_evidence_promotion_pinned_external_cases` |
 | Corpus validator | `xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at` |
 | Manifest-only denylist | `xtask/src/main.rs::is_manifest_only_fixture_dir` |
 | Command enum | `xtask/src/command.rs::XtaskCommand::CheckEvidencePromotionHonesty` |

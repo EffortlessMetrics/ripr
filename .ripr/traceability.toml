@@ -6007,10 +6007,13 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_packet_ready_limitation_case",
+  "xtask/src/main.rs::tests::evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape",
+  "xtask/src/main.rs::tests::evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
 ]
 fixtures = [
   "fixtures/evidence-promotion-honesty-corpus",
+  "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
   "fixtures/python_adversarial_buffer_token",
   "fixtures/python_adversarial_mock_call_not_value",
   "fixtures/typescript_broad_tothrow",

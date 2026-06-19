@@ -98,7 +98,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
         XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
         XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
-        XtaskCommand::CheckEvidencePromotionHonesty => super::check_evidence_promotion_honesty(),
+        XtaskCommand::CheckEvidencePromotionHonesty(args) => {
+            super::check_evidence_promotion_honesty(&args)
+        }
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
         XtaskCommand::CheckWorkspaceShape => super::check_workspace_shape(),

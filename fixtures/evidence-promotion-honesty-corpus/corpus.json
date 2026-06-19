@@ -126,6 +126,26 @@
       "must_disclose_witness": true,
       "must_remain_non_promoted": true,
       "expected_max_class": "no_static_path"
+    },
+    {
+      "id": "rust_semver_matches_greater_external_limitation",
+      "language": "rust",
+      "tier": "pinned_external",
+      "external_repo": "https://github.com/dtolnay/semver",
+      "external_commit": "2c18cc482244f4bb9cc65003b07426c18a79a190",
+      "external_patch": "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
+      "external_command": "ripr check --root {checkout} --diff {external_patch} --mode fast --json",
+      "runtime_budget_seconds": 120,
+      "artifact_budget_bytes": 10485760,
+      "expected_changed_file": "src/eval.rs",
+      "must_not_report_clean": true,
+      "must_disclose_scope": true,
+      "must_emit_limitation": true,
+      "expected_limit_kind": "rust_transitive_reach_unresolved",
+      "must_not_emit_repair_packet": true,
+      "must_disclose_witness": true,
+      "must_remain_non_promoted": true,
+      "expected_max_class": "no_static_path"
     }
   ]
 }

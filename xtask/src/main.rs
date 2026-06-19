@@ -10441,10 +10441,904 @@ fn validate_typescript_preview_false_actionable_audit_fixture_corpus_at(
     Ok(())
 }
 
-fn check_evidence_promotion_honesty() -> Result<(), String> {
+const EVIDENCE_PROMOTION_CHECKOUT_ROOT: &str = "target/ripr/evidence-promotion-honesty/checkouts";
+const EVIDENCE_PROMOTION_EXTERNAL_JSON: &str = "evidence-promotion-pinned-external.json";
+const EVIDENCE_PROMOTION_EXTERNAL_MD: &str = "evidence-promotion-pinned-external.md";
+
+#[derive(Clone)]
+struct EvidencePromotionHonestyOptions {
+    run_pinned_external: bool,
+    clone: bool,
+    checkout_root: PathBuf,
+    only_case: Option<String>,
+    timeout: Duration,
+}
+
+impl Default for EvidencePromotionHonestyOptions {
+    fn default() -> Self {
+        Self {
+            run_pinned_external: false,
+            clone: false,
+            checkout_root: PathBuf::from(EVIDENCE_PROMOTION_CHECKOUT_ROOT),
+            only_case: None,
+            timeout: Duration::from_mins(2),
+        }
+    }
+}
+
+fn parse_evidence_promotion_honesty_args(
+    args: &[String],
+) -> Result<EvidencePromotionHonestyOptions, String> {
+    let mut options = EvidencePromotionHonestyOptions::default();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--pinned-external" => options.run_pinned_external = true,
+            "--clone" => options.clone = true,
+            "--case" => {
+                index += 1;
+                let case = args.get(index).cloned().ok_or_else(|| {
+                    "check-evidence-promotion-honesty --case requires a value".to_string()
+                })?;
+                if case.trim().is_empty() {
+                    return Err(
+                        "check-evidence-promotion-honesty --case requires a non-empty value"
+                            .to_string(),
+                    );
+                }
+                options.only_case = Some(case);
+            }
+            "--checkout-root" => {
+                index += 1;
+                let root = args.get(index).cloned().ok_or_else(|| {
+                    "check-evidence-promotion-honesty --checkout-root requires a value".to_string()
+                })?;
+                if root.trim().is_empty() {
+                    return Err(
+                        "check-evidence-promotion-honesty --checkout-root requires a non-empty value"
+                            .to_string(),
+                    );
+                }
+                options.checkout_root = PathBuf::from(root);
+            }
+            "--timeout-secs" => {
+                index += 1;
+                let raw = args.get(index).cloned().ok_or_else(|| {
+                    "check-evidence-promotion-honesty --timeout-secs requires a value".to_string()
+                })?;
+                let seconds = raw.parse::<u64>().map_err(|err| {
+                    format!(
+                        "check-evidence-promotion-honesty --timeout-secs expects an integer, got `{raw}`: {err}"
+                    )
+                })?;
+                if seconds == 0 {
+                    return Err(
+                        "check-evidence-promotion-honesty --timeout-secs must be positive"
+                            .to_string(),
+                    );
+                }
+                options.timeout = Duration::from_secs(seconds);
+            }
+            other => {
+                return Err(format!(
+                    "unknown check-evidence-promotion-honesty argument `{other}`"
+                ));
+            }
+        }
+        index += 1;
+    }
+    if options.clone && !options.run_pinned_external {
+        return Err(
+            "check-evidence-promotion-honesty --clone requires --pinned-external".to_string(),
+        );
+    }
+    if options.only_case.is_some() && !options.run_pinned_external {
+        return Err(
+            "check-evidence-promotion-honesty --case requires --pinned-external".to_string(),
+        );
+    }
+    Ok(options)
+}
+
+#[derive(Clone)]
+struct EvidencePromotionExternalCase {
+    id: String,
+    language: String,
+    external_repo: String,
+    external_commit: String,
+    external_patch: PathBuf,
+    external_command: String,
+    runtime_budget_seconds: u64,
+    artifact_budget_bytes: u64,
+    expected_changed_file: Option<String>,
+    expected_limit_kind: Option<String>,
+    expected_max_class: Option<String>,
+    must_not_report_clean: bool,
+    must_disclose_scope: bool,
+    must_emit_limitation: bool,
+    must_not_emit_repair_packet: bool,
+    must_disclose_witness: bool,
+    must_remain_non_promoted: bool,
+}
+
+struct EvidencePromotionExternalRun {
+    id: String,
+    status: String,
+    runtime_ms: u128,
+    artifact_bytes: u64,
+    checkout: String,
+    violations: Vec<String>,
+}
+
+impl EvidencePromotionExternalRun {
+    fn terminal(case: &EvidencePromotionExternalCase, status: &str, violation: String) -> Self {
+        Self {
+            id: case.id.clone(),
+            status: status.to_string(),
+            runtime_ms: 0,
+            artifact_bytes: 0,
+            checkout: String::new(),
+            violations: vec![violation],
+        }
+    }
+}
+
+fn run_evidence_promotion_pinned_external_cases(
+    corpus_path: &Path,
+    options: &EvidencePromotionHonestyOptions,
+) -> Result<Vec<String>, String> {
+    let cases = load_evidence_promotion_pinned_external_cases(corpus_path, options)?;
+    if cases.is_empty() {
+        let reason = if let Some(id) = &options.only_case {
+            format!("no pinned_external evidence-promotion case matched `{id}`")
+        } else {
+            "no pinned_external evidence-promotion cases found".to_string()
+        };
+        write_evidence_promotion_external_report(&[], std::slice::from_ref(&reason))?;
+        return Ok(vec![reason]);
+    }
+
+    build_ripr_for_evidence_promotion_external()?;
+    let binary = PathBuf::from("target")
+        .join("debug")
+        .join(format!("ripr{}", std::env::consts::EXE_SUFFIX));
+    let mut runs = Vec::new();
+    let mut all_violations = Vec::new();
+    for case in &cases {
+        let run = run_evidence_promotion_external_case(case, options, &binary);
+        all_violations.extend(run.violations.iter().cloned());
+        runs.push(run);
+    }
+    write_evidence_promotion_external_report(&runs, &all_violations)?;
+    Ok(all_violations)
+}
+
+fn load_evidence_promotion_pinned_external_cases(
+    corpus_path: &Path,
+    options: &EvidencePromotionHonestyOptions,
+) -> Result<Vec<EvidencePromotionExternalCase>, String> {
+    let corpus_text = read_text_lossy(corpus_path)?;
+    let corpus_value: Value = serde_json::from_str(&corpus_text)
+        .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
+    let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
+        return Err(format!(
+            "{} has no `cases` array",
+            normalize_path(corpus_path)
+        ));
+    };
+    let mut parsed = Vec::new();
+    for case in cases {
+        if case.get("tier").and_then(Value::as_str) != Some("pinned_external") {
+            continue;
+        }
+        let id = evidence_promotion_required_string(case, "id")?;
+        if let Some(only) = &options.only_case
+            && &id != only
+        {
+            continue;
+        }
+        parsed.push(EvidencePromotionExternalCase {
+            id,
+            language: evidence_promotion_required_string(case, "language")?,
+            external_repo: evidence_promotion_required_string(case, "external_repo")?,
+            external_commit: evidence_promotion_required_string(case, "external_commit")?,
+            external_patch: PathBuf::from(evidence_promotion_required_string(
+                case,
+                "external_patch",
+            )?),
+            external_command: evidence_promotion_required_string(case, "external_command")?,
+            runtime_budget_seconds: evidence_promotion_required_u64(
+                case,
+                "runtime_budget_seconds",
+            )?,
+            artifact_budget_bytes: evidence_promotion_required_u64(case, "artifact_budget_bytes")?,
+            expected_changed_file: case
+                .get("expected_changed_file")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+            expected_limit_kind: case
+                .get("expected_limit_kind")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+            expected_max_class: case
+                .get("expected_max_class")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+            must_not_report_clean: evidence_promotion_bool(case, "must_not_report_clean"),
+            must_disclose_scope: evidence_promotion_bool(case, "must_disclose_scope"),
+            must_emit_limitation: evidence_promotion_bool(case, "must_emit_limitation"),
+            must_not_emit_repair_packet: evidence_promotion_bool(
+                case,
+                "must_not_emit_repair_packet",
+            ),
+            must_disclose_witness: evidence_promotion_bool(case, "must_disclose_witness"),
+            must_remain_non_promoted: evidence_promotion_bool(case, "must_remain_non_promoted"),
+        });
+    }
+    Ok(parsed)
+}
+
+fn evidence_promotion_required_string(case: &Value, field: &str) -> Result<String, String> {
+    case.get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            let id = case
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("<missing-id>");
+            format!("evidence promotion case `{id}` missing required string `{field}`")
+        })
+}
+
+fn evidence_promotion_required_u64(case: &Value, field: &str) -> Result<u64, String> {
+    case.get(field)
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            let id = case
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("<missing-id>");
+            format!("evidence promotion case `{id}` missing positive integer `{field}`")
+        })
+}
+
+fn evidence_promotion_bool(case: &Value, field: &str) -> bool {
+    case.get(field).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn build_ripr_for_evidence_promotion_external() -> Result<(), String> {
+    run("cargo", &["build", "-p", "ripr", "--quiet"])
+        .map(|_| ())
+        .map_err(|err| {
+            format!(
+                "check-evidence-promotion-honesty failed to build ripr for pinned external cases: {err}"
+            )
+        })
+}
+
+fn evidence_promotion_existing_repo_path(path: &Path) -> Result<PathBuf, String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|err| format!("failed to resolve current directory: {err}"))?
+            .join(path)
+    };
+    if absolute.exists() {
+        Ok(absolute)
+    } else {
+        Err(format!(
+            "path does not exist: {}",
+            normalize_path(&absolute)
+        ))
+    }
+}
+
+fn run_evidence_promotion_external_case(
+    case: &EvidencePromotionExternalCase,
+    options: &EvidencePromotionHonestyOptions,
+    binary: &Path,
+) -> EvidencePromotionExternalRun {
+    if case.language != "rust" {
+        return EvidencePromotionExternalRun::terminal(
+            case,
+            "setup_failure",
+            format!(
+                "evidence promotion pinned external case `{}` uses unsupported language `{}`; only rust is supported in this vertical slice",
+                case.id, case.language
+            ),
+        );
+    }
+    let patch = match evidence_promotion_existing_repo_path(&case.external_patch) {
+        Ok(path) => path,
+        Err(err) => {
+            return EvidencePromotionExternalRun::terminal(
+                case,
+                "setup_failure",
+                format!(
+                    "evidence promotion pinned external case `{}`: failed to resolve patch {}: {err}",
+                    case.id,
+                    normalize_path(&case.external_patch)
+                ),
+            );
+        }
+    };
+    let checkout = options
+        .checkout_root
+        .join(evidence_promotion_checkout_name(case));
+    let checkout_display = normalize_path(&checkout);
+    if let Err(err) = prepare_evidence_promotion_checkout(case, options, &checkout) {
+        return EvidencePromotionExternalRun::terminal(case, "setup_failure", err);
+    }
+    let result = run_evidence_promotion_external_check(case, options, binary, &checkout, &patch);
+    let cleanup_result = clean_evidence_promotion_checkout(case, &checkout);
+    match (result, cleanup_result) {
+        (Ok(mut run), Ok(())) => {
+            run.checkout = checkout_display;
+            run
+        }
+        (Ok(mut run), Err(err)) => {
+            run.checkout = checkout_display;
+            run.status = "cleanup_failure".to_string();
+            run.violations.push(err);
+            run
+        }
+        (Err(err), Ok(())) => EvidencePromotionExternalRun::terminal(case, "semantic_failure", err),
+        (Err(err), Err(cleanup_err)) => EvidencePromotionExternalRun::terminal(
+            case,
+            "cleanup_failure",
+            format!("{err}; {cleanup_err}"),
+        ),
+    }
+}
+
+fn evidence_promotion_checkout_name(case: &EvidencePromotionExternalCase) -> String {
+    let prefix = case.external_commit.chars().take(12).collect::<String>();
+    format!("{}-{prefix}", sanitize_path_segment(&case.id))
+}
+
+fn sanitize_path_segment(input: &str) -> String {
+    let mut out = String::new();
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('-');
+        }
+    }
+    if out.is_empty() {
+        "case".to_string()
+    } else {
+        out
+    }
+}
+
+fn prepare_evidence_promotion_checkout(
+    case: &EvidencePromotionExternalCase,
+    options: &EvidencePromotionHonestyOptions,
+    checkout: &Path,
+) -> Result<(), String> {
+    if !checkout.exists() {
+        if !options.clone {
+            return Err(format!(
+                "evidence promotion pinned external case `{}`: checkout {} is missing; rerun with --pinned-external --clone to create the bounded cache",
+                case.id,
+                normalize_path(checkout)
+            ));
+        }
+        let parent = checkout.parent().ok_or_else(|| {
+            format!(
+                "evidence promotion pinned external case `{}`: checkout path has no parent: {}",
+                case.id,
+                normalize_path(checkout)
+            )
+        })?;
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "evidence promotion pinned external case `{}`: failed to create checkout root {}: {err}",
+                case.id,
+                normalize_path(parent)
+            )
+        })?;
+        let checkout_text = checkout.to_string_lossy().to_string();
+        run_with_envs(
+            "git",
+            &[
+                "clone",
+                "--filter=blob:none",
+                &case.external_repo,
+                &checkout_text,
+            ],
+            &[],
+        )
+        .map_err(|err| {
+            format!(
+                "evidence promotion pinned external case `{}`: clone failed: {err}",
+                case.id
+            )
+        })?;
+    }
+
+    let checkout_text = checkout.to_string_lossy().to_string();
+    if options.clone {
+        run_with_envs(
+            "git",
+            &[
+                "-C",
+                &checkout_text,
+                "fetch",
+                "--depth",
+                "1",
+                "origin",
+                &case.external_commit,
+            ],
+            &[],
+        )
+        .map_err(|err| {
+            format!(
+                "evidence promotion pinned external case `{}`: fetch of exact commit failed: {err}",
+                case.id
+            )
+        })?;
+    } else if !evidence_promotion_checkout_has_commit(checkout, &case.external_commit)? {
+        return Err(format!(
+            "evidence promotion pinned external case `{}`: cached checkout {} does not contain exact commit {}; rerun with --pinned-external --clone to refresh the bounded cache",
+            case.id,
+            normalize_path(checkout),
+            case.external_commit
+        ));
+    }
+    run_with_envs(
+        "git",
+        &[
+            "-C",
+            &checkout_text,
+            "checkout",
+            "--detach",
+            &case.external_commit,
+        ],
+        &[],
+    )
+    .map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: checkout of exact commit failed: {err}",
+            case.id
+        )
+    })?;
+    clean_evidence_promotion_checkout(case, checkout)?;
+    Ok(())
+}
+
+fn evidence_promotion_checkout_has_commit(checkout: &Path, commit: &str) -> Result<bool, String> {
+    let checkout_text = checkout.to_string_lossy().to_string();
+    command_success_owned(
+        "git",
+        &[
+            "-C".to_string(),
+            checkout_text,
+            "cat-file".to_string(),
+            "-e".to_string(),
+            format!("{commit}^{{commit}}"),
+        ],
+    )
+}
+
+fn clean_evidence_promotion_checkout(
+    case: &EvidencePromotionExternalCase,
+    checkout: &Path,
+) -> Result<(), String> {
+    let checkout_text = checkout.to_string_lossy().to_string();
+    run_with_envs(
+        "git",
+        &[
+            "-C",
+            &checkout_text,
+            "reset",
+            "--hard",
+            &case.external_commit,
+        ],
+        &[],
+    )
+    .map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: reset cleanup failed: {err}",
+            case.id
+        )
+    })?;
+    run_with_envs("git", &["-C", &checkout_text, "clean", "-fdx"], &[]).map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: clean cleanup failed: {err}",
+            case.id
+        )
+    })?;
+    Ok(())
+}
+
+fn run_evidence_promotion_external_check(
+    case: &EvidencePromotionExternalCase,
+    options: &EvidencePromotionHonestyOptions,
+    binary: &Path,
+    checkout: &Path,
+    patch: &Path,
+) -> Result<EvidencePromotionExternalRun, String> {
+    let checkout_text = checkout.to_string_lossy().to_string();
+    let patch_text = patch.to_string_lossy().to_string();
+    run_with_envs(
+        "git",
+        &["-C", &checkout_text, "apply", "--check", &patch_text],
+        &[],
+    )
+    .map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: patch did not apply cleanly: {err}",
+            case.id
+        )
+    })?;
+    run_with_envs("git", &["-C", &checkout_text, "apply", &patch_text], &[]).map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: patch apply failed: {err}",
+            case.id
+        )
+    })?;
+
+    let program = binary.to_string_lossy().to_string();
+    let command_args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        checkout_text.clone(),
+        "--diff".to_string(),
+        patch_text,
+        "--mode".to_string(),
+        "fast".to_string(),
+        "--json".to_string(),
+    ];
+    let rendered_command =
+        "ripr check --root {checkout} --diff {external_patch} --mode fast --json";
+    let mut violations = Vec::new();
+    if case.external_command != rendered_command {
+        violations.push(format!(
+            "evidence promotion pinned external case `{}`: external_command `{}` does not match supported command template `{rendered_command}`",
+            case.id, case.external_command
+        ));
+    }
+    let output = capture_output_with_timeout(
+        &program,
+        &command_args,
+        &[],
+        options.timeout,
+        "check-evidence-promotion-honesty pinned external ripr check",
+    )
+    .map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: ripr check failed to start: {err}",
+            case.id
+        )
+    })?;
+    let runtime_ms = output.duration.as_millis();
+    if output.timed_out {
+        violations.push(format!(
+            "evidence promotion pinned external case `{}`: runtime budget exceeded by timeout after {}ms",
+            case.id, runtime_ms
+        ));
+    }
+    if runtime_ms > u128::from(case.runtime_budget_seconds) * 1000 {
+        violations.push(format!(
+            "evidence promotion pinned external case `{}`: runtime {}ms exceeded budget {}s",
+            case.id, runtime_ms, case.runtime_budget_seconds
+        ));
+    }
+    if !output.status.is_some_and(|status| status.success()) {
+        violations.push(format!(
+            "evidence promotion pinned external case `{}`: ripr check exited non-zero; stderr: {}",
+            case.id,
+            excerpt_for_report(&output.stderr, 400)
+        ));
+    }
+    let parsed: Value = serde_json::from_str(&output.stdout).map_err(|err| {
+        format!(
+            "evidence promotion pinned external case `{}`: ripr stdout was not JSON: {err}; stdout: {}",
+            case.id,
+            excerpt_for_report(&output.stdout, 400)
+        )
+    })?;
+    let artifact_bytes = directory_size_bytes(&checkout.join("target").join("ripr"))?;
+    if artifact_bytes > case.artifact_budget_bytes {
+        violations.push(format!(
+            "evidence promotion pinned external case `{}`: artifact bytes {} exceeded budget {}",
+            case.id, artifact_bytes, case.artifact_budget_bytes
+        ));
+    }
+    violations.extend(evidence_promotion_external_semantic_violations(
+        case, &parsed,
+    ));
+    Ok(EvidencePromotionExternalRun {
+        id: case.id.clone(),
+        status: if violations.is_empty() {
+            "pass".to_string()
+        } else {
+            "semantic_failure".to_string()
+        },
+        runtime_ms,
+        artifact_bytes,
+        checkout: normalize_path(checkout),
+        violations,
+    })
+}
+
+fn evidence_promotion_external_semantic_violations(
+    case: &EvidencePromotionExternalCase,
+    check_json: &Value,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let findings = check_json
+        .get("findings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if case.must_not_report_clean {
+        let summary_findings = check_json
+            .get("summary")
+            .and_then(|summary| summary.get("findings"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if summary_findings == 0 || findings.is_empty() {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: must_not_report_clean requires findings, got summary.findings={} findings.len()={}",
+                case.id,
+                summary_findings,
+                findings.len()
+            ));
+        }
+    }
+    if case.must_disclose_scope {
+        let missing_scope = ["schema_version", "tool", "mode", "root", "base"]
+            .iter()
+            .filter_map(|field| {
+                let present = check_json
+                    .get(*field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty());
+                (!present).then_some(*field)
+            })
+            .collect::<Vec<_>>();
+        if !missing_scope.is_empty() {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: must_disclose_scope missing {}",
+                case.id,
+                missing_scope.join(", ")
+            ));
+        }
+    }
+    if let Some(expected_file) = &case.expected_changed_file {
+        let saw_file = findings.iter().any(|finding| {
+            finding
+                .get("probe")
+                .and_then(|probe| probe.get("file"))
+                .and_then(Value::as_str)
+                .is_some_and(|file| normalize_slashes(file).ends_with(expected_file))
+        });
+        if !saw_file {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: expected changed file `{expected_file}` was not present in finding probe files",
+                case.id
+            ));
+        }
+    }
+    if case.must_emit_limitation {
+        let Some(expected_limit_kind) = &case.expected_limit_kind else {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: must_emit_limitation requires expected_limit_kind",
+                case.id
+            ));
+            return violations;
+        };
+        let has_limit = findings.iter().any(|finding| {
+            finding.get("static_limit_kind").and_then(Value::as_str)
+                == Some(expected_limit_kind.as_str())
+        });
+        if !has_limit {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: expected static_limit_kind `{expected_limit_kind}` was not emitted",
+                case.id
+            ));
+        }
+    }
+    if case.must_not_emit_repair_packet {
+        let packet_ready_paths = json_bool_field_paths(check_json, "repair_packet_ready", true);
+        if !packet_ready_paths.is_empty() {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: repair_packet_ready=true found at {}",
+                case.id,
+                packet_ready_paths.join(", ")
+            ));
+        }
+    }
+    if case.must_disclose_witness {
+        const WITNESS_PREFIX: &str = "For example, the test ";
+        let discloses = findings.iter().any(|finding| {
+            finding
+                .get("evidence")
+                .and_then(Value::as_array)
+                .is_some_and(|evidence| {
+                    evidence
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|line| line.starts_with(WITNESS_PREFIX))
+                })
+        });
+        if !discloses {
+            violations.push(format!(
+                "evidence promotion pinned external case `{}`: must_disclose_witness did not find evidence prefix `{WITNESS_PREFIX}`",
+                case.id
+            ));
+        }
+    }
+    if case.must_remain_non_promoted {
+        let expected_max_class = case
+            .expected_max_class
+            .as_deref()
+            .unwrap_or("weakly_exposed");
+        let max_severity = evidence_class_severity(expected_max_class);
+        for finding in &findings {
+            let class = finding
+                .get("classification")
+                .and_then(Value::as_str)
+                .unwrap_or("static_unknown");
+            let finding_id = finding
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("<no-id>");
+            if class == "exposed" {
+                violations.push(format!(
+                    "evidence promotion pinned external case `{}`: finding `{finding_id}` promoted to exposed",
+                    case.id
+                ));
+            }
+            if evidence_class_severity(class) > max_severity {
+                violations.push(format!(
+                    "evidence promotion pinned external case `{}`: finding `{finding_id}` class `{class}` exceeds maximum `{expected_max_class}`",
+                    case.id
+                ));
+            }
+        }
+    }
+    violations
+}
+
+fn directory_size_bytes(path: &Path) -> Result<u64, String> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let metadata = fs::symlink_metadata(&current).map_err(|err| {
+            format!(
+                "failed to inspect artifact path {}: {err}",
+                normalize_path(&current)
+            )
+        })?;
+        if metadata.is_file() {
+            total = total.saturating_add(metadata.len());
+        } else if metadata.is_dir() {
+            for entry in fs::read_dir(&current).map_err(|err| {
+                format!(
+                    "failed to read artifact directory {}: {err}",
+                    normalize_path(&current)
+                )
+            })? {
+                let entry = entry.map_err(|err| {
+                    format!(
+                        "failed to read artifact directory entry under {}: {err}",
+                        normalize_path(&current)
+                    )
+                })?;
+                stack.push(entry.path());
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn excerpt_for_report(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() <= limit {
+        trimmed.to_string()
+    } else {
+        format!("{}...", &trimmed[..limit])
+    }
+}
+
+fn write_evidence_promotion_external_report(
+    runs: &[EvidencePromotionExternalRun],
+    violations: &[String],
+) -> Result<(), String> {
+    ensure_reports_dir()?;
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let json_runs = runs
+        .iter()
+        .map(|run| {
+            serde_json::json!({
+                "id": run.id,
+                "status": run.status,
+                "runtime_ms": run.runtime_ms,
+                "artifact_bytes": run.artifact_bytes,
+                "checkout": run.checkout,
+                "violations": run.violations,
+            })
+        })
+        .collect::<Vec<_>>();
+    let json_report = serde_json::json!({
+        "schema_version": "0.1",
+        "kind": "evidence_promotion_pinned_external",
+        "status": status,
+        "cases_total": runs.len(),
+        "cases_passed": runs.iter().filter(|run| run.violations.is_empty()).count(),
+        "cases_failed": runs.iter().filter(|run| !run.violations.is_empty()).count(),
+        "violations": violations,
+        "runs": json_runs,
+    });
+    write_report(
+        EVIDENCE_PROMOTION_EXTERNAL_JSON,
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&json_report)
+                .map_err(|err| format!("serialize pinned external report: {err}"))?
+        ),
+    )?;
+
+    let mut markdown = format!(
+        "# Evidence Promotion Pinned External\n\nStatus: `{status}`\n\nCases: `{}` total, `{}` passed, `{}` failed.\n\n",
+        runs.len(),
+        runs.iter().filter(|run| run.violations.is_empty()).count(),
+        runs.iter().filter(|run| !run.violations.is_empty()).count()
+    );
+    if violations.is_empty() {
+        markdown.push_str("## Violations\n\nNone detected.\n\n");
+    } else {
+        markdown.push_str("## Violations\n\n");
+        for violation in violations {
+            markdown.push_str("- ");
+            markdown.push_str(violation);
+            markdown.push('\n');
+        }
+        markdown.push('\n');
+    }
+    markdown.push_str("## Cases\n\n");
+    markdown.push_str("| Case | Status | Runtime ms | Artifact bytes |\n");
+    markdown.push_str("|---|---:|---:|---:|\n");
+    for run in runs {
+        markdown.push_str(&format!(
+            "| `{}` | `{}` | {} | {} |\n",
+            run.id, run.status, run.runtime_ms, run.artifact_bytes
+        ));
+    }
+    markdown.push('\n');
+    write_report(EVIDENCE_PROMOTION_EXTERNAL_MD, &markdown)?;
+    Ok(())
+}
+
+fn check_evidence_promotion_honesty(args: &[String]) -> Result<(), String> {
+    let options = parse_evidence_promotion_honesty_args(args)?;
     let corpus_path = Path::new(EVIDENCE_PROMOTION_HONESTY_CORPUS);
     let mut violations = Vec::new();
     validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
+    if options.run_pinned_external {
+        violations.extend(run_evidence_promotion_pinned_external_cases(
+            corpus_path,
+            &options,
+        )?);
+    }
 
     let report = if violations.is_empty() {
         "pass: corpus tiers valid; all charter members at expected class; no clean-guard case lost its findings; scope-guard cases kept report scope headers; no promoted case carries exposed; all controls retain exposed".to_string()
@@ -10637,6 +11531,7 @@ fn validate_evidence_promotion_honesty_corpus_at(
             "pure" => {
                 for external_field in [
                     "external_repo",
+                    "external_command",
                     "external_commit",
                     "external_patch",
                     "runtime_budget_seconds",
@@ -10654,6 +11549,9 @@ fn validate_evidence_promotion_honesty_corpus_at(
                 let mut missing_or_invalid = Vec::new();
                 if evidence_promotion_non_empty_string_field(case, "external_repo").is_none() {
                     missing_or_invalid.push("external_repo");
+                }
+                if evidence_promotion_non_empty_string_field(case, "external_command").is_none() {
+                    missing_or_invalid.push("external_command");
                 }
                 match evidence_promotion_non_empty_string_field(case, "external_commit") {
                     Some(commit) if is_exact_git_commit(commit) => {}
@@ -10673,11 +11571,12 @@ fn validate_evidence_promotion_honesty_corpus_at(
                     violations.push(format!(
                         "evidence promotion honesty case `{id}`: tier `pinned_external` \
                          requires exact external metadata fields external_repo, \
-                         external_commit (40-hex git commit), existing external_patch, \
+                         external_command, external_commit (40-hex git commit), existing external_patch, \
                          runtime_budget_seconds, and artifact_budget_bytes; missing or invalid: {}",
                         missing_or_invalid.join(", ")
                     ));
                 }
+                continue;
             }
             "" => violations.push(format!(
                 "evidence promotion honesty case `{id}`: `tier` is required and must be \
@@ -72076,6 +72975,7 @@ mod tests {
             report.contains("rust_external_incomplete")
                 && report.contains("tier `pinned_external`")
                 && report.contains("external_repo")
+                && report.contains("external_command")
                 && report.contains("external_commit")
                 && report.contains("external_patch")
                 && report.contains("runtime_budget_seconds")
@@ -72124,11 +73024,19 @@ mod tests {
                     "must_remain_non_promoted": true
                 },
                 {
+                    "id": "rust_non_promoted",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
                     "id": "rust_external_complete",
                     "language": "rust",
                     "tier": "pinned_external",
                     "source_fixture": rust_fixture,
                     "external_repo": "https://github.com/dtolnay/semver",
+                    "external_command": "ripr check --root {checkout} --diff {external_patch} --mode fast --json",
                     "external_commit": "0123456789abcdef0123456789abcdef01234567",
                     "external_patch": patch_path,
                     "runtime_budget_seconds": 120,
@@ -72164,6 +73072,93 @@ mod tests {
             "unexpected violations: {violations:?}"
         );
         Ok(())
+    }
+
+    fn semver_external_case_for_test() -> super::EvidencePromotionExternalCase {
+        super::EvidencePromotionExternalCase {
+            id: "rust_semver_matches_greater_external_limitation".to_string(),
+            language: "rust".to_string(),
+            external_repo: "https://github.com/dtolnay/semver".to_string(),
+            external_commit: "0123456789abcdef0123456789abcdef01234567".to_string(),
+            external_patch: PathBuf::from(
+                "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
+            ),
+            external_command:
+                "ripr check --root {checkout} --diff {external_patch} --mode fast --json"
+                    .to_string(),
+            runtime_budget_seconds: 120,
+            artifact_budget_bytes: 10_485_760,
+            expected_changed_file: Some("src/eval.rs".to_string()),
+            expected_limit_kind: Some("rust_transitive_reach_unresolved".to_string()),
+            expected_max_class: Some("no_static_path".to_string()),
+            must_not_report_clean: true,
+            must_disclose_scope: true,
+            must_emit_limitation: true,
+            must_not_emit_repair_packet: true,
+            must_disclose_witness: true,
+            must_remain_non_promoted: true,
+        }
+    }
+
+    #[test]
+    fn evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape() {
+        let case = semver_external_case_for_test();
+        let check_json = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "fast",
+            "root": "target/ripr/evidence-promotion-honesty/checkouts/semver",
+            "base": "origin/main",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_eval.rs:predicate:87a89f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "target/ripr/evidence-promotion-honesty/checkouts/semver/src/eval.rs"},
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace.",
+                        "For example, the test `test_basic` (tests/test_version_req.rs:38) calls `assert_match_all`, an entry point that may lead here."
+                    ]
+                }
+            ]
+        });
+
+        let violations = super::evidence_promotion_external_semantic_violations(&case, &check_json);
+        assert!(
+            violations.is_empty(),
+            "expected semver external limitation shape to pass, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet() {
+        let case = semver_external_case_for_test();
+        let check_json = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "fast",
+            "root": "target/ripr/evidence-promotion-honesty/checkouts/semver",
+            "base": "origin/main",
+            "summary": {"findings": 0},
+            "findings": [
+                {
+                    "id": "probe:src_eval.rs:predicate:87a89f28",
+                    "classification": "exposed",
+                    "probe": {"file": "target/ripr/evidence-promotion-honesty/checkouts/semver/src/eval.rs"},
+                    "preview_actionability": {"repair_packet_ready": true},
+                    "evidence": []
+                }
+            ]
+        });
+
+        let report =
+            super::evidence_promotion_external_semantic_violations(&case, &check_json).join("\n");
+        assert!(report.contains("must_not_report_clean"), "{report}");
+        assert!(report.contains("expected static_limit_kind"), "{report}");
+        assert!(report.contains("repair_packet_ready=true"), "{report}");
+        assert!(report.contains("must_disclose_witness"), "{report}");
+        assert!(report.contains("promoted to exposed"), "{report}");
     }
 
     #[test]
@@ -72539,7 +73534,7 @@ mod tests {
                 &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
             );
 
-            super::check_evidence_promotion_honesty()?;
+            super::check_evidence_promotion_honesty(&[])?;
             let report =
                 fs::read_to_string(root.join("target/ripr/reports/evidence-promotion-honesty.md"))
                     .map_err(|err| {
