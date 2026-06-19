@@ -222,6 +222,12 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
   — non-generic infection summaries are not broadened or rewritten
 - `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness`
   — the corpus assertion fails closed when a witnessed limitation still says no tests were found
+- `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_witness_projection`
+  — the corpus assertion fails closed when a fixture human golden drops the `Where to look` witness
+- `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection`
+  — the corpus assertion fails closed when a fixture human golden keeps a stale witness line
+- `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_human_witness_golden`
+  — the corpus assertion fails closed when a fixture-backed witnessed case deletes `expected/human.txt`
 - `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness`
   — the corpus assertion fails closed when a fixture human golden still says no tests were found
 

@@ -6016,7 +6016,10 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_accept_scope_limited_empty_results",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_bare_empty_false_clean",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_witness_projection",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_human_witness_golden",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_projection_drift",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
@@ -6232,7 +6235,10 @@ tests = [
   "crates/ripr/src/output/human.rs::tests::human_output_omits_where_to_look_without_witness",
   "crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found",
   "crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_witness_projection",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_human_witness_golden",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness",
 ]
 fixtures = [
