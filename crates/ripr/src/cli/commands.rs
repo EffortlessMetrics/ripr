@@ -7346,7 +7346,20 @@ language = "rust"
             .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
         assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
         assert!(rendered_json.contains(r#""repair_card""#));
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse gap-ledger review comments JSON: {err}"))?;
+        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
+        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
+        assert_eq!(
+            value["analysis_scope"]["basis"],
+            "supplied_gap_decision_ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["changed_files"],
+            serde_json::json!(["src/pricing.rs"])
+        );
         assert!(rendered_md.contains("ripr first-action"));
+        assert!(rendered_md.contains("analysis scope: `gap_ledger_artifact`"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())

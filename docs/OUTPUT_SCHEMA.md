@@ -5905,8 +5905,11 @@ instead of full-repo truth: changed production files plus bounded immediate
 caller files. The JSON and Markdown carry `analysis_scope.run_status =
 "limited_diff_scope"` and the `review_comments_diff_scope_only` limitation
 route so large-repo users can see the narrowed basis. When `--gap-ledger` is
-supplied, the command does not rerun analysis; it renders changed-line repair
-cards only from explicit `GapRecord` entries with
+supplied, the JSON and Markdown carry `analysis_scope.run_status =
+"artifact_scope"` and the `review_comments_gap_ledger_artifact_scope_only`
+limitation route so users can see that RIPR consumed a supplied ledger artifact
+rather than rerunning diff or full-repo analysis. The command renders
+changed-line repair cards only from explicit `GapRecord` entries with
 `projection_eligibility.pr_comment.eligible = true`, PR-local scope, a stable
 anchor, a dedupe fingerprint, a repair route, and verification commands. It
 does not post to GitHub, run mutation testing, refresh LSP state, edit source
@@ -5929,22 +5932,22 @@ JSON shape:
     "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
   },
   "analysis_scope": {
-    "scope": "diff_scoped_changed_files",
-    "run_status": "limited_diff_scope",
-    "basis": "changed_production_files_plus_immediate_callers",
+    "scope": "gap_ledger_artifact",
+    "run_status": "artifact_scope",
+    "basis": "supplied_gap_decision_ledger",
     "changed_files": ["src/pricing.rs"],
     "changed_lines": 1,
-    "changed_owner_functions": 1,
+    "changed_owner_functions": 0,
     "changed_production_files": ["src/pricing.rs"],
-    "immediate_caller_files": ["src/checkout.rs"],
-    "scoped_production_files": ["src/pricing.rs", "src/checkout.rs"],
-    "total_rust_files": 412000,
-    "total_production_files": 411000,
-    "production_files_considered": 2,
-    "classified_seams_considered": 7,
+    "immediate_caller_files": [],
+    "scoped_production_files": ["src/pricing.rs"],
+    "total_rust_files": null,
+    "total_production_files": null,
+    "production_files_considered": 1,
+    "classified_seams_considered": 1,
     "downstream_consumable": true,
-    "limitation": "review_comments_diff_scope_only",
-    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
+    "limitation": "review_comments_gap_ledger_artifact_scope_only",
+    "repair_route": "reports/gap-decision-ledger"
   },
   "limits": {
     "max_inline_comments": 3,
@@ -6024,15 +6027,19 @@ Field contract:
   and RIPR analysis mode used to render the report.
 - `inputs.gap_ledger` - optional explicit gap decision ledger used for
   repair-card projection. It is present only when `--gap-ledger` is supplied.
-- `analysis_scope` - optional scoped-input metadata for renderer paths that
-  run analysis. The default diff renderer emits `scope =
-  "diff_scoped_changed_files"`, `run_status = "limited_diff_scope"`, changed
-  files, changed owner count, changed production files, immediate caller files,
-  total production-file counts, the classified seam count considered, and the
-  `review_comments_diff_scope_only` limitation route. This makes the report
-  useful on large repos without representing the scoped review as full-repo
-  evidence. Gap-ledger rendering may omit this field because its authority is
-  the supplied ledger artifact.
+- `analysis_scope` - scoped-input metadata for the renderer path. The default
+  diff renderer emits `scope = "diff_scoped_changed_files"`, `run_status =
+  "limited_diff_scope"`, changed files, changed owner count, changed production
+  files, immediate caller files, total production-file counts, the classified
+  seam count considered, and the `review_comments_diff_scope_only` limitation
+  route. This makes the report useful on large repos without representing the
+  scoped review as full-repo evidence. Gap-ledger rendering emits `scope =
+  "gap_ledger_artifact"` and `run_status = "artifact_scope"` with `basis =
+  "supplied_gap_decision_ledger"`, ledger anchor files, the supplied GapRecord
+  count in `classified_seams_considered`, and the
+  `review_comments_gap_ledger_artifact_scope_only` limitation route. That path
+  does not rerun diff or full-repo analysis; its authority is the supplied
+  ledger artifact.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line

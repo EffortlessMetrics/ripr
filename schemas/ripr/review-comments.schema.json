@@ -206,13 +206,15 @@
         "scope": {
           "enum": [
             "diff_scoped_changed_files",
-            "working_set"
+            "working_set",
+            "gap_ledger_artifact"
           ]
         },
         "run_status": {
           "enum": [
             "limited_diff_scope",
-            "scoped"
+            "scoped",
+            "artifact_scope"
           ]
         },
         "basis": {

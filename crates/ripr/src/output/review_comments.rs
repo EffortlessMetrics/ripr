@@ -116,6 +116,50 @@ impl ReviewCommentsAnalysisScope {
             repair_route: "analysis/review-comments-working-set",
         }
     }
+
+    pub(crate) fn gap_ledger_artifact(records: &[GapRecord]) -> Self {
+        let mut anchor_files = records
+            .iter()
+            .filter_map(|record| record.anchor.as_ref())
+            .filter_map(|anchor| anchor.file.as_deref())
+            .map(str::trim)
+            .filter(|file| !file.is_empty())
+            .map(|file| normalize_path_text(Path::new(file)))
+            .collect::<Vec<_>>();
+        anchor_files.sort();
+        anchor_files.dedup();
+        let anchored_lines = records
+            .iter()
+            .filter_map(|record| record.anchor.as_ref())
+            .filter(|anchor| {
+                anchor
+                    .file
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|file| !file.is_empty())
+                    && anchor.line.is_some()
+            })
+            .count();
+
+        Self {
+            scope: "gap_ledger_artifact",
+            run_status: "artifact_scope",
+            basis: "supplied_gap_decision_ledger",
+            changed_files: anchor_files.clone(),
+            changed_lines: anchored_lines,
+            changed_owner_functions: 0,
+            changed_production_files: anchor_files.clone(),
+            immediate_caller_files: Vec::new(),
+            scoped_production_files: anchor_files.clone(),
+            total_rust_files: None,
+            total_production_files: None,
+            production_files_considered: anchor_files.len(),
+            classified_seams_considered: records.len(),
+            downstream_consumable: true,
+            limitation: "review_comments_gap_ledger_artifact_scope_only",
+            repair_route: "reports/gap-decision-ledger",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -288,6 +332,7 @@ pub(crate) fn render_gap_record_review_comments_json(
     let mut summary_only = Vec::new();
     let mut suppressed = Vec::new();
     let mut seen_dedupe = BTreeSet::new();
+    let analysis_scope = ReviewCommentsAnalysisScope::gap_ledger_artifact(records);
 
     for record in records {
         let comment = match gap_record_comment_json(root, gap_ledger_path, record, &mut seen_dedupe)
@@ -320,6 +365,7 @@ pub(crate) fn render_gap_record_review_comments_json(
         "inputs": {
             "gap_ledger": gap_ledger_path
         },
+        "analysis_scope": analysis_scope_json(&analysis_scope),
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -1990,6 +2036,26 @@ mod tests {
 
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["summary"]["suppressed"], 2);
+        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
+        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
+        assert_eq!(
+            value["analysis_scope"]["basis"],
+            "supplied_gap_decision_ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["limitation"],
+            "review_comments_gap_ledger_artifact_scope_only"
+        );
+        assert_eq!(
+            value["analysis_scope"]["repair_route"],
+            "reports/gap-decision-ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["changed_files"],
+            serde_json::json!(["src/pricing.rs"])
+        );
+        assert_eq!(value["analysis_scope"]["changed_lines"], 2);
+        assert_eq!(value["analysis_scope"]["classified_seams_considered"], 3);
         assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
         assert_eq!(
             value["comments"][0]["source_location"]["file"],
@@ -2028,6 +2094,9 @@ mod tests {
             &records,
         );
         assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("analysis scope: `gap_ledger_artifact`"));
+        assert!(markdown.contains("run status: `artifact_scope`"));
+        assert!(markdown.contains("review_comments_gap_ledger_artifact_scope_only"));
         assert!(markdown.contains("`gap:pr:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
         assert!(
             markdown.contains("canonical_gap_id: `gap:rust:pricing:discount:threshold-boundary`")
