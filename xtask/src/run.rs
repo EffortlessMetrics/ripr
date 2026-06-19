@@ -926,20 +926,22 @@ mod tests {
                 .map(|duration| duration.as_nanos())
                 .unwrap_or(0)
         ));
-        let args = vec![
-            "/C".to_string(),
-            format!(
-                "ping -n 8 127.0.0.1 & echo alive > \"{}\"",
-                marker.display()
-            ),
-        ];
-        // Same race as the unix variant: give `cmd` ample time to spawn the
-        // `ping` descendant before the timeout's taskkill /T fires, so the
-        // tree-kill reliably catches it under parallel load (#1022).
+        let script = [
+            "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru",
+            "Wait-Process -Id $p.Id",
+            "Set-Content -LiteralPath $env:RIPR_XTASK_DESCENDANT_MARKER -Value alive",
+        ]
+        .join("; ");
+        let args = vec!["-NoProfile".to_string(), "-Command".to_string(), script];
+        let marker_env = marker.to_string_lossy().into_owned();
+        let envs = [("RIPR_XTASK_DESCENDANT_MARKER", marker_env.as_str())];
+        // Same race as the unix variant: give the parent ample time to spawn
+        // the PowerShell descendant before the timeout's taskkill /T fires, so
+        // the tree-kill reliably catches it under parallel load (#1022).
         let output = capture_output_with_timeout(
-            "cmd",
+            "powershell",
             &args,
-            &[],
+            &envs,
             Duration::from_secs(5),
             "pipe-inheriting descendant",
         )?;

@@ -334,9 +334,9 @@ standalone_reason = "Fixes #1175: emits a named typescript_diff_first guidance d
 id = "RIPR-SPEC-0090"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md"
-status = "proposed"
+status = "accepted"
 owner = "product-swarm"
-standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only (JSON unchanged, no schema bump); addresses #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
+standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only with analyzed scope counts for changed Rust files, changed expressions, and statically linked related tests (JSON unchanged, no schema bump); addressed #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
 
 [[artifact]]
 id = "RIPR-SPEC-0091"

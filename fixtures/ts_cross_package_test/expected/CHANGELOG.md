@@ -47,3 +47,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+P2: all-no-path scope counts
+
+Command:
+`cargo xtask goldens bless ts_cross_package_test --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

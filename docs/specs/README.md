@@ -100,7 +100,7 @@ observable behavior.
 | [RIPR-SPEC-0087](RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md) | proposed | TypeScript preview→actionable repair-packet contract (0085 §PR7) |
 | [RIPR-SPEC-0088](RIPR-SPEC-0088-typescript-repair-packet-projection.md) | proposed | TypeScript repair-packet surface projection (0085 §PR8) |
 | [RIPR-SPEC-0089](RIPR-SPEC-0089-ts-full-repo-guidance.md) | proposed | TypeScript full-repo scan guidance disclosure |
-| [RIPR-SPEC-0090](RIPR-SPEC-0090-all-no-path-disclosure.md) | proposed | All-no-path aggregate disclosure |
+| [RIPR-SPEC-0090](RIPR-SPEC-0090-all-no-path-disclosure.md) | accepted | All-no-path aggregate disclosure: human output adds an aggregate no-static-path note only when every finding is no-path/unknown, now including analyzed scope counts for changed Rust files, changed expressions, and statically linked related tests; JSON unchanged, no schema bump |
 | [RIPR-SPEC-0091](RIPR-SPEC-0091-pilot-artifact-size-bound.md) | proposed | Pilot artifact size bound (DEFAULT_PILOT_SEAM_BUDGET=2000) |
 | [RIPR-SPEC-0092](RIPR-SPEC-0092-python-judged-pr-panel.md) | proposed | Python Tier B judged-diff panel schema |
 | [RIPR-SPEC-0093](RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md) | proposed | Match-arm blind-reach downgrade (arm_observation_unverified) |

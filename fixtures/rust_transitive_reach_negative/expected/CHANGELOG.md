@@ -22,3 +22,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+P2: all-no-path scope counts
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_negative --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

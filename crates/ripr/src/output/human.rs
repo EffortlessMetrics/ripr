@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::Finding;
+use std::collections::BTreeSet;
 
 /// Render the complete check report in the human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
@@ -107,12 +108,36 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
     {
         return;
     }
+    let related_tests_total = output
+        .findings
+        .iter()
+        .flat_map(|finding| finding.related_tests.iter())
+        .map(|test| {
+            (
+                test.file.to_string_lossy().into_owned(),
+                test.name.clone(),
+                test.line,
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    let scope_summary = if s.changed_rust_files > 0 {
+        format!(
+            "Scope analyzed: {} changed Rust file(s), {} changed expression(s), and {} statically linked related test(s).",
+            s.changed_rust_files, all_no_path_count, related_tests_total
+        )
+    } else {
+        format!(
+            "Scope analyzed: {} changed expression(s) and {} statically linked related test(s).",
+            all_no_path_count, related_tests_total
+        )
+    };
     out.push_str(&format!(
         "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
-This is not a coverage assessment. A test may already exercise these changes through macros, \
+{} This is not a coverage assessment. A test may already exercise these changes through macros, \
 helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, \
 add co-located tests that observe the changed behavior.\n",
-        all_no_path_count
+        all_no_path_count, scope_summary
     ));
 }
 
@@ -1172,6 +1197,7 @@ mod tests {
             root: PathBuf::from("repo"),
             base: None,
             summary: Summary {
+                changed_rust_files: 1,
                 probes: 2,
                 findings: 2,
                 no_static_path: 2,
@@ -1197,6 +1223,12 @@ mod tests {
         assert!(
             rendered.contains("A test may already exercise these changes through macros"),
             "expected honest untraced-test wording; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related test(s)."
+            ),
+            "expected scope-count disclosure; got:\n{rendered}"
         );
     }
 
@@ -1227,6 +1259,50 @@ mod tests {
             rendered
                 .contains("ripr found no static test path for any of the 1 changed expression(s)"),
             "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_counts_linked_related_tests() {
+        let mut finding = unknown_finding();
+        let related_test = RelatedTest {
+            name: "test_handles_disabled".to_string(),
+            file: PathBuf::from("tests/sample.rs"),
+            line: 22,
+            oracle: Some("assert_eq!(actual, expected)".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+        };
+        finding.related_tests.push(related_test.clone());
+        let mut duplicate_finding = unknown_finding();
+        duplicate_finding.related_tests.push(related_test);
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 2,
+                static_unknown: 2,
+                ..Summary::default()
+            },
+            findings: vec![finding, duplicate_finding],
+            preview_language_advisories: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 2 changed expression(s) and 1 statically linked related test(s)."
+            ),
+            "expected related-test count disclosure; got:\n{rendered}"
         );
     }
 
