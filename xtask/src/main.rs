@@ -10447,7 +10447,7 @@ fn check_evidence_promotion_honesty() -> Result<(), String> {
     validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
 
     let report = if violations.is_empty() {
-        "pass: all charter members at expected class; no clean-guard case lost its findings; scope-guard cases kept report scope headers; no promoted case carries exposed; all controls retain exposed".to_string()
+        "pass: corpus tiers valid; all charter members at expected class; no clean-guard case lost its findings; scope-guard cases kept report scope headers; no promoted case carries exposed; all controls retain exposed".to_string()
     } else {
         format!("FAIL: {}", violations.join("; "))
     };
@@ -10563,6 +10563,22 @@ fn json_bool_field_paths(value: &Value, field: &str, expected: bool) -> Vec<Stri
     paths
 }
 
+fn evidence_promotion_non_empty_string_field<'a>(case: &'a Value, field: &str) -> Option<&'a str> {
+    case.get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn evidence_promotion_positive_u64_field(case: &Value, field: &str) -> bool {
+    case.get(field)
+        .and_then(Value::as_u64)
+        .is_some_and(|value| value > 0)
+}
+
+fn is_exact_git_commit(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 fn validate_evidence_promotion_honesty_corpus_at(
     corpus_path: &Path,
     violations: &mut Vec<String>,
@@ -10615,6 +10631,63 @@ fn validate_evidence_promotion_honesty_corpus_at(
             .get("source_fixture")
             .and_then(Value::as_str)
             .unwrap_or("");
+        let tier = case.get("tier").and_then(Value::as_str).unwrap_or("");
+
+        match tier {
+            "pure" => {
+                for external_field in [
+                    "external_repo",
+                    "external_commit",
+                    "external_patch",
+                    "runtime_budget_seconds",
+                    "artifact_budget_bytes",
+                ] {
+                    if case.get(external_field).is_some() {
+                        violations.push(format!(
+                            "evidence promotion honesty case `{id}`: tier `pure` must not \
+                             carry pinned-external metadata field `{external_field}`"
+                        ));
+                    }
+                }
+            }
+            "pinned_external" => {
+                let mut missing_or_invalid = Vec::new();
+                if evidence_promotion_non_empty_string_field(case, "external_repo").is_none() {
+                    missing_or_invalid.push("external_repo");
+                }
+                match evidence_promotion_non_empty_string_field(case, "external_commit") {
+                    Some(commit) if is_exact_git_commit(commit) => {}
+                    _ => missing_or_invalid.push("external_commit"),
+                }
+                match evidence_promotion_non_empty_string_field(case, "external_patch") {
+                    Some(path) if Path::new(path).exists() => {}
+                    _ => missing_or_invalid.push("external_patch"),
+                }
+                if !evidence_promotion_positive_u64_field(case, "runtime_budget_seconds") {
+                    missing_or_invalid.push("runtime_budget_seconds");
+                }
+                if !evidence_promotion_positive_u64_field(case, "artifact_budget_bytes") {
+                    missing_or_invalid.push("artifact_budget_bytes");
+                }
+                if !missing_or_invalid.is_empty() {
+                    violations.push(format!(
+                        "evidence promotion honesty case `{id}`: tier `pinned_external` \
+                         requires exact external metadata fields external_repo, \
+                         external_commit (40-hex git commit), existing external_patch, \
+                         runtime_budget_seconds, and artifact_budget_bytes; missing or invalid: {}",
+                        missing_or_invalid.join(", ")
+                    ));
+                }
+            }
+            "" => violations.push(format!(
+                "evidence promotion honesty case `{id}`: `tier` is required and must be \
+                 one of `pure` or `pinned_external`"
+            )),
+            other => violations.push(format!(
+                "evidence promotion honesty case `{id}`: unknown tier `{other}`; expected \
+                 `pure` or `pinned_external`"
+            )),
+        }
 
         // Parity: source fixture must exist
         let fixture_dir = Path::new(source_fixture);
@@ -71831,6 +71904,268 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    fn write_evidence_promotion_check(fixture: &Path, classification: &str) -> Result<(), String> {
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [{"id": classification, "classification": classification}]
+        });
+        write(
+            &fixture.join("expected/check.json"),
+            &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-tier-contract");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_fixture, "no_static_path"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            write_evidence_promotion_check(fixture, classification)?;
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_missing_tier",
+                    "language": "python",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_unknown_tier",
+                    "language": "typescript",
+                    "tier": "external-ish",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_pure_with_external_claim",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_fixture,
+                    "external_repo": "https://github.com/dtolnay/semver",
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(
+            report.contains("py_missing_tier") && report.contains("`tier` is required"),
+            "expected missing tier violation, got {violations:?}"
+        );
+        assert!(
+            report.contains("ts_unknown_tier") && report.contains("unknown tier `external-ish`"),
+            "expected unknown tier violation, got {violations:?}"
+        );
+        assert!(
+            report.contains("rust_pure_with_external_claim")
+                && report.contains("tier `pure` must not")
+                && report.contains("external_repo"),
+            "expected pure-tier external metadata violation, got {violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_rejects_incomplete_pinned_external_tier() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-pinned-external-tier");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_fixture, "no_static_path"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            write_evidence_promotion_check(fixture, classification)?;
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "tier": "pure",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_external_incomplete",
+                    "language": "rust",
+                    "tier": "pinned_external",
+                    "source_fixture": rust_fixture,
+                    "external_commit": "main",
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(
+            report.contains("rust_external_incomplete")
+                && report.contains("tier `pinned_external`")
+                && report.contains("external_repo")
+                && report.contains("external_commit")
+                && report.contains("external_patch")
+                && report.contains("runtime_budget_seconds")
+                && report.contains("artifact_budget_bytes"),
+            "expected pinned-external metadata violation, got {violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_accepts_complete_pinned_external_tier() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-pinned-external-complete");
+        let corpus = root.join("corpus.json");
+        let patch_path = root.join("patches/semver-boundary.diff");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        write(&patch_path, "diff --git a/src/lib.rs b/src/lib.rs\n");
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_fixture, "no_static_path"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            write_evidence_promotion_check(fixture, classification)?;
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "tier": "pure",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_external_complete",
+                    "language": "rust",
+                    "tier": "pinned_external",
+                    "source_fixture": rust_fixture,
+                    "external_repo": "https://github.com/dtolnay/semver",
+                    "external_commit": "0123456789abcdef0123456789abcdef01234567",
+                    "external_patch": patch_path,
+                    "runtime_budget_seconds": 120,
+                    "artifact_budget_bytes": 10485760,
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn evidence_promotion_honesty_rejects_clean_report_for_clean_guard_case() -> Result<(), String>
     {
@@ -71880,18 +72215,21 @@ mod tests {
                 {
                     "id": "py_non_promoted",
                     "language": "python",
+                    "tier": "pure",
                     "source_fixture": py_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "ts_non_promoted",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "rust_clean_guard",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_clean_fixture,
                     "must_not_report_clean": true,
                     "must_remain_non_promoted": true,
@@ -71900,12 +72238,14 @@ mod tests {
                 {
                     "id": "rust_control",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_control_fixture,
                     "expected_promoted": true
                 },
                 {
                     "id": "ts_control",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_control_fixture,
                     "expected_promoted": true
                 }
@@ -71963,18 +72303,21 @@ mod tests {
                 {
                     "id": "py_non_promoted",
                     "language": "python",
+                    "tier": "pure",
                     "source_fixture": py_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "ts_non_promoted",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "rust_scope_guard",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_scope_fixture,
                     "must_disclose_scope": true,
                     "must_remain_non_promoted": true,
@@ -71983,12 +72326,14 @@ mod tests {
                 {
                     "id": "rust_control",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_control_fixture,
                     "expected_promoted": true
                 },
                 {
                     "id": "ts_control",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_control_fixture,
                     "expected_promoted": true
                 }
@@ -72067,18 +72412,21 @@ mod tests {
                 {
                     "id": "py_non_promoted",
                     "language": "python",
+                    "tier": "pure",
                     "source_fixture": py_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "ts_non_promoted",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_fixture,
                     "must_remain_non_promoted": true
                 },
                 {
                     "id": "rust_packet_guard",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_packet_fixture,
                     "must_not_emit_repair_packet": true,
                     "must_remain_non_promoted": true,
@@ -72087,12 +72435,14 @@ mod tests {
                 {
                     "id": "rust_control",
                     "language": "rust",
+                    "tier": "pure",
                     "source_fixture": rust_control_fixture,
                     "expected_promoted": true
                 },
                 {
                     "id": "ts_control",
                     "language": "typescript",
+                    "tier": "pure",
                     "source_fixture": ts_control_fixture,
                     "expected_promoted": true
                 }
@@ -72148,18 +72498,21 @@ mod tests {
                     {
                         "id": "py_non_promoted",
                         "language": "python",
+                        "tier": "pure",
                         "source_fixture": py_fixture,
                         "must_remain_non_promoted": true
                     },
                     {
                         "id": "ts_non_promoted",
                         "language": "typescript",
+                        "tier": "pure",
                         "source_fixture": ts_fixture,
                         "must_remain_non_promoted": true
                     },
                     {
                         "id": "rust_clean_guard",
                         "language": "rust",
+                        "tier": "pure",
                         "source_fixture": rust_guard_fixture,
                         "must_not_report_clean": true,
                         "must_remain_non_promoted": true,
@@ -72168,12 +72521,14 @@ mod tests {
                     {
                         "id": "rust_control",
                         "language": "rust",
+                        "tier": "pure",
                         "source_fixture": rust_control_fixture,
                         "expected_promoted": true
                     },
                     {
                         "id": "ts_control",
                         "language": "typescript",
+                        "tier": "pure",
                         "source_fixture": ts_control_fixture,
                         "expected_promoted": true
                     }

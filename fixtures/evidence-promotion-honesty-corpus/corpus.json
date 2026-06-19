@@ -7,6 +7,7 @@
     {
       "id": "py_token_substring",
       "language": "python",
+      "tier": "pure",
       "source_fixture": "fixtures/python_adversarial_buffer_token",
       "vector": "token_substring_coincidence",
       "expected_max_class": "weakly_exposed",
@@ -15,6 +16,7 @@
     {
       "id": "py_mock_call_not_value",
       "language": "python",
+      "tier": "pure",
       "source_fixture": "fixtures/python_adversarial_mock_call_not_value",
       "vector": "mock_call_not_value",
       "expected_max_class": "weakly_exposed",
@@ -23,6 +25,7 @@
     {
       "id": "ts_broad_tothrow",
       "language": "typescript",
+      "tier": "pure",
       "source_fixture": "fixtures/typescript_broad_tothrow",
       "vector": "cross_family_oracle_seam",
       "expected_max_class": "weakly_exposed",
@@ -31,6 +34,7 @@
     {
       "id": "ts_negated_t_oracle",
       "language": "typescript",
+      "tier": "pure",
       "source_fixture": "fixtures/typescript_negated_t_oracle",
       "vector": "negated_equality_not_exact_value",
       "expected_max_class": "weakly_exposed",
@@ -39,6 +43,7 @@
     {
       "id": "rust_weak_error_oracle",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/weak_error_oracle",
       "vector": "non_variant_observing_error_oracle",
       "expected_max_class": "weakly_exposed",
@@ -47,6 +52,7 @@
     {
       "id": "rust_error_path_sibling_oracle",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/error_path_sibling_oracle_fake_clean",
       "vector": "sibling_oracle_does_not_confirm_error_path",
       "expected_max_class": "weakly_exposed",
@@ -55,6 +61,7 @@
     {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/strong_error_oracle",
       "control": "must_stay_exposed",
       "expected_promoted": true
@@ -62,6 +69,7 @@
     {
       "id": "rust_unwrap_err_variant_positive_control",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/unwrap_err_variant_positive",
       "control": "must_stay_exposed",
       "expected_promoted": true
@@ -69,6 +77,7 @@
     {
       "id": "ts_strong_oracle_control",
       "language": "typescript",
+      "tier": "pure",
       "source_fixture": "fixtures/typescript_strong_oracle",
       "control": "must_stay_exposed",
       "expected_promoted": true
@@ -76,6 +85,7 @@
     {
       "id": "rust_transitive_reach_named_limitation",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/rust_transitive_reach_positive",
       "vector": "transitive_reach_named_not_silently_clean",
       "must_not_report_clean": true,
@@ -90,6 +100,7 @@
     {
       "id": "rust_transitive_reach_test_helper_chain_named_limitation",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/rust_transitive_reach_test_helper_chain",
       "vector": "test_helper_public_api_transitive_reach_named_not_silently_clean",
       "must_not_report_clean": true,
@@ -104,6 +115,7 @@
     {
       "id": "rust_macro_reach_named_limitation",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/rust_macro_reach_limitation",
       "vector": "macro_reach_named_not_silently_clean",
       "must_not_report_clean": true,

@@ -29,6 +29,9 @@ Policy impact:
 - New xtask command `check-evidence-promotion-honesty`: reads byte-pinned golden
   `expected/check.json` for each charter member and asserts the invariant.
 - New corpus manifest: `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
+- Every corpus case declares a `tier`: `pure` for tiny checked-in fixtures, or
+  `pinned_external` for future exact-repo cases with repo, commit, patch, and
+  budget metadata.
 - Registered in CI (routed-rust.yml and ci.yml) next to `check-fixture-contracts`.
 - `evidence-promotion-honesty-corpus` added to `is_manifest_only_fixture_dir`
   denylist so `goldens check` skips it.
@@ -72,6 +75,14 @@ says it was re-blessed to."
 1. Loads `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
 2. For each case, reads the source fixture's `expected/check.json` (the
    byte-pinned golden — NOT a fresh `ripr` run).
+2a. Validates the case tier before trusting the expectation:
+   - `pure` cases are checked-in tiny examples and must not carry
+     pinned-external metadata.
+   - `pinned_external` cases must carry `external_repo`, a 40-hex
+     `external_commit`, an existing `external_patch`, `runtime_budget_seconds`,
+     and `artifact_budget_bytes`.
+   - Missing or unknown tiers fail the gate. A future real-repo case may not
+     enter the corpus as an unbounded or branch-floating claim.
 3. `must_remain_non_promoted` cases: asserts NO finding's `classification` is
    `exposed`. Also checks that no finding exceeds `expected_max_class` on the
    severity ordering `exposed > weakly_exposed > reachable_unrevealed/no_static_path > *_unknown`.
@@ -146,6 +157,12 @@ limitations, witness disclosure, and report scope disclosure via
 `must_not_report_clean`, `must_emit_limitation`, `must_disclose_witness`,
 `must_disclose_scope`, and `must_not_emit_repair_packet`.
 
+All current cases are tier `pure`: tiny checked-in fixtures with byte-pinned
+`expected/check.json` reports. The manifest also reserves tier
+`pinned_external` for future real-repo cases, but those entries must name the
+exact upstream repository, exact 40-hex commit, checked-in patch, runtime budget,
+and artifact-size budget before the gate will accept them.
+
 ### Charter members (must_remain_non_promoted)
 
 | id | language | source_fixture | vector |
@@ -174,7 +191,10 @@ limitations, witness disclosure, and report scope disclosure via
 `check_fixture_contracts()` to verify the corpus is structurally valid (no
 duplicate ids, all fixtures exist, all have `expected/check.json`, no fixture is
 manifest-only, parity language coverage). This runs in CI as part of the
-existing `check-fixture-contracts` gate.
+existing `check-fixture-contracts` gate. The same validator rejects missing or
+unknown case tiers, rejects pinned-external metadata on `pure` cases, and
+rejects `pinned_external` cases that lack exact repo/commit/patch/budget
+metadata.
 
 ## Non-Goals
 
@@ -226,7 +246,13 @@ the gate has over-corrected or the fixture needs re-blessing
 | Flip named-limitation golden to zero findings -> gate fails naming `must_not_report_clean` | False-clean re-bless proof |
 | Remove `schema_version`/`tool`/`mode`/`root`/`base` from a scope-guard golden -> gate fails naming `must_disclose_scope` | Scope-disclosure re-bless proof |
 | Set `repair_packet_ready=true` in a named-limitation golden -> gate fails naming `must_not_emit_repair_packet` | False-delegation re-bless proof |
+| Omit `tier` or use an unknown value -> gate fails naming the case | Corpus tier contract |
+| Mark `tier: pinned_external` without repo/commit/patch/budgets -> gate fails naming missing metadata | Real-repo pinning contract |
+| Complete `tier: pinned_external` metadata with an exact repo, 40-hex commit, existing patch, and positive budgets -> validator accepts the case | Future external corpus contract |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
+| `evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers` | Validator rejects missing/unknown tiers and external metadata on pure cases |
+| `evidence_promotion_honesty_rejects_incomplete_pinned_external_tier` | Validator rejects branch-floating or budgetless external cases |
+| `evidence_promotion_honesty_accepts_complete_pinned_external_tier` | Validator accepts complete pinned external metadata |
 | `evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case` | Validator rejects scope-guard cases without a report scope header |
 | `evidence_promotion_honesty_rejects_packet_ready_limitation_case` | Validator rejects packet-ready delegation for opted-in limitation cases |
 | `cargo xtask check-fixture-contracts` | Corpus structural validity |
