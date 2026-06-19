@@ -181,8 +181,8 @@ existing `check-fixture-contracts` gate.
 ### Gate passes (all charter members at expected class)
 
 ```
-pass: all charter members at expected class; no promoted case carries exposed;
-all controls retain exposed
+pass: all charter members at expected class; no clean-guard case lost its
+findings; no promoted case carries exposed; all controls retain exposed
 ```
 
 ### Gate fails (dishonest re-bless detected)
@@ -212,6 +212,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | Flip charter golden to `exposed` → gate fails naming it | Dishonest re-bless proof |
 | Flip control golden to `weakly_exposed` → gate fails naming it | Over-correct guard proof |
 | Flip named-limitation golden to zero findings -> gate fails naming `must_not_report_clean` | False-clean re-bless proof |
+| `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
 | `cargo xtask check-fixture-contracts` | Corpus structural validity |
 | `cargo xtask check-command-catalog` | Command registration |
 | `cargo xtask check-workflows` | CI registration |

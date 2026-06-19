@@ -71753,6 +71753,89 @@ mod tests {
     }
 
     #[test]
+    fn evidence_promotion_honesty_pass_report_names_clean_guard() -> Result<(), String> {
+        with_temp_cwd("evidence-promotion-honesty-clean-guard-report", |root| {
+            let corpus = root.join(super::EVIDENCE_PROMOTION_HONESTY_CORPUS);
+            let py_fixture = root.join("fixtures/py");
+            let ts_fixture = root.join("fixtures/ts");
+            let rust_guard_fixture = root.join("fixtures/rust-guard");
+            let rust_control_fixture = root.join("fixtures/rust-control");
+            let ts_control_fixture = root.join("fixtures/ts-control");
+
+            for (fixture, classification) in [
+                (&py_fixture, "weakly_exposed"),
+                (&ts_fixture, "weakly_exposed"),
+                (&rust_guard_fixture, "no_static_path"),
+                (&rust_control_fixture, "exposed"),
+                (&ts_control_fixture, "exposed"),
+            ] {
+                let check_json = serde_json::json!({
+                    "summary": {"findings": 1},
+                    "findings": [{"id": classification, "classification": classification}]
+                });
+                write(
+                    &fixture.join("expected/check.json"),
+                    &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+                );
+            }
+
+            let corpus_json = serde_json::json!({
+                "cases": [
+                    {
+                        "id": "py_non_promoted",
+                        "language": "python",
+                        "source_fixture": py_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "ts_non_promoted",
+                        "language": "typescript",
+                        "source_fixture": ts_fixture,
+                        "must_remain_non_promoted": true
+                    },
+                    {
+                        "id": "rust_clean_guard",
+                        "language": "rust",
+                        "source_fixture": rust_guard_fixture,
+                        "must_not_report_clean": true,
+                        "must_remain_non_promoted": true,
+                        "expected_max_class": "no_static_path"
+                    },
+                    {
+                        "id": "rust_control",
+                        "language": "rust",
+                        "source_fixture": rust_control_fixture,
+                        "expected_promoted": true
+                    },
+                    {
+                        "id": "ts_control",
+                        "language": "typescript",
+                        "source_fixture": ts_control_fixture,
+                        "expected_promoted": true
+                    }
+                ]
+            });
+            write(
+                &corpus,
+                &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+            );
+
+            super::check_evidence_promotion_honesty()?;
+            let report =
+                fs::read_to_string(root.join("target/ripr/reports/evidence-promotion-honesty.md"))
+                    .map_err(|err| {
+                        format!("read check-evidence-promotion-honesty report: {err}")
+                    })?;
+
+            assert!(
+                report.contains("no clean-guard case lost its findings"),
+                "pass report should name the clean-guard invariant, got {report}"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
     fn editor_gap_cockpit_fixture_corpus_validator_accepts_complete_matrix() -> Result<(), String> {
         with_temp_cwd("editor-gap-cockpit-fixtures", |root| {
             write_editor_gap_cockpit_corpus(root, true);
