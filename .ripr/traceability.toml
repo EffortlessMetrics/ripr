@@ -2066,6 +2066,7 @@ tests = [
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
   "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_receipts_are_checked",
   "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_rejects_overclaiming",
+  "xtask/src/main.rs::tests::dogfood_typescript_preview_repair_loop_rejects_invented_source_verify_command",
   "xtask/src/main.rs::tests::typescript_preview_false_actionable_audit_cases_are_checked",
 ]
 fixtures = [

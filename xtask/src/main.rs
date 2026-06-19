@@ -1189,6 +1189,10 @@ struct DogfoodTypescriptPreviewRepairLoopScenario {
     actionability_category: String,
     static_limit_kind: Option<String>,
     repair_packet_ready: bool,
+    must_have_verify_command: bool,
+    must_have_receipt_command: bool,
+    must_not_invent_verify_command: bool,
+    must_not_emit_repair_packet: bool,
     authority_boundary: String,
     expected_test_or_observer_shape: String,
     verify_command: String,
@@ -51992,6 +51996,10 @@ fn dogfood_typescript_preview_repair_loop_scenarios_at(
             actionability_category: "unknown".to_string(),
             static_limit_kind: None,
             repair_packet_ready: true,
+            must_have_verify_command: false,
+            must_have_receipt_command: false,
+            must_not_invent_verify_command: false,
+            must_not_emit_repair_packet: false,
             authority_boundary: "unknown".to_string(),
             expected_test_or_observer_shape: "unknown".to_string(),
             verify_command: "unknown".to_string(),
@@ -52064,6 +52072,14 @@ fn dogfood_typescript_preview_repair_loop_scenarios_at(
                 .unwrap_or_else(|| "unknown".to_string()),
             static_limit_kind: json_string_field(case, "static_limit_kind"),
             repair_packet_ready: json_bool_field(case, "repair_packet_ready").unwrap_or(true),
+            must_have_verify_command: json_bool_field(case, "must_have_verify_command")
+                .unwrap_or(false),
+            must_have_receipt_command: json_bool_field(case, "must_have_receipt_command")
+                .unwrap_or(false),
+            must_not_invent_verify_command: json_bool_field(case, "must_not_invent_verify_command")
+                .unwrap_or(false),
+            must_not_emit_repair_packet: json_bool_field(case, "must_not_emit_repair_packet")
+                .unwrap_or(false),
             authority_boundary: json_string_field(case, "authority_boundary")
                 .unwrap_or_else(|| "unknown".to_string()),
             expected_test_or_observer_shape: json_string_field(
@@ -52158,6 +52174,23 @@ fn dogfood_typescript_preview_repair_loop_run(
     }
     if scenario.receipt_command == scenario.verify_command {
         errors.push("receipt_command must stay distinct from verify_command".to_string());
+    }
+    if scenario.must_have_verify_command
+        && !typescript_preview_repair_loop_concrete_operator_command(&scenario.verify_command)
+    {
+        errors.push(
+            "must_have_verify_command requires a concrete operator verify_command".to_string(),
+        );
+    }
+    if scenario.must_have_receipt_command
+        && !typescript_preview_repair_loop_concrete_operator_command(&scenario.receipt_command)
+    {
+        errors.push(
+            "must_have_receipt_command requires a concrete operator receipt_command".to_string(),
+        );
+    }
+    if scenario.must_not_emit_repair_packet && scenario.repair_packet_ready {
+        errors.push("must_not_emit_repair_packet requires repair_packet_ready=false".to_string());
     }
     if scenario.must_not_change.is_empty() {
         errors.push("must_not_change must name bounded edit constraints".to_string());
@@ -52411,6 +52444,45 @@ fn dogfood_typescript_preview_repair_loop_check_source_fixture(
             json_bool_field(actionability, "repair_packet_ready")
         ));
     }
+    if scenario.must_not_emit_repair_packet {
+        if json_bool_field(actionability, "repair_packet_ready") != Some(false) {
+            errors.push(
+                "must_not_emit_repair_packet requires source preview_actionability repair_packet_ready=false"
+                    .to_string(),
+            );
+        }
+        if finding
+            .get("typescript_preview_card")
+            .and_then(|card| json_bool_field(card, "repair_packet_ready"))
+            != Some(false)
+        {
+            errors.push(
+                "must_not_emit_repair_packet requires source preview card repair_packet_ready=false"
+                    .to_string(),
+            );
+        }
+    }
+    if scenario.must_not_invent_verify_command {
+        if json_string_array_field(finding, "evidence")
+            .iter()
+            .any(|line| line.starts_with("typescript_verify_command:"))
+        {
+            errors.push(
+                "must_not_invent_verify_command rejects source typescript_verify_command evidence"
+                    .to_string(),
+            );
+        }
+        if let Some(command) = finding
+            .get("typescript_preview_card")
+            .and_then(|card| card.get("verify"))
+            .and_then(|verify| json_string_field(verify, "command"))
+            .filter(|command| !command.trim().is_empty())
+        {
+            errors.push(format!(
+                "must_not_invent_verify_command requires source preview card verify.command to stay absent, got {command}"
+            ));
+        }
+    }
     if json_string_field(actionability, "why_not_actionable").as_deref()
         != Some(scenario.why_not_actionable.as_str())
     {
@@ -52421,6 +52493,19 @@ fn dogfood_typescript_preview_repair_loop_check_source_fixture(
     {
         errors.push("repair_route must match source preview actionability".to_string());
     }
+}
+
+fn typescript_preview_repair_loop_concrete_operator_command(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && !matches!(
+            trimmed,
+            "unknown"
+                | "not_applicable"
+                | "verify_command_unknown"
+                | "receipt_command_unknown"
+                | "command_unknown"
+        )
 }
 
 fn dogfood_typescript_preview_repair_loop_expect_string(
@@ -85306,6 +85391,15 @@ fn exact_owner_call_has_external_expected_value() {
                     .all(|scenario| !scenario.repair_packet_ready),
                 "TypeScript preview repair-loop receipts should not claim complete repair packets yet"
             );
+            assert!(
+                scenarios.iter().any(|scenario| {
+                    scenario.must_have_verify_command
+                        && scenario.must_have_receipt_command
+                        && scenario.must_not_invent_verify_command
+                        && scenario.must_not_emit_repair_packet
+                }),
+                "TypeScript preview repair-loop receipts should pin operator commands without source packet authority"
+            );
 
             for scenario in scenarios {
                 let run = dogfood_typescript_preview_repair_loop_run(&scenario);
@@ -85826,6 +85920,10 @@ fn exact_owner_call_has_external_expected_value() {
             actionability_category: "incomplete_repair_packet".to_string(),
             static_limit_kind: None,
             repair_packet_ready: false,
+            must_have_verify_command: true,
+            must_have_receipt_command: true,
+            must_not_invent_verify_command: true,
+            must_not_emit_repair_packet: true,
             authority_boundary: "preview_advisory_only".to_string(),
             expected_test_or_observer_shape: "exact equality-boundary assertion".to_string(),
             verify_command: "npm test -- discount".to_string(),
@@ -85900,6 +85998,92 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(
             weak_report
                 .contains("weak_oracle_downgraded must not claim already-observed actionability")
+        );
+
+        let mut placeholder_command = valid_typescript_preview_repair_loop_scenario();
+        placeholder_command.verify_command = "verify_command_unknown".to_string();
+        placeholder_command.receipt_command = "receipt_command_unknown".to_string();
+        let placeholder_report = dogfood_typescript_preview_repair_loop_run(&placeholder_command)
+            .errors
+            .join("\n");
+        assert!(
+            placeholder_report
+                .contains("must_have_verify_command requires a concrete operator verify_command")
+        );
+        assert!(
+            placeholder_report
+                .contains("must_have_receipt_command requires a concrete operator receipt_command")
+        );
+
+        let mut packet_overclaim = valid_typescript_preview_repair_loop_scenario();
+        packet_overclaim.repair_packet_ready = true;
+        let packet_report = dogfood_typescript_preview_repair_loop_run(&packet_overclaim)
+            .errors
+            .join("\n");
+        assert!(
+            packet_report
+                .contains("must_not_emit_repair_packet requires repair_packet_ready=false")
+        );
+    }
+
+    #[test]
+    fn dogfood_typescript_preview_repair_loop_rejects_invented_source_verify_command() {
+        with_temp_cwd(
+            "typescript-preview-repair-loop-invented-source-verify",
+            |root| {
+                let fixture = root.join("fixtures/ts/expected/check.json");
+                write(
+                    &fixture,
+                    r#"{
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "weakly_exposed",
+      "language": "typescript",
+      "language_status": "preview",
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "static_limit_kind": null,
+      "evidence": [
+        "typescript_verify_command: npm test -- invented"
+      ],
+      "probe": {
+        "family": "predicate",
+        "owner": "fixture::applyDiscount"
+      },
+      "preview_actionability": {
+        "gap_state": "advisory",
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "repair_packet_ready": false,
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"
+      },
+      "typescript_preview_card": {
+        "repair_packet_ready": false,
+        "verify": {
+          "command": "npm test -- invented"
+        }
+      }
+    }
+  ]
+}
+"#,
+                );
+
+                let mut scenario = valid_typescript_preview_repair_loop_scenario();
+                scenario.source_fixture = "fixtures/ts".to_string();
+                let report = dogfood_typescript_preview_repair_loop_run(&scenario)
+                    .errors
+                    .join("\n");
+
+                assert!(report.contains(
+                "must_not_invent_verify_command rejects source typescript_verify_command evidence"
+            ));
+                assert!(report.contains(
+                "must_not_invent_verify_command requires source preview card verify.command to stay absent"
+            ));
+            },
         );
     }
 
