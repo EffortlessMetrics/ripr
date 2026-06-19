@@ -16486,7 +16486,7 @@ fn known_pr_inline_comment_skip_reasons() -> [&'static str; 7] {
         "mode_off",
         "summary_only",
         "suppressed",
-        "cap_reached",
+        "inline_comment_cap_reached",
         "unchanged_tests",
         "not_publishable",
         "already_current",

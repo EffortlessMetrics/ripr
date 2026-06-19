@@ -4802,14 +4802,17 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_reject_seam_id_without_source_location_summary_only",
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_actionable_card_carries_verify_and_receipt_commands",
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_every_card_carries_gap_state",
-  "crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary"
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::tests::inline_comment_publish_plan_uses_spec0068_inline_cap_token"
 ]
 fixtures = [
-  "fixtures/boundary_gap/expected/pr-guidance"
+  "fixtures/boundary_gap/expected/pr-guidance",
+  "fixtures/boundary_gap/expected/pr-inline-comment-publisher"
 ]
 code = [
   "crates/ripr/src/output/review_comments.rs",
-  "crates/ripr/src/output/evidence_record.rs"
+  "crates/ripr/src/output/evidence_record.rs",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md",

@@ -119,11 +119,11 @@ Close the working-set selection/suppression vocabulary by replacing today's
 free-text `summary_reason` strings with the six RIPR-SPEC-0068 machine
 tokens, delivering the planned tokens string-for-string:
 
-- `inline_comment_cap_reached` (planned — tokenizes the free-text "inline
-  comment cap reached"; the publish-plan skip reason `cap_reached` in
-  `pr_inline_comment_publish_plan.rs` and the RIPR-SPEC-0025 metric name
-  `pr_inline_comment_cap_reached` name the same condition, and this slice
-  collapses all three names into this one token);
+- `inline_comment_cap_reached` (implemented for review guidance and the
+  publish-plan cap skip path; tokenizes the former free-text "inline comment
+  cap reached" and replaces the historical publish-plan skip reason
+  `cap_reached`; the RIPR-SPEC-0025 metric name
+  `pr_inline_comment_cap_reached` names the same condition);
 - `no_safe_changed_line_placement` (planned — tokenizes today's free text);
 - `navigation_only_cross_language_target` (planned — tokenizes today's free
   text);

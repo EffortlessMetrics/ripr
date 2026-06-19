@@ -6256,8 +6256,9 @@ Field contract:
   claim runtime mutation results.
 - `skipped[]` records capped, summary-only, suppressed, disabled, and
   already-current items.
-- `skip_reason` is `mode_off`, `summary_only`, `suppressed`, `cap_reached`,
-  `unchanged_tests`, `not_publishable`, or `already_current`.
+- `skip_reason` is `mode_off`, `summary_only`, `suppressed`,
+  `inline_comment_cap_reached`, `unchanged_tests`, `not_publishable`, or
+  `already_current`.
 - `blocked[]` records hard safety blockers such as missing permissions,
   untrusted forks, missing PR context, unsafe events, missing dedupe keys, or
   malformed inputs.

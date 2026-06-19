@@ -165,7 +165,7 @@ the rename is traceable string-for-string:
 
 | Reason token | Status | Meaning |
 | --- | --- | --- |
-| `inline_comment_cap_reached` | planned — tokenizes today's free-text `summary_reason` "inline comment cap reached"; the existing publish-plan skip reason `cap_reached` (`pr_inline_comment_publish_plan.rs`) and the RIPR-SPEC-0025 metric name `pr_inline_comment_cap_reached` name the same condition, and the slice must collapse the three names into this one token | placement existed; the inline cap was already filled. |
+| `inline_comment_cap_reached` | implemented for review guidance and the publish-plan cap skip path; tokenizes the former free-text `summary_reason` "inline comment cap reached" and replaces the historical publish-plan skip reason `cap_reached`. The RIPR-SPEC-0025 metric name `pr_inline_comment_cap_reached` names the same condition. | placement existed; the inline cap was already filled. |
 | `no_safe_changed_line_placement` | planned — tokenizes today's free-text `summary_reason` "no safe changed-line placement was available for this seam" | no changed production line was a safe anchor; card moves to summary with `source_location`. |
 | `navigation_only_cross_language_target` | planned — tokenizes today's free-text `summary_reason` "navigation-only cross-language target limitation; no PR repair comment emitted" | cross-language test target unresolved; navigation context only, no repair comment. |
 | `nearby_test_changed` | existing | the recommended test file changed in this PR; the author is already working there. |
@@ -271,10 +271,9 @@ these states as success:
   changed owner, the missing discriminator, a suggested assertion
   shape, a related test with file and line, and a copyable verify
   command. Clicking the placement lands on the changed line.
-- A fourth qualifying seam appears in the summary with reason
-  `inline_comment_cap_reached` (the planned token for today's
-  free-text "inline comment cap reached"), keeping the inline
-  surface sparse.
+- A fourth qualifying seam appears in the summary, or is skipped by
+  the inline-comment publish plan, with reason
+  `inline_comment_cap_reached`, keeping the inline surface sparse.
 - A cross-language card whose test target does not resolve renders
   as navigation-only with `gap_state = "static_limitation"`,
   `repairability = "no_action"`, and the `repair_route` attached to
@@ -297,6 +296,9 @@ these states as success:
   — every rendered card (inline, summary-only, cross-language) carries gap_state.
 - `crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary`
   — every summary_reason value is a member of the closed vocabulary constants.
+- `crates/ripr/src/output/pr_inline_comment_publish_plan.rs::tests::inline_comment_publish_plan_uses_spec0068_inline_cap_token`
+  — the publish-plan cap skip reason uses `inline_comment_cap_reached`, not
+  the historical `cap_reached` token.
 
 **Deferral note (working-set canonical_gap_id):** the gap-ledger path already emits
 `canonical_gap_id` from `record.canonical_gap_id`. The working-set path does not
