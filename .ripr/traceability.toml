@@ -6001,6 +6001,7 @@ tests = [
   "xtask/src/main.rs::check_evidence_promotion_honesty",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_pass_report_names_clean_guard",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_clean_report_for_clean_guard_case",
+  "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
 ]
 fixtures = [

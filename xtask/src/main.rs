@@ -10443,7 +10443,7 @@ fn check_evidence_promotion_honesty() -> Result<(), String> {
     validate_evidence_promotion_honesty_corpus_at(corpus_path, &mut violations)?;
 
     let report = if violations.is_empty() {
-        "pass: all charter members at expected class; no clean-guard case lost its findings; no promoted case carries exposed; all controls retain exposed".to_string()
+        "pass: all charter members at expected class; no clean-guard case lost its findings; scope-guard cases kept report scope headers; no promoted case carries exposed; all controls retain exposed".to_string()
     } else {
         format!("FAIL: {}", violations.join("; "))
     };
@@ -10480,7 +10480,10 @@ fn check_evidence_promotion_honesty() -> Result<(), String> {
                revert the production change or add a stricter corpus entry.\n\
              2. If a control case lost `exposed`, the gate has over-corrected — revert \
                the production change or update the control.\n\
-             3. To register a new fake-clean, add a `must_remain_non_promoted` case to \
+             3. If a scope-guard case lost report-level scope fields, restore the \
+               golden's schema_version/tool/mode/root/base header or remove the scope \
+               guard only after updating the governing spec.\n\
+             4. To register a new fake-clean, add a `must_remain_non_promoted` case to \
                fixtures/evidence-promotion-honesty-corpus/corpus.json.\n",
         );
     }
@@ -10633,6 +10636,38 @@ fn validate_evidence_promotion_honesty_corpus_at(
                      summary.findings={summary_findings} and findings.len()={} -- a re-bless \
                      made a known gap read clean (false-clean regression)",
                     findings.len()
+                ));
+            }
+        }
+
+        // Semantic assertion (RIPR-SPEC-0108): a charter case may require the
+        // report-level scope header to remain visible. This is a first-run
+        // honesty guard: a known limitation case must not be re-blessed into an
+        // artifact that still has findings but no machine-readable statement of
+        // which tool/mode/root/base produced them.
+        let must_disclose_scope = case
+            .get("must_disclose_scope")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if must_disclose_scope {
+            let missing_scope_fields = ["schema_version", "tool", "mode", "root", "base"]
+                .iter()
+                .filter_map(|field| {
+                    let present = check_json
+                        .get(*field)
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty());
+                    (!present).then_some(*field)
+                })
+                .collect::<Vec<_>>();
+            if !missing_scope_fields.is_empty() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
+                     `must_disclose_scope` requires report-level scope fields \
+                     schema_version/tool/mode/root/base, but missing or empty field(s): {} -- \
+                     a re-bless kept evidence without preserving the analyzed-scope header \
+                     (first-run trust regression)",
+                    missing_scope_fields.join(", ")
                 ));
             }
         }
@@ -71753,6 +71788,90 @@ mod tests {
     }
 
     #[test]
+    fn evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case() -> Result<(), String>
+    {
+        let root = temp_dir("evidence-promotion-honesty-scope-guard");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_scope_fixture = root.join("fixtures/rust-scope");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_scope_fixture, "no_static_path"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            let check_json = serde_json::json!({
+                "summary": {"findings": 1},
+                "findings": [{"id": classification, "classification": classification}]
+            });
+            write(
+                &fixture.join("expected/check.json"),
+                &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+            );
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_scope_guard",
+                    "language": "rust",
+                    "source_fixture": rust_scope_fixture,
+                    "must_disclose_scope": true,
+                    "must_remain_non_promoted": true,
+                    "expected_max_class": "no_static_path"
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(
+            report.contains("rust_scope_guard") && report.contains("must_disclose_scope"),
+            "expected scope-guard violation, got {violations:?}"
+        );
+        assert!(report.contains("schema_version"));
+        assert!(report.contains("mode"));
+        assert!(report.contains("root"));
+        assert!(report.contains("base"));
+        Ok(())
+    }
+
+    #[test]
     fn evidence_promotion_honesty_pass_report_names_clean_guard() -> Result<(), String> {
         with_temp_cwd("evidence-promotion-honesty-clean-guard-report", |root| {
             let corpus = root.join(super::EVIDENCE_PROMOTION_HONESTY_CORPUS);
@@ -71830,6 +71949,10 @@ mod tests {
             assert!(
                 report.contains("no clean-guard case lost its findings"),
                 "pass report should name the clean-guard invariant, got {report}"
+            );
+            assert!(
+                report.contains("scope-guard cases kept report scope headers"),
+                "pass report should name the scope-guard invariant, got {report}"
             );
             Ok(())
         })
