@@ -10633,6 +10633,7 @@ enum EvidencePromotionSemanticAssertion {
     ExpectedCompleteness { completeness: String },
     MustDiscloseWitness,
     MustDiscloseLimitationDetail,
+    ExpectedLimitationRoute { route: String },
     MustNotClaimNoTestsFound,
     MustSeeChangedFile { path: String },
 }
@@ -10916,6 +10917,11 @@ fn evidence_promotion_parse_assertion(
         "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
         "must_disclose_limitation_detail" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail)
+        }
+        "expected_limitation_route" => {
+            let route =
+                evidence_promotion_required_assertion_string(case_id, index, assertion, "route")?;
+            Ok(EvidencePromotionSemanticAssertion::ExpectedLimitationRoute { route })
         }
         "must_not_claim_no_tests_found" => {
             Ok(EvidencePromotionSemanticAssertion::MustNotClaimNoTestsFound)
@@ -11607,6 +11613,15 @@ fn evidence_promotion_semantic_violations(
                     }
                 }
             }
+            EvidencePromotionSemanticAssertion::ExpectedLimitationRoute { route } => {
+                let mismatches = evidence_promotion_limitation_route_mismatches(&findings, route);
+                if !mismatches.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `expected_limitation_route` requires every static limitation to use analyzer route `{route}`, but found {}",
+                        mismatches.join(", ")
+                    ));
+                }
+            }
             EvidencePromotionSemanticAssertion::MustNotClaimNoTestsFound => {
                 let mut no_tests_paths = evidence_promotion_no_tests_found_claim_paths(check_json);
                 if let Some(human_text) = human_text {
@@ -11734,6 +11749,52 @@ fn evidence_promotion_limitation_detail_lines(findings: &[Value]) -> Vec<(String
         }
     }
     details
+}
+
+fn evidence_promotion_limitation_route_mismatches(
+    findings: &[Value],
+    expected_route: &str,
+) -> Vec<String> {
+    let mut mismatches = Vec::new();
+    let mut limitation_count = 0usize;
+    for (index, finding) in findings.iter().enumerate() {
+        if finding
+            .get("static_limit_kind")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            continue;
+        }
+        limitation_count += 1;
+        let route = finding
+            .get("evidence")
+            .and_then(Value::as_array)
+            .and_then(|evidence| {
+                evidence.iter().filter_map(Value::as_str).find_map(|line| {
+                    line.trim()
+                        .strip_prefix("limitation_analyzer_route: ")
+                        .map(str::trim)
+                })
+            });
+        match route {
+            Some(route) if route == expected_route => {}
+            Some("") => {
+                mismatches.push(format!("$.findings[{index}].evidence:empty route"));
+            }
+            Some(route) => {
+                mismatches.push(format!("$.findings[{index}].evidence:{route}"));
+            }
+            None => {
+                mismatches.push(format!("$.findings[{index}].evidence:missing route"));
+            }
+        }
+    }
+
+    if limitation_count == 0 {
+        mismatches.push("$.findings:missing static_limit_kind".to_string());
+    }
+
+    mismatches
 }
 
 fn evidence_promotion_missing_human_limitation_detail_paths(
@@ -74336,7 +74397,11 @@ mod tests {
                         "static_limit_kind": "rust_transitive_reach_unresolved",
                         "verify_command": "cargo test typed_case",
                         "evidence": [
-                            "For example, the test `typed_case` (tests/typed.rs:1) calls `entry`, an entry point that may lead here."
+                            "For example, the test `typed_case` (tests/typed.rs:1) calls `entry`, an entry point that may lead here.",
+                            "limitation_last_established_edge: test `typed_case` (tests/typed.rs:1) -> entry `entry`",
+                            "limitation_first_unresolved_edge: entry `entry` -> owner `changed` through a transitive Rust helper path",
+                            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
+                            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
                         ]
                     }
                 ]
@@ -74382,6 +74447,11 @@ mod tests {
                         {"type": "must_have_verify_command"},
                         {"type": "must_not_emit_repair_packet"},
                         {"type": "must_disclose_witness"},
+                        {"type": "must_disclose_limitation_detail"},
+                        {
+                            "type": "expected_limitation_route",
+                            "route": "analysis/rust-public-api-transitive-reach"
+                        },
                         {"type": "must_not_claim_no_tests_found"},
                         {"type": "must_not_promote"},
                         {"type": "maximum_class", "class": "no_static_path"},
@@ -74839,8 +74909,12 @@ mod tests {
 
     #[test]
     fn evidence_promotion_semantic_assertions_accept_limitation_detail_projection() {
-        let assertions =
-            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail];
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail,
+            super::EvidencePromotionSemanticAssertion::ExpectedLimitationRoute {
+                route: "analysis/rust-public-api-transitive-reach".to_string(),
+            },
+        ];
         let check_json = serde_json::json!({
             "summary": {"findings": 1},
             "findings": [
@@ -74875,6 +74949,47 @@ mod tests {
         );
 
         assert!(violations.is_empty(), "{violations:?}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_wrong_limitation_route() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::ExpectedLimitationRoute {
+                route: "analysis/rust-public-api-transitive-reach".to_string(),
+            },
+        ];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_internal.rs:predicate:inner",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "limitation_last_established_edge: test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path",
+                        "limitation_analyzer_route: analysis/generic-static-limitation",
+                        "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    ]
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "wrong_limitation_route",
+            Some("fixtures/wrong_limitation_route"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_limitation_route"), "{report}");
+        assert!(
+            report.contains("$.findings[0].evidence:analysis/generic-static-limitation"),
+            "{report}"
+        );
     }
 
     #[test]
@@ -74973,6 +75088,10 @@ mod tests {
                 },
                 super::EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket,
                 super::EvidencePromotionSemanticAssertion::MustDiscloseWitness,
+                super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail,
+                super::EvidencePromotionSemanticAssertion::ExpectedLimitationRoute {
+                    route: "analysis/rust-public-api-transitive-reach".to_string(),
+                },
                 super::EvidencePromotionSemanticAssertion::MustNotPromote,
                 super::EvidencePromotionSemanticAssertion::MaximumClass {
                     class: "no_static_path".to_string(),
@@ -74999,7 +75118,11 @@ mod tests {
                     "static_limit_kind": "rust_transitive_reach_unresolved",
                     "evidence": [
                         "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace.",
-                        "For example, the test `test_basic` (tests/test_version_req.rs:38) calls `assert_match_all`, an entry point that may lead here."
+                        "For example, the test `test_basic` (tests/test_version_req.rs:38) calls `assert_match_all`, an entry point that may lead here.",
+                        "limitation_last_established_edge: test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`",
+                        "limitation_first_unresolved_edge: entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path",
+                        "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
+                        "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
                     ]
                 }
             ]

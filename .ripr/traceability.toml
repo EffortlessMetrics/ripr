@@ -6025,6 +6025,7 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_limitation_detail",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_projection_drift",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_wrong_limitation_route",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
 ]
 fixtures = [

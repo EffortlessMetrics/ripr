@@ -116,6 +116,10 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
         { "type": "must_not_claim_no_tests_found" },
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "no_static_path" }
@@ -137,6 +141,10 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
         { "type": "must_not_claim_no_tests_found" },
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "no_static_path" }
@@ -158,6 +166,10 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-aware-reach"
+        },
         { "type": "must_not_claim_no_tests_found" },
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "no_static_path" }
@@ -230,6 +242,10 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
         { "type": "must_not_claim_no_tests_found" },
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "no_static_path" }
