@@ -20,7 +20,7 @@ Static exposure
 
 Evidence
   - reach no: No static test path found for the changed owner
-  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - infection unknown: No statically reachable test path was found, so activation/infection cannot be estimated
   - propagation yes: Changed behavior appears to influence returned value: a - b
   - observation no: No reachable test oracle found
   - discriminator no: No assertion can discriminate the changed behavior without a reachable test
@@ -60,7 +60,7 @@ Static exposure
 
 Evidence
   - reach no: No static test path found for the changed owner
-  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - infection unknown: No statically reachable test path was found, so activation/infection cannot be estimated
   - propagation yes: Changed behavior appears to influence returned value: a - b
   - observation no: No reachable test oracle found
   - discriminator no: No assertion can discriminate the changed behavior without a reachable test

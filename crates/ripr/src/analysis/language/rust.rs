@@ -210,6 +210,7 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
     };
 
     if let Some(witness) = classify::find_transitive_witness(&owner_name, index) {
+        replace_witnessed_no_path_infection_summary(finding);
         finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
         finding
             .stop_reasons
@@ -221,7 +222,7 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
             .evidence
             .push(classify::transitive_reach_witness_pointer(&witness));
     } else if let Some(witness) = classify::find_macro_reach_witness(&owner_name, index) {
-        replace_macro_witness_infection_summary(finding);
+        replace_witnessed_no_path_infection_summary(finding);
         finding.static_limit_kind = Some(StaticLimitKind::RustMacroReachUnresolved);
         finding.stop_reasons.push(StopReason::MacroReachUnresolved);
         finding
@@ -233,7 +234,7 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
     }
 }
 
-fn replace_macro_witness_infection_summary(finding: &mut Finding) {
+fn replace_witnessed_no_path_infection_summary(finding: &mut Finding) {
     if finding.ripr.infect.summary == NO_TESTS_INFECTION_SUMMARY {
         finding.ripr.infect.summary =
             NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY.to_string();
@@ -384,12 +385,14 @@ mod tests {
         DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit, owner_has_ffi_attr,
+        replace_witnessed_no_path_infection_summary,
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{FunctionSummary, RustIndex};
     use crate::domain::{
-        DeltaKind, ExposureClass, Probe, ProbeFamily, ProbeId, SourceLocation, StaticLimitKind,
-        SymbolId,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
+        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        StaticLimitKind, SymbolId,
     };
     use std::env::VarError;
     use std::path::PathBuf;
@@ -503,6 +506,51 @@ mod tests {
         enforce_changed_rust_line_limit(&files, 2)
     }
 
+    #[test]
+    fn witnessed_no_path_limitation_does_not_claim_no_tests_found() {
+        let mut finding = no_path_finding_with_infection_summary(
+            super::NO_TESTS_INFECTION_SUMMARY,
+            vec![
+                "first evidence".to_string(),
+                super::NO_TESTS_INFECTION_SUMMARY.to_string(),
+            ],
+        );
+
+        replace_witnessed_no_path_infection_summary(&mut finding);
+
+        assert_eq!(
+            finding.ripr.infect.summary,
+            super::NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .all(|line| line != super::NO_TESTS_INFECTION_SUMMARY),
+            "witnessed limitations must not say no tests were found: {:?}",
+            finding.evidence
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|line| line == super::NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY),
+            "replacement evidence line should be preserved for renderers"
+        );
+    }
+
+    #[test]
+    fn witnessed_no_path_limitation_preserves_other_infection_summaries() {
+        let summary = "No reachable tests were found, so infection cannot be established";
+        let mut finding =
+            no_path_finding_with_infection_summary(summary, vec![summary.to_string()]);
+
+        replace_witnessed_no_path_infection_summary(&mut finding);
+
+        assert_eq!(finding.ripr.infect.summary, summary);
+        assert_eq!(finding.evidence, vec![summary.to_string()]);
+    }
+
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(path),
@@ -519,6 +567,52 @@ mod tests {
                 new_side_line: line,
             })
             .collect()
+    }
+
+    fn no_path_finding_with_infection_summary(summary: &str, evidence: Vec<String>) -> Finding {
+        let stage = |state| StageEvidence::new(state, Confidence::Low, "stage");
+        Finding {
+            id: "probe:src_lib.rs:predicate:test".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:src_lib.rs:predicate:test".to_string()),
+                location: SourceLocation::new("src/lib.rs", 2, 1),
+                owner: Some(SymbolId("src/lib.rs::inner".to_string())),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: None,
+                after: Some("if a >= b {".to_string()),
+                expression: "if a >= b {".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class: ExposureClass::NoStaticPath,
+            ripr: RiprEvidence {
+                reach: stage(StageState::No),
+                infect: StageEvidence::new(StageState::Unknown, Confidence::Low, summary),
+                propagate: stage(StageState::Yes),
+                reveal: RevealEvidence {
+                    observe: stage(StageState::No),
+                    discriminate: stage(StageState::No),
+                },
+            },
+            confidence: 0.48,
+            evidence,
+            missing: Vec::new(),
+            flow_sinks: Vec::new(),
+            activation: ActivationEvidence::default(),
+            stop_reasons: Vec::new(),
+            related_tests: Vec::new(),
+            recommended_next_step: None,
+            language: None,
+            language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+        }
     }
 
     // --- FFI / cross-language guard tests (#910) ---

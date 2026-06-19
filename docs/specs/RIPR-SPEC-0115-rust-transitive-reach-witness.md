@@ -104,6 +104,11 @@ to open. The producer (`analysis::classify::transitive_reach`) and the renderer
 single-sourced (reuse, don't fork). No structured JSON field is added; the witness lives in the
 existing `evidence` vec (0114's established limitation-prose channel).
 
+Because the witnessed limitation names a candidate test, the same finding MUST NOT retain the
+generic "No tests were found" infection summary. It must use the narrower statement that no
+statically reachable test path was confirmed. That preserves the limitation while avoiding the
+first-run contradiction "Where to look: test X" plus "No tests were found".
+
 ### When NOT found
 
 Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
@@ -166,6 +171,10 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 6. **Class invariance**: in every case above, `classification` stays `no_static_path`; the witness
    never appears in `related_tests`.
 
+7. **No no-tests contradiction**: when the witness pointer is present, neither JSON nor human output
+   says "No tests were found". The finding may still say that no statically reachable test path was
+   confirmed.
+
 ## Required Evidence
 
 - `has_transitive_candidate` changed to return `Option<TransitiveWitness>` in
@@ -181,8 +190,9 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 - Negative fixture unchanged.
 - Unit tests: witness captured on a positive path; `None` on no path; deterministic selection
   across two witnesses; witness-pointer message contains "may lead here" and none of the forbidden
-  coverage verbs; existing RIPR-SPEC-0114 boundary tests (depth, macro, external) still pass with
-  the new return type.
+  coverage verbs; witnessed no-path limitation rewrites the generic no-tests infection summary;
+  existing RIPR-SPEC-0114 boundary tests (depth, macro, external) still pass with the new return
+  type.
 
 ## Test Mapping
 
@@ -206,6 +216,14 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
   — human renderer surfaces the witness under `Where to look`
 - `crates/ripr/src/output/human::tests::human_output_omits_where_to_look_without_witness`
   — no witness line -> no `Where to look` section (fail-closed)
+- `crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found`
+  — witnessed no-path limitations rewrite the generic no-tests infection summary
+- `crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries`
+  — non-generic infection summaries are not broadened or rewritten
+- `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness`
+  — the corpus assertion fails closed when a witnessed limitation still says no tests were found
+- `xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness`
+  — the corpus assertion fails closed when a fixture human golden still says no tests were found
 
 ## Implementation Mapping
 
