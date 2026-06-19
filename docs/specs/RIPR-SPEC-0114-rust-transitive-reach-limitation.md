@@ -143,6 +143,8 @@ Genuinely-untested stays genuinely-untested.
 - Negative fixture: `fixtures/rust_transitive_reach_negative/` — limitation does NOT fire.
 - Unit tests covering: positive path, no path, depth-5 boundary (found), depth-6 (not found),
   macro skip, external callee stop, honest message language.
+- JSON evidence and human output surface the limitation detail: last established
+  edge, first unresolved edge, analyzer route, and non-claim.
 
 ## Test Mapping
 
@@ -160,6 +162,10 @@ Genuinely-untested stays genuinely-untested.
   — external callees stop walk
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::wire_message_contains_honest_may_language_and_no_coverage_claim`
   — message uses "may", no coverage claim
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::transitive_reach_limitation_detail_names_edges_route_and_non_claim`
+  — JSON evidence names the last established edge, first unresolved edge, analyzer route, and non-claim
+- `crates/ripr/src/output/human.rs::tests::human_output_surfaces_static_limitation_detail`
+  — human output projects limitation detail under `Limitation detail`
 
 ## Implementation Mapping
 
@@ -171,8 +177,8 @@ Genuinely-untested stays genuinely-untested.
 | Module export | `crates/ripr/src/analysis/classify/mod.rs` |
 | Wiring (diff mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_diff` |
 | Wiring (repo mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_repo` |
-| JSON renderer | already handles `static_limit_kind` generically (no change) |
-| Human renderer | already handles `stop_reasons` generically (no change) |
+| JSON evidence detail | `crates/ripr/src/analysis/classify/transitive_reach.rs::transitive_reach_limitation_detail_lines` |
+| Human renderer detail | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture | `fixtures/rust_transitive_reach_positive/` |
 | Test-helper public API fixture | `fixtures/rust_transitive_reach_test_helper_chain/` |
 | Negative fixture | `fixtures/rust_transitive_reach_negative/` |

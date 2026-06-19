@@ -221,6 +221,12 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
         finding
             .evidence
             .push(classify::transitive_reach_witness_pointer(&witness));
+        finding
+            .evidence
+            .extend(classify::transitive_reach_limitation_detail_lines(
+                &witness,
+                &owner_name,
+            ));
     } else if let Some(witness) = classify::find_macro_reach_witness(&owner_name, index) {
         replace_witnessed_no_path_infection_summary(finding);
         finding.static_limit_kind = Some(StaticLimitKind::RustMacroReachUnresolved);
@@ -231,6 +237,12 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
         finding
             .evidence
             .push(classify::macro_reach_witness_pointer(&witness));
+        finding
+            .evidence
+            .extend(classify::macro_reach_limitation_detail_lines(
+                &witness,
+                &owner_name,
+            ));
     }
 }
 

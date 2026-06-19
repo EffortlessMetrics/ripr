@@ -8,8 +8,11 @@ mod summary;
 mod support;
 
 pub use classification::ExposureClass;
-pub(crate) use classification::NO_STATIC_PATH_NEXT_STEP;
-pub(crate) use classification::TRANSITIVE_REACH_WITNESS_PREFIX;
+pub(crate) use classification::{
+    LIMITATION_ANALYZER_ROUTE_PREFIX, LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+    LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX, LIMITATION_NON_CLAIM_PREFIX, NO_STATIC_PATH_NEXT_STEP,
+    TRANSITIVE_REACH_WITNESS_PREFIX,
+};
 pub use evidence::{
     Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
     RiprEvidence, StageEvidence, StageState,

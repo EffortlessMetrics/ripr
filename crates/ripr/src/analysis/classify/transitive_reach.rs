@@ -286,6 +286,40 @@ pub(in crate::analysis) fn transitive_reach_witness_pointer(witness: &Transitive
     )
 }
 
+pub(in crate::analysis) fn transitive_reach_limitation_detail_lines(
+    witness: &TransitiveWitness,
+    owner_name: &str,
+) -> [String; 4] {
+    let location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.test_line
+    );
+    [
+        format!(
+            "{}test `{}` ({}) -> entry `{}`",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+            witness.test_name,
+            location,
+            witness.entry_symbol
+        ),
+        format!(
+            "{}entry `{}` -> owner `{}` through a transitive Rust helper path",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+            witness.entry_symbol,
+            owner_name
+        ),
+        format!(
+            "{}analysis/rust-public-api-transitive-reach",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX
+        ),
+        format!(
+            "{}named limitation only; ripr cannot confirm or deny that this path observes the change",
+            crate::domain::LIMITATION_NON_CLAIM_PREFIX
+        ),
+    ]
+}
+
 /// Builds the concrete macro witness pointer appended after
 /// [`RUST_MACRO_REACH_MESSAGE`]. The pointer names the test, entry symbol, and
 /// macro boundary, using "may" language only.
@@ -318,6 +352,47 @@ pub(in crate::analysis) fn macro_reach_witness_pointer(witness: &MacroReachWitne
         macro_location,
         others
     )
+}
+
+pub(in crate::analysis) fn macro_reach_limitation_detail_lines(
+    witness: &MacroReachWitness,
+    owner_name: &str,
+) -> [String; 4] {
+    let test_location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.test_line
+    );
+    let macro_location = format!(
+        "{}:{}",
+        witness.macro_file.display().to_string().replace('\\', "/"),
+        witness.macro_line
+    );
+    [
+        format!(
+            "{}test `{}` ({}) -> entry `{}` -> macro `{}!` at {}",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+            witness.test_name,
+            test_location,
+            witness.entry_symbol,
+            witness.macro_name,
+            macro_location
+        ),
+        format!(
+            "{}macro `{}!` expansion toward owner `{}`",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+            witness.macro_name,
+            owner_name
+        ),
+        format!(
+            "{}analysis/rust-macro-aware-reach",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX
+        ),
+        format!(
+            "{}named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change",
+            crate::domain::LIMITATION_NON_CLAIM_PREFIX
+        ),
+    ]
 }
 
 /// Collect all tests from the index, deduplicating by (name, file).
@@ -881,6 +956,36 @@ mod tests {
         assert!(transitive_reach_witness_pointer(&witness).contains("and 2 other tests"));
     }
 
+    #[test]
+    fn transitive_reach_limitation_detail_names_edges_route_and_non_claim() {
+        let witness = TransitiveWitness {
+            test_name: "test_uses_outer".to_string(),
+            test_file: PathBuf::from("tests/it.rs"),
+            test_line: 12,
+            entry_symbol: "outer".to_string(),
+            other_test_count: 0,
+        };
+
+        let detail = transitive_reach_limitation_detail_lines(&witness, "inner");
+
+        assert_eq!(
+            detail[0],
+            "limitation_last_established_edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`"
+        );
+        assert_eq!(
+            detail[1],
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path"
+        );
+        assert_eq!(
+            detail[2],
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach"
+        );
+        assert!(
+            detail[3].starts_with("limitation_non_claim: named limitation only"),
+            "{detail:?}"
+        );
+    }
+
     // (c-i) Path exists at exactly depth=5 -> witness captured (boundary is depth > 5 not >= 5).
     // test -> fn_a(1) -> fn_b(2) -> fn_c(3) -> fn_d(4) -> fn_e(5)
     // -> check fn_e.calls: includes inner.
@@ -1168,6 +1273,40 @@ mod tests {
 
         witness.other_test_count = 2;
         assert!(macro_reach_witness_pointer(&witness).contains("and 2 other tests"));
+    }
+
+    #[test]
+    fn macro_reach_limitation_detail_names_edges_route_and_non_claim() {
+        let witness = MacroReachWitness {
+            test_name: "test_uses_outer".to_string(),
+            test_file: PathBuf::from("tests/it.rs"),
+            test_line: 12,
+            entry_symbol: "outer".to_string(),
+            macro_name: "call_inner".to_string(),
+            macro_file: PathBuf::from("src/lib.rs"),
+            macro_line: 10,
+            macro_host: "outer".to_string(),
+            other_test_count: 0,
+        };
+
+        let detail = macro_reach_limitation_detail_lines(&witness, "inner");
+
+        assert_eq!(
+            detail[0],
+            "limitation_last_established_edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10"
+        );
+        assert_eq!(
+            detail[1],
+            "limitation_first_unresolved_edge: macro `call_inner!` expansion toward owner `inner`"
+        );
+        assert_eq!(
+            detail[2],
+            "limitation_analyzer_route: analysis/rust-macro-aware-reach"
+        );
+        assert!(
+            detail[3].starts_with("limitation_non_claim: named limitation only"),
+            "{detail:?}"
+        );
     }
 
     #[test]

@@ -41,6 +41,12 @@ Static limitation
 Where to look
   For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, and `outer` invokes macro `call_inner!` at src/lib.rs:10 whose definition lexically mentions the changed owner name. The macro path may lead here. Inspect it to judge whether this change is observed.
 
+Limitation detail
+  last established edge: test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10
+  first unresolved edge: macro `call_inner!` expansion toward owner `inner`
+  analyzer route: analysis/rust-macro-aware-reach
+  non-claim: named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change
+
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
 
@@ -80,6 +86,12 @@ Static limitation
 
 Where to look
   For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, and `outer` invokes macro `call_inner!` at src/lib.rs:10 whose definition lexically mentions the changed owner name. The macro path may lead here. Inspect it to judge whether this change is observed.
+
+Limitation detail
+  last established edge: test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10
+  first unresolved edge: macro `call_inner!` expansion toward owner `inner`
+  analyzer route: analysis/rust-macro-aware-reach
+  non-claim: named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.

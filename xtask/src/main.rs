@@ -10632,6 +10632,7 @@ enum EvidencePromotionSemanticAssertion {
     MaximumClass { class: String },
     ExpectedCompleteness { completeness: String },
     MustDiscloseWitness,
+    MustDiscloseLimitationDetail,
     MustNotClaimNoTestsFound,
     MustSeeChangedFile { path: String },
 }
@@ -10818,6 +10819,9 @@ fn evidence_promotion_legacy_assertions(case: &Value) -> Vec<EvidencePromotionSe
     if evidence_promotion_bool(case, "must_disclose_witness") {
         assertions.push(EvidencePromotionSemanticAssertion::MustDiscloseWitness);
     }
+    if evidence_promotion_bool(case, "must_disclose_limitation_detail") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail);
+    }
     if evidence_promotion_bool(case, "must_not_claim_no_tests_found") {
         assertions.push(EvidencePromotionSemanticAssertion::MustNotClaimNoTestsFound);
     }
@@ -10910,6 +10914,9 @@ fn evidence_promotion_parse_assertion(
             Ok(EvidencePromotionSemanticAssertion::ExpectedCompleteness { completeness })
         }
         "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
+        "must_disclose_limitation_detail" => {
+            Ok(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail)
+        }
         "must_not_claim_no_tests_found" => {
             Ok(EvidencePromotionSemanticAssertion::MustNotClaimNoTestsFound)
         }
@@ -11567,6 +11574,39 @@ fn evidence_promotion_semantic_violations(
                     }
                 }
             }
+            EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail => {
+                let missing_details = evidence_promotion_missing_limitation_detail_paths(&findings);
+                if !missing_details.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_limitation_detail` requires every static limitation to name the last established edge, first unresolved edge, analyzer route, and non-claim, but missing {}",
+                        missing_details.join(", ")
+                    ));
+                }
+                if fixture_human_required {
+                    match human_text {
+                        Some(human_text) => {
+                            let expected_details =
+                                evidence_promotion_limitation_detail_lines(&findings);
+                            let missing_human_paths =
+                                evidence_promotion_missing_human_limitation_detail_paths(
+                                    human_text,
+                                    &expected_details,
+                                );
+                            if !missing_human_paths.is_empty() {
+                                violations.push(format!(
+                                    "{case_label}: `must_disclose_limitation_detail` requires fixture human output to surface the same limitation detail under `Limitation detail`, but missing {}",
+                                    missing_human_paths.join(", ")
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `must_disclose_limitation_detail` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
+                }
+            }
             EvidencePromotionSemanticAssertion::MustNotClaimNoTestsFound => {
                 let mut no_tests_paths = evidence_promotion_no_tests_found_claim_paths(check_json);
                 if let Some(human_text) = human_text {
@@ -11600,6 +11640,18 @@ fn evidence_promotion_semantic_violations(
 }
 
 const EVIDENCE_PROMOTION_WITNESS_PREFIX: &str = "For example, the test ";
+const EVIDENCE_PROMOTION_LIMITATION_DETAILS: [(&str, &str); 4] = [
+    (
+        "last established edge",
+        "limitation_last_established_edge: ",
+    ),
+    (
+        "first unresolved edge",
+        "limitation_first_unresolved_edge: ",
+    ),
+    ("analyzer route", "limitation_analyzer_route: "),
+    ("non-claim", "limitation_non_claim: "),
+];
 
 fn evidence_promotion_witness_lines(findings: &[Value]) -> Vec<String> {
     let mut witness_lines = Vec::new();
@@ -11617,6 +11669,140 @@ fn evidence_promotion_witness_lines(findings: &[Value]) -> Vec<String> {
         }
     }
     witness_lines
+}
+
+fn evidence_promotion_missing_limitation_detail_paths(findings: &[Value]) -> Vec<String> {
+    let mut missing = Vec::new();
+    let mut limitation_count = 0usize;
+    for (index, finding) in findings.iter().enumerate() {
+        if finding
+            .get("static_limit_kind")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            continue;
+        }
+        limitation_count += 1;
+        let evidence_lines: Vec<&str> = finding
+            .get("evidence")
+            .and_then(Value::as_array)
+            .map(|evidence| evidence.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        for (label, prefix) in EVIDENCE_PROMOTION_LIMITATION_DETAILS {
+            let has_detail = evidence_lines.iter().any(|line| {
+                line.trim()
+                    .strip_prefix(prefix)
+                    .is_some_and(|value| !value.trim().is_empty())
+            });
+            if !has_detail {
+                missing.push(format!("$.findings[{index}].evidence:missing {label}"));
+            }
+        }
+    }
+
+    if limitation_count == 0 {
+        missing.push("$.findings:missing static_limit_kind".to_string());
+    }
+
+    missing
+}
+
+fn evidence_promotion_limitation_detail_lines(findings: &[Value]) -> Vec<(String, String)> {
+    let mut details = Vec::new();
+    for finding in findings {
+        if finding
+            .get("static_limit_kind")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            continue;
+        }
+        let Some(evidence) = finding.get("evidence").and_then(Value::as_array) else {
+            continue;
+        };
+        for line in evidence.iter().filter_map(Value::as_str) {
+            let trimmed = line.trim();
+            for (label, prefix) in EVIDENCE_PROMOTION_LIMITATION_DETAILS {
+                let Some(value) = trimmed.strip_prefix(prefix).map(str::trim) else {
+                    continue;
+                };
+                if value.is_empty() {
+                    continue;
+                }
+                push_unique_limitation_detail(&mut details, label.to_string(), value.to_string());
+            }
+        }
+    }
+    details
+}
+
+fn evidence_promotion_missing_human_limitation_detail_paths(
+    human_text: &str,
+    expected_details: &[(String, String)],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    if expected_details.is_empty() {
+        return missing;
+    }
+
+    let human_details = evidence_promotion_human_limitation_details(human_text);
+    if human_details.is_empty() {
+        missing.push("expected/human.txt:missing Limitation detail".to_string());
+    }
+    for (label, value) in expected_details {
+        if !human_details
+            .iter()
+            .any(|(human_label, human_value)| human_label == label && human_value == value)
+        {
+            missing.push(format!(
+                "expected/human.txt:missing detail `{label}: {value}`"
+            ));
+        }
+    }
+    missing
+}
+
+fn evidence_promotion_human_limitation_details(human_text: &str) -> Vec<(String, String)> {
+    let mut details = Vec::new();
+    let mut in_limitation_detail = false;
+    for line in human_text.lines() {
+        let trimmed = line.trim();
+        if trimmed == "Limitation detail" {
+            in_limitation_detail = true;
+            continue;
+        }
+        if in_limitation_detail && trimmed.is_empty() {
+            in_limitation_detail = false;
+            continue;
+        }
+        if !in_limitation_detail {
+            continue;
+        }
+
+        for (label, _) in EVIDENCE_PROMOTION_LIMITATION_DETAILS {
+            let human_prefix = format!("{label}: ");
+            let Some(value) = trimmed.strip_prefix(&human_prefix).map(str::trim) else {
+                continue;
+            };
+            if value.is_empty() {
+                continue;
+            }
+            push_unique_limitation_detail(&mut details, label.to_string(), value.to_string());
+        }
+    }
+    details
+}
+
+fn push_unique_limitation_detail(
+    details: &mut Vec<(String, String)>,
+    label: String,
+    value: String,
+) {
+    if !details.iter().any(|(existing_label, existing_value)| {
+        existing_label == &label && existing_value == &value
+    }) {
+        details.push((label, value));
+    }
 }
 
 fn evidence_promotion_no_tests_found_claim_paths(value: &Value) -> Vec<String> {
@@ -74553,6 +74739,142 @@ mod tests {
 
         assert!(report.contains("must_not_claim_no_tests_found"), "{report}");
         assert!(report.contains("expected/human.txt:3"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_missing_limitation_detail() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_internal.rs:predicate:inner",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "For example, the test `integration_path` (tests/it.rs:4) calls `outer`, an entry point that may lead here."
+                    ]
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "missing_limitation_detail",
+            Some("fixtures/missing_limitation_detail"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_disclose_limitation_detail"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence:missing last established edge"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence:missing first unresolved edge"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence:missing analyzer route"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence:missing non-claim"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_missing_limitation_detail() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_internal.rs:predicate:inner",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "limitation_last_established_edge: test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path",
+                        "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
+                        "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    ]
+                }
+            ]
+        });
+        let human_text = "Static limitation\n  rust_transitive_reach_unresolved\n";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "human_missing_limitation_detail",
+            Some("fixtures/human_missing_limitation_detail"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_disclose_limitation_detail"),
+            "{report}"
+        );
+        assert!(
+            report.contains("expected/human.txt:missing Limitation detail"),
+            "{report}"
+        );
+        assert!(
+            report.contains("expected/human.txt:missing detail `last established edge:"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_accept_limitation_detail_projection() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_internal.rs:predicate:inner",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "limitation_last_established_edge: test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path",
+                        "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
+                        "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    ]
+                }
+            ]
+        });
+        let human_text = concat!(
+            "Limitation detail\n",
+            "  last established edge: test `integration_path` (tests/it.rs:4) -> entry `outer`\n",
+            "  first unresolved edge: entry `outer` -> owner `inner` through a transitive Rust helper path\n",
+            "  analyzer route: analysis/rust-public-api-transitive-reach\n",
+            "  non-claim: named limitation only; ripr cannot confirm or deny that this path observes the change\n",
+        );
+
+        let violations = super::evidence_promotion_semantic_violations(
+            "limitation_detail_projection",
+            Some("fixtures/limitation_detail_projection"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        );
+
+        assert!(violations.is_empty(), "{violations:?}");
     }
 
     #[test]

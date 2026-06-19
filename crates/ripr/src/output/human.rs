@@ -569,6 +569,31 @@ mod tests {
         assert!(output.contains("may lead here"));
     }
 
+    #[test]
+    fn human_output_surfaces_static_limitation_detail() {
+        let mut finding = sample_finding();
+        finding.evidence.extend([
+            "limitation_last_established_edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`".to_string(),
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path".to_string(),
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach".to_string(),
+            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change".to_string(),
+        ]);
+
+        let output = render_finding(&finding);
+
+        assert!(output.contains("Limitation detail\n"));
+        assert!(output.contains(
+            "  last established edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`\n"
+        ));
+        assert!(output.contains(
+            "  first unresolved edge: entry `outer` -> owner `inner` through a transitive Rust helper path\n"
+        ));
+        assert!(output.contains("  analyzer route: analysis/rust-public-api-transitive-reach\n"));
+        assert!(output.contains(
+            "  non-claim: named limitation only; ripr cannot confirm or deny that this path observes the change\n"
+        ));
+    }
+
     // No witness line -> no "Where to look" section (fail-closed: only render
     // when the limitation actually named a witness).
     #[test]

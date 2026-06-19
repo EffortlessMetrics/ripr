@@ -6019,7 +6019,10 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_accept_limitation_detail_projection",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_limitation_detail",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_human_witness_golden",
+  "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_missing_limitation_detail",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_projection_drift",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
@@ -6197,7 +6200,9 @@ tests = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_path_depth_6_then_witness_is_none",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_call_in_test_calls_then_witness_is_none",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_callee_not_in_crate_then_witness_is_none",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::transitive_reach_limitation_detail_names_edges_route_and_non_claim",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::wire_message_contains_honest_may_language_and_no_coverage_claim",
+  "crates/ripr/src/output/human.rs::tests::human_output_surfaces_static_limitation_detail",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
 ]
 fixtures = [
@@ -6211,6 +6216,7 @@ code = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs",
   "crates/ripr/src/analysis/classify/mod.rs",
   "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/output/human/sections.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md",
@@ -6301,7 +6307,9 @@ tests = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_entry_path_stops_at_owner_macro_then_macro_witness_is_captured",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_definition_does_not_name_owner_then_macro_witness_is_none",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_invokes_owner_macro_directly_then_macro_witness_is_captured",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_reach_limitation_detail_names_edges_route_and_non_claim",
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_witness_pointer_uses_may_language_and_no_coverage_claim",
+  "crates/ripr/src/output/human.rs::tests::human_output_surfaces_static_limitation_detail",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
 ]
 fixtures = [

@@ -149,7 +149,7 @@ definition does not mention the changed owner name.
 - Honesty corpus member in
   `fixtures/evidence-promotion-honesty-corpus/corpus.json` asserting
   `must_emit_limitation`, `expected_limit_kind: rust_macro_reach_unresolved`,
-  and `must_remain_non_promoted`.
+  `must_disclose_limitation_detail`, and `must_remain_non_promoted`.
 
 ## Test Mapping
 
@@ -157,6 +157,8 @@ definition does not mention the changed owner name.
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_macro_definition_does_not_name_owner_then_macro_witness_is_none`
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::given_test_invokes_owner_macro_directly_then_macro_witness_is_captured`
 - `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_witness_pointer_uses_may_language_and_no_coverage_claim`
+- `crates/ripr/src/analysis/classify/transitive_reach.rs::tests::macro_reach_limitation_detail_names_edges_route_and_non_claim`
+- `crates/ripr/src/output/human.rs::tests::human_output_surfaces_static_limitation_detail`
 - `fixtures/rust_macro_reach_limitation/expected/check.json`
 - `cargo xtask check-evidence-promotion-honesty`
 
@@ -169,7 +171,7 @@ definition does not mention the changed owner name.
 | Macro witness producer | `crates/ripr/src/analysis/classify/transitive_reach.rs` |
 | Classifier export | `crates/ripr/src/analysis/classify/mod.rs` |
 | Diff/repo-mode wiring | `crates/ripr/src/analysis/language/rust.rs` |
-| Human witness projection | `crates/ripr/src/output/human/sections.rs` |
+| Human witness and limitation-detail projection | `crates/ripr/src/output/human/sections.rs` |
 | Output contract docs | `docs/OUTPUT_SCHEMA.md` |
 | Pure fixture | `fixtures/rust_macro_reach_limitation/` |
 | Honesty corpus case | `fixtures/evidence-promotion-honesty-corpus/corpus.json` |
@@ -191,6 +193,6 @@ definition does not mention the changed owner name.
 
 - Golden fixture pass: `fixtures/rust_macro_reach_limitation`.
 - Corpus invariant: `rust_macro_reach_named_limitation` emits
-  `rust_macro_reach_unresolved`, discloses a witness, and remains
+  `rust_macro_reach_unresolved`, discloses a witness and limitation detail, and remains
   non-promoted at `no_static_path`.
 - Existing transitive-reach fixture behavior remains unchanged.

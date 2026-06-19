@@ -124,6 +124,14 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         out.push_str(&format!("  {witness}\n"));
     }
 
+    let limitation_details = limitation_detail_lines(finding);
+    if !limitation_details.is_empty() {
+        out.push_str("\nLimitation detail\n");
+        for (label, value) in limitation_details {
+            out.push_str(&format!("  {label}: {value}\n"));
+        }
+    }
+
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
@@ -153,6 +161,33 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn limitation_detail_lines(finding: &Finding) -> Vec<(&'static str, &str)> {
+    [
+        (
+            "last established edge",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        ),
+        (
+            "first unresolved edge",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        ),
+        (
+            "analyzer route",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX,
+        ),
+        ("non-claim", crate::domain::LIMITATION_NON_CLAIM_PREFIX),
+    ]
+    .into_iter()
+    .filter_map(|(label, prefix)| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+            .map(|value| (label, value))
+    })
+    .collect()
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {

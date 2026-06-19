@@ -82,3 +82,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+rust limitation evidence now surfaces last edge, unresolved edge, analyzer route, and non-claim
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
