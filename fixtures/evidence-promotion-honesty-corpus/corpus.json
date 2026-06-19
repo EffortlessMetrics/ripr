@@ -158,6 +158,52 @@
       ]
     },
     {
+      "id": "scope_no_scope_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-no-scope-empty-not-clean.json",
+      "vector": "empty_result_no_scope_disclosure_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_no_scope" }
+      ]
+    },
+    {
+      "id": "scope_unanalyzed_worktree_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-unanalyzed-worktree-empty-not-clean.json",
+      "vector": "empty_base_head_dirty_worktree_disclosure_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_unanalyzed_working_tree" }
+      ]
+    },
+    {
+      "id": "scope_clean_complete_empty_may_be_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-clean-complete-empty-may-be-clean.json",
+      "vector": "empty_complete_scope_can_report_clean",
+      "assertions": [
+        { "type": "must_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_completeness", "completeness": "complete" }
+      ]
+    },
+    {
+      "id": "scope_limited_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-limited-empty-not-clean.json",
+      "vector": "empty_limited_scope_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_completeness", "completeness": "limited" }
+      ]
+    },
+    {
       "id": "rust_semver_matches_greater_external_limitation",
       "language": "rust",
       "tier": "pinned_external",

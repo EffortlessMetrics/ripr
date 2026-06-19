@@ -10617,8 +10617,11 @@ struct CorpusSummaryCase {
 enum EvidencePromotionSemanticAssertion {
     MustPromote,
     MustNotPromote,
+    MustReportClean,
     MustNotReportClean,
     MustDiscloseScope,
+    MustDiscloseNoScope,
+    MustDiscloseUnanalyzedWorkingTree,
     MustEmitLimitation { expected_limit_kind: String },
     MustNotEmitLimitation,
     MustHaveVerifyCommand,
@@ -10849,8 +10852,13 @@ fn evidence_promotion_parse_assertion(
     match kind {
         "must_promote" => Ok(EvidencePromotionSemanticAssertion::MustPromote),
         "must_not_promote" => Ok(EvidencePromotionSemanticAssertion::MustNotPromote),
+        "must_report_clean" => Ok(EvidencePromotionSemanticAssertion::MustReportClean),
         "must_not_report_clean" => Ok(EvidencePromotionSemanticAssertion::MustNotReportClean),
         "must_disclose_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseScope),
+        "must_disclose_no_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseNoScope),
+        "must_disclose_unanalyzed_working_tree" => {
+            Ok(EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree)
+        }
         "must_emit_limitation" => Ok(EvidencePromotionSemanticAssertion::MustEmitLimitation {
             expected_limit_kind: evidence_promotion_required_assertion_string(
                 case_id,
@@ -11357,16 +11365,17 @@ fn evidence_promotion_semantic_violations(
                     }
                 }
             }
-            EvidencePromotionSemanticAssertion::MustNotReportClean => {
-                let summary_findings = check_json
-                    .get("summary")
-                    .and_then(|summary| summary.get("findings"))
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0);
-                if summary_findings == 0 || findings.is_empty() {
+            EvidencePromotionSemanticAssertion::MustReportClean => {
+                if !evidence_promotion_report_reads_clean(check_json, &findings) {
                     violations.push(format!(
-                        "{case_label}: `must_not_report_clean` requires at least one reported finding, got summary.findings={summary_findings} findings.len()={}",
-                        findings.len()
+                        "{case_label}: `must_report_clean` requires an empty complete-looking result with no scope or limitation disclosure"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotReportClean => {
+                if evidence_promotion_report_reads_clean(check_json, &findings) {
+                    violations.push(format!(
+                        "{case_label}: `must_not_report_clean` requires findings, a scope disclosure, or a named limitation; result has no non-clean signal"
                     ));
                 }
             }
@@ -11376,6 +11385,24 @@ fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `must_disclose_scope` requires report-level scope fields schema_version/tool/mode/root/base, but missing or empty field(s): {}",
                         missing_scope.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustDiscloseNoScope => {
+                if !evidence_promotion_discloses_no_scope(check_json) {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_no_scope` requires a no_scope_provided/no_scope_disclosure scope disclosure"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree => {
+                if check_json
+                    .get("unanalyzed_working_tree")
+                    .and_then(Value::as_bool)
+                    != Some(true)
+                {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_unanalyzed_working_tree` requires unanalyzed_working_tree=true"
                     ));
                 }
             }
@@ -11561,6 +11588,61 @@ fn evidence_promotion_missing_scope_fields(check_json: &Value) -> Vec<&'static s
         .collect()
 }
 
+fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value]) -> bool {
+    let summary_findings = check_json
+        .get("summary")
+        .and_then(|summary| summary.get("findings"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if summary_findings > 0 || !findings.is_empty() {
+        return false;
+    }
+    if check_json
+        .get("unanalyzed_working_tree")
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return false;
+    }
+    if evidence_promotion_discloses_no_scope(check_json) {
+        return false;
+    }
+    if check_json
+        .get("limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|limitations| !limitations.is_empty())
+    {
+        return false;
+    }
+    if check_json
+        .get("preview_languages")
+        .and_then(Value::as_array)
+        .is_some_and(|advisories| !advisories.is_empty())
+    {
+        return false;
+    }
+    if !json_non_empty_string_field_paths(check_json, "static_limit_kind").is_empty() {
+        return false;
+    }
+    true
+}
+
+fn evidence_promotion_discloses_no_scope(check_json: &Value) -> bool {
+    if check_json.get("no_scope_provided").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    check_json
+        .get("scope_disclosures")
+        .and_then(Value::as_array)
+        .is_some_and(|disclosures| {
+            disclosures.iter().any(|disclosure| {
+                disclosure.get("scope_status").and_then(Value::as_str) == Some("no_scope_provided")
+                    || disclosure.get("category").and_then(Value::as_str)
+                        == Some("no_scope_disclosure")
+            })
+        })
+}
+
 fn evidence_promotion_external_failure_kind(violations: &[String]) -> String {
     evidence_promotion_failure_kind(violations, false)
 }
@@ -11590,8 +11672,11 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
     } else if pure_case
         && (joined.contains("re-bless")
             || joined.contains("expected/check.json")
+            || joined.contains("must_report_clean")
             || joined.contains("must_not_report_clean")
             || joined.contains("must_disclose_scope")
+            || joined.contains("must_disclose_no_scope")
+            || joined.contains("must_disclose_unanalyzed_working_tree")
             || joined.contains("must_not_emit_repair_packet")
             || joined.contains("must_disclose_witness")
             || joined.contains("must_have_verify_command")
@@ -12264,6 +12349,10 @@ fn validate_evidence_promotion_honesty_corpus_at(
             .get("source_fixture")
             .and_then(Value::as_str)
             .unwrap_or("");
+        let source_report = case
+            .get("source_report")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let tier = case.get("tier").and_then(Value::as_str).unwrap_or("");
         let assertions = match evidence_promotion_case_assertions(case) {
             Ok(assertions) => assertions,
@@ -12334,33 +12423,53 @@ fn validate_evidence_promotion_honesty_corpus_at(
             )),
         }
 
-        // Parity: source fixture must exist
-        let fixture_dir = Path::new(source_fixture);
-        if !fixture_dir.exists() {
+        if source_fixture.is_empty() == source_report.is_empty() {
             violations.push(format!(
-                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` does not exist"
+                "evidence promotion honesty case `{id}`: pure cases require exactly one of `source_fixture` or `source_report`"
             ));
             continue;
         }
 
-        // Parity: source fixture must have expected/check.json
-        let check_json_path = fixture_dir.join("expected/check.json");
-        if !check_json_path.exists() {
-            violations.push(format!(
-                "evidence promotion honesty case `{id}`: `{}` is missing expected/check.json",
-                normalize_path(fixture_dir)
-            ));
-            continue;
-        }
+        let (source_artifact, check_json_path) = if source_fixture.is_empty() {
+            let report_path = PathBuf::from(source_report);
+            if !report_path.exists() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}`: source_report `{source_report}` path does not exist"
+                ));
+                continue;
+            }
+            (source_report, report_path)
+        } else {
+            // Parity: source fixture must exist.
+            let fixture_dir = Path::new(source_fixture);
+            if !fixture_dir.exists() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` does not exist"
+                ));
+                continue;
+            }
 
-        // Parity: source fixture must NOT be in the manifest-only denylist
-        // (it must stay covered by `goldens check`)
-        if is_manifest_only_fixture_dir(fixture_dir) {
-            violations.push(format!(
-                "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` is a manifest-only fixture dir; only regular fixtures with golden check.json may be charter members"
-            ));
-            continue;
-        }
+            // Parity: source fixture must have expected/check.json.
+            let check_json_path = fixture_dir.join("expected/check.json");
+            if !check_json_path.exists() {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}`: `{}` is missing expected/check.json",
+                    normalize_path(fixture_dir)
+                ));
+                continue;
+            }
+
+            // Parity: source fixture must NOT be in the manifest-only denylist
+            // (it must stay covered by `goldens check`).
+            if is_manifest_only_fixture_dir(fixture_dir) {
+                violations.push(format!(
+                    "evidence promotion honesty case `{id}`: source_fixture `{source_fixture}` is a manifest-only fixture dir; only regular fixtures with golden check.json may be charter members"
+                ));
+                continue;
+            }
+
+            (source_fixture, check_json_path)
+        };
 
         // Read the golden check.json (byte-pinned source of truth)
         let check_json_text = read_text_lossy(&check_json_path)?;
@@ -12386,7 +12495,7 @@ fn validate_evidence_promotion_honesty_corpus_at(
             }
             violations.extend(evidence_promotion_semantic_violations(
                 id,
-                Some(source_fixture),
+                Some(source_artifact),
                 &assertions,
                 &check_json,
             ));
@@ -63416,6 +63525,9 @@ fn markdown_links() -> Result<(), String> {
             continue;
         }
         let path = Path::new(&file);
+        if !path.exists() {
+            continue;
+        }
         let text = read_text_lossy(path)?;
         for link in markdown_links_in_text(&text) {
             let Some(target_path) = local_markdown_target(&link.target) else {
@@ -63435,7 +63547,7 @@ fn markdown_links() -> Result<(), String> {
         PolicyReportSpec {
             report_file: "markdown-links.md",
             check: "markdown-links",
-            why_it_matters: "Markdown links are repo state for humans and long-context agents; deleted or renamed docs should fail before review.",
+            why_it_matters: "Markdown links are repo state for humans and long-context agents; links to deleted or renamed docs should fail before review.",
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Update links when docs are renamed or deleted.",
@@ -73855,7 +73967,7 @@ mod tests {
         let corpus = root.join("corpus.json");
         let py_fixture = root.join("fixtures/py");
         let ts_fixture = root.join("fixtures/ts");
-        let rust_fixture = root.join("fixtures/rust-rich");
+        let rust_report = root.join("reports/rust-rich.json");
         let rust_control_fixture = root.join("fixtures/rust-control");
         let ts_control_fixture = root.join("fixtures/ts-control");
 
@@ -73863,9 +73975,9 @@ mod tests {
         write_evidence_promotion_check(&ts_fixture, "weakly_exposed")?;
         write_evidence_promotion_check(&rust_control_fixture, "exposed")?;
         write_evidence_promotion_check(&ts_control_fixture, "exposed")?;
-        write_evidence_promotion_check_json(
-            &rust_fixture,
-            serde_json::json!({
+        write(
+            &rust_report,
+            &serde_json::to_string_pretty(&serde_json::json!({
                 "schema_version": "0.2",
                 "tool": "ripr",
                 "mode": "fast",
@@ -73885,8 +73997,9 @@ mod tests {
                         ]
                     }
                 ]
-            }),
-        )?;
+            }))
+            .map_err(|err| err.to_string())?,
+        );
 
         let corpus_json = serde_json::json!({
             "cases": [
@@ -73914,7 +74027,7 @@ mod tests {
                     "id": "rust_typed_vocabulary",
                     "language": "rust",
                     "tier": "pure",
-                    "source_fixture": rust_fixture,
+                    "source_report": rust_report,
                     "assertions": [
                         {"type": "must_not_report_clean"},
                         {"type": "must_disclose_scope"},
@@ -74083,6 +74196,71 @@ mod tests {
         assert!(report.contains("expected_completeness"), "{report}");
     }
 
+    #[test]
+    fn evidence_promotion_semantic_assertions_accept_scope_limited_empty_results() {
+        let no_scope = serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": [],
+            "scope_disclosures": [
+                {"scope_status": "no_scope_provided", "category": "no_scope_disclosure"}
+            ]
+        });
+        let no_scope_assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustNotReportClean,
+            super::EvidencePromotionSemanticAssertion::MustDiscloseNoScope,
+        ];
+        let no_scope_violations = super::evidence_promotion_semantic_violations(
+            "no_scope",
+            Some("fixtures/scope_honesty_no_scope_empty"),
+            &no_scope_assertions,
+            &no_scope,
+        );
+        assert!(
+            no_scope_violations.is_empty(),
+            "no-scope disclosure should make the empty result non-clean: {no_scope_violations:?}"
+        );
+
+        let dirty_worktree = serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": [],
+            "unanalyzed_working_tree": true
+        });
+        let dirty_assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustNotReportClean,
+            super::EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree,
+        ];
+        let dirty_violations = super::evidence_promotion_semantic_violations(
+            "dirty_worktree",
+            Some("fixtures/scope_honesty_unanalyzed_worktree_empty"),
+            &dirty_assertions,
+            &dirty_worktree,
+        );
+        assert!(
+            dirty_violations.is_empty(),
+            "unanalyzed_working_tree should make the empty result non-clean: {dirty_violations:?}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_bare_empty_false_clean() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::MustNotReportClean];
+        let bare_empty = serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": []
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "bare_empty",
+            Some("fixtures/scope_honesty_bare_empty"),
+            &assertions,
+            &bare_empty,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_not_report_clean"), "{report}");
+        assert!(report.contains("no non-clean signal"), "{report}");
+    }
+
     fn semver_external_case_for_test() -> super::EvidencePromotionExternalCase {
         super::EvidencePromotionExternalCase {
             id: "rust_semver_matches_greater_external_limitation".to_string(),
@@ -74170,7 +74348,6 @@ mod tests {
 
         let report =
             super::evidence_promotion_external_semantic_violations(&case, &check_json).join("\n");
-        assert!(report.contains("must_not_report_clean"), "{report}");
         assert!(report.contains("expected static_limit_kind"), "{report}");
         assert!(report.contains("repair_packet_ready=true"), "{report}");
         assert!(report.contains("must_disclose_witness"), "{report}");

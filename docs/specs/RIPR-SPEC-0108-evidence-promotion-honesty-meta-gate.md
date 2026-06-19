@@ -79,8 +79,11 @@ says it was re-blessed to."
 ### The gate (`check-evidence-promotion-honesty`)
 
 1. Loads `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
-2. For each case, reads the source fixture's `expected/check.json` (the
-   byte-pinned golden — NOT a fresh `ripr` run).
+2. For each pure case, reads exactly one byte-pinned source artifact:
+   - `source_fixture` -> the fixture's `expected/check.json` (covered by
+     `goldens check`);
+   - `source_report` -> a checked-in JSON report artifact for product states
+     outside the standard `goldens check` runner.
 2a. Validates the case tier before trusting the expectation:
    - `pure` cases are checked-in tiny examples and must not carry
      pinned-external metadata.
@@ -96,8 +99,11 @@ says it was re-blessed to."
     Supported assertion types are:
     - `must_promote`
     - `must_not_promote`
+    - `must_report_clean`
     - `must_not_report_clean`
     - `must_disclose_scope`
+    - `must_disclose_no_scope`
+    - `must_disclose_unanalyzed_working_tree`
     - `must_emit_limitation` with `expected_limit_kind`
     - `must_not_emit_limitation`
     - `must_have_verify_command`
@@ -115,10 +121,11 @@ says it was re-blessed to."
 4. `expected_promoted` (control) cases: asserts at least one finding's
    `classification` is `exposed` (must-not-over-correct guard).
 4b. `must_not_report_clean` cases (additive, first-run trust): asserts the
-   byte-pinned golden still reports at least one finding (`summary.findings > 0`
-   and non-empty `findings[]`). This guards against a re-bless that makes a
-   known unresolved edge disappear into a clean-looking empty result instead of
-   emitting a named limitation.
+   byte-pinned golden still carries a non-clean signal: findings, a no-scope
+   disclosure, an unanalyzed-worktree disclosure, preview-language advisory,
+   `limitations[]`, or a named `static_limit_kind`. This guards against a
+   re-bless that makes a known unresolved edge or incomplete scope disappear
+   into a clean-looking empty result.
 4c. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115): asserts at
    least one finding carries `static_limit_kind == expected_limit_kind`. This is
    an independent assertion (a case may combine it with `must_remain_non_promoted`)
@@ -142,11 +149,13 @@ says it was re-blessed to."
     `repair_packet_ready=true` anywhere in the report. This guards against a
     named limitation or non-promoted case becoming delegatable without the full
     repair-packet contract.
-5. PARITY checks: every `source_fixture` must exist, have `expected/check.json`,
-   and NOT be in the manifest-only denylist (so it stays covered by `goldens check`).
+5. PARITY checks: every pure case must declare exactly one of `source_fixture`
+   or `source_report`. A `source_fixture` must exist, have
+   `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
+   covered by `goldens check`). A `source_report` must exist and parse as JSON.
    Each of {python, typescript, rust} must have ≥1 non-promoted case; rust and
    typescript must each have ≥1 control case.
-6. FAIL-CLOSED: missing fixture / missing check.json / a non-promoted case
+6. FAIL-CLOSED: missing artifact / missing check.json / a non-promoted case
    showing `exposed` / a control losing `exposed` / a language missing coverage
    → non-zero exit + report under `target/ripr/reports/`.
 
@@ -258,10 +267,11 @@ report scope disclosure via `must_not_report_clean`, `must_emit_limitation`,
 `must_not_emit_repair_packet`.
 
 Pure cases are tiny checked-in fixtures with byte-pinned `expected/check.json`
-reports. Pinned external cases are exact real-repo launch points and must name
-the upstream repository, command template, exact 40-hex commit, checked-in
-patch, runtime budget, and artifact-size budget before the gate will accept
-them.
+reports or byte-pinned `source_report` JSON artifacts for states not expressible
+by the standard fixture runner. Pinned external cases are exact real-repo launch
+points and must name the upstream repository, command template, exact 40-hex
+commit, checked-in patch, runtime budget, and artifact-size budget before the
+gate will accept them.
 
 The corpus summary envelope is the canonical result/failure projection for this
 corpus runner. The older `evidence-promotion-honesty.md` and
@@ -270,7 +280,7 @@ gate-specific artifacts.
 
 ### Charter members (must_not_promote)
 
-| id | language | source_fixture | vector |
+| id | language | source artifact | vector |
 |---|---|---|---|
 | py_token_substring | python | python_adversarial_buffer_token | token_substring_coincidence |
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
@@ -281,6 +291,9 @@ gate-specific artifacts.
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
 | rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness`) |
+| scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
+| scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
+| scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
 
 ### Pinned external cases
 
@@ -290,24 +303,25 @@ gate-specific artifacts.
 
 ### Control cases (must_promote)
 
-| id | language | source_fixture |
+| id | language | source artifact |
 |---|---|---|
 | rust_strong_error_oracle_control | rust | strong_error_oracle |
 | rust_unwrap_err_variant_positive_control | rust | unwrap_err_variant_positive |
 | ts_strong_oracle_control | typescript | typescript_strong_oracle |
+| scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json |
 
 ### Validation by `check-fixture-contracts`
 
 `validate_evidence_promotion_honesty_corpus` is called from
 `check_fixture_contracts()` to verify the corpus is structurally valid (no
-duplicate ids, pure fixtures exist, pure fixtures have `expected/check.json`, no
-pure fixture is manifest-only, parity language coverage). This runs in CI as
-part of the existing `check-fixture-contracts` gate. The same validator rejects
-missing or unknown case tiers, rejects pinned-external metadata on `pure` cases,
-and rejects `pinned_external` cases that lack exact repo/command/commit/patch
-and budget metadata. Pinned external cases do not need checked-in golden output;
-their semantic assertions are enforced by opt-in execution against the current
-binary.
+duplicate ids, pure source artifacts exist, fixture-backed cases have
+`expected/check.json`, fixture-backed cases are not manifest-only, parity
+language coverage). This runs in CI as part of the existing
+`check-fixture-contracts` gate. The same validator rejects missing or unknown
+case tiers, rejects pinned-external metadata on `pure` cases, and rejects
+`pinned_external` cases that lack exact repo/command/commit/patch and budget
+metadata. Pinned external cases do not need checked-in golden output; their
+semantic assertions are enforced by opt-in execution against the current binary.
 
 ## Non-Goals
 
@@ -376,6 +390,8 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_accepts_typed_assertion_vocabulary` | Validator accepts typed semantic assertions as the canonical corpus contract |
 | `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
 | `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, packet, limitation, and completeness drift |
+| `evidence_promotion_semantic_assertions_accept_scope_limited_empty_results` | Shared assertion evaluator treats no-scope and unanalyzed-worktree disclosures as non-clean empty results |
+| `evidence_promotion_semantic_assertions_reject_bare_empty_false_clean` | Shared assertion evaluator rejects a bare empty result for `must_not_report_clean` |
 | `evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape` | Semantic assertion accepts the current semver limitation shape |
 | `evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet` | Semantic assertion rejects false clean, false promotion, missing witness, and false packet readiness |
 | `evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case` | Validator rejects scope-guard cases without a report scope header |
