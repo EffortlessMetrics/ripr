@@ -89,6 +89,26 @@ says it was re-blessed to."
      `runtime_budget_seconds`, and `artifact_budget_bytes`.
    - Missing or unknown tiers fail the gate. A future real-repo case may not
      enter the corpus as an unbounded or branch-floating claim.
+2b. Cases may declare typed semantic assertions under `assertions`. Unknown
+    assertion types fail closed. Legacy fields such as
+    `must_remain_non_promoted` and `expected_promoted` remain compatibility
+    aliases, but the canonical corpus shape is the typed assertion list.
+    Supported assertion types are:
+    - `must_promote`
+    - `must_not_promote`
+    - `must_not_report_clean`
+    - `must_disclose_scope`
+    - `must_emit_limitation` with `expected_limit_kind`
+    - `must_not_emit_limitation`
+    - `must_have_verify_command`
+    - `must_not_have_verify_command`
+    - `must_emit_repair_packet`
+    - `must_not_emit_repair_packet`
+    - `expected_class` with `class`
+    - `maximum_class` with `class`
+    - `expected_completeness` with `completeness`
+    - `must_disclose_witness`
+    - `must_see_changed_file` with `path`
 3. `must_remain_non_promoted` cases: asserts NO finding's `classification` is
    `exposed`. Also checks that no finding exceeds `expected_max_class` on the
    severity ordering `exposed > weakly_exposed > reachable_unrevealed/no_static_path > *_unknown`.
@@ -248,7 +268,7 @@ corpus runner. The older `evidence-promotion-honesty.md` and
 `evidence-promotion-pinned-external.{json,md}` reports remain detailed
 gate-specific artifacts.
 
-### Charter members (must_remain_non_promoted)
+### Charter members (must_not_promote)
 
 | id | language | source_fixture | vector |
 |---|---|---|---|
@@ -268,7 +288,7 @@ gate-specific artifacts.
 |---|---|---|---|---|
 | rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved`, not clean or actionable |
 
-### Control cases (expected_promoted)
+### Control cases (must_promote)
 
 | id | language | source_fixture |
 |---|---|---|
@@ -353,6 +373,9 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers` | Validator rejects missing/unknown tiers and external metadata on pure cases |
 | `evidence_promotion_honesty_rejects_incomplete_pinned_external_tier` | Validator rejects branch-floating or budgetless external cases |
 | `evidence_promotion_honesty_accepts_complete_pinned_external_tier` | Validator accepts complete pinned external metadata |
+| `evidence_promotion_honesty_accepts_typed_assertion_vocabulary` | Validator accepts typed semantic assertions as the canonical corpus contract |
+| `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
+| `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, packet, limitation, and completeness drift |
 | `evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape` | Semantic assertion accepts the current semver limitation shape |
 | `evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet` | Semantic assertion rejects false clean, false promotion, missing witness, and false packet readiness |
 | `evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case` | Validator rejects scope-guard cases without a report scope header |
@@ -380,5 +403,5 @@ the gate has over-corrected or the fixture needs re-blessing
 
 ## Metrics
 
-- `evidence_promotion_honesty_charter_members`: count of `must_remain_non_promoted` cases in corpus
-- `evidence_promotion_honesty_control_cases`: count of `expected_promoted` cases in corpus
+- `evidence_promotion_honesty_charter_members`: count of `must_not_promote` cases in corpus
+- `evidence_promotion_honesty_control_cases`: count of `must_promote` cases in corpus

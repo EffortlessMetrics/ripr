@@ -10552,15 +10552,7 @@ struct EvidencePromotionExternalCase {
     external_command: String,
     runtime_budget_seconds: u64,
     artifact_budget_bytes: u64,
-    expected_changed_file: Option<String>,
-    expected_limit_kind: Option<String>,
-    expected_max_class: Option<String>,
-    must_not_report_clean: bool,
-    must_disclose_scope: bool,
-    must_emit_limitation: bool,
-    must_not_emit_repair_packet: bool,
-    must_disclose_witness: bool,
-    must_remain_non_promoted: bool,
+    assertions: Vec<EvidencePromotionSemanticAssertion>,
 }
 
 struct EvidencePromotionExternalRun {
@@ -10619,6 +10611,25 @@ struct CorpusSummaryCase {
     message: String,
     runtime_ms: Option<u128>,
     artifact_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum EvidencePromotionSemanticAssertion {
+    MustPromote,
+    MustNotPromote,
+    MustNotReportClean,
+    MustDiscloseScope,
+    MustEmitLimitation { expected_limit_kind: String },
+    MustNotEmitLimitation,
+    MustHaveVerifyCommand,
+    MustNotHaveVerifyCommand,
+    MustEmitRepairPacket,
+    MustNotEmitRepairPacket,
+    ExpectedClass { class: String },
+    MaximumClass { class: String },
+    ExpectedCompleteness { completeness: String },
+    MustDiscloseWitness,
+    MustSeeChangedFile { path: String },
 }
 
 fn run_evidence_promotion_pinned_external_cases(
@@ -10711,30 +10722,7 @@ fn load_evidence_promotion_pinned_external_cases(
                 "runtime_budget_seconds",
             )?,
             artifact_budget_bytes: evidence_promotion_required_u64(case, "artifact_budget_bytes")?,
-            expected_changed_file: case
-                .get("expected_changed_file")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_string),
-            expected_limit_kind: case
-                .get("expected_limit_kind")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_string),
-            expected_max_class: case
-                .get("expected_max_class")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_string),
-            must_not_report_clean: evidence_promotion_bool(case, "must_not_report_clean"),
-            must_disclose_scope: evidence_promotion_bool(case, "must_disclose_scope"),
-            must_emit_limitation: evidence_promotion_bool(case, "must_emit_limitation"),
-            must_not_emit_repair_packet: evidence_promotion_bool(
-                case,
-                "must_not_emit_repair_packet",
-            ),
-            must_disclose_witness: evidence_promotion_bool(case, "must_disclose_witness"),
-            must_remain_non_promoted: evidence_promotion_bool(case, "must_remain_non_promoted"),
+            assertions: evidence_promotion_case_assertions(case)?,
         });
     }
     Ok(parsed)
@@ -10769,6 +10757,188 @@ fn evidence_promotion_required_u64(case: &Value, field: &str) -> Result<u64, Str
 
 fn evidence_promotion_bool(case: &Value, field: &str) -> bool {
     case.get(field).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn evidence_promotion_case_assertions(
+    case: &Value,
+) -> Result<Vec<EvidencePromotionSemanticAssertion>, String> {
+    let id = case
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing-id>");
+    let Some(raw_assertions) = case.get("assertions") else {
+        return Ok(evidence_promotion_legacy_assertions(case));
+    };
+    let assertions = raw_assertions
+        .as_array()
+        .ok_or_else(|| format!("evidence promotion case `{id}`: `assertions` must be an array"))?;
+    if assertions.is_empty() {
+        return Err(format!(
+            "evidence promotion case `{id}`: `assertions` must not be empty"
+        ));
+    }
+
+    let mut parsed = Vec::new();
+    for (index, assertion) in assertions.iter().enumerate() {
+        parsed.push(evidence_promotion_parse_assertion(id, index, assertion)?);
+    }
+    Ok(parsed)
+}
+
+fn evidence_promotion_legacy_assertions(case: &Value) -> Vec<EvidencePromotionSemanticAssertion> {
+    let mut assertions = Vec::new();
+    if let Some(path) = evidence_promotion_non_empty_string_field(case, "expected_changed_file") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustSeeChangedFile {
+            path: path.to_string(),
+        });
+    }
+    if evidence_promotion_bool(case, "must_not_report_clean") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustNotReportClean);
+    }
+    if evidence_promotion_bool(case, "must_disclose_scope") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustDiscloseScope);
+    }
+    if evidence_promotion_bool(case, "must_emit_limitation") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustEmitLimitation {
+            expected_limit_kind: evidence_promotion_non_empty_string_field(
+                case,
+                "expected_limit_kind",
+            )
+            .unwrap_or("")
+            .to_string(),
+        });
+    }
+    if evidence_promotion_bool(case, "must_not_emit_repair_packet") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket);
+    }
+    if evidence_promotion_bool(case, "must_disclose_witness") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustDiscloseWitness);
+    }
+    if evidence_promotion_bool(case, "must_remain_non_promoted") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustNotPromote);
+        assertions.push(EvidencePromotionSemanticAssertion::MaximumClass {
+            class: evidence_promotion_non_empty_string_field(case, "expected_max_class")
+                .unwrap_or("weakly_exposed")
+                .to_string(),
+        });
+    }
+    if evidence_promotion_bool(case, "expected_promoted") {
+        assertions.push(EvidencePromotionSemanticAssertion::MustPromote);
+    }
+    assertions
+}
+
+fn evidence_promotion_parse_assertion(
+    case_id: &str,
+    index: usize,
+    assertion: &Value,
+) -> Result<EvidencePromotionSemanticAssertion, String> {
+    let kind = if let Some(kind) = assertion.as_str() {
+        kind
+    } else {
+        assertion
+            .get("type")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "evidence promotion case `{case_id}` assertion {index}: missing string `type`"
+                )
+            })?
+    };
+    match kind {
+        "must_promote" => Ok(EvidencePromotionSemanticAssertion::MustPromote),
+        "must_not_promote" => Ok(EvidencePromotionSemanticAssertion::MustNotPromote),
+        "must_not_report_clean" => Ok(EvidencePromotionSemanticAssertion::MustNotReportClean),
+        "must_disclose_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseScope),
+        "must_emit_limitation" => Ok(EvidencePromotionSemanticAssertion::MustEmitLimitation {
+            expected_limit_kind: evidence_promotion_required_assertion_string(
+                case_id,
+                index,
+                assertion,
+                "expected_limit_kind",
+            )?,
+        }),
+        "must_not_emit_limitation" => Ok(EvidencePromotionSemanticAssertion::MustNotEmitLimitation),
+        "must_have_verify_command" => Ok(EvidencePromotionSemanticAssertion::MustHaveVerifyCommand),
+        "must_not_have_verify_command" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand)
+        }
+        "must_emit_repair_packet" => Ok(EvidencePromotionSemanticAssertion::MustEmitRepairPacket),
+        "must_not_emit_repair_packet" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket)
+        }
+        "expected_class" => {
+            let class =
+                evidence_promotion_required_assertion_class(case_id, index, assertion, "class")?;
+            Ok(EvidencePromotionSemanticAssertion::ExpectedClass { class })
+        }
+        "maximum_class" => {
+            let class =
+                evidence_promotion_required_assertion_class(case_id, index, assertion, "class")?;
+            Ok(EvidencePromotionSemanticAssertion::MaximumClass { class })
+        }
+        "expected_completeness" => {
+            let completeness = evidence_promotion_required_assertion_string(
+                case_id,
+                index,
+                assertion,
+                "completeness",
+            )?;
+            if !matches!(
+                completeness.as_str(),
+                "complete" | "limited" | "deferred" | "stale"
+            ) {
+                return Err(format!(
+                    "evidence promotion case `{case_id}` assertion {index}: \
+                     expected_completeness.completeness must be one of complete, limited, \
+                     deferred, or stale"
+                ));
+            }
+            Ok(EvidencePromotionSemanticAssertion::ExpectedCompleteness { completeness })
+        }
+        "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
+        "must_see_changed_file" => Ok(EvidencePromotionSemanticAssertion::MustSeeChangedFile {
+            path: evidence_promotion_required_assertion_string(case_id, index, assertion, "path")?,
+        }),
+        other => Err(format!(
+            "evidence promotion case `{case_id}` assertion {index}: unknown assertion type `{other}`"
+        )),
+    }
+}
+
+fn evidence_promotion_required_assertion_string(
+    case_id: &str,
+    index: usize,
+    assertion: &Value,
+    field: &str,
+) -> Result<String, String> {
+    assertion
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            format!(
+                "evidence promotion case `{case_id}` assertion {index}: missing non-empty string `{field}`"
+            )
+        })
+}
+
+fn evidence_promotion_required_assertion_class(
+    case_id: &str,
+    index: usize,
+    assertion: &Value,
+    field: &str,
+) -> Result<String, String> {
+    let class = evidence_promotion_required_assertion_string(case_id, index, assertion, field)?;
+    if evidence_promotion_known_class(&class) {
+        Ok(class)
+    } else {
+        Err(format!(
+            "evidence promotion case `{case_id}` assertion {index}: unknown evidence class `{class}`"
+        ))
+    }
 }
 
 fn build_ripr_for_evidence_promotion_external() -> Result<(), String> {
@@ -11144,140 +11314,251 @@ fn evidence_promotion_external_semantic_violations(
     case: &EvidencePromotionExternalCase,
     check_json: &Value,
 ) -> Vec<String> {
+    evidence_promotion_semantic_violations(&case.id, None, &case.assertions, check_json)
+}
+
+fn evidence_promotion_semantic_violations(
+    case_id: &str,
+    source_fixture: Option<&str>,
+    assertions: &[EvidencePromotionSemanticAssertion],
+    check_json: &Value,
+) -> Vec<String> {
     let mut violations = Vec::new();
+    let case_label = evidence_promotion_assertion_case_label(case_id, source_fixture);
     let findings = check_json
         .get("findings")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    if case.must_not_report_clean {
-        let summary_findings = check_json
-            .get("summary")
-            .and_then(|summary| summary.get("findings"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        if summary_findings == 0 || findings.is_empty() {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: must_not_report_clean requires findings, got summary.findings={} findings.len()={}",
-                case.id,
-                summary_findings,
-                findings.len()
-            ));
-        }
-    }
-    if case.must_disclose_scope {
-        let missing_scope = ["schema_version", "tool", "mode", "root", "base"]
-            .iter()
-            .filter_map(|field| {
-                let present = check_json
-                    .get(*field)
-                    .and_then(Value::as_str)
-                    .is_some_and(|value| !value.trim().is_empty());
-                (!present).then_some(*field)
-            })
-            .collect::<Vec<_>>();
-        if !missing_scope.is_empty() {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: must_disclose_scope missing {}",
-                case.id,
-                missing_scope.join(", ")
-            ));
-        }
-    }
-    if let Some(expected_file) = &case.expected_changed_file {
-        let saw_file = findings.iter().any(|finding| {
-            finding
-                .get("probe")
-                .and_then(|probe| probe.get("file"))
-                .and_then(Value::as_str)
-                .is_some_and(|file| normalize_slashes(file).ends_with(expected_file))
-        });
-        if !saw_file {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: expected changed file `{expected_file}` was not present in finding probe files",
-                case.id
-            ));
-        }
-    }
-    if case.must_emit_limitation {
-        let Some(expected_limit_kind) = &case.expected_limit_kind else {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: must_emit_limitation requires expected_limit_kind",
-                case.id
-            ));
-            return violations;
-        };
-        let has_limit = findings.iter().any(|finding| {
-            finding.get("static_limit_kind").and_then(Value::as_str)
-                == Some(expected_limit_kind.as_str())
-        });
-        if !has_limit {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: expected static_limit_kind `{expected_limit_kind}` was not emitted",
-                case.id
-            ));
-        }
-    }
-    if case.must_not_emit_repair_packet {
-        let packet_ready_paths = json_bool_field_paths(check_json, "repair_packet_ready", true);
-        if !packet_ready_paths.is_empty() {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: repair_packet_ready=true found at {}",
-                case.id,
-                packet_ready_paths.join(", ")
-            ));
-        }
-    }
-    if case.must_disclose_witness {
-        const WITNESS_PREFIX: &str = "For example, the test ";
-        let discloses = findings.iter().any(|finding| {
-            finding
-                .get("evidence")
-                .and_then(Value::as_array)
-                .is_some_and(|evidence| {
-                    evidence
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .any(|line| line.starts_with(WITNESS_PREFIX))
-                })
-        });
-        if !discloses {
-            violations.push(format!(
-                "evidence promotion pinned external case `{}`: must_disclose_witness did not find evidence prefix `{WITNESS_PREFIX}`",
-                case.id
-            ));
-        }
-    }
-    if case.must_remain_non_promoted {
-        let expected_max_class = case
-            .expected_max_class
-            .as_deref()
-            .unwrap_or("weakly_exposed");
-        let max_severity = evidence_class_severity(expected_max_class);
-        for finding in &findings {
-            let class = finding
-                .get("classification")
-                .and_then(Value::as_str)
-                .unwrap_or("static_unknown");
-            let finding_id = finding
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("<no-id>");
-            if class == "exposed" {
-                violations.push(format!(
-                    "evidence promotion pinned external case `{}`: finding `{finding_id}` promoted to exposed",
-                    case.id
-                ));
+
+    for assertion in assertions {
+        match assertion {
+            EvidencePromotionSemanticAssertion::MustPromote => {
+                let has_exposed = findings.iter().any(|finding| {
+                    finding.get("classification").and_then(Value::as_str) == Some("exposed")
+                });
+                if !has_exposed {
+                    violations.push(format!(
+                        "{case_label}: `must_promote` requires at least one finding with classification `exposed`"
+                    ));
+                }
             }
-            if evidence_class_severity(class) > max_severity {
-                violations.push(format!(
-                    "evidence promotion pinned external case `{}`: finding `{finding_id}` class `{class}` exceeds maximum `{expected_max_class}`",
-                    case.id
-                ));
+            EvidencePromotionSemanticAssertion::MustNotPromote => {
+                for finding in &findings {
+                    let class = finding
+                        .get("classification")
+                        .and_then(Value::as_str)
+                        .unwrap_or("static_unknown");
+                    if class == "exposed" {
+                        let finding_id = evidence_promotion_finding_id(finding);
+                        violations.push(format!(
+                            "{case_label}: finding `{finding_id}` promoted to exposed (classification `exposed`) but `must_not_promote` is asserted"
+                        ));
+                    }
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotReportClean => {
+                let summary_findings = check_json
+                    .get("summary")
+                    .and_then(|summary| summary.get("findings"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                if summary_findings == 0 || findings.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_report_clean` requires at least one reported finding, got summary.findings={summary_findings} findings.len()={}",
+                        findings.len()
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustDiscloseScope => {
+                let missing_scope = evidence_promotion_missing_scope_fields(check_json);
+                if !missing_scope.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_scope` requires report-level scope fields schema_version/tool/mode/root/base, but missing or empty field(s): {}",
+                        missing_scope.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustEmitLimitation {
+                expected_limit_kind,
+            } => {
+                if expected_limit_kind.trim().is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_emit_limitation` requires expected_limit_kind"
+                    ));
+                } else {
+                    let has_limit = findings.iter().any(|finding| {
+                        finding.get("static_limit_kind").and_then(Value::as_str)
+                            == Some(expected_limit_kind.as_str())
+                    });
+                    if !has_limit {
+                        violations.push(format!(
+                            "{case_label}: expected static_limit_kind `{expected_limit_kind}` was not emitted"
+                        ));
+                    }
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotEmitLimitation => {
+                let limit_paths =
+                    json_non_empty_string_field_paths(check_json, "static_limit_kind");
+                if !limit_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_emit_limitation` forbids static_limit_kind, but found it at {}",
+                        limit_paths.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustHaveVerifyCommand => {
+                let verify_paths = json_non_empty_string_field_paths(check_json, "verify_command");
+                if verify_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_have_verify_command` requires a non-empty verify_command"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand => {
+                let verify_paths = json_non_empty_string_field_paths(check_json, "verify_command");
+                if !verify_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_have_verify_command` forbids verify_command, but found it at {}",
+                        verify_paths.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustEmitRepairPacket => {
+                let packet_ready_paths =
+                    json_bool_field_paths(check_json, "repair_packet_ready", true);
+                if packet_ready_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_emit_repair_packet` requires repair_packet_ready=true"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket => {
+                let packet_ready_paths =
+                    json_bool_field_paths(check_json, "repair_packet_ready", true);
+                if !packet_ready_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_emit_repair_packet` forbids repair_packet_ready=true, but found it at {}",
+                        packet_ready_paths.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedClass {
+                class: expected_class,
+            } => {
+                if findings.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `expected_class` `{expected_class}` requires at least one finding"
+                    ));
+                }
+                for finding in &findings {
+                    let class = finding
+                        .get("classification")
+                        .and_then(Value::as_str)
+                        .unwrap_or("static_unknown");
+                    if class != expected_class {
+                        let finding_id = evidence_promotion_finding_id(finding);
+                        violations.push(format!(
+                            "{case_label}: finding `{finding_id}` has classification `{class}`, expected_class `{expected_class}`"
+                        ));
+                    }
+                }
+            }
+            EvidencePromotionSemanticAssertion::MaximumClass {
+                class: expected_max_class,
+            } => {
+                let max_severity = evidence_class_severity(expected_max_class);
+                for finding in &findings {
+                    let class = finding
+                        .get("classification")
+                        .and_then(Value::as_str)
+                        .unwrap_or("static_unknown");
+                    if evidence_class_severity(class) > max_severity {
+                        let finding_id = evidence_promotion_finding_id(finding);
+                        violations.push(format!(
+                            "{case_label}: finding `{finding_id}` class `{class}` exceeds maximum `{expected_max_class}`"
+                        ));
+                    }
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedCompleteness { completeness } => {
+                let observed = check_json
+                    .get("analysis_scope")
+                    .and_then(|scope| scope.get("completeness"))
+                    .and_then(Value::as_str);
+                if observed != Some(completeness.as_str()) {
+                    violations.push(format!(
+                        "{case_label}: `expected_completeness` requires analysis_scope.completeness `{completeness}`, got `{}`",
+                        observed.unwrap_or("<missing>")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustDiscloseWitness => {
+                const WITNESS_PREFIX: &str = "For example, the test ";
+                let discloses = findings.iter().any(|finding| {
+                    finding
+                        .get("evidence")
+                        .and_then(Value::as_array)
+                        .is_some_and(|evidence| {
+                            evidence
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .any(|line| line.starts_with(WITNESS_PREFIX))
+                        })
+                });
+                if !discloses {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_witness` did not find evidence prefix `{WITNESS_PREFIX}`"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustSeeChangedFile { path } => {
+                let saw_file = findings.iter().any(|finding| {
+                    finding
+                        .get("probe")
+                        .and_then(|probe| probe.get("file"))
+                        .and_then(Value::as_str)
+                        .is_some_and(|file| normalize_slashes(file).ends_with(path))
+                });
+                if !saw_file {
+                    violations.push(format!(
+                        "{case_label}: `must_see_changed_file` expected changed file `{path}` was not present in finding probe files"
+                    ));
+                }
             }
         }
     }
     violations
+}
+
+fn evidence_promotion_assertion_case_label(case_id: &str, source_fixture: Option<&str>) -> String {
+    match source_fixture {
+        Some(fixture) => {
+            format!("evidence promotion honesty case `{case_id}` (fixture `{fixture}`)")
+        }
+        None => format!("evidence promotion pinned external case `{case_id}`"),
+    }
+}
+
+fn evidence_promotion_finding_id(finding: &Value) -> &str {
+    finding
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("<no-id>")
+}
+
+fn evidence_promotion_missing_scope_fields(check_json: &Value) -> Vec<&'static str> {
+    ["schema_version", "tool", "mode", "root", "base"]
+        .iter()
+        .filter_map(|field| {
+            let present = check_json
+                .get(*field)
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty());
+            (!present).then_some(*field)
+        })
+        .collect()
 }
 
 fn evidence_promotion_external_failure_kind(violations: &[String]) -> String {
@@ -11312,7 +11593,13 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
             || joined.contains("must_not_report_clean")
             || joined.contains("must_disclose_scope")
             || joined.contains("must_not_emit_repair_packet")
-            || joined.contains("must_disclose_witness"))
+            || joined.contains("must_disclose_witness")
+            || joined.contains("must_have_verify_command")
+            || joined.contains("must_not_have_verify_command")
+            || joined.contains("must_emit_repair_packet")
+            || joined.contains("must_not_emit_limitation")
+            || joined.contains("expected_class")
+            || joined.contains("expected_completeness"))
     {
         "golden_drift".to_string()
     } else if joined.contains("missing")
@@ -11784,7 +12071,7 @@ fn check_evidence_promotion_honesty(args: &[String]) -> Result<(), String> {
              3. If a scope-guard case lost report-level scope fields, restore the \
                golden's schema_version/tool/mode/root/base header or remove the scope \
                guard only after updating the governing spec.\n\
-             4. To register a new fake-clean, add a `must_remain_non_promoted` case to \
+             4. To register a new fake-clean, add a `must_not_promote` assertion to \
                fixtures/evidence-promotion-honesty-corpus/corpus.json.\n",
         );
     }
@@ -11813,6 +12100,19 @@ fn validate_evidence_promotion_honesty_corpus(violations: &mut Vec<String>) -> R
         return Ok(());
     }
     validate_evidence_promotion_honesty_corpus_at(corpus_path, violations)
+}
+
+fn evidence_promotion_known_class(class: &str) -> bool {
+    matches!(
+        class,
+        "exposed"
+            | "weakly_exposed"
+            | "reachable_unrevealed"
+            | "no_static_path"
+            | "infection_unknown"
+            | "propagation_unknown"
+            | "static_unknown"
+    )
 }
 
 /// Classification severity ordering: exposed > weakly_exposed > reachable_unrevealed/no_static_path/*_unknown
@@ -11857,6 +12157,42 @@ fn json_bool_field_paths(value: &Value, field: &str, expected: bool) -> Vec<Stri
 
     let mut paths = Vec::new();
     walk(value, field, expected, "", &mut paths);
+    paths
+}
+
+fn json_non_empty_string_field_paths(value: &Value, field: &str) -> Vec<String> {
+    fn walk(value: &Value, field: &str, path: &str, paths: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    let child_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    if key == field && child.as_str().is_some_and(|value| !value.trim().is_empty())
+                    {
+                        paths.push(child_path.clone());
+                    }
+                    walk(child, field, &child_path, paths);
+                }
+            }
+            Value::Array(items) => {
+                for (index, child) in items.iter().enumerate() {
+                    let child_path = if path.is_empty() {
+                        format!("[{index}]")
+                    } else {
+                        format!("{path}[{index}]")
+                    };
+                    walk(child, field, &child_path, paths);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut paths = Vec::new();
+    walk(value, field, "", &mut paths);
     paths
 }
 
@@ -11929,6 +12265,13 @@ fn validate_evidence_promotion_honesty_corpus_at(
             .and_then(Value::as_str)
             .unwrap_or("");
         let tier = case.get("tier").and_then(Value::as_str).unwrap_or("");
+        let assertions = match evidence_promotion_case_assertions(case) {
+            Ok(assertions) => assertions,
+            Err(err) => {
+                violations.push(err);
+                Vec::new()
+            }
+        };
 
         match tier {
             "pure" => {
@@ -12027,6 +12370,28 @@ fn validate_evidence_promotion_honesty_corpus_at(
                 normalize_path(&check_json_path)
             )
         })?;
+        if case.get("assertions").is_some() {
+            if assertions.iter().any(|assertion| {
+                matches!(
+                    assertion,
+                    EvidencePromotionSemanticAssertion::MustNotPromote
+                )
+            }) {
+                non_promoted_languages.insert(language.to_string());
+            }
+            if assertions.iter().any(|assertion| {
+                matches!(assertion, EvidencePromotionSemanticAssertion::MustPromote)
+            }) {
+                control_languages.insert(language.to_string());
+            }
+            violations.extend(evidence_promotion_semantic_violations(
+                id,
+                Some(source_fixture),
+                &assertions,
+                &check_json,
+            ));
+            continue;
+        }
         let findings = check_json
             .get("findings")
             .and_then(Value::as_array)
@@ -12247,7 +12612,7 @@ fn validate_evidence_promotion_honesty_corpus_at(
         if !non_promoted_languages.contains(lang) {
             violations.push(format!(
                 "evidence promotion honesty corpus must include at least one \
-                 `must_remain_non_promoted` case for language `{lang}`"
+                 `must_not_promote` assertion for language `{lang}`"
             ));
         }
     }
@@ -12259,7 +12624,7 @@ fn validate_evidence_promotion_honesty_corpus_at(
         if !control_languages.contains(lang) {
             violations.push(format!(
                 "evidence promotion honesty corpus must include at least one \
-                 `expected_promoted` control case for language `{lang}`"
+                 `must_promote` control assertion for language `{lang}`"
             ));
         }
     }
@@ -73211,6 +73576,13 @@ mod tests {
             "summary": {"findings": 1},
             "findings": [{"id": classification, "classification": classification}]
         });
+        write_evidence_promotion_check_json(fixture, check_json)
+    }
+
+    fn write_evidence_promotion_check_json(
+        fixture: &Path,
+        check_json: Value,
+    ) -> Result<(), String> {
         write(
             &fixture.join("expected/check.json"),
             &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
@@ -73477,6 +73849,240 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn evidence_promotion_honesty_accepts_typed_assertion_vocabulary() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-typed-assertions");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust-rich");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        write_evidence_promotion_check(&py_fixture, "weakly_exposed")?;
+        write_evidence_promotion_check(&ts_fixture, "weakly_exposed")?;
+        write_evidence_promotion_check(&rust_control_fixture, "exposed")?;
+        write_evidence_promotion_check(&ts_control_fixture, "exposed")?;
+        write_evidence_promotion_check_json(
+            &rust_fixture,
+            serde_json::json!({
+                "schema_version": "0.2",
+                "tool": "ripr",
+                "mode": "fast",
+                "root": ".",
+                "base": "HEAD",
+                "analysis_scope": {"completeness": "complete"},
+                "summary": {"findings": 1},
+                "findings": [
+                    {
+                        "id": "probe:src_lib.rs:predicate:typed",
+                        "classification": "no_static_path",
+                        "probe": {"file": "src/lib.rs"},
+                        "static_limit_kind": "rust_transitive_reach_unresolved",
+                        "verify_command": "cargo test typed_case",
+                        "evidence": [
+                            "For example, the test `typed_case` (tests/typed.rs:1) calls `entry`, an entry point that may lead here."
+                        ]
+                    }
+                ]
+            }),
+        )?;
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "tier": "pure",
+                    "source_fixture": py_fixture,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "maximum_class", "class": "weakly_exposed"}
+                    ]
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_fixture,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "maximum_class", "class": "weakly_exposed"}
+                    ]
+                },
+                {
+                    "id": "rust_typed_vocabulary",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_fixture,
+                    "assertions": [
+                        {"type": "must_not_report_clean"},
+                        {"type": "must_disclose_scope"},
+                        {"type": "must_see_changed_file", "path": "src/lib.rs"},
+                        {
+                            "type": "must_emit_limitation",
+                            "expected_limit_kind": "rust_transitive_reach_unresolved"
+                        },
+                        {"type": "must_have_verify_command"},
+                        {"type": "must_not_emit_repair_packet"},
+                        {"type": "must_disclose_witness"},
+                        {"type": "must_not_promote"},
+                        {"type": "maximum_class", "class": "no_static_path"},
+                        {"type": "expected_class", "class": "no_static_path"},
+                        {"type": "expected_completeness", "completeness": "complete"}
+                    ]
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "assertions": [{"type": "must_promote"}]
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "assertions": [{"type": "must_promote"}]
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        assert!(
+            violations.is_empty(),
+            "unexpected typed assertion violations: {violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_honesty_rejects_unknown_assertion_type() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-unknown-assertion");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_fixture, "no_static_path"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            write_evidence_promotion_check(fixture, classification)?;
+        }
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "tier": "pure",
+                    "source_fixture": py_fixture,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "maximum_class", "class": "weakly_exposed"}
+                    ]
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_fixture,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "maximum_class", "class": "weakly_exposed"}
+                    ]
+                },
+                {
+                    "id": "rust_bad_assertion",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_fixture,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "must_guess"}
+                    ]
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "assertions": [{"type": "must_promote"}]
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "assertions": [{"type": "must_promote"}]
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+        assert!(report.contains("rust_bad_assertion"), "{report}");
+        assert!(
+            report.contains("unknown assertion type `must_guess`"),
+            "{report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_projection_drift() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand,
+            super::EvidencePromotionSemanticAssertion::MustEmitRepairPacket,
+            super::EvidencePromotionSemanticAssertion::MustNotEmitLimitation,
+            super::EvidencePromotionSemanticAssertion::ExpectedCompleteness {
+                completeness: "limited".to_string(),
+            },
+        ];
+        let check_json = serde_json::json!({
+            "analysis_scope": {"completeness": "complete"},
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "projection-drift",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "verify_command": "cargo test"
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "projection_drift",
+            Some("fixtures/projection_drift"),
+            &assertions,
+            &check_json,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_not_have_verify_command"), "{report}");
+        assert!(report.contains("must_emit_repair_packet"), "{report}");
+        assert!(report.contains("must_not_emit_limitation"), "{report}");
+        assert!(report.contains("expected_completeness"), "{report}");
+    }
+
     fn semver_external_case_for_test() -> super::EvidencePromotionExternalCase {
         super::EvidencePromotionExternalCase {
             id: "rust_semver_matches_greater_external_limitation".to_string(),
@@ -73491,15 +74097,22 @@ mod tests {
                     .to_string(),
             runtime_budget_seconds: 120,
             artifact_budget_bytes: 10_485_760,
-            expected_changed_file: Some("src/eval.rs".to_string()),
-            expected_limit_kind: Some("rust_transitive_reach_unresolved".to_string()),
-            expected_max_class: Some("no_static_path".to_string()),
-            must_not_report_clean: true,
-            must_disclose_scope: true,
-            must_emit_limitation: true,
-            must_not_emit_repair_packet: true,
-            must_disclose_witness: true,
-            must_remain_non_promoted: true,
+            assertions: vec![
+                super::EvidencePromotionSemanticAssertion::MustSeeChangedFile {
+                    path: "src/eval.rs".to_string(),
+                },
+                super::EvidencePromotionSemanticAssertion::MustNotReportClean,
+                super::EvidencePromotionSemanticAssertion::MustDiscloseScope,
+                super::EvidencePromotionSemanticAssertion::MustEmitLimitation {
+                    expected_limit_kind: "rust_transitive_reach_unresolved".to_string(),
+                },
+                super::EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket,
+                super::EvidencePromotionSemanticAssertion::MustDiscloseWitness,
+                super::EvidencePromotionSemanticAssertion::MustNotPromote,
+                super::EvidencePromotionSemanticAssertion::MaximumClass {
+                    class: "no_static_path".to_string(),
+                },
+            ],
         }
     }
 
