@@ -10622,20 +10622,37 @@ enum EvidencePromotionSemanticAssertion {
     MustDiscloseScope,
     MustDiscloseNoScope,
     MustDiscloseUnanalyzedWorkingTree,
-    MustEmitLimitation { expected_limit_kind: String },
+    MustEmitLimitation {
+        expected_limit_kind: String,
+    },
     MustNotEmitLimitation,
     MustHaveVerifyCommand,
     MustNotHaveVerifyCommand,
     MustEmitRepairPacket,
     MustNotEmitRepairPacket,
-    ExpectedClass { class: String },
-    MaximumClass { class: String },
-    ExpectedCompleteness { completeness: String },
+    ExpectedClass {
+        class: String,
+    },
+    MaximumClass {
+        class: String,
+    },
+    ExpectedCompleteness {
+        completeness: String,
+    },
     MustDiscloseWitness,
     MustDiscloseLimitationDetail,
-    ExpectedLimitationRoute { route: String },
+    ExpectedLimitationDetail {
+        last_established_edge: String,
+        first_unresolved_edge: String,
+        non_claim: String,
+    },
+    ExpectedLimitationRoute {
+        route: String,
+    },
     MustNotClaimNoTestsFound,
-    MustSeeChangedFile { path: String },
+    MustSeeChangedFile {
+        path: String,
+    },
 }
 
 fn run_evidence_promotion_pinned_external_cases(
@@ -10917,6 +10934,33 @@ fn evidence_promotion_parse_assertion(
         "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
         "must_disclose_limitation_detail" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail)
+        }
+        "expected_limitation_detail" => {
+            let last_established_edge = evidence_promotion_required_assertion_string(
+                case_id,
+                index,
+                assertion,
+                "last_established_edge",
+            )?;
+            let first_unresolved_edge = evidence_promotion_required_assertion_string(
+                case_id,
+                index,
+                assertion,
+                "first_unresolved_edge",
+            )?;
+            let non_claim = evidence_promotion_required_assertion_string(
+                case_id,
+                index,
+                assertion,
+                "non_claim",
+            )?;
+            Ok(
+                EvidencePromotionSemanticAssertion::ExpectedLimitationDetail {
+                    last_established_edge,
+                    first_unresolved_edge,
+                    non_claim,
+                },
+            )
         }
         "expected_limitation_route" => {
             let route =
@@ -11613,6 +11657,33 @@ fn evidence_promotion_semantic_violations(
                     }
                 }
             }
+            EvidencePromotionSemanticAssertion::ExpectedLimitationDetail {
+                last_established_edge,
+                first_unresolved_edge,
+                non_claim,
+            } => {
+                let expected_details = [
+                    (
+                        "last established edge",
+                        "limitation_last_established_edge: ",
+                        last_established_edge.as_str(),
+                    ),
+                    (
+                        "first unresolved edge",
+                        "limitation_first_unresolved_edge: ",
+                        first_unresolved_edge.as_str(),
+                    ),
+                    ("non-claim", "limitation_non_claim: ", non_claim.as_str()),
+                ];
+                let mismatches =
+                    evidence_promotion_limitation_detail_mismatches(&findings, &expected_details);
+                if !mismatches.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `expected_limitation_detail` requires every static limitation to carry the expected last edge, unresolved edge, and non-claim, but found {}",
+                        mismatches.join(", ")
+                    ));
+                }
+            }
             EvidencePromotionSemanticAssertion::ExpectedLimitationRoute { route } => {
                 let mismatches = evidence_promotion_limitation_route_mismatches(&findings, route);
                 if !mismatches.is_empty() {
@@ -11749,6 +11820,52 @@ fn evidence_promotion_limitation_detail_lines(findings: &[Value]) -> Vec<(String
         }
     }
     details
+}
+
+fn evidence_promotion_limitation_detail_mismatches(
+    findings: &[Value],
+    expected_details: &[(&str, &str, &str)],
+) -> Vec<String> {
+    let mut mismatches = Vec::new();
+    let mut limitation_count = 0usize;
+    for (index, finding) in findings.iter().enumerate() {
+        if finding
+            .get("static_limit_kind")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            continue;
+        }
+        limitation_count += 1;
+        let evidence_lines: Vec<&str> = finding
+            .get("evidence")
+            .and_then(Value::as_array)
+            .map(|evidence| evidence.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        for (label, prefix, expected) in expected_details {
+            let observed = evidence_lines
+                .iter()
+                .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim));
+            match observed {
+                Some(value) if value == *expected => {}
+                Some("") => {
+                    mismatches.push(format!("$.findings[{index}].evidence:empty {label}"));
+                }
+                Some(value) => {
+                    mismatches.push(format!("$.findings[{index}].evidence:{label}:{value}"));
+                }
+                None => {
+                    mismatches.push(format!("$.findings[{index}].evidence:missing {label}"));
+                }
+            }
+        }
+    }
+
+    if limitation_count == 0 {
+        mismatches.push("$.findings:missing static_limit_kind".to_string());
+    }
+
+    mismatches
 }
 
 fn evidence_promotion_limitation_route_mismatches(
@@ -74449,6 +74566,12 @@ mod tests {
                         {"type": "must_disclose_witness"},
                         {"type": "must_disclose_limitation_detail"},
                         {
+                            "type": "expected_limitation_detail",
+                            "last_established_edge": "test `typed_case` (tests/typed.rs:1) -> entry `entry`",
+                            "first_unresolved_edge": "entry `entry` -> owner `changed` through a transitive Rust helper path",
+                            "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                        },
+                        {
                             "type": "expected_limitation_route",
                             "route": "analysis/rust-public-api-transitive-reach"
                         },
@@ -74911,6 +75034,16 @@ mod tests {
     fn evidence_promotion_semantic_assertions_accept_limitation_detail_projection() {
         let assertions = vec![
             super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail,
+            super::EvidencePromotionSemanticAssertion::ExpectedLimitationDetail {
+                last_established_edge:
+                    "test `integration_path` (tests/it.rs:4) -> entry `outer`".to_string(),
+                first_unresolved_edge:
+                    "entry `outer` -> owner `inner` through a transitive Rust helper path"
+                        .to_string(),
+                non_claim:
+                    "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                        .to_string(),
+            },
             super::EvidencePromotionSemanticAssertion::ExpectedLimitationRoute {
                 route: "analysis/rust-public-api-transitive-reach".to_string(),
             },
@@ -74949,6 +75082,56 @@ mod tests {
         );
 
         assert!(violations.is_empty(), "{violations:?}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_wrong_limitation_detail() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::ExpectedLimitationDetail {
+                last_established_edge:
+                    "test `integration_path` (tests/it.rs:4) -> entry `outer`".to_string(),
+                first_unresolved_edge:
+                    "entry `outer` -> owner `inner` through a transitive Rust helper path"
+                        .to_string(),
+                non_claim:
+                    "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                        .to_string(),
+            },
+        ];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_internal.rs:predicate:inner",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "evidence": [
+                        "limitation_last_established_edge: test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "limitation_first_unresolved_edge: entry `other` -> owner `inner` through a transitive Rust helper path",
+                        "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
+                        "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    ]
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "wrong_limitation_detail",
+            Some("fixtures/wrong_limitation_detail"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_limitation_detail"), "{report}");
+        assert!(
+            report.contains(
+                "$.findings[0].evidence:first unresolved edge:entry `other` -> owner `inner`"
+            ),
+            "{report}"
+        );
     }
 
     #[test]
@@ -75089,6 +75272,17 @@ mod tests {
                 super::EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket,
                 super::EvidencePromotionSemanticAssertion::MustDiscloseWitness,
                 super::EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail,
+                super::EvidencePromotionSemanticAssertion::ExpectedLimitationDetail {
+                    last_established_edge:
+                        "test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`"
+                            .to_string(),
+                    first_unresolved_edge:
+                        "entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path"
+                            .to_string(),
+                    non_claim:
+                        "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                            .to_string(),
+                },
                 super::EvidencePromotionSemanticAssertion::ExpectedLimitationRoute {
                     route: "analysis/rust-public-api-transitive-reach".to_string(),
                 },

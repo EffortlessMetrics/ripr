@@ -115,6 +115,8 @@ says it was re-blessed to."
     - `expected_completeness` with `completeness`
     - `must_disclose_witness`
     - `must_disclose_limitation_detail`
+    - `expected_limitation_detail` with `last_established_edge`,
+      `first_unresolved_edge`, and `non_claim`
     - `expected_limitation_route` with `route`
     - `must_not_claim_no_tests_found`
     - `must_see_changed_file` with `path`
@@ -151,7 +153,12 @@ says it was re-blessed to."
     `expected/human.txt` to project the same exact details under `Limitation
     detail`. This guards against a named limitation that tells the user a path is
     blocked but hides where the analyzer stopped or what route would unlock it.
-4d1a. `expected_limitation_route` cases (additive, route-quality seed): asserts
+4d1a. `expected_limitation_detail` cases (additive, named-limitation honesty):
+    asserts every static limitation in the case carries the exact last
+    established edge, first unresolved edge, and non-claim values named by the
+    assertion. This makes the user-facing limitation boundary executable corpus
+    data instead of accepting any non-empty edge prose.
+4d1b. `expected_limitation_route` cases (additive, route-quality seed): asserts
     every static limitation in the case carries the exact `limitation_analyzer_route`
     value named by the assertion. This makes the analyzer backlog route executable
     corpus data instead of unconstrained prose.
@@ -312,9 +319,9 @@ gate-specific artifacts.
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
-| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
-| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
 | scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
 | scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
@@ -323,7 +330,7 @@ gate-specific artifacts.
 
 | id | language | external repo | commit | vector |
 |---|---|---|---|---|
-| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved` with limitation detail and route `analysis/rust-public-api-transitive-reach`, not clean or actionable |
+| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, not clean or actionable |
 
 ### Control cases (must_promote)
 
@@ -422,6 +429,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_missing_limitation_detail` | Shared assertion evaluator rejects a static limitation that omits last-edge, unresolved-edge, route, or non-claim evidence |
 | `evidence_promotion_semantic_assertions_reject_human_missing_limitation_detail` | Shared assertion evaluator rejects a fixture human golden that drops the `Limitation detail` projection |
 | `evidence_promotion_semantic_assertions_accept_limitation_detail_projection` | Shared assertion evaluator accepts matching JSON evidence and human limitation detail |
+| `evidence_promotion_semantic_assertions_reject_wrong_limitation_detail` | Shared assertion evaluator rejects a static limitation whose last edge, unresolved edge, or non-claim does not match the expected corpus detail |
 | `evidence_promotion_semantic_assertions_reject_wrong_limitation_route` | Shared assertion evaluator rejects a static limitation whose analyzer route does not match the expected corpus route |
 | `evidence_promotion_semantic_assertions_accept_scope_limited_empty_results` | Shared assertion evaluator treats no-scope and unanalyzed-worktree disclosures as non-clean empty results |
 | `evidence_promotion_semantic_assertions_reject_bare_empty_false_clean` | Shared assertion evaluator rejects a bare empty result for `must_not_report_clean` |

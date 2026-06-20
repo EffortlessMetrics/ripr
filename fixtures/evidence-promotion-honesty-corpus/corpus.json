@@ -117,6 +117,12 @@
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer`",
+          "first_unresolved_edge": "entry `outer` -> owner `inner` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
+        {
           "type": "expected_limitation_route",
           "route": "analysis/rust-public-api-transitive-reach"
         },
@@ -142,6 +148,12 @@
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `greater_than_patch_examples` (tests/version_req.rs:18) -> entry `assert_public_api_accepts`",
+          "first_unresolved_edge": "entry `assert_public_api_accepts` -> owner `matches_greater` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
+        {
           "type": "expected_limitation_route",
           "route": "analysis/rust-public-api-transitive-reach"
         },
@@ -166,6 +178,12 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10",
+          "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+        },
         {
           "type": "expected_limitation_route",
           "route": "analysis/rust-macro-aware-reach"
@@ -242,6 +260,12 @@
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`",
+          "first_unresolved_edge": "entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
         {
           "type": "expected_limitation_route",
           "route": "analysis/rust-public-api-transitive-reach"
