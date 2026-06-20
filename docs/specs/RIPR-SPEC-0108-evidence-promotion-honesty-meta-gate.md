@@ -194,6 +194,12 @@ says it was re-blessed to."
     unresolved edge into a command-shaped handoff while still claiming
     limitation status. `must_have_verify_command` and
     `must_have_receipt_command` are the positive packet-contract controls.
+    Fixture-backed cases also assert human output agrees with the command
+    contract: positive command assertions must project the same command, while
+    negative command assertions must not show a concrete `verify:` or `receipt:`
+    command line. Unavailable placeholders such as
+    `receipt: unavailable_until_python_gap_ledger` remain status disclosures,
+    not receipt commands.
 4h. `must_disclose_repair_packet_detail` cases (additive, packet-contract
     honesty): assert a packet-ready report carries the JSON handoff fields users
     and agents need: canonical gap, source/target, edit cage, repair shape,
@@ -488,6 +494,10 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_accepts_typed_assertion_vocabulary` | Validator accepts typed semantic assertions as the canonical corpus contract |
 | `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
 | `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, receipt-command, packet, limitation, and completeness drift |
+| `evidence_promotion_semantic_assertions_reject_human_missing_verify_command_projection` | Shared assertion evaluator rejects fixture human output that hides a JSON-backed verify command |
+| `evidence_promotion_semantic_assertions_reject_human_invented_verify_command` | Shared assertion evaluator rejects fixture human output that invents a verify command when JSON has none |
+| `evidence_promotion_semantic_assertions_reject_human_invented_receipt_command` | Shared assertion evaluator rejects fixture human output that invents a receipt command when JSON has none |
+| `evidence_promotion_semantic_assertions_accept_unavailable_human_receipt_status` | Shared assertion evaluator treats an unavailable receipt status as a non-command disclosure |
 | `evidence_promotion_semantic_assertions_reject_missing_receipt_command` | Shared assertion evaluator rejects a packet contract that lacks a receipt command |
 | `evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report missing target/evidence detail |
 | `evidence_promotion_semantic_assertions_reject_wrong_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report whose target test or verify command drifts from the corpus contract |

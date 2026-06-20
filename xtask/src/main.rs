@@ -11676,6 +11676,29 @@ fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `must_have_verify_command` requires a non-empty verify_command"
                     ));
+                } else if fixture_human_required {
+                    match human_text {
+                        Some(human_text) => {
+                            let verify_values =
+                                json_non_empty_string_field_values(check_json, "verify_command");
+                            let missing_human = evidence_promotion_missing_human_command_values(
+                                human_text,
+                                EvidencePromotionHumanCommandKind::Verify,
+                                &verify_values,
+                            );
+                            if !missing_human.is_empty() {
+                                violations.push(format!(
+                                    "{case_label}: `must_have_verify_command` requires fixture human output to project the same verify command, but missing {}",
+                                    missing_human.join(", ")
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `must_have_verify_command` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
                 }
             }
             EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand => {
@@ -11686,6 +11709,18 @@ fn evidence_promotion_semantic_violations(
                         verify_paths.join(", ")
                     ));
                 }
+                if fixture_human_required && let Some(human_text) = human_text {
+                    let human_verify = evidence_promotion_human_command_projection_lines(
+                        human_text,
+                        EvidencePromotionHumanCommandKind::Verify,
+                    );
+                    if !human_verify.is_empty() {
+                        violations.push(format!(
+                            "{case_label}: `must_not_have_verify_command` forbids fixture human verify command projection, but found {}",
+                            human_verify.join(", ")
+                        ));
+                    }
+                }
             }
             EvidencePromotionSemanticAssertion::MustHaveReceiptCommand => {
                 let receipt_paths =
@@ -11694,6 +11729,29 @@ fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `must_have_receipt_command` requires a non-empty receipt_command"
                     ));
+                } else if fixture_human_required {
+                    match human_text {
+                        Some(human_text) => {
+                            let receipt_values =
+                                json_non_empty_string_field_values(check_json, "receipt_command");
+                            let missing_human = evidence_promotion_missing_human_command_values(
+                                human_text,
+                                EvidencePromotionHumanCommandKind::Receipt,
+                                &receipt_values,
+                            );
+                            if !missing_human.is_empty() {
+                                violations.push(format!(
+                                    "{case_label}: `must_have_receipt_command` requires fixture human output to project the same receipt command, but missing {}",
+                                    missing_human.join(", ")
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `must_have_receipt_command` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
                 }
             }
             EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand => {
@@ -11704,6 +11762,18 @@ fn evidence_promotion_semantic_violations(
                         "{case_label}: `must_not_have_receipt_command` forbids receipt_command, but found it at {}",
                         receipt_paths.join(", ")
                     ));
+                }
+                if fixture_human_required && let Some(human_text) = human_text {
+                    let human_receipt = evidence_promotion_human_command_projection_lines(
+                        human_text,
+                        EvidencePromotionHumanCommandKind::Receipt,
+                    );
+                    if !human_receipt.is_empty() {
+                        violations.push(format!(
+                            "{case_label}: `must_not_have_receipt_command` forbids fixture human receipt command projection, but found {}",
+                            human_receipt.join(", ")
+                        ));
+                    }
                 }
             }
             EvidencePromotionSemanticAssertion::MustEmitRepairPacket => {
@@ -12797,6 +12867,110 @@ fn evidence_promotion_human_class_line_matches(line: &str, expected_class: &str)
             .is_some_and(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
 }
 
+#[derive(Clone, Copy)]
+enum EvidencePromotionHumanCommandKind {
+    Verify,
+    Receipt,
+}
+
+impl EvidencePromotionHumanCommandKind {
+    fn labels(self) -> &'static [&'static str] {
+        match self {
+            Self::Verify => &["verify", "verify command", "verify_command"],
+            Self::Receipt => &["receipt", "receipt command", "receipt_command"],
+        }
+    }
+
+    fn field_name(self) -> &'static str {
+        match self {
+            Self::Verify => "verify_command",
+            Self::Receipt => "receipt_command",
+        }
+    }
+}
+
+fn evidence_promotion_missing_human_command_values(
+    human_text: &str,
+    kind: EvidencePromotionHumanCommandKind,
+    expected_values: &[String],
+) -> Vec<String> {
+    let projected = evidence_promotion_human_command_projection_lines(human_text, kind);
+    expected_values
+        .iter()
+        .filter(|expected| {
+            !projected
+                .iter()
+                .any(|line| line.contains(expected.as_str()))
+        })
+        .map(|expected| {
+            format!(
+                "expected/human.txt:missing {} `{expected}`",
+                kind.field_name()
+            )
+        })
+        .collect()
+}
+
+fn evidence_promotion_human_command_projection_lines(
+    human_text: &str,
+    kind: EvidencePromotionHumanCommandKind,
+) -> Vec<String> {
+    human_text
+        .lines()
+        .filter_map(|line| evidence_promotion_human_command_projection_line(line, kind))
+        .collect()
+}
+
+fn evidence_promotion_human_command_projection_line(
+    line: &str,
+    kind: EvidencePromotionHumanCommandKind,
+) -> Option<String> {
+    let trimmed = line.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for label in kind.labels() {
+        let Some(after_label) = lower.strip_prefix(label) else {
+            continue;
+        };
+        let after_label = after_label.trim_start();
+        let Some(after_colon) = after_label.strip_prefix(':') else {
+            continue;
+        };
+        let value_start = trimmed.len() - after_colon.len();
+        let value = trimmed.get(value_start..)?.trim();
+        if evidence_promotion_human_command_value_is_concrete(value) {
+            return Some(format!("expected/human.txt:{trimmed}"));
+        }
+    }
+    None
+}
+
+fn evidence_promotion_human_command_value_is_concrete(value: &str) -> bool {
+    let value = value.trim().trim_matches('`').trim();
+    if value.is_empty() {
+        return false;
+    }
+    let normalized = value.to_ascii_lowercase();
+    let first_token = normalized
+        .split(|ch: char| ch.is_whitespace() || ch == '(' || ch == ';' || ch == ',')
+        .next()
+        .unwrap_or("");
+    !matches!(
+        first_token,
+        "none"
+            | "null"
+            | "n/a"
+            | "unknown"
+            | "missing"
+            | "<none>"
+            | "<missing>"
+            | "not_applicable"
+            | "verify_command_unknown"
+            | "receipt_command_unknown"
+            | "unavailable_until_python_gap_ledger"
+    ) && !normalized.starts_with("not available")
+        && !normalized.starts_with("unavailable")
+}
+
 fn collect_string_paths(value: &Value, path: String, paths: &mut Vec<(String, String)>) {
     match value {
         Value::String(text) => {
@@ -13541,6 +13715,39 @@ fn json_non_empty_string_field_paths(value: &Value, field: &str) -> Vec<String> 
     let mut paths = Vec::new();
     walk(value, field, "", &mut paths);
     paths
+}
+
+fn json_non_empty_string_field_values(value: &Value, field: &str) -> Vec<String> {
+    fn walk(value: &Value, field: &str, values: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    if key == field
+                        && let Some(text) = child
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|text| !text.is_empty())
+                    {
+                        let text = text.to_string();
+                        if !values.contains(&text) {
+                            values.push(text);
+                        }
+                    }
+                    walk(child, field, values);
+                }
+            }
+            Value::Array(items) => {
+                for child in items {
+                    walk(child, field, values);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut values = Vec::new();
+    walk(value, field, &mut values);
+    values
 }
 
 fn json_non_empty_array_field_paths(value: &Value, field: &str) -> Vec<String> {
@@ -75603,6 +75810,147 @@ mod tests {
         assert!(report.contains("must_emit_repair_packet"), "{report}");
         assert!(report.contains("must_not_emit_limitation"), "{report}");
         assert!(report.contains("expected_completeness"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_missing_verify_command_projection() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::MustHaveVerifyCommand];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "verify-human-missing",
+                    "classification": "weakly_exposed",
+                    "verify_command": "jest tests/discount.test.ts"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+TypeScript repair packet (advisory)
+  status: packet-ready
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "verify_human_missing",
+            Some("fixtures/verify_human_missing"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_have_verify_command"), "{report}");
+        assert!(
+            report.contains("missing verify_command `jest tests/discount.test.ts`"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_invented_verify_command() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "verify-human-invented",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+Static limitation
+  rust_transitive_reach_unresolved
+  verify: cargo test transitive_path
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "verify_human_invented",
+            Some("fixtures/verify_human_invented"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_not_have_verify_command"), "{report}");
+        assert!(report.contains("cargo test transitive_path"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_invented_receipt_command() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "receipt-human-invented",
+                    "classification": "no_static_path",
+                    "static_limit_kind": "rust_transitive_reach_unresolved"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+Static limitation
+  rust_transitive_reach_unresolved
+  receipt: ripr receipt write receipt-human-invented
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "receipt_human_invented",
+            Some("fixtures/receipt_human_invented"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_not_have_receipt_command"), "{report}");
+        assert!(
+            report.contains("ripr receipt write receipt-human-invented"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_accept_unavailable_human_receipt_status() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "receipt-human-unavailable",
+                    "classification": "weakly_exposed"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+Python repair card (preview/advisory)
+  receipt: unavailable_until_python_gap_ledger
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "receipt_human_unavailable",
+            Some("fixtures/receipt_human_unavailable"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        );
+
+        assert!(report.is_empty(), "{report:?}");
     }
 
     #[test]
