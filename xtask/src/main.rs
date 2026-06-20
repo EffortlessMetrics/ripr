@@ -10555,12 +10555,58 @@ struct EvidencePromotionExternalCase {
     assertions: Vec<EvidencePromotionSemanticAssertion>,
 }
 
+#[derive(Clone)]
+struct EvidencePromotionExternalLaunch {
+    repo: String,
+    commit: String,
+    patch: String,
+    command: String,
+    runtime_budget_seconds: u64,
+    artifact_budget_bytes: u64,
+}
+
+impl EvidencePromotionExternalLaunch {
+    fn from_case(case: &EvidencePromotionExternalCase) -> Self {
+        Self {
+            repo: case.external_repo.clone(),
+            commit: case.external_commit.clone(),
+            patch: normalize_path(&case.external_patch),
+            command: case.external_command.clone(),
+            runtime_budget_seconds: case.runtime_budget_seconds,
+            artifact_budget_bytes: case.artifact_budget_bytes,
+        }
+    }
+
+    fn from_case_json(case: &Value) -> Option<Self> {
+        Some(Self {
+            repo: case.get("external_repo")?.as_str()?.to_string(),
+            commit: case.get("external_commit")?.as_str()?.to_string(),
+            patch: case.get("external_patch")?.as_str()?.to_string(),
+            command: case.get("external_command")?.as_str()?.to_string(),
+            runtime_budget_seconds: case.get("runtime_budget_seconds")?.as_u64()?,
+            artifact_budget_bytes: case.get("artifact_budget_bytes")?.as_u64()?,
+        })
+    }
+
+    fn to_json(&self) -> Value {
+        serde_json::json!({
+            "repo": self.repo,
+            "commit": self.commit,
+            "patch": self.patch,
+            "command": self.command,
+            "runtime_budget_seconds": self.runtime_budget_seconds,
+            "artifact_budget_bytes": self.artifact_budget_bytes,
+        })
+    }
+}
+
 struct EvidencePromotionExternalRun {
     id: String,
     status: String,
     result_kind: String,
     runtime_ms: u128,
     artifact_bytes: u64,
+    external_case: Option<EvidencePromotionExternalLaunch>,
     checkout: String,
     violations: Vec<String>,
 }
@@ -10577,6 +10623,7 @@ impl EvidencePromotionExternalRun {
             result_kind: result_kind.to_string(),
             runtime_ms: 0,
             artifact_bytes: 0,
+            external_case: Some(EvidencePromotionExternalLaunch::from_case(case)),
             checkout: String::new(),
             violations: vec![violation],
         }
@@ -10589,6 +10636,7 @@ impl EvidencePromotionExternalRun {
             result_kind: result_kind.to_string(),
             runtime_ms: 0,
             artifact_bytes: 0,
+            external_case: None,
             checkout: String::new(),
             violations: vec![violation],
         }
@@ -10600,6 +10648,7 @@ struct EvidencePromotionCorpusCaseMeta {
     id: String,
     language: String,
     tier: String,
+    external_case: Option<EvidencePromotionExternalLaunch>,
 }
 
 struct CorpusSummaryCase {
@@ -10611,6 +10660,7 @@ struct CorpusSummaryCase {
     message: String,
     runtime_ms: Option<u128>,
     artifact_bytes: Option<u64>,
+    external_case: Option<EvidencePromotionExternalLaunch>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -11539,6 +11589,7 @@ fn run_evidence_promotion_external_check(
         },
         runtime_ms,
         artifact_bytes,
+        external_case: Some(EvidencePromotionExternalLaunch::from_case(case)),
         checkout: normalize_path(checkout),
         violations,
     })
@@ -13338,6 +13389,7 @@ fn write_evidence_promotion_external_report(
                 "result_kind": run.result_kind,
                 "runtime_ms": run.runtime_ms,
                 "artifact_bytes": run.artifact_bytes,
+                "external_case": run.external_case.as_ref().map(EvidencePromotionExternalLaunch::to_json),
                 "checkout": run.checkout,
                 "violations": run.violations,
             })
@@ -13376,6 +13428,27 @@ fn write_evidence_promotion_external_report(
             markdown.push_str("- ");
             markdown.push_str(violation);
             markdown.push('\n');
+        }
+        markdown.push('\n');
+    }
+    if runs.iter().any(|run| run.external_case.is_some()) {
+        markdown.push_str("## Launch Points\n\n");
+        markdown.push_str("| Case | Repository | Commit | Patch | Command | Runtime budget seconds | Artifact budget bytes |\n");
+        markdown.push_str("|---|---|---|---|---|---:|---:|\n");
+        for run in runs.iter().filter(|run| run.external_case.is_some()) {
+            let Some(external_case) = &run.external_case else {
+                continue;
+            };
+            markdown.push_str(&format!(
+                "| `{}` | {} | `{}` | `{}` | `{}` | {} | {} |\n",
+                run.id,
+                markdown_cell(&external_case.repo),
+                external_case.commit,
+                markdown_cell(&external_case.patch),
+                markdown_cell(&external_case.command),
+                external_case.runtime_budget_seconds,
+                external_case.artifact_budget_bytes
+            ));
         }
         markdown.push('\n');
     }
@@ -13423,6 +13496,11 @@ fn load_evidence_promotion_corpus_case_metadata(
                 .and_then(Value::as_str)
                 .unwrap_or("<missing-tier>")
                 .to_string(),
+            external_case: if case.get("tier").and_then(Value::as_str) == Some("pinned_external") {
+                EvidencePromotionExternalLaunch::from_case_json(case)
+            } else {
+                None
+            },
         })
         .collect())
 }
@@ -13479,6 +13557,10 @@ fn build_evidence_promotion_corpus_summary_cases(
                         },
                         runtime_ms: Some(run.runtime_ms),
                         artifact_bytes: Some(run.artifact_bytes),
+                        external_case: run
+                            .external_case
+                            .clone()
+                            .or_else(|| case.external_case.clone()),
                     });
                 } else {
                     cases.push(CorpusSummaryCase {
@@ -13491,6 +13573,7 @@ fn build_evidence_promotion_corpus_summary_cases(
                             .to_string(),
                         runtime_ms: None,
                         artifact_bytes: None,
+                        external_case: case.external_case.clone(),
                     });
                 }
             } else {
@@ -13507,6 +13590,7 @@ fn build_evidence_promotion_corpus_summary_cases(
                     },
                     runtime_ms: None,
                     artifact_bytes: None,
+                    external_case: case.external_case.clone(),
                 });
             }
         } else {
@@ -13532,6 +13616,7 @@ fn build_evidence_promotion_corpus_summary_cases(
                 },
                 runtime_ms: None,
                 artifact_bytes: None,
+                external_case: None,
             });
         }
     }
@@ -13546,6 +13631,7 @@ fn build_evidence_promotion_corpus_summary_cases(
             message: violation,
             runtime_ms: None,
             artifact_bytes: None,
+            external_case: None,
         });
     }
     for run in external_runs
@@ -13561,6 +13647,7 @@ fn build_evidence_promotion_corpus_summary_cases(
             message: run.violations.join("; "),
             runtime_ms: Some(run.runtime_ms),
             artifact_bytes: Some(run.artifact_bytes),
+            external_case: run.external_case.clone(),
         });
     }
 
@@ -13598,6 +13685,7 @@ fn write_evidence_promotion_corpus_summary_report(
                 "message": case.message,
                 "runtime_ms": case.runtime_ms,
                 "artifact_bytes": case.artifact_bytes,
+                "external_case": case.external_case.as_ref().map(EvidencePromotionExternalLaunch::to_json),
             })
         })
         .collect::<Vec<_>>();
@@ -13662,6 +13750,26 @@ fn write_evidence_promotion_corpus_summary_report(
             case.result_kind,
             markdown_cell(&case.message)
         ));
+    }
+    if cases.iter().any(|case| case.external_case.is_some()) {
+        markdown.push_str("\n## Pinned External Launches\n\n");
+        markdown.push_str("| Case | Repository | Commit | Patch | Command | Runtime budget seconds | Artifact budget bytes |\n");
+        markdown.push_str("|---|---|---|---|---|---:|---:|\n");
+        for case in cases.iter().filter(|case| case.external_case.is_some()) {
+            let Some(external_case) = &case.external_case else {
+                continue;
+            };
+            markdown.push_str(&format!(
+                "| `{}` | {} | `{}` | `{}` | `{}` | {} | {} |\n",
+                case.id,
+                markdown_cell(&external_case.repo),
+                external_case.commit,
+                markdown_cell(&external_case.patch),
+                markdown_cell(&external_case.command),
+                external_case.runtime_budget_seconds,
+                external_case.artifact_budget_bytes
+            ));
+        }
     }
     markdown.push('\n');
     write_report(CORPUS_SUMMARY_MD, &markdown)?;
@@ -77680,6 +77788,38 @@ TypeScript repair packet (advisory)
                 external.get("result_kind").and_then(Value::as_str),
                 Some("not_run")
             );
+            let external_case = external
+                .get("external_case")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "external case launch metadata missing".to_string())?;
+            assert_eq!(
+                external_case.get("repo").and_then(Value::as_str),
+                Some("https://github.com/dtolnay/semver")
+            );
+            assert_eq!(
+                external_case.get("commit").and_then(Value::as_str),
+                Some("0123456789abcdef0123456789abcdef01234567")
+            );
+            assert_eq!(
+                external_case.get("patch").and_then(Value::as_str),
+                Some("fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff")
+            );
+            assert_eq!(
+                external_case.get("command").and_then(Value::as_str),
+                Some("ripr check --root {checkout} --diff {external_patch} --mode fast --json")
+            );
+            assert_eq!(
+                external_case
+                    .get("runtime_budget_seconds")
+                    .and_then(Value::as_u64),
+                Some(120)
+            );
+            assert_eq!(
+                external_case
+                    .get("artifact_budget_bytes")
+                    .and_then(Value::as_u64),
+                Some(10_485_760)
+            );
             assert!(
                 cases.iter().any(|case| {
                     case.get("id").and_then(Value::as_str) == Some("rust_non_promoted")
@@ -77693,6 +77833,82 @@ TypeScript repair packet (advisory)
                 .map_err(|err| format!("read corpus summary markdown: {err}"))?;
             assert!(summary_md.contains("Status: `pass`"));
             assert!(summary_md.contains("`not_run`"));
+            assert!(summary_md.contains("## Pinned External Launches"));
+            assert!(summary_md.contains("https://github.com/dtolnay/semver"));
+            assert!(summary_md.contains("0123456789abcdef0123456789abcdef01234567"));
+            assert!(summary_md.contains("10485760"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_promotion_pinned_external_report_projects_launch_metadata() -> Result<(), String> {
+        with_temp_cwd("evidence-promotion-pinned-external-report", |root| {
+            let run = super::EvidencePromotionExternalRun {
+                id: "rust_semver_external".to_string(),
+                status: "pass".to_string(),
+                result_kind: "pass".to_string(),
+                runtime_ms: 321,
+                artifact_bytes: 654,
+                external_case: Some(super::EvidencePromotionExternalLaunch {
+                    repo: "https://github.com/dtolnay/semver".to_string(),
+                    commit: "0123456789abcdef0123456789abcdef01234567".to_string(),
+                    patch:
+                        "fixtures/evidence-promotion-honesty-corpus/patches/semver-boundary.diff"
+                            .to_string(),
+                    command:
+                        "ripr check --root {checkout} --diff {external_patch} --mode fast --json"
+                            .to_string(),
+                    runtime_budget_seconds: 120,
+                    artifact_budget_bytes: 10_485_760,
+                }),
+                checkout: "target/ripr/evidence-promotion-honesty/checkouts/rust_semver_external"
+                    .to_string(),
+                violations: Vec::new(),
+            };
+
+            super::write_evidence_promotion_external_report(&[run], &[])?;
+
+            let report_path = root
+                .join("target/ripr/reports")
+                .join(super::EVIDENCE_PROMOTION_EXTERNAL_JSON);
+            let report_text = fs::read_to_string(&report_path)
+                .map_err(|err| format!("read {}: {err}", report_path.display()))?;
+            let report: Value = serde_json::from_str(&report_text)
+                .map_err(|err| format!("parse pinned external report: {err}"))?;
+            let launch = report
+                .get("runs")
+                .and_then(Value::as_array)
+                .and_then(|runs| runs.first())
+                .and_then(|run| run.get("external_case"))
+                .and_then(Value::as_object)
+                .ok_or_else(|| "pinned external launch metadata missing".to_string())?;
+            assert_eq!(
+                launch.get("repo").and_then(Value::as_str),
+                Some("https://github.com/dtolnay/semver")
+            );
+            assert_eq!(
+                launch.get("commit").and_then(Value::as_str),
+                Some("0123456789abcdef0123456789abcdef01234567")
+            );
+            assert_eq!(
+                launch.get("runtime_budget_seconds").and_then(Value::as_u64),
+                Some(120)
+            );
+            assert_eq!(
+                launch.get("artifact_budget_bytes").and_then(Value::as_u64),
+                Some(10_485_760)
+            );
+
+            let markdown_path = root
+                .join("target/ripr/reports")
+                .join(super::EVIDENCE_PROMOTION_EXTERNAL_MD);
+            let markdown = fs::read_to_string(&markdown_path)
+                .map_err(|err| format!("read {}: {err}", markdown_path.display()))?;
+            assert!(markdown.contains("## Launch Points"));
+            assert!(markdown.contains("https://github.com/dtolnay/semver"));
+            assert!(markdown.contains("0123456789abcdef0123456789abcdef01234567"));
+            assert!(markdown.contains("10485760"));
             Ok(())
         })
     }

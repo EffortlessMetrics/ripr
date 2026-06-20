@@ -16,9 +16,10 @@ Linked PRs:
 
 Support-tier impact:
 
-- Honesty enforcement meta-gate: no classifier behavior change; no new output
-  field; no schema bump; no version bump. This spec pins the semantic expectation
-  that non-promoted charter fixtures must remain non-promoted, independently of
+- Honesty enforcement meta-gate: no classifier behavior change; additive xtask
+  report-envelope fields are allowed when documented here; no `ripr check` JSON
+  schema bump and no version bump. This spec pins the semantic expectation that
+  non-promoted charter fixtures must remain non-promoted, independently of
   whether a golden was re-blessed. Tier labels and claim boundaries remain
   governed by the canonical ledger in
   [support tiers](../status/SUPPORT_TIERS.md).
@@ -304,11 +305,22 @@ result_kind:
 message:
 runtime_ms:
 artifact_bytes:
+external_case:
+  repo:
+  commit:
+  patch:
+  command:
+  runtime_budget_seconds:
+  artifact_budget_bytes:
 ```
 
 Pinned external cases are `not_run` unless `--pinned-external` selects them.
-That state is visible but does not fail the pure PR gate. Failures must be
-classified into one of:
+That state is visible but does not fail the pure PR gate. Pinned external rows
+carry their launch metadata even when not run, so the envelope still records the
+exact repository, commit, patch, command template, and resource budgets that
+would be exercised by the external tier. The detailed pinned-external report
+uses the same launch metadata for executed cases. Failures must be classified
+into one of:
 
 ```text
 semantic_failure
@@ -488,7 +500,8 @@ the gate has over-corrected or the fixture needs re-blessing
 | Complete `tier: pinned_external` metadata with an exact repo, command template, 40-hex commit, existing patch, and positive budgets -> validator accepts the case | External corpus contract |
 | `cargo xtask check-evidence-promotion-honesty --pinned-external --clone --case rust_semver_matches_greater_external_limitation` | First real-repo launch point executes and enforces semver limitation expectations |
 | `target/ripr/reports/corpus-summary.{json,md}` exists after the gate | Corpus result envelope projection |
-| `evidence_promotion_corpus_summary_report_writes_pure_and_not_run_external_cases` | Pure run reports passing pure cases and visible not-run pinned external cases |
+| `evidence_promotion_corpus_summary_report_writes_pure_and_not_run_external_cases` | Pure run reports passing pure cases and visible not-run pinned external cases with exact launch metadata |
+| `evidence_promotion_pinned_external_report_projects_launch_metadata` | Pinned-external detail report projects repo, commit, patch, command, and budget metadata into JSON and Markdown |
 | `evidence_promotion_corpus_summary_reports_pinned_external_setup_failure` | Malformed pinned-external setup metadata still writes the corpus summary with `setup_failure` instead of exiting before the envelope exists |
 | `evidence_promotion_corpus_summary_classifies_failure_kinds` | Summary envelope distinguishes golden drift, setup, budget, unexpected-limitation, and unexpected-promotion failures |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
