@@ -218,10 +218,13 @@ says it was re-blessed to."
     earlier incomplete-packet explanation.
 4j. `expected_oracle` cases (additive, dialect semantics): assert every finding
     carries the exact `oracle_kind` and `oracle_strength` named by the case.
-    This lets the corpus pin framework- and dialect-specific oracle semantics
-    directly, for example TypeScript execution-context `t.equal(...)` as
-    `exact_value/strong`, `t.truthy(...)` as `smoke_only/smoke`, and unsupported
-    or wrong-receiver `t.*` shapes as `unknown/unknown`.
+    Fixture-backed cases also assert `expected/human.txt` projects the same
+    oracle kind and strength. This lets the corpus pin framework- and
+    dialect-specific oracle semantics directly, for example TypeScript
+    execution-context `t.equal(...)` as `exact_value/strong`, `t.truthy(...)` as
+    `smoke_only/smoke`, and unsupported or wrong-receiver `t.*` shapes as
+    `unknown/unknown`, without allowing human output to drift from the canonical
+    JSON result.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -484,6 +487,10 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_wrong_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report whose target test or verify command drifts from the corpus contract |
 | `evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail` | Shared assertion evaluator rejects a fixture human golden that drops repair-packet handoff detail |
 | `evidence_promotion_semantic_assertions_reject_oracle_drift` | Shared assertion evaluator rejects a report whose oracle kind or strength drifts from `expected_oracle` |
+| `evidence_promotion_semantic_assertions_accept_human_oracle_projection` | Shared assertion evaluator accepts fixture human output that projects the expected oracle kind and strength |
+| `evidence_promotion_semantic_assertions_reject_human_missing_oracle_projection` | Shared assertion evaluator rejects a fixture human golden that drops oracle kind or strength projection |
+| `evidence_promotion_semantic_assertions_reject_missing_human_oracle_golden` | Shared assertion evaluator rejects a fixture-backed oracle assertion with no `expected/human.txt` |
+| `evidence_promotion_human_oracle_line_matches_normalized_projection` | Shared assertion evaluator accepts normalized human oracle projection formats without treating kind-only prose as strength evidence |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |
 | `evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection` | Shared assertion evaluator rejects a fixture human golden that keeps a stale witness line |

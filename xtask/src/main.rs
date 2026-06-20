@@ -11828,6 +11828,29 @@ fn evidence_promotion_semantic_violations(
                         ));
                     }
                 }
+                if fixture_human_required {
+                    match human_text {
+                        Some(human_text) => {
+                            let missing_human =
+                                evidence_promotion_missing_human_oracle_projection_paths(
+                                    human_text,
+                                    expected_kind,
+                                    expected_strength,
+                                );
+                            if !missing_human.is_empty() {
+                                violations.push(format!(
+                                    "{case_label}: `expected_oracle` requires fixture human output to project oracle `{expected_kind}/{expected_strength}`, but found {}",
+                                    missing_human.join(", ")
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `expected_oracle` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
+                }
             }
             EvidencePromotionSemanticAssertion::ExpectedClass {
                 class: expected_class,
@@ -12656,6 +12679,79 @@ fn collect_no_tests_found_claim_paths(value: &Value, path: String, paths: &mut V
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
+}
+
+fn evidence_promotion_missing_human_oracle_projection_paths(
+    human_text: &str,
+    expected_kind: &str,
+    expected_strength: &str,
+) -> Vec<String> {
+    if human_text.lines().any(|line| {
+        evidence_promotion_human_oracle_line_matches(line, expected_kind, expected_strength)
+    }) {
+        return Vec::new();
+    }
+
+    vec![format!(
+        "expected/human.txt:missing oracle projection `{expected_kind}/{expected_strength}`"
+    )]
+}
+
+fn evidence_promotion_human_oracle_line_matches(
+    line: &str,
+    expected_kind: &str,
+    expected_strength: &str,
+) -> bool {
+    let expected_kind = expected_kind.to_ascii_lowercase();
+    let expected_strength = expected_strength.to_ascii_lowercase();
+    let normalized = line.trim().to_ascii_lowercase();
+
+    if evidence_promotion_human_line_field_value(&normalized, "oracle_kind").as_deref()
+        == Some(expected_kind.as_str())
+        && evidence_promotion_human_line_field_value(&normalized, "oracle_strength").as_deref()
+            == Some(expected_strength.as_str())
+    {
+        return true;
+    }
+
+    let Some(card) = normalized.strip_prefix("oracle:") else {
+        return false;
+    };
+    let tokens = evidence_promotion_human_oracle_tokens(card);
+    tokens.iter().any(|token| token == &expected_kind)
+        && tokens.iter().any(|token| token == &expected_strength)
+}
+
+fn evidence_promotion_human_line_field_value(line: &str, field: &str) -> Option<String> {
+    let mut tail = line;
+    while let Some(index) = tail.find(field) {
+        let after_field = &tail[index + field.len()..];
+        let after_delimiter = after_field.trim_start();
+        let Some(after_delimiter) = after_delimiter
+            .strip_prefix('=')
+            .or_else(|| after_delimiter.strip_prefix(':'))
+        else {
+            tail = after_field.get(1..).unwrap_or("");
+            continue;
+        };
+        let value = after_delimiter.trim_start();
+        let end = value
+            .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
+            .unwrap_or(value.len());
+        if end == 0 {
+            return None;
+        }
+        let value = value.get(..end)?;
+        return Some(value.to_string());
+    }
+    None
+}
+
+fn evidence_promotion_human_oracle_tokens(text: &str) -> Vec<String> {
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
+        .filter(|token| !token.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn collect_string_paths(value: &Value, path: String, paths: &mut Vec<(String, String)>) {
@@ -75497,6 +75593,140 @@ mod tests {
         assert!(report.contains("expected_oracle"), "{report}");
         assert!(report.contains("oracle_kind `exact_value`"), "{report}");
         assert!(report.contains("oracle_strength `strong`"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_missing_oracle_projection() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: "exact_value".to_string(),
+            strength: "strong".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:oracle-human-drift",
+                    "classification": "exposed",
+                    "oracle_kind": "exact_value",
+                    "oracle_strength": "strong"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+Evidence
+  - related test tests/score.test.ts:3 reaches score
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "oracle_human_drift",
+            Some("fixtures/typescript_oracle_human_drift"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_oracle"), "{report}");
+        assert!(report.contains("fixture human output"), "{report}");
+        assert!(
+            report.contains("oracle projection `exact_value/strong`"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_accept_human_oracle_projection() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: "exact_value".to_string(),
+            strength: "strong".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:oracle-human-projection",
+                    "classification": "exposed",
+                    "oracle_kind": "exact_value",
+                    "oracle_strength": "strong"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+TypeScript preview
+  oracle: exact_value (strong)
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "oracle_human_projection",
+            Some("fixtures/typescript_oracle_human_projection"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        );
+
+        assert!(report.is_empty(), "{report:?}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_missing_human_oracle_golden() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: "exact_value".to_string(),
+            strength: "strong".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:oracle-missing-human",
+                    "classification": "exposed",
+                    "oracle_kind": "exact_value",
+                    "oracle_strength": "strong"
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "oracle_missing_human",
+            Some("fixtures/typescript_oracle_missing_human"),
+            &assertions,
+            &check_json,
+            None,
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_oracle"), "{report}");
+        assert!(report.contains("expected/human.txt"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_human_oracle_line_matches_normalized_projection() {
+        assert!(super::evidence_promotion_human_oracle_line_matches(
+            "  oracle: exact_value (strong)",
+            "exact_value",
+            "strong"
+        ));
+        assert!(super::evidence_promotion_human_oracle_line_matches(
+            "current test evidence: oracle_strength : strong; oracle_kind = exact_value.",
+            "exact_value",
+            "strong"
+        ));
+        assert!(super::evidence_promotion_human_oracle_line_matches(
+            "current test evidence: oracle_kind=exact_value, oracle_strength=strong",
+            "exact_value",
+            "strong"
+        ));
+        assert!(!super::evidence_promotion_human_oracle_line_matches(
+            "Strongest extracted oracle kind: `exact_value` (rank 5)",
+            "exact_value",
+            "strong"
+        ));
     }
 
     #[test]
