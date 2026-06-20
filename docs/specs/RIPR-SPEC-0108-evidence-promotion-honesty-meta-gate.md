@@ -356,8 +356,8 @@ gate-specific artifacts.
 
 | id | language | source artifact | vector |
 |---|---|---|---|
-| py_token_substring | python | python_adversarial_buffer_token | token_substring_coincidence |
-| py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
+| py_token_substring | python | python_adversarial_buffer_token | token_substring_coincidence (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value (also `expected_oracle=mock_expectation/medium`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_dict_sibling_key | python | python_adversarial_dict_field_sibling_key | changed_dict_element_sibling_key_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_list_sibling_index | python | python_adversarial_list_element_sibling_index | changed_list_element_sibling_index_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_operator_delta_input_operand | python | python_adversarial_operator_delta_input_operand | operator_only_value_change_input_operand_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
@@ -366,7 +366,7 @@ gate-specific artifacts.
 | py_error_path_untaken_branch | python | python_adversarial_error_path_untaken_branch | changed_exception_type_untaken_branch (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_fstring_length_aggregate | python | python_adversarial_fstring_length_invariant_aggregate | length_invariant_fstring_aggregate_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_local_assignment_operator_input | python | python_adversarial_local_assignment_operator_input | local_assignment_operator_input_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
-| ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
+| ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam (also `expected_oracle=broad_error/weak`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_t_truthy_smoke_only | typescript | typescript_t_truthy_oracle | execution_context_truthy_smoke_only (also `expected_oracle=smoke_only/smoke`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_t_wrong_receiver_unknown_oracle | typescript | typescript_t_wrong_receiver_no_oracle | execution_context_wrong_receiver_not_credited (also `expected_oracle=unknown/unknown`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_t_unknown_method_unknown_oracle | typescript | typescript_t_unknown_method_no_oracle | execution_context_unknown_method_not_credited (also `expected_oracle=unknown/unknown`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
