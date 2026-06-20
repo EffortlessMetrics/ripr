@@ -58,3 +58,15 @@ Command:
 
 Updated:
 - `expected/check.json`
+
+## Pending
+
+Reason:
+align transitive-reach limitation depth text with RIPR-SPEC-0114
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_test_helper_chain --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

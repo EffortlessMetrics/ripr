@@ -133,7 +133,7 @@ pub enum StaticLimitKind {
     /// A test appears to call public API that may transitively reach the
     /// changed owner through a `pub -> pub(crate)` helper chain or similar
     /// internal call graph, but ripr's lexical call facts cannot fully resolve
-    /// the path (macro invocations, generics, trait dispatch, or depth > 3
+    /// the path (macro invocations, generics, trait dispatch, or depth > 5
     /// stop the walk). The classification stays `no_static_path` -- this label
     /// is a named limitation, not a coverage claim. See RIPR-SPEC-0114.
     RustTransitiveReachUnresolved,
@@ -218,7 +218,7 @@ impl StaticLimitKind {
             }
             StaticLimitKind::RustTransitiveReachUnresolved => {
                 "A test may reach this change through an internal helper-call chain ripr cannot \
-                 fully trace (macros, generics, trait dispatch, or depth greater than 3). This is a \
+                 fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a \
                  named limitation, not a coverage claim."
             }
             StaticLimitKind::RustMacroReachUnresolved => {
@@ -355,5 +355,15 @@ mod tests {
                 "duplicate describe text for {kind:?}"
             );
         }
+    }
+
+    #[test]
+    fn rust_transitive_reach_description_matches_depth_contract() {
+        assert!(
+            StaticLimitKind::RustTransitiveReachUnresolved
+                .describe()
+                .contains("depth greater than 5"),
+            "transitive-reach limitation text must match RIPR-SPEC-0114's depth-5 bound"
+        );
     }
 }

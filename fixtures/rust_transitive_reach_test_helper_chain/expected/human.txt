@@ -36,7 +36,7 @@ Stop reasons:
   - transitive_reach_unresolved
 
 Static limitation
-  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 3). This is a named limitation, not a coverage claim.
+  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a named limitation, not a coverage claim.
 
 Where to look
   For example, the test `greater_than_patch_examples` (tests/version_req.rs:18) calls `assert_public_api_accepts`, an entry point that may lead here. Inspect it to judge whether this change is observed.
@@ -81,7 +81,7 @@ Stop reasons:
   - transitive_reach_unresolved
 
 Static limitation
-  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 3). This is a named limitation, not a coverage claim.
+  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a named limitation, not a coverage claim.
 
 Where to look
   For example, the test `greater_than_patch_examples` (tests/version_req.rs:18) calls `assert_public_api_accepts`, an entry point that may lead here. Inspect it to judge whether this change is observed.
