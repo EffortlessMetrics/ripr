@@ -505,6 +505,25 @@
       ]
     },
     {
+      "id": "scope_worktree_dirty_analyzed_not_excluded",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-worktree-dirty-analyzed-not-excluded.json",
+      "vector": "dirty_worktree_explicitly_analyzed_not_reported_excluded",
+      "assertions": [
+        { "type": "must_see_changed_file", "path": "src/lib.rs" },
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_disclose_unanalyzed_working_tree" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "no_static_path" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
       "id": "scope_clean_complete_empty_may_be_clean",
       "language": "rust",
       "tier": "pure",

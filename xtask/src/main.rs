@@ -10687,6 +10687,7 @@ enum EvidencePromotionSemanticAssertion {
     MustDiscloseScope,
     MustDiscloseNoScope,
     MustDiscloseUnanalyzedWorkingTree,
+    MustNotDiscloseUnanalyzedWorkingTree,
     MustEmitLimitation {
         expected_limit_kind: String,
     },
@@ -10960,6 +10961,9 @@ fn evidence_promotion_parse_assertion(
         "must_disclose_no_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseNoScope),
         "must_disclose_unanalyzed_working_tree" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree)
+        }
+        "must_not_disclose_unanalyzed_working_tree" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotDiscloseUnanalyzedWorkingTree)
         }
         "must_emit_limitation" => Ok(EvidencePromotionSemanticAssertion::MustEmitLimitation {
             expected_limit_kind: evidence_promotion_required_assertion_string(
@@ -11682,13 +11686,16 @@ fn evidence_promotion_semantic_violations(
                 }
             }
             EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree => {
-                if check_json
-                    .get("unanalyzed_working_tree")
-                    .and_then(Value::as_bool)
-                    != Some(true)
-                {
+                if !evidence_promotion_discloses_unanalyzed_working_tree(check_json) {
                     violations.push(format!(
                         "{case_label}: `must_disclose_unanalyzed_working_tree` requires unanalyzed_working_tree=true"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotDiscloseUnanalyzedWorkingTree => {
+                if evidence_promotion_discloses_unanalyzed_working_tree(check_json) {
+                    violations.push(format!(
+                        "{case_label}: `must_not_disclose_unanalyzed_working_tree` forbids unanalyzed_working_tree=true because the case asserts the working-tree draft was in scope"
                     ));
                 }
             }
@@ -13245,11 +13252,7 @@ fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value])
     if summary_findings > 0 || !findings.is_empty() {
         return false;
     }
-    if check_json
-        .get("unanalyzed_working_tree")
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
+    if evidence_promotion_discloses_unanalyzed_working_tree(check_json) {
         return false;
     }
     if evidence_promotion_discloses_no_scope(check_json) {
@@ -13273,6 +13276,13 @@ fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value])
         return false;
     }
     true
+}
+
+fn evidence_promotion_discloses_unanalyzed_working_tree(check_json: &Value) -> bool {
+    check_json
+        .get("unanalyzed_working_tree")
+        .and_then(Value::as_bool)
+        == Some(true)
 }
 
 fn evidence_promotion_discloses_no_scope(check_json: &Value) -> bool {
@@ -77587,6 +77597,78 @@ TypeScript repair packet (advisory)
         assert!(
             dirty_violations.is_empty(),
             "unanalyzed_working_tree should make the empty result non-clean: {dirty_violations:?}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_false_unanalyzed_worktree_disclosure() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustDiscloseScope,
+            super::EvidencePromotionSemanticAssertion::MustNotDiscloseUnanalyzedWorkingTree,
+        ];
+        let scoped_worktree = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "HEAD",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_lib.rs:predicate:4e6b5f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "src/lib.rs"}
+                }
+            ]
+        });
+
+        let scoped_violations = super::evidence_promotion_semantic_violations(
+            "scoped_worktree",
+            Some("fixtures/scope_worktree_analyzed_dirty"),
+            &assertions,
+            &scoped_worktree,
+            None,
+            false,
+        );
+        assert!(
+            scoped_violations.is_empty(),
+            "scoped worktree report without unanalyzed disclosure should pass: {scoped_violations:?}"
+        );
+
+        let false_exclusion = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "HEAD",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_lib.rs:predicate:4e6b5f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "src/lib.rs"}
+                }
+            ],
+            "unanalyzed_working_tree": true
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "false_exclusion",
+            Some("fixtures/scope_worktree_analyzed_dirty"),
+            &assertions,
+            &false_exclusion,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_not_disclose_unanalyzed_working_tree"),
+            "{report}"
+        );
+        assert!(
+            report.contains("working-tree draft was in scope"),
+            "{report}"
         );
     }
 
