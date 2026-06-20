@@ -221,7 +221,11 @@ says it was re-blessed to."
     `repair_route:`, `missing_actionability_fields:`, or non-empty
     `evidence_needed_to_promote:` lines in the rendered JSON evidence. A
     complete packet must project actionable-reading evidence instead of the
-    earlier incomplete-packet explanation.
+    earlier incomplete-packet explanation. Fixture-backed cases also assert
+    human output does not retain blocked packet language such as
+    `status: not actionable`, `why not actionable:`, `limitation:`,
+    `missing fields:`, or `evidence needed:` in the matching packet-ready
+    finding section.
 4j. `expected_oracle` cases (additive, dialect semantics): assert every finding
     carries the exact `oracle_kind` and `oracle_strength` named by the case.
     Fixture-backed cases also assert `expected/human.txt` projects the same
@@ -502,6 +506,9 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report missing target/evidence detail |
 | `evidence_promotion_semantic_assertions_reject_wrong_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report whose target test or verify command drifts from the corpus contract |
 | `evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail` | Shared assertion evaluator rejects a fixture human golden that drops repair-packet handoff detail |
+| `evidence_promotion_semantic_assertions_reject_human_contradictory_packet_messaging` | Shared assertion evaluator rejects fixture human output that keeps blocked/not-actionable packet messaging for a packet-ready finding |
+| `evidence_promotion_semantic_assertions_accept_human_complete_packet_messaging` | Shared assertion evaluator accepts fixture human output that projects complete packet messaging without blocked/not-actionable language |
+| `evidence_promotion_semantic_assertions_accept_human_mixed_packet_and_blocked_messaging` | Shared assertion evaluator accepts a mixed fixture whose packet-ready section is clean while a separate non-actionable finding section remains blocked |
 | `evidence_promotion_semantic_assertions_reject_oracle_drift` | Shared assertion evaluator rejects a report whose oracle kind or strength drifts from `expected_oracle` |
 | `evidence_promotion_semantic_assertions_accept_human_oracle_projection` | Shared assertion evaluator accepts fixture human output that projects the expected oracle kind and strength |
 | `evidence_promotion_semantic_assertions_reject_human_missing_oracle_projection` | Shared assertion evaluator rejects a fixture human golden that drops oracle kind or strength projection |
