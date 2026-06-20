@@ -10652,6 +10652,10 @@ enum EvidencePromotionSemanticAssertion {
         detail: ExpectedRepairPacketDetail,
     },
     MustNotHaveContradictoryPacketMessaging,
+    ExpectedOracle {
+        kind: String,
+        strength: String,
+    },
     ExpectedClass {
         class: String,
     },
@@ -11008,6 +11012,12 @@ fn evidence_promotion_parse_assertion(
         "must_not_have_contradictory_packet_messaging" => {
             Ok(EvidencePromotionSemanticAssertion::MustNotHaveContradictoryPacketMessaging)
         }
+        "expected_oracle" => Ok(EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: evidence_promotion_required_assertion_string(case_id, index, assertion, "kind")?,
+            strength: evidence_promotion_required_assertion_string(
+                case_id, index, assertion, "strength",
+            )?,
+        }),
         "expected_class" => {
             let class =
                 evidence_promotion_required_assertion_class(case_id, index, assertion, "class")?;
@@ -11786,6 +11796,37 @@ fn evidence_promotion_semantic_violations(
                         "{case_label}: `must_not_have_contradictory_packet_messaging` forbids packet-ready findings from retaining blocked actionability messaging, but found {}",
                         contradictory.join(", ")
                     ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedOracle {
+                kind: expected_kind,
+                strength: expected_strength,
+            } => {
+                if findings.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `expected_oracle` `{expected_kind}/{expected_strength}` requires at least one finding"
+                    ));
+                }
+                for finding in &findings {
+                    let finding_id = evidence_promotion_finding_id(finding);
+                    let kind = finding
+                        .get("oracle_kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<missing>");
+                    if kind != expected_kind {
+                        violations.push(format!(
+                            "{case_label}: `expected_oracle` requires oracle_kind `{expected_kind}`, but finding `{finding_id}` has oracle_kind `{kind}`"
+                        ));
+                    }
+                    let strength = finding
+                        .get("oracle_strength")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<missing>");
+                    if strength != expected_strength {
+                        violations.push(format!(
+                            "{case_label}: `expected_oracle` requires oracle_strength `{expected_strength}`, but finding `{finding_id}` has oracle_strength `{strength}`"
+                        ));
+                    }
                 }
             }
             EvidencePromotionSemanticAssertion::ExpectedClass {
@@ -75118,6 +75159,8 @@ mod tests {
                     {
                         "id": "probe:src_lib.rs:predicate:typed",
                         "classification": "no_static_path",
+                        "oracle_kind": "unknown",
+                        "oracle_strength": "unknown",
                         "probe": {"file": "src/lib.rs"},
                         "static_limit_kind": "rust_transitive_reach_unresolved",
                         "verify_command": "cargo test typed_case",
@@ -75236,6 +75279,7 @@ mod tests {
                         {"type": "must_not_promote"},
                         {"type": "maximum_class", "class": "no_static_path"},
                         {"type": "expected_class", "class": "no_static_path"},
+                        {"type": "expected_oracle", "kind": "unknown", "strength": "unknown"},
                         {"type": "expected_completeness", "completeness": "complete"}
                     ]
                 },
@@ -75420,6 +75464,64 @@ mod tests {
         assert!(report.contains("must_emit_repair_packet"), "{report}");
         assert!(report.contains("must_not_emit_limitation"), "{report}");
         assert!(report.contains("expected_completeness"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_oracle_drift() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: "smoke_only".to_string(),
+            strength: "smoke".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:oracle-drift",
+                    "classification": "weakly_exposed",
+                    "oracle_kind": "exact_value",
+                    "oracle_strength": "strong"
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "oracle_drift",
+            Some("fixtures/typescript_oracle_drift"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_oracle"), "{report}");
+        assert!(report.contains("oracle_kind `exact_value`"), "{report}");
+        assert!(report.contains("oracle_strength `strong`"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_expected_oracle_without_findings() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedOracle {
+            kind: "exact_value".to_string(),
+            strength: "strong".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": []
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "oracle_empty",
+            Some("fixtures/typescript_oracle_empty"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_oracle"), "{report}");
+        assert!(report.contains("requires at least one finding"), "{report}");
     }
 
     #[test]

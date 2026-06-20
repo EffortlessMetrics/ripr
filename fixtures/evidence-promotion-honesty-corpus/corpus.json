@@ -166,14 +166,118 @@
       ]
     },
     {
+      "id": "ts_ava_t_is_exact_value",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_runner_detect_ava_devdep",
+      "vector": "execution_context_ava_t_is_exact_value",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "ts_tape_equal_exact_value",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_tape_equal_oracle",
+      "vector": "execution_context_tape_equal_exact_value",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_truthy_smoke_only",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_truthy_oracle",
+      "vector": "execution_context_truthy_smoke_only",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "smoke_only", "strength": "smoke" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_wrong_receiver_unknown_oracle",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_wrong_receiver_no_oracle",
+      "vector": "execution_context_wrong_receiver_not_credited",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "unknown", "strength": "unknown" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_unknown_method_unknown_oracle",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_unknown_method_no_oracle",
+      "vector": "execution_context_unknown_method_not_credited",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "unknown", "strength": "unknown" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_negated_t_oracle",
       "language": "typescript",
       "tier": "pure",
       "source_fixture": "fixtures/typescript_negated_t_oracle",
       "vector": "negated_equality_not_exact_value",
       "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
         { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "relational_check", "strength": "weak" },
+        { "type": "expected_class", "class": "weakly_exposed" },
         { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_dynamic_expected_incomplete_packet",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_dynamic_assertion_unresolved",
+      "vector": "dynamic_expected_value_no_packet",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
       ]
     },
     {

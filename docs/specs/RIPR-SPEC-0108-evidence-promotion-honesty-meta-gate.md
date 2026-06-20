@@ -118,6 +118,7 @@ says it was re-blessed to."
       `repair_kind`, `verify_command`, `receipt_command`,
       `allowed_edit_surface`, and `forbidden_files`
     - `must_not_have_contradictory_packet_messaging`
+    - `expected_oracle` with `kind` and `strength`
     - `expected_class` with `class`
     - `maximum_class` with `class`
     - `expected_completeness` with `completeness`
@@ -215,6 +216,12 @@ says it was re-blessed to."
     `evidence_needed_to_promote:` lines in the rendered JSON evidence. A
     complete packet must project actionable-reading evidence instead of the
     earlier incomplete-packet explanation.
+4j. `expected_oracle` cases (additive, dialect semantics): assert every finding
+    carries the exact `oracle_kind` and `oracle_strength` named by the case.
+    This lets the corpus pin framework- and dialect-specific oracle semantics
+    directly, for example TypeScript execution-context `t.equal(...)` as
+    `exact_value/strong`, `t.truthy(...)` as `smoke_only/smoke`, and unsupported
+    or wrong-receiver `t.*` shapes as `unknown/unknown`.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -326,13 +333,12 @@ corpus prevents the same regression in future.
 ### Corpus manifest
 
 `fixtures/evidence-promotion-honesty-corpus/corpus.json` -- cross-language
-pinned adversarial corpus with 9 pure non-promoted charter members (python x2,
-typescript x2, rust x5), 3 pure control cases (rust x2, typescript x1), and 1
-pinned external real-repo case. Three Rust reach-limitation charter members
-additionally assert non-clean output, named limitations, witness disclosure, and
-report scope disclosure via `must_not_report_clean`, `must_emit_limitation`,
-`must_disclose_witness`, `must_disclose_scope`, and
-`must_not_emit_repair_packet`.
+pinned adversarial corpus with pure non-promoted charter members, pure control
+cases, scope/packet projection cases, TypeScript execution-context oracle cases,
+and pinned external real-repo cases. Rust reach-limitation charter members
+additionally assert non-clean output, named limitations, witness disclosure,
+report scope disclosure, exact limitation detail, exact analyzer route, and no
+repair-packet delegation.
 
 Pure cases are tiny checked-in fixtures with byte-pinned `expected/check.json`
 reports or byte-pinned `source_report` JSON artifacts for states not expressible
@@ -361,7 +367,10 @@ gate-specific artifacts.
 | py_fstring_length_aggregate | python | python_adversarial_fstring_length_invariant_aggregate | length_invariant_fstring_aggregate_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | py_local_assignment_operator_input | python | python_adversarial_local_assignment_operator_input | local_assignment_operator_input_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
-| ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
+| ts_t_truthy_smoke_only | typescript | typescript_t_truthy_oracle | execution_context_truthy_smoke_only (also `expected_oracle=smoke_only/smoke`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| ts_t_wrong_receiver_unknown_oracle | typescript | typescript_t_wrong_receiver_no_oracle | execution_context_wrong_receiver_not_credited (also `expected_oracle=unknown/unknown`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| ts_t_unknown_method_unknown_oracle | typescript | typescript_t_unknown_method_no_oracle | execution_context_unknown_method_not_credited (also `expected_oracle=unknown/unknown`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value (also `expected_oracle=relational_check/weak`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, exact-targeted, and free of blocked packet messaging rather than promoted to exposed |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
@@ -385,6 +394,9 @@ gate-specific artifacts.
 | rust_strong_error_oracle_control | rust | strong_error_oracle |
 | rust_unwrap_err_variant_positive_control | rust | unwrap_err_variant_positive |
 | ts_strong_oracle_control | typescript | typescript_strong_oracle |
+| ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json |
 
 ### Validation by `check-fixture-contracts`
@@ -471,6 +483,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report missing target/evidence detail |
 | `evidence_promotion_semantic_assertions_reject_wrong_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report whose target test or verify command drifts from the corpus contract |
 | `evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail` | Shared assertion evaluator rejects a fixture human golden that drops repair-packet handoff detail |
+| `evidence_promotion_semantic_assertions_reject_oracle_drift` | Shared assertion evaluator rejects a report whose oracle kind or strength drifts from `expected_oracle` |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |
 | `evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection` | Shared assertion evaluator rejects a fixture human golden that keeps a stale witness line |
