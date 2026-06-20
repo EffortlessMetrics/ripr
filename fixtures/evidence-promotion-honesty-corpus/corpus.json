@@ -27,6 +27,134 @@
       ]
     },
     {
+      "id": "py_dict_sibling_key",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_dict_field_sibling_key",
+      "vector": "changed_dict_element_sibling_key_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_list_sibling_index",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_list_element_sibling_index",
+      "vector": "changed_list_element_sibling_index_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_operator_delta_input_operand",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_operator_delta_input_operand",
+      "vector": "operator_only_value_change_input_operand_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_changed_sink_non_delta_operand",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_changed_sink_non_delta_operand",
+      "vector": "changed_sink_token_non_delta_operand",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "static_unknown" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_default_value_overridden",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_default_value_overridden",
+      "vector": "changed_default_value_explicitly_overridden",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_error_path_untaken_branch",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_error_path_untaken_branch",
+      "vector": "changed_exception_type_untaken_branch",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_fstring_length_aggregate",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_fstring_length_invariant_aggregate",
+      "vector": "length_invariant_fstring_aggregate_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_local_assignment_operator_input",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_local_assignment_operator_input",
+      "vector": "local_assignment_operator_input_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_broad_tothrow",
       "language": "typescript",
       "tier": "pure",

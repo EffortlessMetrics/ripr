@@ -352,6 +352,14 @@ gate-specific artifacts.
 |---|---|---|---|
 | py_token_substring | python | python_adversarial_buffer_token | token_substring_coincidence |
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
+| py_dict_sibling_key | python | python_adversarial_dict_field_sibling_key | changed_dict_element_sibling_key_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_list_sibling_index | python | python_adversarial_list_element_sibling_index | changed_list_element_sibling_index_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_operator_delta_input_operand | python | python_adversarial_operator_delta_input_operand | operator_only_value_change_input_operand_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_changed_sink_non_delta_operand | python | python_adversarial_changed_sink_non_delta_operand | changed_sink_token_non_delta_operand (also `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_default_value_overridden | python | python_adversarial_default_value_overridden | changed_default_value_explicitly_overridden (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_error_path_untaken_branch | python | python_adversarial_error_path_untaken_branch | changed_exception_type_untaken_branch (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_fstring_length_aggregate | python | python_adversarial_fstring_length_invariant_aggregate | length_invariant_fstring_aggregate_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
+| py_local_assignment_operator_input | python | python_adversarial_local_assignment_operator_input | local_assignment_operator_input_oracle (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, exact-targeted, and free of blocked packet messaging rather than promoted to exposed |
