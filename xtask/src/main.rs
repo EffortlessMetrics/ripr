@@ -11872,6 +11872,27 @@ fn evidence_promotion_semantic_violations(
                         ));
                     }
                 }
+                if fixture_human_required && !findings.is_empty() {
+                    match human_text {
+                        Some(human_text) => {
+                            let class_count = evidence_promotion_human_class_projection_count(
+                                human_text,
+                                expected_class,
+                            );
+                            if class_count < findings.len() {
+                                violations.push(format!(
+                                    "{case_label}: `expected_class` requires fixture human output to project class `{expected_class}` for {} finding(s), but found {class_count} projection(s)",
+                                    findings.len()
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `expected_class` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
+                }
             }
             EvidencePromotionSemanticAssertion::MaximumClass {
                 class: expected_max_class,
@@ -12752,6 +12773,28 @@ fn evidence_promotion_human_oracle_tokens(text: &str) -> Vec<String> {
         .filter(|token| !token.is_empty())
         .map(ToString::to_string)
         .collect()
+}
+
+fn evidence_promotion_human_class_projection_count(
+    human_text: &str,
+    expected_class: &str,
+) -> usize {
+    human_text
+        .lines()
+        .filter(|line| evidence_promotion_human_class_line_matches(line, expected_class))
+        .count()
+}
+
+fn evidence_promotion_human_class_line_matches(line: &str, expected_class: &str) -> bool {
+    let trimmed = line.trim();
+    let Some(rest) = trimmed.strip_prefix(expected_class) else {
+        return false;
+    };
+    rest.is_empty()
+        || rest
+            .chars()
+            .next()
+            .is_some_and(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
 }
 
 fn collect_string_paths(value: &Value, path: String, paths: &mut Vec<(String, String)>) {
@@ -75726,6 +75769,89 @@ TypeScript preview
             "Strongest extracted oracle kind: `exact_value` (rank 5)",
             "exact_value",
             "strong"
+        ));
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_missing_class_projection() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedClass {
+            class: "weakly_exposed".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:class-human-drift",
+                    "classification": "weakly_exposed"
+                }
+            ]
+        });
+        let human_text = "\
+RIPR static exposure report
+
+Static exposure
+  exposed (info, confidence 0.60)
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "class_human_drift",
+            Some("fixtures/typescript_class_human_drift"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_class"), "{report}");
+        assert!(
+            report.contains("project class `weakly_exposed`"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_missing_human_class_golden() {
+        let assertions = vec![super::EvidencePromotionSemanticAssertion::ExpectedClass {
+            class: "weakly_exposed".to_string(),
+        }];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:typescript:class-missing-human",
+                    "classification": "weakly_exposed"
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "class_missing_human",
+            Some("fixtures/typescript_class_missing_human"),
+            &assertions,
+            &check_json,
+            None,
+            true,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_class"), "{report}");
+        assert!(report.contains("expected/human.txt"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_human_class_line_matches_exact_class_token() {
+        assert!(super::evidence_promotion_human_class_line_matches(
+            "  weakly_exposed (warning, confidence 0.40)",
+            "weakly_exposed"
+        ));
+        assert!(super::evidence_promotion_human_class_line_matches(
+            "  exposed (info, confidence 0.60)",
+            "exposed"
+        ));
+        assert!(!super::evidence_promotion_human_class_line_matches(
+            "  weakly_exposed (warning, confidence 0.40)",
+            "exposed"
         ));
     }
 

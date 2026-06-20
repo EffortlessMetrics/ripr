@@ -225,6 +225,12 @@ says it was re-blessed to."
     `smoke_only/smoke`, and unsupported or wrong-receiver `t.*` shapes as
     `unknown/unknown`, without allowing human output to drift from the canonical
     JSON result.
+4k. `expected_class` cases (additive, projection honesty): assert every finding
+    carries the exact `classification` named by the case. Fixture-backed cases
+    also assert `expected/human.txt` projects the same classification under the
+    human static-exposure output, with exact class-token matching so `exposed`
+    cannot be satisfied by `weakly_exposed`. `maximum_class` remains a JSON
+    severity ceiling rather than a human projection assertion.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -491,6 +497,9 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_human_missing_oracle_projection` | Shared assertion evaluator rejects a fixture human golden that drops oracle kind or strength projection |
 | `evidence_promotion_semantic_assertions_reject_missing_human_oracle_golden` | Shared assertion evaluator rejects a fixture-backed oracle assertion with no `expected/human.txt` |
 | `evidence_promotion_human_oracle_line_matches_normalized_projection` | Shared assertion evaluator accepts normalized human oracle projection formats without treating kind-only prose as strength evidence |
+| `evidence_promotion_semantic_assertions_reject_human_missing_class_projection` | Shared assertion evaluator rejects a fixture human golden that drops the expected exposure classification |
+| `evidence_promotion_semantic_assertions_reject_missing_human_class_golden` | Shared assertion evaluator rejects a fixture-backed class assertion with no `expected/human.txt` |
+| `evidence_promotion_human_class_line_matches_exact_class_token` | Shared assertion evaluator uses exact class-token matching so `exposed` does not match `weakly_exposed` |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |
 | `evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection` | Shared assertion evaluator rejects a fixture human golden that keeps a stale witness line |
