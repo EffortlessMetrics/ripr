@@ -6340,3 +6340,36 @@ metrics = [
   "golden_fixture_pass_rate",
   "honesty_corpus_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0118"
+name = "rust integration public-API path limitation"
+spec = "docs/specs/RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md"
+tests = [
+  "crates/ripr/src/analysis/language/rust.rs::tests::transitive_reach_limit_kind_names_integration_test_path",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_integration_public_api_static_limit_kind",
+]
+fixtures = [
+  "fixtures/rust_transitive_reach_positive",
+  "fixtures/rust_transitive_reach_test_helper_chain",
+  "fixtures/evidence-promotion-honesty-corpus",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/rust_index.rs",
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/STATIC_LIMITS.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+  "honesty_corpus_pass_rate",
+  "pinned_external_corpus_pass_rate",
+]

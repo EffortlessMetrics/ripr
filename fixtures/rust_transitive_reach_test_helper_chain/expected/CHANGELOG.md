@@ -70,3 +70,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+name integration public API reach limitation
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_test_helper_chain --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

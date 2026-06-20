@@ -211,7 +211,7 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
 
     if let Some(witness) = classify::find_transitive_witness(&owner_name, index) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding.static_limit_kind = Some(transitive_reach_limit_kind(&witness.test_file));
         finding
             .stop_reasons
             .push(StopReason::TransitiveReachUnresolved);
@@ -243,6 +243,14 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
                 &witness,
                 &owner_name,
             ));
+    }
+}
+
+fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
+    if rust_index::is_test_file(test_file) {
+        StaticLimitKind::RustIntegrationPublicApiPathUnresolved
+    } else {
+        StaticLimitKind::RustTransitiveReachUnresolved
     }
 }
 
@@ -397,7 +405,7 @@ mod tests {
         DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit, owner_has_ffi_attr,
-        replace_witnessed_no_path_infection_summary,
+        replace_witnessed_no_path_infection_summary, transitive_reach_limit_kind,
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{FunctionSummary, RustIndex};
@@ -407,7 +415,7 @@ mod tests {
         StaticLimitKind, SymbolId,
     };
     use std::env::VarError;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn diff_index_file_limit_defaults_when_unset() {
@@ -561,6 +569,18 @@ mod tests {
 
         assert_eq!(finding.ripr.infect.summary, summary);
         assert_eq!(finding.evidence, vec![summary.to_string()]);
+    }
+
+    #[test]
+    fn transitive_reach_limit_kind_names_integration_test_path() {
+        assert_eq!(
+            transitive_reach_limit_kind(Path::new("tests/version_req.rs")),
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved
+        );
+        assert_eq!(
+            transitive_reach_limit_kind(Path::new("src/lib.rs")),
+            StaticLimitKind::RustTransitiveReachUnresolved
+        );
     }
 
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {

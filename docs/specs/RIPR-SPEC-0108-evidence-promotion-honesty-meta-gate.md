@@ -151,6 +151,9 @@ says it was re-blessed to."
    bare class — e.g. dropping `rust_transitive_reach_unresolved` so a transitive
    reach reads as genuinely untested. A missing or empty `expected_limit_kind`
    is itself a violation.
+   Current integration/public-API path cases use
+   `rust_integration_public_api_path_unresolved`; generic non-integration helper
+   paths continue to use `rust_transitive_reach_unresolved`.
 4d. `must_disclose_witness` cases (additive, RIPR-SPEC-0115): asserts at least one
    finding's `evidence` contains the concrete transitive-reach *witness* pointer
    (prose beginning `For example, the test `), and for fixture-backed cases asserts
@@ -283,7 +286,7 @@ The first pinned external case is
 commit `2c18cc482244f4bb9cc65003b07426c18a79a190`, with the checked-in patch
 `fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff`.
 It asserts that RIPR sees `src/eval.rs`, does not report a clean empty result,
-emits `rust_transitive_reach_unresolved`, stays at or below `no_static_path`,
+emits `rust_integration_public_api_path_unresolved`, stays at or below `no_static_path`,
 does not emit a repair packet, discloses scope plus a witness, and does not
 claim no tests were found after naming that witness.
 
@@ -408,8 +411,8 @@ gate-specific artifacts.
 | ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, exact-targeted, and free of blocked packet messaging rather than promoted to exposed |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
-| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_integration_public_api_path_named_limitation | rust | rust_transitive_reach_positive | integration_public_api_path_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_integration_public_api_path_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_integration_public_api_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_path_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_integration_public_api_path_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | scope_committed_diff_changed_rust_file | rust | boundary_gap | committed_diff_changed_file_scope_count (also `must_not_report_clean` + `must_disclose_scope` + `expected_changed_rust_files: 1` + no verify/receipt commands + no repair packet + `expected_class: weakly_exposed`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
@@ -421,7 +424,7 @@ gate-specific artifacts.
 
 | id | language | external repo | commit | vector |
 |---|---|---|---|---|
-| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, no verify/receipt commands, not clean or actionable |
+| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_integration_public_api_path_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, no verify/receipt commands, not clean or actionable |
 
 ### Control cases (must_promote)
 

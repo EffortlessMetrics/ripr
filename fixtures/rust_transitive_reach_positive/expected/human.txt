@@ -36,7 +36,7 @@ Stop reasons:
   - transitive_reach_unresolved
 
 Static limitation
-  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a named limitation, not a coverage claim.
+  rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.
 
 Where to look
   For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed.
@@ -82,7 +82,7 @@ Stop reasons:
   - transitive_reach_unresolved
 
 Static limitation
-  rust_transitive_reach_unresolved — A test may reach this change through an internal helper-call chain ripr cannot fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a named limitation, not a coverage claim.
+  rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.
 
 Where to look
   For example, the test `test_outer_returns_difference` (tests/it.rs:4) calls `outer`, an entry point that may lead here. Inspect it to judge whether this change is observed.

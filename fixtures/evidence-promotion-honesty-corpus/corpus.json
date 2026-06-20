@@ -384,17 +384,17 @@
       ]
     },
     {
-      "id": "rust_transitive_reach_named_limitation",
+      "id": "rust_integration_public_api_path_named_limitation",
       "language": "rust",
       "tier": "pure",
       "source_fixture": "fixtures/rust_transitive_reach_positive",
-      "vector": "transitive_reach_named_not_silently_clean",
+      "vector": "integration_public_api_path_named_not_silently_clean",
       "assertions": [
         { "type": "must_not_report_clean" },
         { "type": "must_disclose_scope" },
         {
           "type": "must_emit_limitation",
-          "expected_limit_kind": "rust_transitive_reach_unresolved"
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_not_have_verify_command" },
@@ -417,17 +417,17 @@
       ]
     },
     {
-      "id": "rust_transitive_reach_test_helper_chain_named_limitation",
+      "id": "rust_integration_public_api_test_helper_chain_named_limitation",
       "language": "rust",
       "tier": "pure",
       "source_fixture": "fixtures/rust_transitive_reach_test_helper_chain",
-      "vector": "test_helper_public_api_transitive_reach_named_not_silently_clean",
+      "vector": "test_helper_public_api_path_named_not_silently_clean",
       "assertions": [
         { "type": "must_not_report_clean" },
         { "type": "must_disclose_scope" },
         {
           "type": "must_emit_limitation",
-          "expected_limit_kind": "rust_transitive_reach_unresolved"
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_not_have_verify_command" },
@@ -584,7 +584,7 @@
         { "type": "must_disclose_scope" },
         {
           "type": "must_emit_limitation",
-          "expected_limit_kind": "rust_transitive_reach_unresolved"
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_not_have_verify_command" },

@@ -77911,7 +77911,8 @@ TypeScript repair packet (advisory)
                 super::EvidencePromotionSemanticAssertion::MustNotReportClean,
                 super::EvidencePromotionSemanticAssertion::MustDiscloseScope,
                 super::EvidencePromotionSemanticAssertion::MustEmitLimitation {
-                    expected_limit_kind: "rust_transitive_reach_unresolved".to_string(),
+                    expected_limit_kind: "rust_integration_public_api_path_unresolved"
+                        .to_string(),
                 },
                 super::EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket,
                 super::EvidencePromotionSemanticAssertion::MustDiscloseWitness,
@@ -77953,9 +77954,9 @@ TypeScript repair packet (advisory)
                     "id": "probe:src_eval.rs:predicate:87a89f28",
                     "classification": "no_static_path",
                     "probe": {"file": "target/ripr/evidence-promotion-honesty/checkouts/semver/src/eval.rs"},
-                    "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "static_limit_kind": "rust_integration_public_api_path_unresolved",
                     "static_limitation": {
-                        "kind": "rust_transitive_reach_unresolved",
+                        "kind": "rust_integration_public_api_path_unresolved",
                         "last_established_edge": "test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`",
                         "first_unresolved_edge": "entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path",
                         "analyzer_route": "analysis/rust-public-api-transitive-reach",

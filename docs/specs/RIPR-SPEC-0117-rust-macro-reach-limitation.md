@@ -134,7 +134,10 @@ definition does not mention the changed owner name.
 3. **External macro**: `outer()` invokes a macro whose definition is not in the
    indexed repo source. Result: unchanged bare `no_static_path`.
 4. **Lexical transitive path exists**: the RIPR-SPEC-0114 witness fires first.
-   Result remains `rust_transitive_reach_unresolved`, not macro-reach.
+   Result remains a transitive/public-API limitation, not macro-reach. For
+   integration-test witnesses, RIPR-SPEC-0118 refines the kind to
+   `rust_integration_public_api_path_unresolved`; non-integration witnesses
+   keep `rust_transitive_reach_unresolved`.
 
 ## Required Evidence
 

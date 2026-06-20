@@ -1358,8 +1358,14 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::MissingImportGraph,
         StaticLimitKind::DecoratorIndirection,
         StaticLimitKind::MockedModule,
+        StaticLimitKind::OpaqueCustomAssertionHelper,
+        StaticLimitKind::PropertyBasedTest,
+        StaticLimitKind::UnresolvedPytestFixture,
         StaticLimitKind::UnsupportedSyntax,
         StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
+        StaticLimitKind::RustTransitiveReachUnresolved,
+        StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
+        StaticLimitKind::RustMacroReachUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)
@@ -2367,6 +2373,19 @@ mod tests {
                 "runtime_magic".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn validation_accepts_rust_integration_public_api_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_integration_public_api_path_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
     }
 
     #[test]

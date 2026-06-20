@@ -87,6 +87,11 @@ rendered message notes the count ("and N other tests") without enumerating them.
 Unchanged: set `Finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved)`,
 push `StopReason::TransitiveReachUnresolved`, and push the limitation message to `Finding.evidence`.
 
+RIPR-SPEC-0118 refines this static-limit kind when the witness starts in an
+integration test path: those findings use
+`rust_integration_public_api_path_unresolved` while preserving this spec's
+witness channel, stop reason, classification, and fail-closed boundaries.
+
 The `evidence` channel now carries **two parts**: the existing generic
 `RUST_TRANSITIVE_REACH_MESSAGE` framing, followed by a concrete witness pointer, e.g.:
 
@@ -144,6 +149,10 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 - Tracing through macros, generics, or trait dispatch — inherited RIPR-SPEC-0114 boundaries.
 
 ## Acceptance Examples
+
+RIPR-SPEC-0118 refines the integration-test examples below to
+`static_limit_kind: rust_integration_public_api_path_unresolved`. The witness
+requirements in this spec remain unchanged.
 
 1. **Positive (witness named)**: `pub(crate) fn inner()` changed; integration test
    `test_uses_outer` in `tests/it.rs` calls `outer()` which calls `inner()`. Result:
@@ -266,6 +275,8 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 
 ## Metrics
 
+- RIPR-SPEC-0118 supersedes the integration-origin fixture wire kind with
+  `rust_integration_public_api_path_unresolved`.
 - Gate: positive fixture re-blessed with message-only drift (class + static_limit_kind byte-identical
   except the enriched evidence string); negative fixture 0 drift.
 - Behavioral repro: positive fixture's human output names the witnessing test file:line and entry

@@ -74,6 +74,12 @@ Push the honest limitation message to `Finding.evidence`.
 
 The classification **stays `no_static_path`**. This is a named limitation, not a reach promotion.
 
+RIPR-SPEC-0118 refines the wire kind for witnesses that start in integration
+test paths: those use `rust_integration_public_api_path_unresolved` while
+non-integration helper chains keep `rust_transitive_reach_unresolved`. The stop
+reason, classification, witness language, and fail-closed boundaries remain
+unchanged.
+
 ### When NOT found
 
 Leave the finding exactly as today (bare `no_static_path`, no `static_limit_kind`).
@@ -105,6 +111,10 @@ Genuinely-untested stays genuinely-untested.
 - Depth > 5 paths — explicit fail-closed boundary.
 
 ## Acceptance Examples
+
+RIPR-SPEC-0118 refines the two integration-test examples below to
+`static_limit_kind: rust_integration_public_api_path_unresolved`. Non-integration
+transitive helper witnesses keep `rust_transitive_reach_unresolved`.
 
 1. **Positive (limitation fires)**: `pub(crate) fn inner()` changed; integration test calls
    `outer()` which calls `inner()`. Direct-call classifier finds no test for `inner`. BFS finds
@@ -203,5 +213,7 @@ Genuinely-untested stays genuinely-untested.
 ## Metrics
 
 - Gate: 0 golden drift on existing fixtures; 3 transitive-reach fixtures passing.
+- RIPR-SPEC-0118 supersedes the integration-origin fixture wire kind with
+  `rust_integration_public_api_path_unresolved`.
 - Behavioral repro: positive fixture shows `static_limit_kind: "rust_transitive_reach_unresolved"`,
   classification stays `no_static_path`. Negative fixture shows bare `no_static_path`, no `static_limit_kind`.

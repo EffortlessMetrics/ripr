@@ -137,6 +137,12 @@ pub enum StaticLimitKind {
     /// stop the walk). The classification stays `no_static_path` -- this label
     /// is a named limitation, not a coverage claim. See RIPR-SPEC-0114.
     RustTransitiveReachUnresolved,
+    /// An integration test appears to call a crate public API, or a test helper
+    /// that calls that public API, and a bounded same-repo lexical path may lead
+    /// toward the changed owner. The classification stays `no_static_path`;
+    /// this label names the unresolved integration/public-API edge, not a
+    /// coverage claim. See RIPR-SPEC-0118.
+    RustIntegrationPublicApiPathUnresolved,
     /// A Rust test reaches an entry point whose path toward the changed owner
     /// stops at a same-repo macro invocation that ripr does not expand. The
     /// macro definition lexically mentions the changed owner, but the
@@ -163,6 +169,9 @@ impl StaticLimitKind {
                 "cross_language_oracle_visibility_unresolved"
             }
             StaticLimitKind::RustTransitiveReachUnresolved => "rust_transitive_reach_unresolved",
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved => {
+                "rust_integration_public_api_path_unresolved"
+            }
             StaticLimitKind::RustMacroReachUnresolved => "rust_macro_reach_unresolved",
         }
     }
@@ -220,6 +229,10 @@ impl StaticLimitKind {
                 "A test may reach this change through an internal helper-call chain ripr cannot \
                  fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a \
                  named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved => {
+                "An integration test may reach this change through a crate public API or test-helper \
+                 path ripr cannot fully trace. This is a named limitation, not a coverage claim."
             }
             StaticLimitKind::RustMacroReachUnresolved => {
                 "A test may reach this change through a Rust macro path ripr cannot expand. The \
@@ -321,6 +334,10 @@ mod tests {
             "rust_transitive_reach_unresolved"
         );
         assert_eq!(
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved.as_str(),
+            "rust_integration_public_api_path_unresolved"
+        );
+        assert_eq!(
             StaticLimitKind::RustMacroReachUnresolved.as_str(),
             "rust_macro_reach_unresolved"
         );
@@ -340,6 +357,7 @@ mod tests {
             StaticLimitKind::UnsupportedSyntax,
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
             StaticLimitKind::RustTransitiveReachUnresolved,
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
             StaticLimitKind::RustMacroReachUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
