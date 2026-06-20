@@ -114,6 +114,7 @@
         { "type": "must_have_receipt_command" },
         { "type": "must_not_emit_limitation" },
         { "type": "must_disclose_repair_packet_detail" },
+        { "type": "must_not_have_contradictory_packet_messaging" },
         { "type": "must_not_promote" },
         { "type": "expected_class", "class": "weakly_exposed" }
       ]

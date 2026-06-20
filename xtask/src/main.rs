@@ -10633,6 +10633,7 @@ enum EvidencePromotionSemanticAssertion {
     MustEmitRepairPacket,
     MustNotEmitRepairPacket,
     MustDiscloseRepairPacketDetail,
+    MustNotHaveContradictoryPacketMessaging,
     ExpectedClass {
         class: String,
     },
@@ -10913,6 +10914,9 @@ fn evidence_promotion_parse_assertion(
         }
         "must_disclose_repair_packet_detail" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseRepairPacketDetail)
+        }
+        "must_not_have_contradictory_packet_messaging" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotHaveContradictoryPacketMessaging)
         }
         "expected_class" => {
             let class =
@@ -11606,6 +11610,16 @@ fn evidence_promotion_semantic_violations(
                     }
                 }
             }
+            EvidencePromotionSemanticAssertion::MustNotHaveContradictoryPacketMessaging => {
+                let contradictory =
+                    evidence_promotion_contradictory_packet_messaging_paths(check_json);
+                if !contradictory.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_have_contradictory_packet_messaging` forbids packet-ready findings from retaining blocked actionability messaging, but found {}",
+                        contradictory.join(", ")
+                    ));
+                }
+            }
             EvidencePromotionSemanticAssertion::ExpectedClass {
                 class: expected_class,
             } => {
@@ -12090,6 +12104,71 @@ fn evidence_promotion_missing_human_repair_packet_detail_paths(human_text: &str)
         .collect()
 }
 
+fn evidence_promotion_contradictory_packet_messaging_paths(check_json: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let Some(findings) = check_json.get("findings").and_then(Value::as_array) else {
+        return violations;
+    };
+    for (finding_index, finding) in findings.iter().enumerate() {
+        if !evidence_promotion_finding_packet_ready(finding) {
+            continue;
+        }
+        let mut strings = Vec::new();
+        collect_string_paths(
+            finding,
+            format!("$.findings[{finding_index}]"),
+            &mut strings,
+        );
+        for (path, value) in strings {
+            if let Some(reason) = evidence_promotion_packet_blocked_message_reason(&value) {
+                violations.push(format!("{path}:{reason}"));
+            }
+        }
+    }
+    violations
+}
+
+fn evidence_promotion_finding_packet_ready(finding: &Value) -> bool {
+    finding.get("repair_packet_ready").and_then(Value::as_bool) == Some(true)
+        || finding
+            .get("preview_actionability")
+            .and_then(|actionability| actionability.get("repair_packet_ready"))
+            .and_then(Value::as_bool)
+            == Some(true)
+}
+
+fn evidence_promotion_packet_blocked_message_reason(value: &str) -> Option<&'static str> {
+    let trimmed = value.trim();
+    if trimmed == "gap_state: advisory" {
+        return Some("blocked gap_state evidence");
+    }
+    if trimmed == "actionability_category: incomplete_repair_packet" {
+        return Some("blocked actionability category evidence");
+    }
+    if trimmed.starts_with("why_not_actionable: ") {
+        return Some("blocked why-not-actionable evidence");
+    }
+    if trimmed.starts_with("repair_route: ") {
+        return Some("blocked repair-route evidence");
+    }
+    if trimmed.starts_with("missing_actionability_fields: ") {
+        return Some("blocked missing-field evidence");
+    }
+    if trimmed.starts_with("evidence_needed_to_promote: ")
+        && trimmed
+            .strip_prefix("evidence_needed_to_promote: ")
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Some("blocked evidence-needed evidence");
+    }
+    if trimmed.contains("lacks a complete repair packet contract")
+        || trimmed.contains("only after verify, receipt, evidence refs")
+    {
+        return Some("blocked incomplete-packet text");
+    }
+    None
+}
+
 fn evidence_promotion_missing_human_limitation_detail_paths(
     human_text: &str,
     expected_details: &[(String, String)],
@@ -12244,6 +12323,25 @@ fn collect_no_tests_found_claim_paths(value: &Value, path: String, paths: &mut V
     }
 }
 
+fn collect_string_paths(value: &Value, path: String, paths: &mut Vec<(String, String)>) {
+    match value {
+        Value::String(text) => {
+            paths.push((path, text.clone()));
+        }
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                collect_string_paths(item, format!("{path}[{index}]"), paths);
+            }
+        }
+        Value::Object(map) => {
+            for (key, item) in map {
+                collect_string_paths(item, format!("{path}.{key}"), paths);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
+}
+
 fn evidence_promotion_assertion_case_label(case_id: &str, source_fixture: Option<&str>) -> String {
     match source_fixture {
         Some(fixture) => {
@@ -12372,6 +12470,7 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
             || joined.contains("must_emit_repair_packet")
             || joined.contains("must_not_emit_limitation")
             || joined.contains("must_disclose_repair_packet_detail")
+            || joined.contains("must_not_have_contradictory_packet_messaging")
             || joined.contains("expected_class")
             || joined.contains("expected_completeness"))
     {
@@ -74855,7 +74954,8 @@ mod tests {
                         {"type": "must_have_verify_command"},
                         {"type": "must_have_receipt_command"},
                         {"type": "must_emit_repair_packet"},
-                        {"type": "must_disclose_repair_packet_detail"}
+                        {"type": "must_disclose_repair_packet_detail"},
+                        {"type": "must_not_have_contradictory_packet_messaging"}
                     ]
                 },
                 {
@@ -75100,6 +75200,64 @@ mod tests {
         );
         assert!(
             report.contains("$.raw_evidence_refs:missing raw evidence refs"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_contradictory_packet_messaging() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustNotHaveContradictoryPacketMessaging,
+        ];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "packet-contradictory-messaging",
+                    "classification": "weakly_exposed",
+                    "preview_actionability": {
+                        "repair_packet_ready": true,
+                        "gap_state": "actionable",
+                        "actionability_category": "complete_repair_packet"
+                    },
+                    "typescript_repair_packet": {
+                        "canonical_gap_id": "gap:typescript:discount",
+                        "verify_command": "jest tests/discount.test.ts",
+                        "receipt_command": "ripr outcome --before baseline --after repair"
+                    },
+                    "evidence": [
+                        "owner: applyDiscount",
+                        "gap_state: advisory",
+                        "actionability_category: incomplete_repair_packet",
+                        "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+                        "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+                        "missing_actionability_fields: canonical_gap_id",
+                        "evidence_needed_to_promote: canonical gap identity"
+                    ]
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "packet_contradictory_messaging",
+            Some("fixtures/packet_contradictory_messaging"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_not_have_contradictory_packet_messaging"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence[1]:blocked gap_state evidence"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.findings[0].evidence[3]:blocked why-not-actionable evidence"),
             "{report}"
         );
     }

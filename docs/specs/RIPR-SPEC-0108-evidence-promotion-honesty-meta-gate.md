@@ -113,6 +113,7 @@ says it was re-blessed to."
     - `must_emit_repair_packet`
     - `must_not_emit_repair_packet`
     - `must_disclose_repair_packet_detail`
+    - `must_not_have_contradictory_packet_messaging`
     - `expected_class` with `class`
     - `maximum_class` with `class`
     - `expected_completeness` with `completeness`
@@ -195,6 +196,14 @@ says it was re-blessed to."
     Fixture-backed cases also assert the human output surfaces the same repair
     packet section with canonical gap, source, target, edit surface, verify,
     receipt, must-not-change, and authority lines.
+4i. `must_not_have_contradictory_packet_messaging` cases (additive, projection
+    honesty): assert packet-ready findings do not retain blocked preview evidence
+    strings such as `gap_state: advisory`,
+    `actionability_category: incomplete_repair_packet`, `why_not_actionable:`,
+    `repair_route:`, `missing_actionability_fields:`, or non-empty
+    `evidence_needed_to_promote:` lines in the rendered JSON evidence. A
+    complete packet must project actionable-reading evidence instead of the
+    earlier incomplete-packet explanation.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -334,7 +343,7 @@ gate-specific artifacts.
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
-| ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, and detail-complete rather than promoted to exposed |
+| ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, and free of blocked packet messaging rather than promoted to exposed |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |

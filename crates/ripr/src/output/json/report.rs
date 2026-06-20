@@ -12,6 +12,7 @@ use crate::output::next_step::reconcile_next_step;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
+    projected_preview_actionability_evidence, projected_preview_actionability_missing,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
 use crate::output::typescript_packet_projection::typescript_gap_record_for;
@@ -258,8 +259,10 @@ fn finding_json_with_config_and_counts(
     array_field(out, indent + 1, "evidence_path", &evidence_path, true);
     flow_sinks_json(out, finding, indent + 1);
     out.push_str(",\n");
-    array_field(out, indent + 1, "evidence", &finding.evidence, true);
-    array_field(out, indent + 1, "missing", &finding.missing, true);
+    let evidence = projected_preview_actionability_evidence(finding);
+    array_field(out, indent + 1, "evidence", &evidence, true);
+    let missing = projected_preview_actionability_missing(finding);
+    array_field(out, indent + 1, "missing", &missing, true);
     assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
     out.push_str(",\n");
     activation_json(out, finding, indent + 1);

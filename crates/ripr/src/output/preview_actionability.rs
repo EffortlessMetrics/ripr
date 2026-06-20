@@ -184,11 +184,55 @@ pub(crate) fn preview_actionability_json_value(actionability: &PreviewActionabil
     })
 }
 
+pub(crate) fn projected_preview_actionability_evidence(finding: &Finding) -> Vec<String> {
+    let Some(actionability) = preview_actionability_for(finding) else {
+        return finding.evidence.clone();
+    };
+    if !actionability.repair_packet_ready {
+        return finding.evidence.clone();
+    }
+
+    let projected_lines = actionable_evidence_lines(&actionability);
+    let mut evidence = Vec::with_capacity(finding.evidence.len() + projected_lines.len());
+    let mut inserted = false;
+    for line in &finding.evidence {
+        if is_preview_actionability_evidence_line(line) {
+            if !inserted {
+                evidence.extend(projected_lines.iter().cloned());
+                inserted = true;
+            }
+        } else {
+            evidence.push(line.clone());
+        }
+    }
+    if !inserted {
+        evidence.extend(projected_lines);
+    }
+    evidence
+}
+
+pub(crate) fn projected_preview_actionability_missing(finding: &Finding) -> Vec<String> {
+    let Some(actionability) = preview_actionability_for(finding) else {
+        return finding.missing.clone();
+    };
+    if !actionability.repair_packet_ready {
+        return finding.missing.clone();
+    }
+    finding
+        .missing
+        .iter()
+        .filter(|line| !is_preview_actionability_missing_summary(line))
+        .cloned()
+        .collect()
+}
+
 pub(crate) fn is_preview_actionability_evidence_line(line: &str) -> bool {
     line.starts_with("gap_state: ")
         || line.starts_with("actionability_category: ")
         || line.starts_with("why_not_actionable: ")
+        || line.starts_with("why_actionable: ")
         || line.starts_with("repair_route: ")
+        || line.starts_with("repair_action: ")
         || line.starts_with("missing_actionability_fields: ")
         || line.starts_with("missing_graph_legs: ")
         || line.starts_with("unlock_condition: ")
@@ -216,6 +260,25 @@ fn split_csv(value: &str) -> Vec<String> {
         .filter(|part| !part.is_empty())
         .map(ToString::to_string)
         .collect()
+}
+
+fn actionable_evidence_lines(actionability: &PreviewActionability) -> Vec<String> {
+    let mut lines = vec![
+        format!("gap_state: {}", actionability.gap_state),
+        format!(
+            "actionability_category: {}",
+            actionability.actionability_category
+        ),
+        format!("why_actionable: {}", actionability.why_not_actionable),
+        format!("repair_action: {}", actionability.repair_route),
+    ];
+    lines.extend(
+        actionability
+            .raw_evidence_refs
+            .iter()
+            .map(|raw_ref| format!("raw_evidence_ref: {}", raw_ref.raw)),
+    );
+    lines
 }
 
 fn parse_raw_evidence_ref(value: &str) -> PreviewRawEvidenceRef {
@@ -270,14 +333,17 @@ fn raw_ref_json(raw_ref: &PreviewRawEvidenceRef) -> Value {
 mod tests {
     use super::{
         actionable_repair_route, is_preview_actionability_evidence_line, preview_actionability_for,
-        preview_actionability_json_value,
+        preview_actionability_json_value, projected_preview_actionability_evidence,
+        projected_preview_actionability_missing,
     };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, LanguageId,
-        LanguageStatus, Probe, ProbeFamily, ProbeId, RevealEvidence, RiprEvidence, SourceLocation,
-        StageEvidence, StageState,
+        LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
+        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+        StageState,
     };
     use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
+    use std::path::PathBuf;
 
     #[test]
     fn actionable_repair_route_names_assertion_shape_not_blocked_text() {
@@ -390,6 +456,83 @@ mod tests {
         assert!(!is_preview_actionability_evidence_line(
             "owner: applyDiscount"
         ));
+    }
+
+    #[test]
+    fn projected_evidence_replaces_blocked_lines_for_packet_ready_finding() {
+        let mut finding = sample_typescript_finding();
+        finding
+            .evidence
+            .push("typescript_verify_command: jest tests/discount.test.ts".to_string());
+        finding
+            .evidence
+            .push("typescript_oracle_observed: result".to_string());
+        finding
+            .evidence
+            .push("typescript_oracle_expected: 50".to_string());
+        finding
+            .activation
+            .missing_discriminators
+            .push(MissingDiscriminatorFact {
+                value: "amount == threshold".to_string(),
+                reason: "changed TypeScript equality-boundary lacks a concrete discriminator"
+                    .to_string(),
+                flow_sink: None,
+            });
+        finding.related_tests.push(RelatedTest {
+            name: "applies discount at threshold".to_string(),
+            file: PathBuf::from("tests/discount.test.ts"),
+            line: 5,
+            oracle_strength: OracleStrength::Weak,
+            oracle_kind: OracleKind::ExactValue,
+            oracle: Some("expect(result).toBe(50)".to_string()),
+            relation_reason: None,
+            relation_confidence: None,
+        });
+        finding.missing.push(
+            "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: blocked"
+                .to_string(),
+        );
+
+        let projected = projected_preview_actionability_evidence(&finding);
+        let missing = projected_preview_actionability_missing(&finding);
+
+        assert!(projected.contains(&"owner: applyDiscount".to_string()));
+        assert!(projected.contains(&"gap_state: actionable".to_string()));
+        assert!(projected.contains(&"actionability_category: complete_repair_packet".to_string()));
+        assert!(
+            projected
+                .iter()
+                .any(|line| line.starts_with("why_actionable: complete repair packet")),
+            "{projected:?}"
+        );
+        assert!(
+            projected
+                .iter()
+                .any(|line| line.starts_with("repair_action: add or strengthen")),
+            "{projected:?}"
+        );
+        assert!(
+            projected
+                .iter()
+                .any(|line| line.starts_with("raw_evidence_ref: ")),
+            "{projected:?}"
+        );
+        assert!(
+            !projected.iter().any(|line| line == "gap_state: advisory"
+                || line == "actionability_category: incomplete_repair_packet"
+                || line.starts_with("why_not_actionable: ")
+                || line.starts_with("repair_route: ")
+                || line.starts_with("missing_actionability_fields: ")
+                || line.starts_with("evidence_needed_to_promote: ")),
+            "{projected:?}"
+        );
+        assert!(
+            !missing
+                .iter()
+                .any(|line| line.starts_with("TypeScript preview actionability `")),
+            "{missing:?}"
+        );
     }
 
     fn sample_typescript_finding() -> Finding {
