@@ -113,6 +113,10 @@ says it was re-blessed to."
     - `must_emit_repair_packet`
     - `must_not_emit_repair_packet`
     - `must_disclose_repair_packet_detail`
+    - `expected_repair_packet_detail` with `canonical_gap_id`, `source_file`,
+      `source_line`, `target_test`, `assertion_shape`, `authority_boundary`,
+      `repair_kind`, `verify_command`, `receipt_command`,
+      `allowed_edit_surface`, and `forbidden_files`
     - `must_not_have_contradictory_packet_messaging`
     - `expected_class` with `class`
     - `maximum_class` with `class`
@@ -196,6 +200,13 @@ says it was re-blessed to."
     Fixture-backed cases also assert the human output surfaces the same repair
     packet section with canonical gap, source, target, edit surface, verify,
     receipt, must-not-change, and authority lines.
+4h1. `expected_repair_packet_detail` cases (additive, exact packet handoff):
+    assert the packet-ready handoff points at the exact canonical gap, changed
+    source line, target test, assertion shape, verify/receipt commands, and edit
+    cage declared by the corpus case. Fixture-backed cases also assert human
+    output carries those exact values. This guards against a structurally
+    complete packet silently drifting to the wrong test, wrong command, or wrong
+    edit surface.
 4i. `must_not_have_contradictory_packet_messaging` cases (additive, projection
     honesty): assert packet-ready findings do not retain blocked preview evidence
     strings such as `gap_state: advisory`,
@@ -343,7 +354,7 @@ gate-specific artifacts.
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
-| ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, and free of blocked packet messaging rather than promoted to exposed |
+| ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, exact-targeted, and free of blocked packet messaging rather than promoted to exposed |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
@@ -450,6 +461,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, receipt-command, packet, limitation, and completeness drift |
 | `evidence_promotion_semantic_assertions_reject_missing_receipt_command` | Shared assertion evaluator rejects a packet contract that lacks a receipt command |
 | `evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report missing target/evidence detail |
+| `evidence_promotion_semantic_assertions_reject_wrong_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report whose target test or verify command drifts from the corpus contract |
 | `evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail` | Shared assertion evaluator rejects a fixture human golden that drops repair-packet handoff detail |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |

@@ -114,6 +114,20 @@
         { "type": "must_have_receipt_command" },
         { "type": "must_not_emit_limitation" },
         { "type": "must_disclose_repair_packet_detail" },
+        {
+          "type": "expected_repair_packet_detail",
+          "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+          "source_file": "src/discount.ts",
+          "source_line": 2,
+          "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+          "assertion_shape": "expect(result).toBe(50)",
+          "authority_boundary": "preview_advisory_only",
+          "repair_kind": "AddBoundaryAssertion",
+          "verify_command": "jest tests/discount.test.ts",
+          "receipt_command": "ripr outcome --before <baseline> --after <repair> --verify-cmd \"jest tests/discount.test.ts\" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json",
+          "allowed_edit_surface": ["tests/discount.test.ts"],
+          "forbidden_files": ["src/discount.ts"]
+        },
         { "type": "must_not_have_contradictory_packet_messaging" },
         { "type": "must_not_promote" },
         { "type": "expected_class", "class": "weakly_exposed" }
