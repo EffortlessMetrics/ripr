@@ -512,6 +512,7 @@
       "vector": "dirty_worktree_explicitly_analyzed_not_reported_excluded",
       "assertions": [
         { "type": "must_see_changed_file", "path": "src/lib.rs" },
+        { "type": "expected_changed_rust_files", "count": 1 },
         { "type": "must_not_report_clean" },
         { "type": "must_disclose_scope" },
         { "type": "must_not_disclose_no_scope" },
@@ -533,6 +534,7 @@
       "assertions": [
         { "type": "must_report_clean" },
         { "type": "must_disclose_scope" },
+        { "type": "expected_changed_rust_files", "count": 0 },
         { "type": "expected_completeness", "completeness": "complete" }
       ]
     },

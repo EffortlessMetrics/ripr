@@ -10717,6 +10717,9 @@ enum EvidencePromotionSemanticAssertion {
     ExpectedCompleteness {
         completeness: String,
     },
+    ExpectedChangedRustFiles {
+        count: u64,
+    },
     MustDiscloseWitness,
     MustDiscloseLimitationDetail,
     ExpectedLimitationDetail {
@@ -11105,6 +11108,13 @@ fn evidence_promotion_parse_assertion(
             }
             Ok(EvidencePromotionSemanticAssertion::ExpectedCompleteness { completeness })
         }
+        "expected_changed_rust_files" => Ok(
+            EvidencePromotionSemanticAssertion::ExpectedChangedRustFiles {
+                count: evidence_promotion_required_assertion_u64(
+                    case_id, index, assertion, "count",
+                )?,
+            },
+        ),
         "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
         "must_disclose_limitation_detail" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail)
@@ -11187,6 +11197,19 @@ fn evidence_promotion_required_assertion_usize(
                 "evidence promotion case `{case_id}` assertion {index}: missing positive integer `{field}`"
             )
         })
+}
+
+fn evidence_promotion_required_assertion_u64(
+    case_id: &str,
+    index: usize,
+    assertion: &Value,
+    field: &str,
+) -> Result<u64, String> {
+    assertion.get(field).and_then(Value::as_u64).ok_or_else(|| {
+        format!(
+            "evidence promotion case `{case_id}` assertion {index}: missing unsigned integer `{field}`"
+        )
+    })
 }
 
 fn evidence_promotion_required_assertion_string_array(
@@ -12080,6 +12103,20 @@ fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `expected_completeness` requires analysis_scope.completeness `{completeness}`, got `{}`",
                         observed.unwrap_or("<missing>")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedChangedRustFiles { count } => {
+                let observed = check_json
+                    .get("summary")
+                    .and_then(|summary| summary.get("changed_rust_files"))
+                    .and_then(Value::as_u64);
+                if observed != Some(*count) {
+                    violations.push(format!(
+                        "{case_label}: `expected_changed_rust_files` requires summary.changed_rust_files `{count}`, got `{}`",
+                        observed
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "<missing>".to_string())
                     ));
                 }
             }
@@ -76082,10 +76119,11 @@ mod tests {
             super::EvidencePromotionSemanticAssertion::ExpectedCompleteness {
                 completeness: "limited".to_string(),
             },
+            super::EvidencePromotionSemanticAssertion::ExpectedChangedRustFiles { count: 2 },
         ];
         let check_json = serde_json::json!({
             "analysis_scope": {"completeness": "complete"},
-            "summary": {"findings": 1},
+            "summary": {"changed_rust_files": 1, "findings": 1},
             "findings": [
                 {
                     "id": "projection-drift",
@@ -76112,6 +76150,51 @@ mod tests {
         assert!(report.contains("must_emit_repair_packet"), "{report}");
         assert!(report.contains("must_not_emit_limitation"), "{report}");
         assert!(report.contains("expected_completeness"), "{report}");
+        assert!(report.contains("expected_changed_rust_files"), "{report}");
+        assert!(
+            report.contains("summary.changed_rust_files `2`"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_accept_expected_changed_rust_files() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::ExpectedChangedRustFiles { count: 0 }];
+        let check_json = serde_json::json!({
+            "summary": {"changed_rust_files": 0, "findings": 0},
+            "findings": []
+        });
+
+        let violations = super::evidence_promotion_semantic_violations(
+            "changed_rust_files",
+            Some("fixtures/changed_rust_files"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        );
+        assert!(
+            violations.is_empty(),
+            "expected changed Rust file count should pass: {violations:?}"
+        );
+
+        let missing_count = serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": []
+        });
+        let report = super::evidence_promotion_semantic_violations(
+            "missing_changed_rust_files",
+            Some("fixtures/changed_rust_files"),
+            &assertions,
+            &missing_count,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("expected_changed_rust_files"), "{report}");
+        assert!(report.contains("<missing>"), "{report}");
     }
 
     #[test]

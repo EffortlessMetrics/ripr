@@ -125,6 +125,7 @@ says it was re-blessed to."
     - `expected_class` with `class`
     - `maximum_class` with `class`
     - `expected_completeness` with `completeness`
+    - `expected_changed_rust_files` with `count`
     - `must_disclose_witness`
     - `must_disclose_limitation_detail`
     - `expected_limitation_detail` with `last_established_edge`,
@@ -412,7 +413,7 @@ gate-specific artifacts.
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
 | scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
-| scope_worktree_dirty_analyzed_not_excluded | rust | reports/scope-worktree-dirty-analyzed-not-excluded.json | dirty_worktree_explicitly_analyzed_not_reported_excluded (also `must_see_changed_file: src/lib.rs`, `must_disclose_scope`, `must_not_disclose_no_scope`, `must_not_disclose_unanalyzed_working_tree`, no verify/receipt commands, and no repair packet) |
+| scope_worktree_dirty_analyzed_not_excluded | rust | reports/scope-worktree-dirty-analyzed-not-excluded.json | dirty_worktree_explicitly_analyzed_not_reported_excluded (also `must_see_changed_file: src/lib.rs`, `expected_changed_rust_files: 1`, `must_disclose_scope`, `must_not_disclose_no_scope`, `must_not_disclose_unanalyzed_working_tree`, no verify/receipt commands, and no repair packet) |
 | scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
 
 ### Pinned external cases
@@ -431,7 +432,7 @@ gate-specific artifacts.
 | ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
-| scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json |
+| scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json (`expected_changed_rust_files: 0`) |
 
 ### Validation by `check-fixture-contracts`
 
@@ -514,6 +515,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_accepts_typed_assertion_vocabulary` | Validator accepts typed semantic assertions as the canonical corpus contract |
 | `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
 | `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, receipt-command, packet, limitation, and completeness drift |
+| `evidence_promotion_semantic_assertions_accept_expected_changed_rust_files` | Shared assertion evaluator accepts an exact changed Rust file count and rejects missing count data |
 | `evidence_promotion_semantic_assertions_reject_human_missing_verify_command_projection` | Shared assertion evaluator rejects fixture human output that hides a JSON-backed verify command |
 | `evidence_promotion_semantic_assertions_reject_human_invented_verify_command` | Shared assertion evaluator rejects fixture human output that invents a verify command when JSON has none |
 | `evidence_promotion_semantic_assertions_reject_human_invented_receipt_command` | Shared assertion evaluator rejects fixture human output that invents a receipt command when JSON has none |

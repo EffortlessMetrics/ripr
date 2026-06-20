@@ -8,6 +8,7 @@
     "completeness": "complete"
   },
   "summary": {
+    "changed_rust_files": 0,
     "findings": 0
   },
   "findings": []
