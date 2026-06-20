@@ -10686,6 +10686,7 @@ enum EvidencePromotionSemanticAssertion {
     MustNotReportClean,
     MustDiscloseScope,
     MustDiscloseNoScope,
+    MustNotDiscloseNoScope,
     MustDiscloseUnanalyzedWorkingTree,
     MustNotDiscloseUnanalyzedWorkingTree,
     MustEmitLimitation {
@@ -10959,6 +10960,9 @@ fn evidence_promotion_parse_assertion(
         "must_not_report_clean" => Ok(EvidencePromotionSemanticAssertion::MustNotReportClean),
         "must_disclose_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseScope),
         "must_disclose_no_scope" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseNoScope),
+        "must_not_disclose_no_scope" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotDiscloseNoScope)
+        }
         "must_disclose_unanalyzed_working_tree" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseUnanalyzedWorkingTree)
         }
@@ -11682,6 +11686,13 @@ fn evidence_promotion_semantic_violations(
                 if !evidence_promotion_discloses_no_scope(check_json) {
                     violations.push(format!(
                         "{case_label}: `must_disclose_no_scope` requires a no_scope_provided/no_scope_disclosure scope disclosure"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotDiscloseNoScope => {
+                if evidence_promotion_discloses_no_scope(check_json) {
+                    violations.push(format!(
+                        "{case_label}: `must_not_disclose_no_scope` forbids no_scope_provided/no_scope_disclosure because the case asserts an explicit analysis scope"
                     ));
                 }
             }
@@ -77669,6 +77680,108 @@ TypeScript repair packet (advisory)
         assert!(
             report.contains("working-tree draft was in scope"),
             "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_false_no_scope_disclosure() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustDiscloseScope,
+            super::EvidencePromotionSemanticAssertion::MustNotDiscloseNoScope,
+        ];
+        let scoped_report = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "HEAD",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_lib.rs:predicate:4e6b5f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "src/lib.rs"}
+                }
+            ]
+        });
+
+        let scoped_violations = super::evidence_promotion_semantic_violations(
+            "scoped_report",
+            Some("fixtures/scope_worktree_analyzed_dirty"),
+            &assertions,
+            &scoped_report,
+            None,
+            false,
+        );
+        assert!(
+            scoped_violations.is_empty(),
+            "explicit scope report without no-scope disclosure should pass: {scoped_violations:?}"
+        );
+
+        let legacy_no_scope = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "HEAD",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_lib.rs:predicate:4e6b5f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "src/lib.rs"}
+                }
+            ],
+            "no_scope_provided": true
+        });
+        let legacy_report = super::evidence_promotion_semantic_violations(
+            "legacy_no_scope",
+            Some("fixtures/scope_worktree_analyzed_dirty"),
+            &assertions,
+            &legacy_no_scope,
+            None,
+            false,
+        )
+        .join("\n");
+        assert!(
+            legacy_report.contains("must_not_disclose_no_scope"),
+            "{legacy_report}"
+        );
+
+        let structured_no_scope = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "HEAD",
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "probe:src_lib.rs:predicate:4e6b5f28",
+                    "classification": "no_static_path",
+                    "probe": {"file": "src/lib.rs"}
+                }
+            ],
+            "scope_disclosures": [
+                {"scope_status": "no_scope_provided", "category": "no_scope_disclosure"}
+            ]
+        });
+        let structured_report = super::evidence_promotion_semantic_violations(
+            "structured_no_scope",
+            Some("fixtures/scope_worktree_analyzed_dirty"),
+            &assertions,
+            &structured_no_scope,
+            None,
+            false,
+        )
+        .join("\n");
+        assert!(
+            structured_report.contains("must_not_disclose_no_scope"),
+            "{structured_report}"
+        );
+        assert!(
+            structured_report.contains("explicit analysis scope"),
+            "{structured_report}"
         );
     }
 

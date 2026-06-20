@@ -514,6 +514,7 @@
         { "type": "must_see_changed_file", "path": "src/lib.rs" },
         { "type": "must_not_report_clean" },
         { "type": "must_disclose_scope" },
+        { "type": "must_not_disclose_no_scope" },
         { "type": "must_not_disclose_unanalyzed_working_tree" },
         { "type": "must_not_emit_repair_packet" },
         { "type": "must_not_have_verify_command" },

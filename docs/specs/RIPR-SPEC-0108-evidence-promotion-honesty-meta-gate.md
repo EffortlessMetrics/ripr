@@ -104,6 +104,7 @@ says it was re-blessed to."
     - `must_not_report_clean`
     - `must_disclose_scope`
     - `must_disclose_no_scope`
+    - `must_not_disclose_no_scope`
     - `must_disclose_unanalyzed_working_tree`
     - `must_not_disclose_unanalyzed_working_tree`
     - `must_emit_limitation` with `expected_limit_kind`
@@ -411,7 +412,7 @@ gate-specific artifacts.
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
 | scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
-| scope_worktree_dirty_analyzed_not_excluded | rust | reports/scope-worktree-dirty-analyzed-not-excluded.json | dirty_worktree_explicitly_analyzed_not_reported_excluded (also `must_see_changed_file: src/lib.rs`, `must_disclose_scope`, `must_not_disclose_unanalyzed_working_tree`, no verify/receipt commands, and no repair packet) |
+| scope_worktree_dirty_analyzed_not_excluded | rust | reports/scope-worktree-dirty-analyzed-not-excluded.json | dirty_worktree_explicitly_analyzed_not_reported_excluded (also `must_see_changed_file: src/lib.rs`, `must_disclose_scope`, `must_not_disclose_no_scope`, `must_not_disclose_unanalyzed_working_tree`, no verify/receipt commands, and no repair packet) |
 | scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
 
 ### Pinned external cases
@@ -544,6 +545,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_semantic_assertions_reject_wrong_limitation_route` | Shared assertion evaluator rejects a static limitation whose analyzer route does not match the expected corpus route |
 | `evidence_promotion_semantic_assertions_accept_scope_limited_empty_results` | Shared assertion evaluator treats no-scope and unanalyzed-worktree disclosures as non-clean empty results |
 | `evidence_promotion_semantic_assertions_reject_false_unanalyzed_worktree_disclosure` | Shared assertion evaluator rejects reports that claim an explicitly analyzed working-tree draft was excluded |
+| `evidence_promotion_semantic_assertions_reject_false_no_scope_disclosure` | Shared assertion evaluator rejects reports that claim an explicit analysis scope and a no-scope disclosure at once |
 | `evidence_promotion_semantic_assertions_reject_bare_empty_false_clean` | Shared assertion evaluator rejects a bare empty result for `must_not_report_clean` |
 | `evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape` | Semantic assertion accepts the current semver limitation shape |
 | `evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet` | Semantic assertion rejects false clean, false promotion, missing witness, and false packet readiness |
