@@ -483,6 +483,24 @@
       ]
     },
     {
+      "id": "scope_committed_diff_changed_rust_file",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/boundary_gap",
+      "vector": "committed_diff_changed_file_scope_count",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_changed_rust_files", "count": 1 },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "scope_no_scope_empty_not_clean",
       "language": "rust",
       "tier": "pure",
