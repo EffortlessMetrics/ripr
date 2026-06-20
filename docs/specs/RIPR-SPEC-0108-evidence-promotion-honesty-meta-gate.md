@@ -112,6 +112,7 @@ says it was re-blessed to."
     - `must_not_have_receipt_command`
     - `must_emit_repair_packet`
     - `must_not_emit_repair_packet`
+    - `must_disclose_repair_packet_detail`
     - `expected_class` with `class`
     - `maximum_class` with `class`
     - `expected_completeness` with `completeness`
@@ -187,6 +188,13 @@ says it was re-blessed to."
     unresolved edge into a command-shaped handoff while still claiming
     limitation status. `must_have_verify_command` and
     `must_have_receipt_command` are the positive packet-contract controls.
+4h. `must_disclose_repair_packet_detail` cases (additive, packet-contract
+    honesty): assert a packet-ready report carries the JSON handoff fields users
+    and agents need: canonical gap, source/target, edit cage, repair shape,
+    verify/receipt commands, must-not-change constraints, and raw evidence refs.
+    Fixture-backed cases also assert the human output surfaces the same repair
+    packet section with canonical gap, source, target, edit surface, verify,
+    receipt, must-not-change, and authority lines.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -326,6 +334,7 @@ gate-specific artifacts.
 | py_mock_call_not_value | python | python_adversarial_mock_call_not_value | mock_call_not_value |
 | ts_broad_tothrow | typescript | typescript_broad_tothrow | cross_family_oracle_seam |
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
+| ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, and detail-complete rather than promoted to exposed |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
 | rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
@@ -431,6 +440,8 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
 | `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, receipt-command, packet, limitation, and completeness drift |
 | `evidence_promotion_semantic_assertions_reject_missing_receipt_command` | Shared assertion evaluator rejects a packet contract that lacks a receipt command |
+| `evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail` | Shared assertion evaluator rejects a packet-ready report missing target/evidence detail |
+| `evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail` | Shared assertion evaluator rejects a fixture human golden that drops repair-packet handoff detail |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |
 | `evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection` | Shared assertion evaluator rejects a fixture human golden that keeps a stale witness line |

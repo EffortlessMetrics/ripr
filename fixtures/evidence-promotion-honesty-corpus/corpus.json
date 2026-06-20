@@ -101,6 +101,24 @@
       ]
     },
     {
+      "id": "ts_complete_repair_packet_contract",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_repair_packet_complete",
+      "control": "complete_packet_must_keep_contract",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_repair_packet" },
+        { "type": "must_have_verify_command" },
+        { "type": "must_have_receipt_command" },
+        { "type": "must_not_emit_limitation" },
+        { "type": "must_disclose_repair_packet_detail" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_transitive_reach_named_limitation",
       "language": "rust",
       "tier": "pure",

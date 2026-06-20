@@ -10632,6 +10632,7 @@ enum EvidencePromotionSemanticAssertion {
     MustNotHaveReceiptCommand,
     MustEmitRepairPacket,
     MustNotEmitRepairPacket,
+    MustDiscloseRepairPacketDetail,
     ExpectedClass {
         class: String,
     },
@@ -10909,6 +10910,9 @@ fn evidence_promotion_parse_assertion(
         "must_emit_repair_packet" => Ok(EvidencePromotionSemanticAssertion::MustEmitRepairPacket),
         "must_not_emit_repair_packet" => {
             Ok(EvidencePromotionSemanticAssertion::MustNotEmitRepairPacket)
+        }
+        "must_disclose_repair_packet_detail" => {
+            Ok(EvidencePromotionSemanticAssertion::MustDiscloseRepairPacketDetail)
         }
         "expected_class" => {
             let class =
@@ -11571,6 +11575,37 @@ fn evidence_promotion_semantic_violations(
                     ));
                 }
             }
+            EvidencePromotionSemanticAssertion::MustDiscloseRepairPacketDetail => {
+                let packet_detail_violations =
+                    evidence_promotion_repair_packet_detail_violations(check_json);
+                if !packet_detail_violations.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_disclose_repair_packet_detail` requires a packet with canonical gap, source/target, edit cage, repair shape, verify/receipt commands, must-not-change constraints, and raw evidence refs, but found {}",
+                        packet_detail_violations.join(", ")
+                    ));
+                }
+                if fixture_human_required {
+                    match human_text {
+                        Some(human_text) => {
+                            let missing_human =
+                                evidence_promotion_missing_human_repair_packet_detail_paths(
+                                    human_text,
+                                );
+                            if !missing_human.is_empty() {
+                                violations.push(format!(
+                                    "{case_label}: `must_disclose_repair_packet_detail` requires fixture human output to surface repair-packet handoff fields, but missing {}",
+                                    missing_human.join(", ")
+                                ));
+                            }
+                        }
+                        None => {
+                            violations.push(format!(
+                                "{case_label}: `must_disclose_repair_packet_detail` requires fixture human output at `expected/human.txt`, but it was missing"
+                            ));
+                        }
+                    }
+                }
+            }
             EvidencePromotionSemanticAssertion::ExpectedClass {
                 class: expected_class,
             } => {
@@ -11941,6 +11976,120 @@ fn evidence_promotion_limitation_route_mismatches(
     mismatches
 }
 
+const EVIDENCE_PROMOTION_REPAIR_PACKET_STRING_FIELDS: [(&str, &str); 11] = [
+    ("canonical gap id", "canonical_gap_id"),
+    ("gap id", "gap_id"),
+    ("language", "language"),
+    ("language status", "language_status"),
+    ("source file", "file"),
+    ("target test", "target_test"),
+    ("assertion shape", "assertion_shape"),
+    ("authority boundary", "authority_boundary"),
+    ("repair kind", "repair_kind"),
+    ("verify command", "verify_command"),
+    ("receipt command", "receipt_command"),
+];
+const EVIDENCE_PROMOTION_REPAIR_PACKET_ARRAY_FIELDS: [(&str, &str); 3] = [
+    ("allowed edit surface", "allowed_edit_surface"),
+    ("forbidden files", "forbidden_files"),
+    ("must-not-change constraints", "must_not_change"),
+];
+const EVIDENCE_PROMOTION_REPAIR_PACKET_HUMAN_SNIPPETS: [(&str, &str); 10] = [
+    ("packet section", "TypeScript repair packet"),
+    ("canonical gap", "canonical gap:"),
+    ("source", "source:"),
+    ("target test", "related test:"),
+    ("repair shape", "oracle:"),
+    ("edit surface", "edit surface:"),
+    ("verify command", "verify:"),
+    ("receipt command", "receipt:"),
+    ("must-not-change constraints", "must not change:"),
+    ("authority", "authority:"),
+];
+
+fn evidence_promotion_repair_packet_detail_violations(check_json: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let packets = evidence_promotion_repair_packet_objects(check_json);
+    if packets.is_empty() {
+        violations.push("$.findings:missing repair packet object".to_string());
+    }
+    for (path, packet) in packets {
+        for (label, field) in EVIDENCE_PROMOTION_REPAIR_PACKET_STRING_FIELDS {
+            if packet
+                .get(field)
+                .and_then(Value::as_str)
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                violations.push(format!("{path}.{field}:missing {label}"));
+            }
+        }
+        for (label, field) in EVIDENCE_PROMOTION_REPAIR_PACKET_ARRAY_FIELDS {
+            if packet
+                .get(field)
+                .and_then(Value::as_array)
+                .is_none_or(Vec::is_empty)
+            {
+                violations.push(format!("{path}.{field}:missing {label}"));
+            }
+        }
+        if packet
+            .get("line")
+            .and_then(Value::as_u64)
+            .is_none_or(|line| line == 0)
+        {
+            violations.push(format!("{path}.line:missing source line"));
+        }
+    }
+    if json_non_empty_array_field_paths(check_json, "raw_evidence_refs").is_empty() {
+        violations.push("$.raw_evidence_refs:missing raw evidence refs".to_string());
+    }
+    violations
+}
+
+fn evidence_promotion_repair_packet_objects(check_json: &Value) -> Vec<(String, &Value)> {
+    fn walk<'a>(value: &'a Value, path: String, packets: &mut Vec<(String, &'a Value)>) {
+        match value {
+            Value::Object(map) => {
+                let looks_like_packet = map
+                    .get("canonical_gap_id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+                    && map.get("verify_command").and_then(Value::as_str).is_some()
+                    && map.get("receipt_command").and_then(Value::as_str).is_some();
+                if looks_like_packet {
+                    packets.push((path.clone(), value));
+                }
+                for (key, child) in map {
+                    let child_path = if path == "$" {
+                        format!("$.{key}")
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    walk(child, child_path, packets);
+                }
+            }
+            Value::Array(items) => {
+                for (index, child) in items.iter().enumerate() {
+                    walk(child, format!("{path}[{index}]"), packets);
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+
+    let mut packets = Vec::new();
+    walk(check_json, "$".to_string(), &mut packets);
+    packets
+}
+
+fn evidence_promotion_missing_human_repair_packet_detail_paths(human_text: &str) -> Vec<String> {
+    EVIDENCE_PROMOTION_REPAIR_PACKET_HUMAN_SNIPPETS
+        .iter()
+        .filter(|(_, snippet)| !human_text.contains(snippet))
+        .map(|(label, snippet)| format!("expected/human.txt:missing {label} `{snippet}`"))
+        .collect()
+}
+
 fn evidence_promotion_missing_human_limitation_detail_paths(
     human_text: &str,
     expected_details: &[(String, String)],
@@ -12222,6 +12371,7 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
             || joined.contains("must_not_have_receipt_command")
             || joined.contains("must_emit_repair_packet")
             || joined.contains("must_not_emit_limitation")
+            || joined.contains("must_disclose_repair_packet_detail")
             || joined.contains("expected_class")
             || joined.contains("expected_completeness"))
     {
@@ -12796,6 +12946,41 @@ fn json_non_empty_string_field_paths(value: &Value, field: &str) -> Vec<String> 
                     };
                     if key == field && child.as_str().is_some_and(|value| !value.trim().is_empty())
                     {
+                        paths.push(child_path.clone());
+                    }
+                    walk(child, field, &child_path, paths);
+                }
+            }
+            Value::Array(items) => {
+                for (index, child) in items.iter().enumerate() {
+                    let child_path = if path.is_empty() {
+                        format!("[{index}]")
+                    } else {
+                        format!("{path}[{index}]")
+                    };
+                    walk(child, field, &child_path, paths);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut paths = Vec::new();
+    walk(value, field, "", &mut paths);
+    paths
+}
+
+fn json_non_empty_array_field_paths(value: &Value, field: &str) -> Vec<String> {
+    fn walk(value: &Value, field: &str, path: &str, paths: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    let child_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    if key == field && child.as_array().is_some_and(|items| !items.is_empty()) {
                         paths.push(child_path.clone());
                     }
                     walk(child, field, &child_path, paths);
@@ -74571,7 +74756,34 @@ mod tests {
                         "classification": "reachable_unrevealed",
                         "repair_packet_ready": true,
                         "verify_command": "cargo test typed_packet",
-                        "receipt_command": "ripr receipt write typed-packet"
+                        "receipt_command": "ripr receipt write typed-packet",
+                        "repair_packet": {
+                            "allowed_edit_surface": ["tests/typed_packet.rs"],
+                            "assertion_shape": "assert_eq!(actual, expected)",
+                            "authority_boundary": "test",
+                            "canonical_gap_id": "gap:typed-packet",
+                            "file": "src/lib.rs",
+                            "forbidden_files": ["src/lib.rs"],
+                            "gap_id": "gap:typed-packet",
+                            "language": "rust",
+                            "language_status": "stable",
+                            "line": 12,
+                            "must_not_change": ["Do not edit production code."],
+                            "receipt_command": "ripr receipt write typed-packet",
+                            "repair_kind": "AddBoundaryAssertion",
+                            "target_test": "tests/typed_packet.rs::typed_packet",
+                            "verify_command": "cargo test typed_packet"
+                        },
+                        "preview_actionability": {
+                            "raw_evidence_refs": [
+                                {
+                                    "file": "src/lib.rs",
+                                    "kind": "rust_probe",
+                                    "line": 12,
+                                    "source_id": "gap:typed-packet"
+                                }
+                            ]
+                        }
                     }
                 ]
             }))
@@ -74642,7 +74854,8 @@ mod tests {
                     "assertions": [
                         {"type": "must_have_verify_command"},
                         {"type": "must_have_receipt_command"},
-                        {"type": "must_emit_repair_packet"}
+                        {"type": "must_emit_repair_packet"},
+                        {"type": "must_disclose_repair_packet_detail"}
                     ]
                 },
                 {
@@ -74832,6 +75045,135 @@ mod tests {
         assert!(report.contains("must_have_receipt_command"), "{report}");
         assert!(
             report.contains("requires a non-empty receipt_command"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_missing_repair_packet_detail() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseRepairPacketDetail];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "packet-missing-detail",
+                    "classification": "weakly_exposed",
+                    "repair_packet_ready": true,
+                    "typescript_repair_packet": {
+                        "allowed_edit_surface": ["tests/discount.test.ts"],
+                        "assertion_shape": "expect(result).toBe(50)",
+                        "authority_boundary": "preview_advisory_only",
+                        "canonical_gap_id": "gap:typescript:discount",
+                        "file": "src/discount.ts",
+                        "forbidden_files": ["src/discount.ts"],
+                        "gap_id": "probe:discount",
+                        "language": "typescript",
+                        "language_status": "preview",
+                        "line": 2,
+                        "must_not_change": ["Do not edit production code."],
+                        "receipt_command": "ripr outcome --before baseline --after repair",
+                        "repair_kind": "AddBoundaryAssertion",
+                        "verify_command": "jest tests/discount.test.ts"
+                    }
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "packet_missing_detail",
+            Some("fixtures/packet_missing_detail"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_disclose_repair_packet_detail"),
+            "{report}"
+        );
+        assert!(
+            report.contains("target_test:missing target test"),
+            "{report}"
+        );
+        assert!(
+            report.contains("$.raw_evidence_refs:missing raw evidence refs"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_human_missing_repair_packet_detail() {
+        let assertions =
+            vec![super::EvidencePromotionSemanticAssertion::MustDiscloseRepairPacketDetail];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "packet-human-missing-detail",
+                    "classification": "weakly_exposed",
+                    "repair_packet_ready": true,
+                    "typescript_repair_packet": {
+                        "allowed_edit_surface": ["tests/discount.test.ts"],
+                        "assertion_shape": "expect(result).toBe(50)",
+                        "authority_boundary": "preview_advisory_only",
+                        "canonical_gap_id": "gap:typescript:discount",
+                        "file": "src/discount.ts",
+                        "forbidden_files": ["src/discount.ts"],
+                        "gap_id": "probe:discount",
+                        "language": "typescript",
+                        "language_status": "preview",
+                        "line": 2,
+                        "must_not_change": ["Do not edit production code."],
+                        "receipt_command": "ripr outcome --before baseline --after repair",
+                        "repair_kind": "AddBoundaryAssertion",
+                        "target_test": "tests/discount.test.ts::discount",
+                        "verify_command": "jest tests/discount.test.ts"
+                    },
+                    "preview_actionability": {
+                        "raw_evidence_refs": [
+                            {
+                                "file": "src/discount.ts",
+                                "kind": "typescript_preview_probe",
+                                "line": 2,
+                                "source_id": "probe:discount"
+                            }
+                        ]
+                    }
+                }
+            ]
+        });
+        let human_text = "\
+TypeScript repair packet (advisory)
+  canonical gap: gap:typescript:discount
+  source: applyDiscount at src/discount.ts:2
+  related test: tests/discount.test.ts::discount
+  oracle: expect(result).toBe(50)
+  edit surface: tests/discount.test.ts
+  verify: jest tests/discount.test.ts
+  must not change:
+    - Do not edit production code.
+  authority: preview_advisory_only
+";
+
+        let report = super::evidence_promotion_semantic_violations(
+            "packet_human_missing_detail",
+            Some("fixtures/packet_human_missing_detail"),
+            &assertions,
+            &check_json,
+            Some(human_text),
+            true,
+        )
+        .join("\n");
+
+        assert!(
+            report.contains("must_disclose_repair_packet_detail"),
+            "{report}"
+        );
+        assert!(
+            report.contains("expected/human.txt:missing receipt command `receipt:`"),
             "{report}"
         );
     }
