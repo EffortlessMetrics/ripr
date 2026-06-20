@@ -103,6 +103,9 @@ definition does not mention the changed owner name.
   rustc integration.
 - If the macro definition is absent, ambiguous, generated, external, or does not
   lexically mention the owner, do not emit this limitation.
+- RIPR-SPEC-0119 refines direct test-body macro witnesses to
+  `rust_macro_wrapped_test_call_unresolved`; production-entry macro boundaries
+  keep `rust_macro_reach_unresolved`.
 
 ## Wire Format
 

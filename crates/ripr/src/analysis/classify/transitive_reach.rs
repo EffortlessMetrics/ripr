@@ -89,6 +89,8 @@ struct MacroWitnessCandidate {
     macro_host: String,
 }
 
+pub(in crate::analysis) const MACRO_WITNESS_TEST_BODY_HOST: &str = "test body";
+
 /// Finds a deterministic witnessing test for a transitive-reach candidate path
 /// to a function named `owner_name`, via a bounded BFS over lexical call facts.
 ///
@@ -199,7 +201,7 @@ pub(in crate::analysis) fn find_macro_reach_witness(
             if let Some(edge) = macro_edge_for_invocation(
                 &macro_invocation,
                 &test.file,
-                "test body",
+                MACRO_WITNESS_TEST_BODY_HOST,
                 owner_name,
                 index,
             ) {
@@ -339,6 +341,19 @@ pub(in crate::analysis) fn macro_reach_witness_pointer(witness: &MacroReachWitne
         1 => " (and 1 other test)".to_string(),
         n => format!(" (and {n} other tests)"),
     };
+    if witness.macro_host == MACRO_WITNESS_TEST_BODY_HOST {
+        return format!(
+            "{}`{}` ({}) directly invokes macro `{}!` at {} whose definition \
+             lexically mentions the changed owner name. The macro path may \
+             lead here{}. Inspect it to judge whether this change is observed.",
+            crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX,
+            witness.test_name,
+            test_location,
+            witness.macro_name,
+            macro_location,
+            others
+        );
+    }
     format!(
         "{}`{}` ({}) calls `{}`, and `{}` invokes macro `{}!` at {} whose \
          definition lexically mentions the changed owner name. The macro path \
@@ -368,7 +383,16 @@ pub(in crate::analysis) fn macro_reach_limitation_detail_lines(
         witness.macro_file.display().to_string().replace('\\', "/"),
         witness.macro_line
     );
-    [
+    let last_established_edge = if witness.macro_host == MACRO_WITNESS_TEST_BODY_HOST {
+        format!(
+            "{}test `{}` ({}) -> direct macro `{}!` at {}",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+            witness.test_name,
+            test_location,
+            witness.macro_name,
+            macro_location
+        )
+    } else {
         format!(
             "{}test `{}` ({}) -> entry `{}` -> macro `{}!` at {}",
             crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
@@ -377,7 +401,10 @@ pub(in crate::analysis) fn macro_reach_limitation_detail_lines(
             witness.entry_symbol,
             witness.macro_name,
             macro_location
-        ),
+        )
+    };
+    [
+        last_established_edge,
         format!(
             "{}macro `{}!` expansion toward owner `{}`",
             crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
@@ -1222,7 +1249,7 @@ mod tests {
         );
         assert_eq!(
             witness.as_ref().map(|w| w.macro_host.as_str()),
-            Some("test body")
+            Some(MACRO_WITNESS_TEST_BODY_HOST)
         );
     }
 
@@ -1306,6 +1333,30 @@ mod tests {
         assert!(
             detail[3].starts_with("limitation_non_claim: named limitation only"),
             "{detail:?}"
+        );
+    }
+
+    #[test]
+    fn direct_test_macro_limitation_detail_names_direct_macro_edge() {
+        let witness = MacroReachWitness {
+            test_name: "test_macro_entry".to_string(),
+            test_file: PathBuf::from("tests/it.rs"),
+            test_line: 4,
+            entry_symbol: "call_inner!".to_string(),
+            macro_name: "call_inner".to_string(),
+            macro_file: PathBuf::from("tests/it.rs"),
+            macro_line: 5,
+            macro_host: MACRO_WITNESS_TEST_BODY_HOST.to_string(),
+            other_test_count: 0,
+        };
+
+        let pointer = macro_reach_witness_pointer(&witness);
+        let detail = macro_reach_limitation_detail_lines(&witness, "inner");
+
+        assert!(pointer.contains("directly invokes macro `call_inner!`"));
+        assert_eq!(
+            detail[0],
+            "limitation_last_established_edge: test `test_macro_entry` (tests/it.rs:4) -> direct macro `call_inner!` at tests/it.rs:5"
         );
     }
 

@@ -6373,3 +6373,36 @@ metrics = [
   "honesty_corpus_pass_rate",
   "pinned_external_corpus_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0119"
+name = "rust direct test macro-call limitation"
+spec = "docs/specs/RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md"
+tests = [
+  "crates/ripr/src/analysis/language/rust.rs::tests::macro_reach_limit_kind_names_direct_test_body_macro_path",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_macro_wrapped_test_call_static_limit_kind",
+]
+fixtures = [
+  "fixtures/rust_macro_wrapped_test_call_limitation",
+  "fixtures/rust_macro_reach_limitation",
+  "fixtures/evidence-promotion-honesty-corpus",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/analysis/classify/transitive_reach.rs",
+  "crates/ripr/src/analysis/classify/mod.rs",
+  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/STATIC_LIMITS.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+  "honesty_corpus_pass_rate",
+]

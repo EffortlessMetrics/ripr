@@ -149,6 +149,11 @@ pub enum StaticLimitKind {
     /// classification stays `no_static_path`; this label names the unresolved
     /// macro edge, not a coverage claim. See RIPR-SPEC-0117.
     RustMacroReachUnresolved,
+    /// A Rust test directly invokes a same-repo macro whose definition
+    /// lexically mentions the changed owner. ripr does not expand the macro,
+    /// so the classification stays `no_static_path`; this label names the
+    /// unresolved test-macro edge, not a coverage claim. See RIPR-SPEC-0119.
+    RustMacroWrappedTestCallUnresolved,
 }
 
 impl StaticLimitKind {
@@ -173,6 +178,9 @@ impl StaticLimitKind {
                 "rust_integration_public_api_path_unresolved"
             }
             StaticLimitKind::RustMacroReachUnresolved => "rust_macro_reach_unresolved",
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved => {
+                "rust_macro_wrapped_test_call_unresolved"
+            }
         }
     }
 
@@ -238,6 +246,11 @@ impl StaticLimitKind {
                 "A test may reach this change through a Rust macro path ripr cannot expand. The \
                  classification stays no_static_path because the macro edge is unresolved; this is \
                  a named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved => {
+                "A test directly invokes a Rust macro whose definition mentions this change, but \
+                 ripr cannot expand the macro to confirm the path. This is a named limitation, not \
+                 a coverage claim."
             }
         }
     }
@@ -341,6 +354,10 @@ mod tests {
             StaticLimitKind::RustMacroReachUnresolved.as_str(),
             "rust_macro_reach_unresolved"
         );
+        assert_eq!(
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved.as_str(),
+            "rust_macro_wrapped_test_call_unresolved"
+        );
     }
 
     #[test]
@@ -359,6 +376,7 @@ mod tests {
             StaticLimitKind::RustTransitiveReachUnresolved,
             StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
             StaticLimitKind::RustMacroReachUnresolved,
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
         // static-language vocabulary is enforced repo-wide by

@@ -850,12 +850,13 @@ The evidence-first fields are additive in schema `0.2`:
   `cross_language_oracle_visibility_unresolved`,
   `rust_transitive_reach_unresolved`,
   `rust_integration_public_api_path_unresolved`, or
-  `rust_macro_reach_unresolved`.
+  `rust_macro_reach_unresolved`, or
+  `rust_macro_wrapped_test_call_unresolved`.
 - `static_limitation` is an additive optional per-finding object emitted only
   when a finding with `static_limit_kind` also carries a complete structured
   limitation detail. Current Rust transitive-reach, integration public-API path,
-  and macro-reach limitations populate it from the same evidence lines rendered
-  in human output. Fields are
+  macro-reach, and direct test macro-call limitations populate it from the same
+  evidence lines rendered in human output. Fields are
   `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`,
   and `non_claim`. The object is absent for static limits that do not have all
   four detail fields; consumers should keep using `static_limit_kind` as the
@@ -1014,6 +1015,8 @@ run (fail-closed: no fabricated disclosure).
 - `rust_integration_public_api_path_unresolved` -- (RIPR-SPEC-0118, additive) An integration test appears to call crate public API, or a test helper that calls crate public API, along a candidate path toward the changed Rust owner. RIPR cannot fully resolve that integration/public-API path, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
 
 - `rust_macro_reach_unresolved` -- (RIPR-SPEC-0117, additive) A test appears to call a Rust entry point whose path toward the changed owner stops at a same-repo macro invocation. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
+- `rust_macro_wrapped_test_call_unresolved` -- (RIPR-SPEC-0119, additive) A Rust test directly invokes a same-repo macro whose definition mentions the changed owner. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
 
 Reserved `flow_sink` values:
 

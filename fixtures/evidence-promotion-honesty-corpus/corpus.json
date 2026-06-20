@@ -483,6 +483,39 @@
       ]
     },
     {
+      "id": "rust_macro_wrapped_test_call_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_macro_wrapped_test_call_limitation",
+      "vector": "direct_test_macro_call_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_wrapped_test_call_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_macro_returns_difference` (tests/it.rs:2) -> direct macro `call_inner!` at tests/it.rs:3",
+          "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-aware-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
       "id": "scope_committed_diff_changed_rust_file",
       "language": "rust",
       "tier": "pure",

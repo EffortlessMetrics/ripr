@@ -54,7 +54,7 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         }
         let calls_owner = !owner_name.is_empty()
             && (test.calls.iter().any(|call| call.name == owner_name)
-                || test.body.contains(owner_name));
+                || body_contains_owner_call(&test.body, owner_name));
 
         // Signal: a test's assertion observed_tokens intersect the probe's
         // long-enough identifier tokens. Only fires when the probe has no named
@@ -139,6 +139,25 @@ fn package_prefix(path: &Path) -> Option<String> {
     None
 }
 
+fn body_contains_owner_call(body: &str, owner_name: &str) -> bool {
+    if owner_name.is_empty() {
+        return false;
+    }
+    body.match_indices(owner_name).any(|(start, _)| {
+        let end = start.saturating_add(owner_name.len());
+        let before_ok = start == 0
+            || !body
+                .as_bytes()
+                .get(start - 1)
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+        let after_call = body
+            .get(end..)
+            .map(|tail| tail.trim_start().starts_with('('))
+            .unwrap_or(false);
+        before_ok && after_call
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +229,64 @@ mod tests {
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "vat_boundary_is_checked_by_macro");
+    }
+
+    #[test]
+    fn given_macro_name_contains_owner_when_no_owner_call_then_test_is_not_directly_related() {
+        let owner = function("src/internal.rs", "inner");
+        let macro_test = TestSummary {
+            name: "macro_wrapper_boundary".to_string(),
+            file: PathBuf::from("tests/macro_boundary.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".to_string(),
+            calls: vec![CallFact {
+                line: 1,
+                name: "call_inner".to_string(),
+                text: "call_inner!(10, 3)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        };
+        let index = RustIndex {
+            tests: vec![macro_test],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/internal.rs", "if a >= b");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert!(
+            related.is_empty(),
+            "macro wrapper name containing the owner must not become a direct owner call"
+        );
+    }
+
+    #[test]
+    fn given_body_contains_qualified_owner_call_then_fallback_is_directly_related() {
+        let owner = function("src/internal.rs", "inner");
+        let call_test = TestSummary {
+            name: "public_api_calls_inner".to_string(),
+            file: PathBuf::from("tests/public_api.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "let result = crate_under_test::internal::inner(10, 3);".to_string(),
+            calls: Vec::new(),
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        };
+        let index = RustIndex {
+            tests: vec![call_test],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/internal.rs", "if a >= b");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
     }
 
     #[test]

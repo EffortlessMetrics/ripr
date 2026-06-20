@@ -229,7 +229,7 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
             ));
     } else if let Some(witness) = classify::find_macro_reach_witness(&owner_name, index) {
         replace_witnessed_no_path_infection_summary(finding);
-        finding.static_limit_kind = Some(StaticLimitKind::RustMacroReachUnresolved);
+        finding.static_limit_kind = Some(macro_reach_limit_kind(&witness.macro_host));
         finding.stop_reasons.push(StopReason::MacroReachUnresolved);
         finding
             .evidence
@@ -251,6 +251,14 @@ fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
         StaticLimitKind::RustIntegrationPublicApiPathUnresolved
     } else {
         StaticLimitKind::RustTransitiveReachUnresolved
+    }
+}
+
+fn macro_reach_limit_kind(macro_host: &str) -> StaticLimitKind {
+    if macro_host == classify::MACRO_WITNESS_TEST_BODY_HOST {
+        StaticLimitKind::RustMacroWrappedTestCallUnresolved
+    } else {
+        StaticLimitKind::RustMacroReachUnresolved
     }
 }
 
@@ -404,8 +412,9 @@ mod tests {
     use super::{
         DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
-        diff_index_file_limit_from_env, enforce_changed_rust_line_limit, owner_has_ffi_attr,
-        replace_witnessed_no_path_infection_summary, transitive_reach_limit_kind,
+        diff_index_file_limit_from_env, enforce_changed_rust_line_limit, macro_reach_limit_kind,
+        owner_has_ffi_attr, replace_witnessed_no_path_infection_summary,
+        transitive_reach_limit_kind,
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{FunctionSummary, RustIndex};
@@ -580,6 +589,18 @@ mod tests {
         assert_eq!(
             transitive_reach_limit_kind(Path::new("src/lib.rs")),
             StaticLimitKind::RustTransitiveReachUnresolved
+        );
+    }
+
+    #[test]
+    fn macro_reach_limit_kind_names_direct_test_body_macro_path() {
+        assert_eq!(
+            macro_reach_limit_kind(crate::analysis::classify::MACRO_WITNESS_TEST_BODY_HOST),
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved
+        );
+        assert_eq!(
+            macro_reach_limit_kind("outer"),
+            StaticLimitKind::RustMacroReachUnresolved
         );
     }
 
