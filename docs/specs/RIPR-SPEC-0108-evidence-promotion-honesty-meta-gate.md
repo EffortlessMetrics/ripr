@@ -108,6 +108,8 @@ says it was re-blessed to."
     - `must_not_emit_limitation`
     - `must_have_verify_command`
     - `must_not_have_verify_command`
+    - `must_have_receipt_command`
+    - `must_not_have_receipt_command`
     - `must_emit_repair_packet`
     - `must_not_emit_repair_packet`
     - `expected_class` with `class`
@@ -178,6 +180,13 @@ says it was re-blessed to."
     `repair_packet_ready=true` anywhere in the report. This guards against a
     named limitation or non-promoted case becoming delegatable without the full
     repair-packet contract.
+4g. `must_not_have_verify_command` and `must_not_have_receipt_command` cases
+    (additive, command honesty): assert the report does not contain non-empty
+    `verify_command` or `receipt_command` fields. Named limitations use these
+    with `must_not_emit_repair_packet` so a re-bless cannot silently turn an
+    unresolved edge into a command-shaped handoff while still claiming
+    limitation status. `must_have_verify_command` and
+    `must_have_receipt_command` are the positive packet-contract controls.
 5. PARITY checks: every pure case must declare exactly one of `source_fixture`
    or `source_report`. A `source_fixture` must exist, have
    `expected/check.json`, and NOT be in the manifest-only denylist (so it stays
@@ -319,9 +328,9 @@ gate-specific artifacts.
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value |
 | rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
 | rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
-| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
-| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
-| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
+| rust_transitive_reach_named_limitation | rust | rust_transitive_reach_positive | transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_transitive_reach_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_transitive_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_transitive_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
+| rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
 | scope_no_scope_empty_not_clean | rust | reports/scope-no-scope-empty-not-clean.json | empty_result_no_scope_disclosure_not_clean (also `must_disclose_no_scope`) |
 | scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
 | scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
@@ -330,7 +339,7 @@ gate-specific artifacts.
 
 | id | language | external repo | commit | vector |
 |---|---|---|---|---|
-| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, not clean or actionable |
+| rust_semver_matches_greater_external_limitation | rust | `https://github.com/dtolnay/semver` | `2c18cc482244f4bb9cc65003b07426c18a79a190` | semver public API to internal transitive reach must disclose `rust_transitive_reach_unresolved` with exact limitation detail and route `analysis/rust-public-api-transitive-reach`, no verify/receipt commands, not clean or actionable |
 
 ### Control cases (must_promote)
 
@@ -420,7 +429,8 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_honesty_accepts_complete_pinned_external_tier` | Validator accepts complete pinned external metadata |
 | `evidence_promotion_honesty_accepts_typed_assertion_vocabulary` | Validator accepts typed semantic assertions as the canonical corpus contract |
 | `evidence_promotion_honesty_rejects_unknown_assertion_type` | Validator fails closed on an unknown typed assertion |
-| `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, packet, limitation, and completeness drift |
+| `evidence_promotion_semantic_assertions_reject_projection_drift` | Shared assertion evaluator rejects verify-command, receipt-command, packet, limitation, and completeness drift |
+| `evidence_promotion_semantic_assertions_reject_missing_receipt_command` | Shared assertion evaluator rejects a packet contract that lacks a receipt command |
 | `evidence_promotion_semantic_assertions_reject_no_tests_claim_with_witness` | Shared assertion evaluator rejects a witnessed limitation that still claims `No tests were found` |
 | `evidence_promotion_semantic_assertions_reject_human_missing_witness_projection` | Shared assertion evaluator rejects a fixture human golden that drops the witnessed `Where to look` projection |
 | `evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection` | Shared assertion evaluator rejects a fixture human golden that keeps a stale witness line |

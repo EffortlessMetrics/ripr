@@ -114,6 +114,8 @@
           "expected_limit_kind": "rust_transitive_reach_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {
@@ -145,6 +147,8 @@
           "expected_limit_kind": "rust_transitive_reach_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {
@@ -176,6 +180,8 @@
           "expected_limit_kind": "rust_macro_reach_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {
@@ -258,6 +264,8 @@
           "expected_limit_kind": "rust_transitive_reach_unresolved"
         },
         { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
         { "type": "must_disclose_witness" },
         { "type": "must_disclose_limitation_detail" },
         {

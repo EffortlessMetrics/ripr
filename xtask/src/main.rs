@@ -10628,6 +10628,8 @@ enum EvidencePromotionSemanticAssertion {
     MustNotEmitLimitation,
     MustHaveVerifyCommand,
     MustNotHaveVerifyCommand,
+    MustHaveReceiptCommand,
+    MustNotHaveReceiptCommand,
     MustEmitRepairPacket,
     MustNotEmitRepairPacket,
     ExpectedClass {
@@ -10897,6 +10899,12 @@ fn evidence_promotion_parse_assertion(
         "must_have_verify_command" => Ok(EvidencePromotionSemanticAssertion::MustHaveVerifyCommand),
         "must_not_have_verify_command" => {
             Ok(EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand)
+        }
+        "must_have_receipt_command" => {
+            Ok(EvidencePromotionSemanticAssertion::MustHaveReceiptCommand)
+        }
+        "must_not_have_receipt_command" => {
+            Ok(EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand)
         }
         "must_emit_repair_packet" => Ok(EvidencePromotionSemanticAssertion::MustEmitRepairPacket),
         "must_not_emit_repair_packet" => {
@@ -11522,6 +11530,25 @@ fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `must_not_have_verify_command` forbids verify_command, but found it at {}",
                         verify_paths.join(", ")
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustHaveReceiptCommand => {
+                let receipt_paths =
+                    json_non_empty_string_field_paths(check_json, "receipt_command");
+                if receipt_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_have_receipt_command` requires a non-empty receipt_command"
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand => {
+                let receipt_paths =
+                    json_non_empty_string_field_paths(check_json, "receipt_command");
+                if !receipt_paths.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `must_not_have_receipt_command` forbids receipt_command, but found it at {}",
+                        receipt_paths.join(", ")
                     ));
                 }
             }
@@ -12191,6 +12218,8 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
             || joined.contains("must_not_claim_no_tests_found")
             || joined.contains("must_have_verify_command")
             || joined.contains("must_not_have_verify_command")
+            || joined.contains("must_have_receipt_command")
+            || joined.contains("must_not_have_receipt_command")
             || joined.contains("must_emit_repair_packet")
             || joined.contains("must_not_emit_limitation")
             || joined.contains("expected_class")
@@ -74489,6 +74518,7 @@ mod tests {
         let py_fixture = root.join("fixtures/py");
         let ts_fixture = root.join("fixtures/ts");
         let rust_report = root.join("reports/rust-rich.json");
+        let packet_report = root.join("reports/rust-packet.json");
         let rust_control_fixture = root.join("fixtures/rust-control");
         let ts_control_fixture = root.join("fixtures/ts-control");
 
@@ -74520,6 +74550,28 @@ mod tests {
                             "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
                             "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
                         ]
+                    }
+                ]
+            }))
+            .map_err(|err| err.to_string())?,
+        );
+        write(
+            &packet_report,
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "0.2",
+                "tool": "ripr",
+                "mode": "fast",
+                "root": ".",
+                "base": "HEAD",
+                "analysis_scope": {"completeness": "complete"},
+                "summary": {"findings": 1},
+                "findings": [
+                    {
+                        "id": "gap:typed-packet",
+                        "classification": "reachable_unrevealed",
+                        "repair_packet_ready": true,
+                        "verify_command": "cargo test typed_packet",
+                        "receipt_command": "ripr receipt write typed-packet"
                     }
                 ]
             }))
@@ -74580,6 +74632,17 @@ mod tests {
                         {"type": "maximum_class", "class": "no_static_path"},
                         {"type": "expected_class", "class": "no_static_path"},
                         {"type": "expected_completeness", "completeness": "complete"}
+                    ]
+                },
+                {
+                    "id": "rust_packet_commands",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_report": packet_report,
+                    "assertions": [
+                        {"type": "must_have_verify_command"},
+                        {"type": "must_have_receipt_command"},
+                        {"type": "must_emit_repair_packet"}
                     ]
                 },
                 {
@@ -74700,6 +74763,7 @@ mod tests {
     fn evidence_promotion_semantic_assertions_reject_projection_drift() {
         let assertions = vec![
             super::EvidencePromotionSemanticAssertion::MustNotHaveVerifyCommand,
+            super::EvidencePromotionSemanticAssertion::MustNotHaveReceiptCommand,
             super::EvidencePromotionSemanticAssertion::MustEmitRepairPacket,
             super::EvidencePromotionSemanticAssertion::MustNotEmitLimitation,
             super::EvidencePromotionSemanticAssertion::ExpectedCompleteness {
@@ -74714,7 +74778,8 @@ mod tests {
                     "id": "projection-drift",
                     "classification": "no_static_path",
                     "static_limit_kind": "rust_transitive_reach_unresolved",
-                    "verify_command": "cargo test"
+                    "verify_command": "cargo test",
+                    "receipt_command": "ripr receipt write projection-drift"
                 }
             ]
         });
@@ -74730,9 +74795,45 @@ mod tests {
         .join("\n");
 
         assert!(report.contains("must_not_have_verify_command"), "{report}");
+        assert!(report.contains("must_not_have_receipt_command"), "{report}");
         assert!(report.contains("must_emit_repair_packet"), "{report}");
         assert!(report.contains("must_not_emit_limitation"), "{report}");
         assert!(report.contains("expected_completeness"), "{report}");
+    }
+
+    #[test]
+    fn evidence_promotion_semantic_assertions_reject_missing_receipt_command() {
+        let assertions = vec![
+            super::EvidencePromotionSemanticAssertion::MustHaveReceiptCommand,
+            super::EvidencePromotionSemanticAssertion::MustEmitRepairPacket,
+        ];
+        let check_json = serde_json::json!({
+            "summary": {"findings": 1},
+            "findings": [
+                {
+                    "id": "packet-missing-receipt",
+                    "classification": "reachable_unrevealed",
+                    "repair_packet_ready": true,
+                    "verify_command": "cargo test packet_missing_receipt"
+                }
+            ]
+        });
+
+        let report = super::evidence_promotion_semantic_violations(
+            "packet_missing_receipt",
+            Some("fixtures/packet_missing_receipt"),
+            &assertions,
+            &check_json,
+            None,
+            false,
+        )
+        .join("\n");
+
+        assert!(report.contains("must_have_receipt_command"), "{report}");
+        assert!(
+            report.contains("requires a non-empty receipt_command"),
+            "{report}"
+        );
     }
 
     #[test]
