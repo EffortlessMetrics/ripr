@@ -849,6 +849,15 @@ The evidence-first fields are additive in schema `0.2`:
   `unresolved_pytest_fixture`, `unsupported_syntax`,
   `cross_language_oracle_visibility_unresolved`,
   `rust_transitive_reach_unresolved`, or `rust_macro_reach_unresolved`.
+- `static_limitation` is an additive optional per-finding object emitted only
+  when a finding with `static_limit_kind` also carries a complete structured
+  limitation detail. Current Rust transitive-reach and macro-reach limitations
+  populate it from the same evidence lines rendered in human output. Fields are
+  `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`,
+  and `non_claim`. The object is absent for static limits that do not have all
+  four detail fields; consumers should keep using `static_limit_kind` as the
+  limitation discriminator and treat `static_limitation` as richer detail when
+  present.
 
 ### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
 

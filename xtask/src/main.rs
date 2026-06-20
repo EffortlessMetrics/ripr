@@ -12255,6 +12255,25 @@ fn evidence_promotion_missing_limitation_detail_paths(findings: &[Value]) -> Vec
                 missing.push(format!("$.findings[{index}].evidence:missing {label}"));
             }
         }
+        let structured = finding.get("static_limitation").and_then(Value::as_object);
+        let kind = finding.get("static_limit_kind").and_then(Value::as_str);
+        if structured
+            .and_then(|object| object.get("kind"))
+            .and_then(Value::as_str)
+            != kind
+        {
+            missing.push(format!("$.findings[{index}].static_limitation.kind"));
+        }
+        for (label, _) in EVIDENCE_PROMOTION_LIMITATION_DETAILS {
+            let key = evidence_promotion_structured_limitation_detail_key(label);
+            let has_detail = structured
+                .and_then(|object| object.get(key))
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty());
+            if !has_detail {
+                missing.push(format!("$.findings[{index}].static_limitation.{key}"));
+            }
+        }
     }
 
     if limitation_count == 0 {
@@ -12262,6 +12281,16 @@ fn evidence_promotion_missing_limitation_detail_paths(findings: &[Value]) -> Vec
     }
 
     missing
+}
+
+fn evidence_promotion_structured_limitation_detail_key(label: &str) -> &'static str {
+    match label {
+        "last established edge" => "last_established_edge",
+        "first unresolved edge" => "first_unresolved_edge",
+        "analyzer route" => "analyzer_route",
+        "non-claim" => "non_claim",
+        _ => "unknown",
+    }
 }
 
 fn evidence_promotion_limitation_detail_lines(findings: &[Value]) -> Vec<(String, String)> {
@@ -75754,6 +75783,13 @@ mod tests {
                         "oracle_strength": "unknown",
                         "probe": {"file": "src/lib.rs"},
                         "static_limit_kind": "rust_transitive_reach_unresolved",
+                        "static_limitation": {
+                            "kind": "rust_transitive_reach_unresolved",
+                            "last_established_edge": "test `typed_case` (tests/typed.rs:1) -> entry `entry`",
+                            "first_unresolved_edge": "entry `entry` -> owner `changed` through a transitive Rust helper path",
+                            "analyzer_route": "analysis/rust-public-api-transitive-reach",
+                            "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                        },
                         "verify_command": "cargo test typed_case",
                         "evidence": [
                             "For example, the test `typed_case` (tests/typed.rs:1) calls `entry`, an entry point that may lead here.",
@@ -77316,7 +77352,14 @@ TypeScript repair packet (advisory)
                         "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path",
                         "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
                         "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
-                    ]
+                    ],
+                    "static_limitation": {
+                        "kind": "rust_transitive_reach_unresolved",
+                        "last_established_edge": "test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "first_unresolved_edge": "entry `outer` -> owner `inner` through a transitive Rust helper path",
+                        "analyzer_route": "analysis/rust-public-api-transitive-reach",
+                        "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    }
                 }
             ]
         });
@@ -77376,7 +77419,14 @@ TypeScript repair packet (advisory)
                         "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path",
                         "limitation_analyzer_route: analysis/rust-public-api-transitive-reach",
                         "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
-                    ]
+                    ],
+                    "static_limitation": {
+                        "kind": "rust_transitive_reach_unresolved",
+                        "last_established_edge": "test `integration_path` (tests/it.rs:4) -> entry `outer`",
+                        "first_unresolved_edge": "entry `outer` -> owner `inner` through a transitive Rust helper path",
+                        "analyzer_route": "analysis/rust-public-api-transitive-reach",
+                        "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    }
                 }
             ]
         });
@@ -77626,6 +77676,13 @@ TypeScript repair packet (advisory)
                     "classification": "no_static_path",
                     "probe": {"file": "target/ripr/evidence-promotion-honesty/checkouts/semver/src/eval.rs"},
                     "static_limit_kind": "rust_transitive_reach_unresolved",
+                    "static_limitation": {
+                        "kind": "rust_transitive_reach_unresolved",
+                        "last_established_edge": "test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`",
+                        "first_unresolved_edge": "entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path",
+                        "analyzer_route": "analysis/rust-public-api-transitive-reach",
+                        "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+                    },
                     "evidence": [
                         "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace.",
                         "For example, the test `test_basic` (tests/test_version_req.rs:38) calls `assert_match_all`, an entry point that may lead here.",

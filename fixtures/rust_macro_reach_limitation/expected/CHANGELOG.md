@@ -47,3 +47,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+structured-static-limitation-detail-json
+
+Command:
+`cargo xtask goldens bless rust_macro_reach_limitation --reason "..."`
+
+Updated:
+- `expected/check.json`

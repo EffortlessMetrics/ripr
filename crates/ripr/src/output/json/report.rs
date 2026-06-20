@@ -19,7 +19,7 @@ use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use crate::output::typescript_preview_card::{
     typescript_preview_card, typescript_preview_card_json_value,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use super::finding_alignment;
@@ -386,6 +386,8 @@ fn finding_json_with_config_and_counts(
     let has_status = finding.language_status.is_some();
     let has_owner_kind = finding.owner_kind.is_some();
     let has_static_limit_kind = finding.static_limit_kind.is_some();
+    let static_limitation = static_limitation_json_value(finding);
+    let has_static_limitation = static_limitation.is_some();
     let has_changed_sink = finding.changed_sink.is_some();
     let has_observed_sink = finding.observed_sink.is_some();
     let has_oracle_alignment = finding.oracle_alignment.is_some();
@@ -400,7 +402,12 @@ fn finding_json_with_config_and_counts(
         indent + 1,
         "suggested_next_action",
         &reconciled_step,
-        has_language || has_status || has_owner_kind || has_static_limit_kind || has_alignment,
+        has_language
+            || has_status
+            || has_owner_kind
+            || has_static_limit_kind
+            || has_static_limitation
+            || has_alignment,
     );
     if let Some(language) = finding.language {
         field(
@@ -408,7 +415,11 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language",
             language.as_str(),
-            has_status || has_owner_kind || has_static_limit_kind || has_alignment,
+            has_status
+                || has_owner_kind
+                || has_static_limit_kind
+                || has_static_limitation
+                || has_alignment,
         );
     }
     if let Some(status) = finding.language_status {
@@ -417,7 +428,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language_status",
             status.as_str(),
-            has_owner_kind || has_static_limit_kind || has_alignment,
+            has_owner_kind || has_static_limit_kind || has_static_limitation || has_alignment,
         );
     }
     if let Some(kind) = finding.owner_kind {
@@ -426,7 +437,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "owner_kind",
             kind.as_str(),
-            has_static_limit_kind || has_alignment,
+            has_static_limit_kind || has_static_limitation || has_alignment,
         );
     }
     if let Some(kind) = finding.static_limit_kind {
@@ -435,8 +446,16 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "static_limit_kind",
             kind.as_str(),
-            has_alignment,
+            has_static_limitation || has_alignment,
         );
+    }
+    if let Some(static_limitation) = &static_limitation {
+        json_value_field(out, indent + 1, "static_limitation", static_limitation);
+        if has_alignment {
+            out.push_str(",\n");
+        } else {
+            out.push('\n');
+        }
     }
     // Python oracle sink-alignment (additive optional, RIPR-SPEC-0028): why a
     // strong oracle did or did not credit `exposed`. Present only on Python
@@ -473,6 +492,47 @@ fn finding_json_with_config_and_counts(
         field(out, indent + 1, "alignment_reason", alignment_reason, false);
     }
     out.push_str(&format!("{sp}}}"));
+}
+
+struct StaticLimitationDetail<'a> {
+    last_established_edge: &'a str,
+    first_unresolved_edge: &'a str,
+    analyzer_route: &'a str,
+    non_claim: &'a str,
+}
+
+fn static_limitation_json_value(finding: &Finding) -> Option<Value> {
+    let kind = finding.static_limit_kind?;
+    let detail = static_limitation_detail_from_evidence(finding)?;
+    Some(json!({
+        "kind": kind.as_str(),
+        "last_established_edge": detail.last_established_edge,
+        "first_unresolved_edge": detail.first_unresolved_edge,
+        "analyzer_route": detail.analyzer_route,
+        "non_claim": detail.non_claim
+    }))
+}
+
+fn static_limitation_detail_from_evidence(finding: &Finding) -> Option<StaticLimitationDetail<'_>> {
+    Some(StaticLimitationDetail {
+        last_established_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        )?,
+        first_unresolved_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        )?,
+        analyzer_route: evidence_suffix(finding, crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX)?,
+        non_claim: evidence_suffix(finding, crate::domain::LIMITATION_NON_CLAIM_PREFIX)?,
+    })
+}
+
+fn evidence_suffix<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
 }
 
 fn canonical_gap_counts(findings: &[Finding]) -> BTreeMap<&str, usize> {

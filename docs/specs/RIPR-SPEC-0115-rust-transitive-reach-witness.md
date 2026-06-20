@@ -132,12 +132,11 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 | `static_limit_kind` | `"rust_transitive_reach_unresolved"` | omitted / null |
 | `stop_reasons` | includes `"transitive_reach_unresolved"` | unchanged |
 | `evidence` | generic framing **+ concrete witness pointer** naming test file:line and entry symbol | unchanged |
+| `static_limitation` | additive object with `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`, and `non_claim` when all four evidence detail lines are present | omitted |
 | `related_tests` | unchanged (witness NOT added) | unchanged |
 
 ## Non-Goals
 
-- Adding a structured machine-readable witness field to JSON — out of scope; this slice is
-  evidence-message-only. A structured `transitive_witness` field can be a later additive slice.
 - Adding the witness to `related_tests` — explicit fail-closed boundary.
 - Listing every witnessing test — only the deterministic first witness is named (count noted).
 - Promoting `no_static_path` to any higher class — that remains a separate, deferred slice that
@@ -242,7 +241,7 @@ Unchanged: bare `no_static_path`, no `static_limit_kind`, no witness.
 | Module exports | `crates/ripr/src/analysis/classify/mod.rs`, `crates/ripr/src/domain/mod.rs` |
 | Wiring (diff mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_diff` |
 | Wiring (repo mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_repo` |
-| JSON renderer | already handles `static_limit_kind` / `evidence` generically (no change) |
+| JSON renderer | emits `static_limit_kind`, evidence, and additive `static_limitation` detail when the limitation detail is complete |
 | Human renderer (`Where to look` section) | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture (re-blessed) | `fixtures/rust_transitive_reach_positive/` |
 | Test-helper public API fixture | `fixtures/rust_transitive_reach_test_helper_chain/` |

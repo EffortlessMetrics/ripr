@@ -53,7 +53,14 @@
       "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust",
-      "static_limit_kind": "rust_macro_reach_unresolved"
+      "static_limit_kind": "rust_macro_reach_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-macro-aware-reach",
+        "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+        "kind": "rust_macro_reach_unresolved",
+        "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+      }
     },
     {
       "id": "probe:src_internal.rs:predicate:10b08bc9",
@@ -102,7 +109,14 @@
       "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust",
-      "static_limit_kind": "rust_macro_reach_unresolved"
+      "static_limit_kind": "rust_macro_reach_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-macro-aware-reach",
+        "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+        "kind": "rust_macro_reach_unresolved",
+        "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+      }
     }
   ]
 }
