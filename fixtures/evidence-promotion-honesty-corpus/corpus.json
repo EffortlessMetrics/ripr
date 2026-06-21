@@ -516,6 +516,39 @@
       ]
     },
     {
+      "id": "rust_macro_wrapped_assertion_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_macro_wrapped_assertion_limitation",
+      "vector": "custom_assertion_macro_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_wrapped_assertion_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10",
+          "first_unresolved_edge": "assertion macro `assert_result!` semantics toward the changed owner",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-assertion-oracle"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
       "id": "scope_committed_diff_changed_rust_file",
       "language": "rust",
       "tier": "pure",

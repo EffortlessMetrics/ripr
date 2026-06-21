@@ -154,6 +154,11 @@ pub enum StaticLimitKind {
     /// so the classification stays `no_static_path`; this label names the
     /// unresolved test-macro edge, not a coverage claim. See RIPR-SPEC-0119.
     RustMacroWrappedTestCallUnresolved,
+    /// A Rust test reaches the changed owner, but the only assertion-like
+    /// observer ripr can see is a custom macro that it does not classify as an
+    /// oracle. The classification stays reachable-but-undiscriminated; this
+    /// label names the unresolved assertion macro, not a coverage claim.
+    RustMacroWrappedAssertionUnresolved,
 }
 
 impl StaticLimitKind {
@@ -180,6 +185,9 @@ impl StaticLimitKind {
             StaticLimitKind::RustMacroReachUnresolved => "rust_macro_reach_unresolved",
             StaticLimitKind::RustMacroWrappedTestCallUnresolved => {
                 "rust_macro_wrapped_test_call_unresolved"
+            }
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved => {
+                "rust_macro_wrapped_assertion_unresolved"
             }
         }
     }
@@ -251,6 +259,11 @@ impl StaticLimitKind {
                 "A test directly invokes a Rust macro whose definition mentions this change, but \
                  ripr cannot expand the macro to confirm the path. This is a named limitation, not \
                  a coverage claim."
+            }
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved => {
+                "A reachable Rust test uses an assertion-like macro that ripr does not classify, \
+                 so the assertion semantics are unresolved. This is a named limitation, not a \
+                 coverage claim."
             }
         }
     }
@@ -358,6 +371,10 @@ mod tests {
             StaticLimitKind::RustMacroWrappedTestCallUnresolved.as_str(),
             "rust_macro_wrapped_test_call_unresolved"
         );
+        assert_eq!(
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved.as_str(),
+            "rust_macro_wrapped_assertion_unresolved"
+        );
     }
 
     #[test]
@@ -377,6 +394,7 @@ mod tests {
             StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
             StaticLimitKind::RustMacroReachUnresolved,
             StaticLimitKind::RustMacroWrappedTestCallUnresolved,
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
         // static-language vocabulary is enforced repo-wide by

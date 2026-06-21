@@ -246,6 +246,343 @@ fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: 
     }
 }
 
+fn apply_rust_macro_wrapped_assertion_limit(finding: &mut Finding, index: &RustIndex) {
+    if !(finding.class == ExposureClass::ReachableUnrevealed
+        && !finding.related_tests.is_empty()
+        && finding.static_limit_kind.is_none()
+        && finding.ripr.reveal.observe.state == crate::domain::StageState::No
+        && finding
+            .related_tests
+            .iter()
+            .all(|related| related.oracle.is_none()))
+    {
+        return;
+    }
+
+    let Some(witness) = find_unresolved_assertion_macro_witness(finding, index) else {
+        return;
+    };
+
+    finding.static_limit_kind = Some(StaticLimitKind::RustMacroWrappedAssertionUnresolved);
+    finding.evidence.push(
+        "A related Rust test uses an assertion-like macro that ripr does not classify as an oracle."
+            .to_string(),
+    );
+    finding
+        .evidence
+        .push(rust_macro_assertion_witness_pointer(&witness));
+    finding
+        .evidence
+        .extend(rust_macro_assertion_limitation_detail_lines(&witness));
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct RustMacroAssertionWitness {
+    test_name: String,
+    test_file: std::path::PathBuf,
+    test_line: usize,
+    macro_name: String,
+    macro_line: usize,
+}
+
+fn find_unresolved_assertion_macro_witness(
+    finding: &Finding,
+    index: &RustIndex,
+) -> Option<RustMacroAssertionWitness> {
+    let mut candidates = Vec::new();
+    for test in index
+        .tests
+        .iter()
+        .chain(index.files.values().flat_map(|file| file.tests.iter()))
+    {
+        if !finding
+            .related_tests
+            .iter()
+            .any(|related| related.name == test.name && related.file == test.file)
+        {
+            continue;
+        }
+        for (macro_name, macro_line) in
+            unresolved_assertion_macro_invocations(&test.body, test.start_line)
+        {
+            candidates.push(RustMacroAssertionWitness {
+                test_name: test.name.clone(),
+                test_file: test.file.clone(),
+                test_line: test.start_line,
+                macro_name,
+                macro_line,
+            });
+        }
+    }
+    candidates.sort();
+    candidates.dedup();
+    candidates.into_iter().next()
+}
+
+fn unresolved_assertion_macro_invocations(body: &str, start_line: usize) -> Vec<(String, usize)> {
+    let mut invocations = Vec::new();
+    let masked_body = mask_rust_comments_and_strings(body);
+    for (offset, line) in masked_body.lines().enumerate() {
+        let mut search_start = 0usize;
+        while let Some(relative_bang) = line[search_start..].find('!') {
+            let bang = search_start + relative_bang;
+            search_start = bang.saturating_add(1);
+            if line[bang + 1..].starts_with('=') {
+                continue;
+            }
+            if !line[bang + 1..]
+                .trim_start()
+                .chars()
+                .next()
+                .is_some_and(|ch| matches!(ch, '(' | '[' | '{'))
+            {
+                continue;
+            }
+            let Some(macro_name) = macro_name_before_bang(line, bang) else {
+                continue;
+            };
+            if !is_unresolved_assertion_like_macro(&macro_name) {
+                continue;
+            }
+            invocations.push((macro_name, start_line + offset));
+        }
+    }
+    invocations.sort();
+    invocations.dedup();
+    invocations
+}
+
+fn mask_rust_comments_and_strings(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut masked = bytes.to_vec();
+    let mut index = 0usize;
+    let mut block_depth = 0usize;
+
+    while index < bytes.len() {
+        if block_depth > 0 {
+            if starts_with_bytes(bytes, index, b"/*") {
+                mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
+                block_depth = block_depth.saturating_add(1);
+                index = index.saturating_add(2);
+            } else if starts_with_bytes(bytes, index, b"*/") {
+                mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
+                block_depth = block_depth.saturating_sub(1);
+                index = index.saturating_add(2);
+            } else {
+                mask_non_newline_bytes(&mut masked, index, index.saturating_add(1));
+                index = index.saturating_add(1);
+            }
+            continue;
+        }
+
+        if starts_with_bytes(bytes, index, b"//") {
+            let end = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset);
+            mask_non_newline_bytes(&mut masked, index, end);
+            index = end;
+            continue;
+        }
+
+        if starts_with_bytes(bytes, index, b"/*") {
+            mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
+            block_depth = 1;
+            index = index.saturating_add(2);
+            continue;
+        }
+
+        if let Some(end) = rust_raw_string_literal_end(bytes, index) {
+            mask_non_newline_bytes(&mut masked, index, end);
+            index = end;
+            continue;
+        }
+
+        if bytes[index] == b'"' {
+            let end = rust_string_literal_end(bytes, index);
+            mask_non_newline_bytes(&mut masked, index, end);
+            index = end;
+            continue;
+        }
+
+        index = index.saturating_add(1);
+    }
+
+    match String::from_utf8(masked) {
+        Ok(value) => value,
+        Err(_) => text.to_string(),
+    }
+}
+
+fn starts_with_bytes(bytes: &[u8], index: usize, needle: &[u8]) -> bool {
+    bytes
+        .get(index..index.saturating_add(needle.len()))
+        .is_some_and(|candidate| candidate == needle)
+}
+
+fn mask_non_newline_bytes(bytes: &mut [u8], start: usize, end: usize) {
+    let bounded_end = end.min(bytes.len());
+    for byte in bytes.iter_mut().take(bounded_end).skip(start) {
+        if *byte != b'\n' {
+            *byte = b' ';
+        }
+    }
+}
+
+fn rust_string_literal_end(bytes: &[u8], start: usize) -> usize {
+    let mut index = start.saturating_add(1);
+    let mut escaped = false;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            return index.saturating_add(1);
+        }
+        index = index.saturating_add(1);
+    }
+    bytes.len()
+}
+
+fn rust_raw_string_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let prefix_len = if bytes.get(start) == Some(&b'r') {
+        1
+    } else if bytes.get(start) == Some(&b'b') && bytes.get(start.saturating_add(1)) == Some(&b'r') {
+        2
+    } else {
+        return None;
+    };
+
+    let mut delimiter = start.saturating_add(prefix_len);
+    let mut hashes = 0usize;
+    while bytes.get(delimiter) == Some(&b'#') {
+        hashes = hashes.saturating_add(1);
+        delimiter = delimiter.saturating_add(1);
+    }
+    if bytes.get(delimiter) != Some(&b'"') {
+        return None;
+    }
+
+    let mut index = delimiter.saturating_add(1);
+    while index < bytes.len() {
+        if bytes[index] == b'"' {
+            let suffix_start = index.saturating_add(1);
+            let suffix_end = suffix_start.saturating_add(hashes);
+            if suffix_end <= bytes.len()
+                && bytes[suffix_start..suffix_end]
+                    .iter()
+                    .all(|byte| *byte == b'#')
+            {
+                return Some(suffix_end);
+            }
+        }
+        index = index.saturating_add(1);
+    }
+
+    Some(bytes.len())
+}
+
+fn macro_name_before_bang(line: &str, bang: usize) -> Option<String> {
+    let prefix = line[..bang].trim_end();
+    let end = prefix.len();
+    if end == 0 {
+        return None;
+    }
+    let mut start = end;
+    for (idx, ch) in prefix.char_indices().rev() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' {
+            start = idx;
+        } else {
+            break;
+        }
+    }
+    let name = prefix[start..end].trim_matches(':');
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+fn is_unresolved_assertion_like_macro(macro_name: &str) -> bool {
+    if is_known_rust_assertion_macro(macro_name) {
+        return false;
+    }
+    let base = macro_name.rsplit("::").next().unwrap_or(macro_name);
+    base == "assert" || base.starts_with("assert_")
+}
+
+fn is_known_rust_assertion_macro(macro_name: &str) -> bool {
+    let compact = macro_name.replace(' ', "");
+    let base = compact.rsplit("::").next().unwrap_or(compact.as_str());
+    matches!(
+        base,
+        "assert" | "assert_eq" | "assert_ne" | "assert_matches" | "matches"
+    ) || compact.starts_with("insta::assert")
+        || compact.contains("snapshot")
+}
+
+fn rust_macro_assertion_witness_pointer(witness: &RustMacroAssertionWitness) -> String {
+    let test_location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.test_line
+    );
+    let macro_location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.macro_line
+    );
+    format!(
+        "{}`{}` ({}) reaches the changed owner, then invokes assertion-like macro `{}!` at {}. ripr does not classify that macro as an oracle.",
+        crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX,
+        witness.test_name,
+        test_location,
+        witness.macro_name,
+        macro_location
+    )
+}
+
+fn rust_macro_assertion_limitation_detail_lines(
+    witness: &RustMacroAssertionWitness,
+) -> [String; 4] {
+    let test_location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.test_line
+    );
+    let macro_location = format!(
+        "{}:{}",
+        witness.test_file.display().to_string().replace('\\', "/"),
+        witness.macro_line
+    );
+    [
+        format!(
+            "{}test `{}` ({}) -> assertion macro `{}!` at {}",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+            witness.test_name,
+            test_location,
+            witness.macro_name,
+            macro_location
+        ),
+        format!(
+            "{}assertion macro `{}!` semantics toward the changed owner",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+            witness.macro_name
+        ),
+        format!(
+            "{}analysis/rust-macro-assertion-oracle",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX
+        ),
+        format!(
+            "{}named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change",
+            crate::domain::LIMITATION_NON_CLAIM_PREFIX
+        ),
+    ]
+}
+
 fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
     if rust_index::is_test_file(test_file) {
         StaticLimitKind::RustIntegrationPublicApiPathUnresolved
@@ -342,6 +679,11 @@ impl LanguageAdapter for RustAdapter {
                 // name a macro-reach limitation only when a same-repo macro
                 // definition lexically mentions the changed owner.
                 apply_rust_no_static_path_limit(&mut finding, &probe, &index);
+                // Name unresolved custom assertion macros only after reach has
+                // already been established and no recognized oracle observes
+                // the seam. This is an oracle limitation, not macro expansion
+                // or promotion.
+                apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
                 // Fail closed on cross-language seams: when the probe owner
                 // carries an FFI/binding attribute, replace any Rust-gap
                 // static_limit_kind with the cross-language limitation so
@@ -392,6 +734,7 @@ impl LanguageAdapter for RustAdapter {
                 // RIPR-SPEC-0114 + 0115 + 0117: no_static_path limitation
                 // disclosure for repo-mode (same logic as diff-mode).
                 apply_rust_no_static_path_limit(&mut finding, &probe, &index);
+                apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
                 // Fail closed on cross-language seams (#910).
                 if let Some(limit) = cross_language_limit_kind(&probe, &index, &finding.class) {
                     finding.static_limit_kind = Some(limit);
@@ -410,18 +753,19 @@ impl LanguageAdapter for RustAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, changed_rust_line_count,
+        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT,
+        apply_rust_macro_wrapped_assertion_limit, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit, macro_reach_limit_kind,
         owner_has_ffi_attr, replace_witnessed_no_path_infection_summary,
         transitive_reach_limit_kind,
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
-    use crate::analysis::facts::{FunctionSummary, RustIndex};
+    use crate::analysis::facts::{CallFact, FunctionSummary, LiteralFact, RustIndex, TestSummary};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
-        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
-        StaticLimitKind, SymbolId,
+        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+        StageState, StaticLimitKind, SymbolId,
     };
     use std::env::VarError;
     use std::path::{Path, PathBuf};
@@ -604,6 +948,97 @@ mod tests {
         );
     }
 
+    #[test]
+    fn macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro() {
+        let mut finding = reachable_unrevealed_finding_with_related_test(
+            "test_inner_with_custom_assertion_macro",
+            "tests/it.rs",
+            4,
+        );
+        let index = RustIndex {
+            tests: vec![test_summary(
+                "test_inner_with_custom_assertion_macro",
+                "tests/it.rs",
+                4,
+                "let result = inner(10, 3);\nassert_result!(result, 7);",
+            )],
+            ..RustIndex::default()
+        };
+
+        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
+
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::RustMacroWrappedAssertionUnresolved)
+        );
+        assert!(finding.evidence.iter().any(|line| {
+            line.contains("assertion-like macro `assert_result!` at tests/it.rs:5")
+        }));
+        assert!(finding.evidence.iter().any(|line| {
+            line == "limitation_last_established_edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:4) -> assertion macro `assert_result!` at tests/it.rs:5"
+        }));
+        assert!(finding.evidence.iter().any(|line| {
+            line == "limitation_first_unresolved_edge: assertion macro `assert_result!` semantics toward the changed owner"
+        }));
+        assert!(finding.evidence.iter().any(|line| {
+            line == "limitation_analyzer_route: analysis/rust-macro-assertion-oracle"
+        }));
+        assert!(finding.evidence.iter().any(|line| {
+            line == "limitation_non_claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
+        }));
+    }
+
+    #[test]
+    fn macro_wrapped_assertion_limit_ignores_known_assertion_macros() {
+        let mut finding = reachable_unrevealed_finding_with_related_test(
+            "test_inner_with_known_assertion_macro",
+            "tests/it.rs",
+            4,
+        );
+        let index = RustIndex {
+            tests: vec![test_summary(
+                "test_inner_with_known_assertion_macro",
+                "tests/it.rs",
+                4,
+                "let result = inner(10, 3);\nassert_eq!(result, 7);",
+            )],
+            ..RustIndex::default()
+        };
+
+        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
+
+        assert_eq!(finding.static_limit_kind, None);
+        assert!(finding.evidence.is_empty());
+    }
+
+    #[test]
+    fn macro_wrapped_assertion_limit_ignores_comments_and_string_literals() {
+        let mut finding = reachable_unrevealed_finding_with_related_test(
+            "test_inner_with_commented_assertion_macro",
+            "tests/it.rs",
+            4,
+        );
+        let index = RustIndex {
+            tests: vec![test_summary(
+                "test_inner_with_commented_assertion_macro",
+                "tests/it.rs",
+                4,
+                r##"let result = inner(10, 3);
+// assert_result!(result, 7);
+/* assert_block_result!(result, 7); */
+let note = "assert_string_result!(result, 7)";
+let raw = r#"assert_raw_result!(result, 7)"#;
+let _ = (result, note, raw);"##,
+            )],
+            ..RustIndex::default()
+        };
+
+        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
+
+        assert_eq!(finding.static_limit_kind, None);
+        assert!(finding.evidence.is_empty());
+    }
+
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(path),
@@ -620,6 +1055,63 @@ mod tests {
                 new_side_line: line,
             })
             .collect()
+    }
+
+    fn reachable_unrevealed_finding_with_related_test(
+        test_name: &str,
+        test_file: &str,
+        test_line: usize,
+    ) -> Finding {
+        let mut finding = no_path_finding_with_infection_summary("stage", Vec::new());
+        let stage = |state| StageEvidence::new(state, Confidence::Medium, "stage");
+        finding.class = ExposureClass::ReachableUnrevealed;
+        finding.ripr.reach = stage(StageState::Yes);
+        finding.ripr.infect = stage(StageState::Yes);
+        finding.ripr.propagate = stage(StageState::Yes);
+        finding.ripr.reveal.observe = stage(StageState::No);
+        finding.ripr.reveal.discriminate = stage(StageState::No);
+        finding.related_tests = vec![RelatedTest {
+            name: test_name.to_string(),
+            file: PathBuf::from(test_file),
+            line: test_line,
+            oracle: None,
+            oracle_kind: crate::domain::OracleKind::Unknown,
+            oracle_strength: crate::domain::OracleStrength::None,
+            relation_reason: None,
+            relation_confidence: None,
+        }];
+        finding
+    }
+
+    fn test_summary(name: &str, file: &str, start_line: usize, body: &str) -> TestSummary {
+        TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line,
+            end_line: start_line + body.lines().count(),
+            body: body.to_string(),
+            calls: vec![CallFact {
+                line: start_line,
+                name: "inner".to_string(),
+                text: "inner(10, 3)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: vec![
+                LiteralFact {
+                    line: start_line,
+                    value: "10".to_string(),
+                },
+                LiteralFact {
+                    line: start_line,
+                    value: "3".to_string(),
+                },
+                LiteralFact {
+                    line: start_line + 1,
+                    value: "7".to_string(),
+                },
+            ],
+            attrs: Vec::new(),
+        }
     }
 
     fn no_path_finding_with_infection_summary(summary: &str, evidence: Vec<String>) -> Finding {

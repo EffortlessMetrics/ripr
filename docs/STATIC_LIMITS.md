@@ -33,6 +33,7 @@ rust_transitive_reach_unresolved
 rust_integration_public_api_path_unresolved
 rust_macro_reach_unresolved
 rust_macro_wrapped_test_call_unresolved
+rust_macro_wrapped_assertion_unresolved
 ```
 
 When `static_limit_kind` is absent but stable static-limit text is present,
@@ -57,6 +58,7 @@ action.
 | `rust_integration_public_api_path_unresolved` | An integration test appears to call crate public API, or a test helper that calls it, along a candidate path toward the changed owner. | Treat this as first-run evidence that RIPR saw the integration test but could not cross the public-API path. It is not a clean result or a reach claim. |
 | `rust_macro_reach_unresolved` | A Rust test appears to call an entry point whose path toward the changed owner stops at a same-repo macro invocation RIPR does not expand. | Inspect the macro path manually or improve macro-aware reach. Do not treat the macro mention as evidence that the test observes the change. |
 | `rust_macro_wrapped_test_call_unresolved` | A Rust test directly invokes a same-repo macro whose definition mentions the changed owner, but RIPR does not expand that macro. | Treat this as first-run evidence that RIPR saw the test-body macro call but could not cross it. It is not a clean result, reach claim, or repair packet. |
+| `rust_macro_wrapped_assertion_unresolved` | A Rust test reaches the changed owner, but the visible assertion-like custom macro is not classified as an oracle. | Treat this as first-run evidence that RIPR saw a candidate assertion macro but could not confirm its discriminator. It is not a clean result, oracle claim, or repair packet. |
 
 ## What Static Limits Do Not Mean
 
