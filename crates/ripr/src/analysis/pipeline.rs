@@ -5,7 +5,10 @@ use super::language::TypeScriptAdapter;
 use super::language::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, RustAdapter,
 };
-use super::{AnalysisOptions, AnalysisResult, PreviewLanguageAdvisory, diff, sort, summary};
+use super::{
+    AnalysisOptions, AnalysisResult, LanguageRun, LanguageRunStatus, PreviewLanguageAdvisory, diff,
+    sort, summary,
+};
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
 
@@ -55,17 +58,42 @@ fn run_pipeline_for_diff_text(
 
     let mut findings: Vec<Finding> = Vec::new();
     let mut total_changed_files: usize = 0;
+    let mut language_runs: Vec<LanguageRun> = Vec::new();
     for language in languages {
-        let result = match language {
-            LanguageId::Rust => RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?,
+        // Non-abort contract (Campaign 31 PR 10, #1403): a preview-language
+        // adapter failure must not abort the report — the failed language is
+        // recorded in `language_runs` and the other languages' findings still
+        // emit. Rust (the stable reference adapter) still propagates via `?`:
+        // a Rust failure is infra-class (e.g. diff_scope_oversized), not a
+        // per-language advisory gap.
+        if !is_preview_language(*language) {
+            // Rust (stable) failures propagate via `?`.
+            let result = RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?;
+            findings.extend(result.findings);
+            total_changed_files += result.changed_files;
+            continue;
+        }
+        let attempted = match language {
             LanguageId::TypeScript | LanguageId::JavaScript => {
-                analyze_typescript_diff(options, oracle_policy, &changed_files)?
+                analyze_typescript_diff(options, oracle_policy, &changed_files)
             }
-            LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files)?,
-            LanguageId::Perl => analyze_perl_diff()?,
+            LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files),
+            LanguageId::Perl => analyze_perl_diff(),
+            LanguageId::Rust => {
+                continue;
+            }
         };
-        findings.extend(result.findings);
-        total_changed_files += result.changed_files;
+        match attempted {
+            Ok(result) => {
+                findings.extend(result.findings);
+                total_changed_files += result.changed_files;
+            }
+            Err(reason) => language_runs.push(LanguageRun {
+                language: language.as_str().to_string(),
+                status: LanguageRunStatus::Unavailable,
+                reason: Some(reason),
+            }),
+        }
     }
 
     // Detect preview-language files in the diff regardless of whether the
@@ -83,6 +111,7 @@ fn run_pipeline_for_diff_text(
         summary: summary_result,
         findings,
         preview_language_advisories: preview_advisories,
+        language_runs,
     })
 }
 
@@ -93,17 +122,38 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
 ) -> Result<AnalysisResult, String> {
     let mut findings: Vec<Finding> = Vec::new();
     let mut total_production_files: usize = 0;
+    let mut language_runs: Vec<LanguageRun> = Vec::new();
     for language in languages {
-        let result = match language {
-            LanguageId::Rust => RustAdapter.analyze_repo(options, oracle_policy)?,
+        // Non-abort contract (see the diff loop above): preview-language
+        // failures are recorded, Rust failures still propagate.
+        if !is_preview_language(*language) {
+            // Rust (stable) failures propagate via `?`.
+            let result = RustAdapter.analyze_repo(options, oracle_policy)?;
+            findings.extend(result.findings);
+            total_production_files += result.production_files;
+            continue;
+        }
+        let attempted = match language {
             LanguageId::TypeScript | LanguageId::JavaScript => {
-                analyze_typescript_repo(options, oracle_policy)?
+                analyze_typescript_repo(options, oracle_policy)
             }
-            LanguageId::Python => analyze_python_repo(options, oracle_policy)?,
-            LanguageId::Perl => analyze_perl_repo()?,
+            LanguageId::Python => analyze_python_repo(options, oracle_policy),
+            LanguageId::Perl => analyze_perl_repo(),
+            LanguageId::Rust => {
+                continue;
+            }
         };
-        findings.extend(result.findings);
-        total_production_files += result.production_files;
+        match attempted {
+            Ok(result) => {
+                findings.extend(result.findings);
+                total_production_files += result.production_files;
+            }
+            Err(reason) => language_runs.push(LanguageRun {
+                language: language.as_str().to_string(),
+                status: LanguageRunStatus::Unavailable,
+                reason: Some(reason),
+            }),
+        }
     }
 
     // Detect preview-language files anywhere in the workspace regardless of
@@ -119,6 +169,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         summary: summary_result,
         findings,
         preview_language_advisories: preview_advisories,
+        language_runs,
     })
 }
 
@@ -381,7 +432,8 @@ mod tests {
     fn diff_pipeline_is_callable() {
         // Seam test: verify the function signature and basic error handling.
         // Integration tests in analysis::tests verify actual pipeline output behavior.
-        // This test simply ensures the extracted function compiles and can be called.
+        // Rust (stable) failures still propagate via `?` — only preview-language
+        // failures are non-abort (Campaign 31 PR 10, #1403).
         let result = run_diff_pipeline_with_oracle_policy(
             &AnalysisOptions {
                 root: invalid_root_path(),
@@ -394,14 +446,16 @@ mod tests {
             &OraclePolicy::default(),
             &[LanguageId::Rust],
         );
-        // Should fail with a file system error, not a panic.
-        result.expect_err("expected pipeline to surface file-system error");
+        // Rust failure on an invalid root propagates as a top-level Err.
+        result.expect_err("expected Rust adapter failure to propagate");
     }
 
     #[test]
     fn repo_pipeline_is_callable() {
         // Seam test: verify the function signature and basic error handling.
         // Integration tests in analysis::tests verify actual pipeline output behavior.
+        // Rust (stable) failures still propagate via `?` — only preview-language
+        // failures are non-abort (Campaign 31 PR 10, #1403).
         let result = run_repo_pipeline_with_oracle_policy(
             &AnalysisOptions {
                 root: invalid_root_path(),
@@ -414,8 +468,89 @@ mod tests {
             &OraclePolicy::default(),
             &[LanguageId::Rust],
         );
-        // Should fail with a file system error, not a panic.
-        result.expect_err("expected pipeline to surface file-system error");
+        // Rust failure on an invalid root propagates as a top-level Err.
+        result.expect_err("expected Rust adapter failure to propagate");
+    }
+
+    /// Non-abort contract (Campaign 31 PR 10, #1403): a single language's
+    /// failure must not abort the whole report. Perl always returns `Err`
+    /// today (scaffold-only stub at `analyze_perl_diff`), so a Rust+Perl
+    /// mixed run must still produce Rust findings AND record a Perl
+    /// `unavailable` entry in `language_runs` — not propagate the `Err`.
+    #[test]
+    fn diff_pipeline_does_not_abort_when_one_language_fails() -> Result<(), String> {
+        let root = temp_root("perl-non-abort")?;
+        let src = root.join("src/lib.rs");
+        write(&src, "pub fn discount(price: u32) -> u32 { price / 2 }\n")?;
+        let diff_file = root.join("mixed.diff");
+        write(
+            &diff_file,
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             --- /dev/null\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1 @@\n\
+             +pub fn discount(price: u32) -> u32 { price / 2 }\n",
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust, LanguageId::Perl],
+        );
+
+        // The run must NOT abort — the top-level Ok must succeed.
+        let analysis = match result {
+            Ok(a) => a,
+            Err(reason) => {
+                return Err(format!(
+                    "pipeline aborted on Perl failure, expected non-abort: {reason}"
+                ));
+            }
+        };
+
+        // Rust findings must survive (the Rust adapter ran to completion).
+        assert!(
+            analysis.summary.changed_rust_files >= 1,
+            "Rust findings must survive a sibling Perl failure"
+        );
+
+        // A Perl `unavailable` entry must appear in language_runs.
+        let perl_run = analysis.language_runs.iter().find(|r| r.language == "perl");
+        assert!(
+            perl_run.is_some(),
+            "Perl failure must be recorded in language_runs, got: {:?}",
+            analysis.language_runs
+        );
+        let perl_run = match perl_run {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+        assert_eq!(
+            perl_run.status,
+            super::LanguageRunStatus::Unavailable,
+            "Perl run status must be Unavailable"
+        );
+        assert!(
+            perl_run.reason.is_some(),
+            "Perl run must carry a reason string"
+        );
+
+        // Rust must NOT appear in language_runs (it ran to completion, so it's
+        // omitted by design — the field is conditional on non-success).
+        assert!(
+            !analysis.language_runs.iter().any(|r| r.language == "rust"),
+            "Rust (successful) must not appear in language_runs"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]

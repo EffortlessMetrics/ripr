@@ -51,6 +51,7 @@ or analyze a committed branch with `ripr check --base origin/main`.\n",
             );
         }
         render_preview_language_advisories(&mut out, output);
+        render_language_runs(&mut out, output);
         return out;
     }
 
@@ -70,6 +71,7 @@ your working tree.\n",
         );
     }
     render_preview_language_advisories(&mut out, output);
+    render_language_runs(&mut out, output);
     out
 }
 
@@ -173,6 +175,28 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
     }
 }
 
+/// Render per-language run-status lines for languages that did not complete
+/// successfully (non-abort contract, Campaign 31 PR 10, #1403). Silent when
+/// every language ran to completion.
+fn render_language_runs(out: &mut String, output: &CheckOutput) {
+    for run in &output.language_runs {
+        let language = capitalize_first(&run.language);
+        match &run.reason {
+            Some(reason) => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above. Reason: {}\n",
+                language,
+                run.status.as_str(),
+                reason,
+            )),
+            None => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above.\n",
+                language,
+                run.status.as_str(),
+            )),
+        }
+    }
+}
+
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
@@ -226,6 +250,7 @@ mod tests {
             },
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -838,6 +863,7 @@ mod tests {
                 sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -874,6 +900,7 @@ mod tests {
                 sample_paths: vec!["app/main.py".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -901,6 +928,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -934,6 +962,7 @@ mod tests {
                 sample_paths: vec!["src/lib.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -965,6 +994,7 @@ mod tests {
                 sample_paths: vec!["src/utils.ts".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1018,6 +1048,7 @@ mod tests {
                 sample_paths: vec!["app/models.py".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1087,6 +1118,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
         };
@@ -1131,6 +1163,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1162,6 +1195,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
         };
@@ -1194,6 +1228,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
         };
@@ -1230,6 +1265,7 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1274,6 +1310,7 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1317,6 +1354,7 @@ mod tests {
             },
             findings: vec![finding, duplicate_finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1353,6 +1391,7 @@ mod tests {
             },
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1384,6 +1423,7 @@ mod tests {
             },
             findings: vec![sample_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1412,6 +1452,7 @@ mod tests {
             },
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1437,6 +1478,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1467,6 +1509,7 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1496,6 +1539,7 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };

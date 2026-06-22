@@ -238,6 +238,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -311,6 +312,7 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -374,6 +376,7 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -595,6 +598,7 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         }
@@ -871,6 +875,7 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };

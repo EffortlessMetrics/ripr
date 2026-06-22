@@ -93,6 +93,7 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         summary: Summary::default(),
         findings,
         preview_language_advisories: Vec::new(),
+        language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
     }
@@ -1541,6 +1542,7 @@ fn check_output_with_preview_advisory(
             sample_paths: vec![format!("src/foo.{language}")],
             enabled,
         }],
+        language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
     }

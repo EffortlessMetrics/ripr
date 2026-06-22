@@ -129,6 +129,11 @@ pub struct CheckOutput {
     /// analyzed the scope but found nothing actionable at this time.
     /// See RIPR-SPEC-0082.
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion.
+    /// Non-abort contract (Campaign 31 PR 10, #1403): a failure here does not
+    /// abort the report.
+    pub language_runs: Vec<crate::analysis::LanguageRun>,
     /// When `true`, no analysis scope was provided by the caller (no `--diff`,
     /// `--base`, `--files`, or full-repo mode flag). An empty result in this
     /// state does NOT mean the changed behavior is covered — it means nothing

@@ -67,6 +67,29 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when at least one enabled language
+    // did not complete successfully (non-abort contract, Campaign 31 PR 10,
+    // #1403). Absent when every enabled language ran to completion (the common
+    // single-language-success case), so this stays out of the goldens for
+    // pure-success runs.
+    if !output.language_runs.is_empty() {
+        out.push_str(",\n  \"language_runs\": [\n");
+        for (idx, run) in output.language_runs.iter().enumerate() {
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &run.language, true);
+            field(&mut out, 3, "status", run.status.as_str(), true);
+            match &run.reason {
+                Some(reason) => field(&mut out, 3, "reason", reason, false),
+                None => out.push_str("      \"reason\": null\n"),
+            }
+            out.push_str("    }");
+            if idx + 1 != output.language_runs.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
     // Additive advisory field — emitted only when no analysis scope was
     // provided and the result is empty. Absent when scope was given (real
     // analyzed-empty is honest) or when findings are non-empty.

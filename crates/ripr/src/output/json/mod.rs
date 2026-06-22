@@ -151,6 +151,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -271,6 +272,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -437,6 +439,7 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1105,6 +1108,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         }
@@ -1176,6 +1180,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1221,6 +1226,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
         };
@@ -1274,6 +1280,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
         };
@@ -1306,6 +1313,7 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
         };
