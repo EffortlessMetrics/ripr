@@ -25,6 +25,7 @@ pub(crate) mod mutation_calibration;
 pub(crate) mod next_step;
 pub(crate) mod outcome;
 pub(crate) mod path;
+pub(crate) mod perl_gap_record_projection;
 pub(crate) mod perl_preview_card;
 pub(crate) mod pilot;
 pub(crate) mod policy_history;

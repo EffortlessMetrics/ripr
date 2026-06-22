@@ -75,7 +75,7 @@ Current state (recorded 2026-06-21, Campaign 31 #1379):
   `validate_agent_gap_record_packet` — no Perl-local flip authority.
 - **Campaign:** the 18-PR path to usable alpha is tracked in Campaign 31
   (`docs/IMPLEMENTATION_CAMPAIGNS.md`) + `.ripr/goals/perl-repair-routing.toml`
-  + umbrella issue #1379. Phase B producer work files into `perl-lp-swarm`.
+  + umbrella issue #1379. Phase B producer work files into `perl-lsp-swarm`.
 
 ## Problem
 

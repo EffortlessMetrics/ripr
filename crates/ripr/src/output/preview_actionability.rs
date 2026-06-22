@@ -1,6 +1,7 @@
 use crate::domain::{Finding, LanguageId, LanguageStatus};
 use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
 use crate::output::gap_decision_ledger::GapRecord;
+use crate::output::perl_gap_record_projection::perl_gap_record_for;
 use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use serde_json::{Value, json};
 
@@ -36,7 +37,7 @@ pub(crate) struct PreviewRawEvidenceRef {
 pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActionability> {
     if !matches!(
         finding.language,
-        Some(LanguageId::TypeScript | LanguageId::JavaScript)
+        Some(LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Perl)
     ) || finding.language_status != Some(LanguageStatus::Preview)
     {
         return None;
@@ -57,12 +58,26 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
         .map(parse_raw_evidence_ref)
         .collect::<Vec<_>>();
 
-    // §1 / §2 (RIPR-SPEC-0087 §PR7): compute repair_packet_ready by projecting
-    // a GapRecord from the finding and calling the SHARED Rust validator.
-    // `None` packet ⇒ `false` automatically (fail-closed default).
-    // No parallel TypeScript validator is introduced: the only flip authority
-    // is `validate_agent_gap_record_packet`.
-    let packet = typescript_gap_record_for(finding);
+    // §1 / §2 (RIPR-SPEC-0087 §PR7 for TS; RIPR-SPEC-0064 / ADR 0019 for Perl):
+    // compute repair_packet_ready by projecting a GapRecord from the finding
+    // and calling the SHARED Rust validator. `None` packet ⇒ `false`
+    // automatically (fail-closed default). No parallel language-specific
+    // validator is introduced: the only flip authority is
+    // `validate_agent_gap_record_packet`.
+    //
+    // Perl note: production Perl findings today do not carry the `gap_state:`,
+    // `actionability_category:`, etc. evidence this function reads above (they
+    // carry `perl_*:` keys instead), so this arm returns `None` at the
+    // `gap_state: ?` gate before reaching the projection. The projection call
+    // is wired so `perl_gap_record_for` is exercised by production code (not
+    // dead), but it only ever produces `Some(record)` for synthetic test
+    // findings. PR 16 (ripr-swarm#1409) lands the real Perl evidence path +
+    // decommissions the bespoke gap_record_from_perl_preview_finding.
+    let packet = if finding.language == Some(LanguageId::Perl) {
+        perl_gap_record_for(finding)
+    } else {
+        typescript_gap_record_for(finding)
+    };
     let repair_packet_ready = packet
         .as_ref()
         .is_some_and(|record| validate_agent_gap_record_packet(record).is_ok());
