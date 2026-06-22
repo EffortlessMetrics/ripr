@@ -1439,7 +1439,9 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    // Diff-scoped badge JSON never carries a public projection.
+    assert!(!stdout.contains(r#""public_projection""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -2899,7 +2901,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2907,6 +2909,9 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""run_status": "full""#));
     assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""unknowns_test_efficiency": 0"#));
@@ -2998,7 +3003,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -3008,6 +3013,9 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     );
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""source_report": "target/ripr/reports/repo-ripr-badge.json""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -3068,10 +3076,13 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
-    assert!(stdout.contains(r#""message": "1""#));
+    // The gap-ledger repo badge is projected into the closed public vocabulary.
+    assert!(stdout.contains(r#""message": "1 actionable""#));
     assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
+    assert!(stdout.contains(r#""state": "actionable""#));
+    assert!(stdout.contains(r#""actionable_count": 1"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -3121,11 +3132,12 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
+    assert!(stdout.contains(r#""public_projection""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())

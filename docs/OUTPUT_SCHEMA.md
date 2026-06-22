@@ -1129,16 +1129,16 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.5`:
+Native schema `0.7`:
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.7",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
   "label": "ripr",
-  "message": "0",
+  "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
   "counts": {
@@ -1171,17 +1171,29 @@ Native schema `0.5`:
     "test_intent_path": ".ripr/test_intent.toml",
     "suppressions_path": ".ripr/suppressions.toml"
   },
-  "warnings": []
+  "warnings": [],
+  "preview_skipped": [],
+  "public_projection": {
+    "state": "zero_actionable",
+    "message": "0 actionable",
+    "run_status": "full",
+    "generated_at": "2026-06-20T00:00:00Z",
+    "actionable_count": 0,
+    "limited_reason": null,
+    "stale_age_secs": 0,
+    "source_report": "target/ripr/reports/repo-ripr-badge.json"
+  }
 }
 ```
 
 Field contract:
 
-- `schema_version` — currently `"0.5"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.7"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
   `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
   `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
-  projection.
+  projection; `0.6` adds `preview_skipped`; `0.7` adds the
+  `public_projection` object (RIPR-SPEC-0066) on repo-scoped public badges.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
@@ -1192,8 +1204,12 @@ Field contract:
   rendered from supplied GapRecord projection targets. Diff-scoped badge
   formats currently use `finding_exposure`; repo-scoped public badge formats
   use `canonical_actionable_gap` unless `--gap-ledger` is supplied.
-- `message` — the headline count rendered as a string for Shields
-  compatibility. It is a count, never a denominator or coverage fraction.
+- `message` — the headline rendered as a string for Shields compatibility.
+  Diff-scoped and internal badges render the bare count (for example `"5"`).
+  Repo-scoped public badges render the closed RIPR-SPEC-0066 vocabulary
+  (`"0 actionable"`, `"<n> actionable"`, `"limited"`, `"stale"`, or
+  `"unknown"`), combined with the `label` to read as `ripr: <n> actionable`.
+  It is a count or a named state, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
   `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
   repo public scope: unresolved actionable canonical repair items; seam-native
@@ -1213,6 +1229,33 @@ Field contract:
   canonical-actionable basis; `0` for finding-exposure and seam-native badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
+- `preview_skipped` — (v0.6) array of preview-language adapter names detected
+  in the diff but not enabled; a non-empty list means the result is not a
+  clean Rust-grade result. Always present as an array (possibly empty).
+- `public_projection` — (v0.7) present only on repo-scoped public badges
+  (`canonical_actionable_gap` or `gap_decision_ledger` basis). The
+  RIPR-SPEC-0066 projection of the badge into one closed public state plus
+  the required sidecar fields. Absent on diff-scoped and internal badges.
+  When present, the native `message` / `status` / `color` are projected from
+  it. Fields:
+  - `state` — one of `zero_actionable`, `actionable`, `limited`, `stale`,
+    `unknown`. Selected with fail-closed precedence
+    (`unknown > stale > limited > count`); a degraded input never resolves
+    toward the cleaner-looking state.
+  - `message` — the Shields message for the state (label-agnostic, e.g.
+    `0 actionable`, `limited`).
+  - `run_status` — Lane-1 completeness state of the source run (`full` or a
+    named `limited_*` value).
+  - `generated_at` — RFC3339 UTC timestamp the badge was generated, or `null`.
+  - `actionable_count` — unresolved canonical actionable gap count; present
+    only for the count states (`zero_actionable` / `actionable`), `null`
+    alongside any degraded state.
+  - `limited_reason` — the `limitation_category` (and repair route) for a
+    `limited` state; `null` otherwise.
+  - `stale_age_secs` — age of the artifact relative to its source at
+    evaluation time, in seconds; `null` when `generated_at` is unknown.
+  - `source_report` — repo-relative path the badge was projected from, or
+    `null`.
 
 Shields projection:
 

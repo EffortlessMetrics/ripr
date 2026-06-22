@@ -3735,7 +3735,8 @@ fn render_check_gap_ledger_badge(
         suppressions_path: config.suppressions().display_path(),
         ..output::badge::BadgePolicy::default()
     };
-    let summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    let mut summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     if shields {
         Ok(output::badge::render_shields_json(&summary))
     } else {

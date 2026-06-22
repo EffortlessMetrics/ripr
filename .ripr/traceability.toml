@@ -4770,11 +4770,36 @@ metrics = [
 id = "RIPR-SPEC-0066"
 name = "Repo badge use case"
 spec = "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/badge/public_projection.rs::tests::full_current_zero_gaps_is_zero_actionable",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::full_current_n_gaps_is_n_actionable",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::gap_decision_ledger_basis_is_a_valid_count_basis",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::limited_run_status_is_limited_with_named_reason",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::over_age_artifact_is_stale",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::raw_finding_basis_is_unknown_never_a_count",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::diff_scope_is_unknown_on_public_badge",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::missing_source_report_is_unknown",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::missing_generated_at_is_unknown",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::unrecognized_run_status_fails_closed_to_unknown",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::stale_takes_precedence_over_limited",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::unknown_takes_precedence_over_stale_and_limited",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::age_exactly_at_max_is_not_stale",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::age_one_second_over_max_is_stale",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::attach_projects_repo_canonical_summary",
+  "crates/ripr/src/output/badge/public_projection.rs::tests::attach_is_no_op_for_diff_badges",
+  "crates/ripr/src/app/tests/badge_rendering.rs::render_check_repo_badge_json_paints_scope_repo",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/output/badge/public_projection.rs",
+  "crates/ripr/src/output/badge/render.rs",
+  "crates/ripr/src/output/badge/model.rs",
+  "crates/ripr/src/output/render.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "badges/README.md",
 ]
 metrics = [
   "repo_badge_use_case_status_proposed",

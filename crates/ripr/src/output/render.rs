@@ -12,6 +12,15 @@ use std::collections::BTreeMap;
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
 const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
 
+/// Repo-relative report path the public `ripr` badge projection names as its
+/// source (RIPR-SPEC-0066 `source_report`). The repo-badge pipeline writes
+/// the canonical-actionable-gap projection into this artifact.
+const REPO_RIPR_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-badge.json";
+
+/// Repo-relative report path the public `ripr+` badge projection names as its
+/// source (RIPR-SPEC-0066 `source_report`).
+const REPO_RIPR_PLUS_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-plus-badge.json";
+
 pub(crate) fn render_check_with_config(
     output: &CheckOutput,
     format: &OutputFormat,
@@ -30,7 +39,8 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::RepoBadgeJson => {
-            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields => {
@@ -38,15 +48,18 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoBadgeShields => {
-            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format);
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format);
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => {
@@ -178,6 +191,22 @@ fn load_suppressions(
             )
         },
     )
+}
+
+/// Attaches the public projection to a repo-scoped `ripr+` badge, but only
+/// when a measured test-efficiency report exists. The neutral
+/// "needs test-efficiency" badge (no report on disk) is left unprojected: an
+/// unmeasurable `ripr+` must not be projected as a clean `0 actionable`
+/// public count. Diff-scoped `ripr+` badges are also left unchanged.
+fn maybe_attach_repo_plus_projection(
+    summary: &mut badge::BadgeSummary,
+    output: &CheckOutput,
+    format: &OutputFormat,
+) {
+    let report_present = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists();
+    if format.is_repo_scope() && report_present {
+        badge::attach_public_projection(summary, REPO_RIPR_PLUS_BADGE_SOURCE_REPORT);
+    }
 }
 
 fn ripr_summary_with_suppressions(
@@ -312,6 +341,7 @@ fn missing_test_efficiency_badge_summary(
         },
         warnings: vec![warning],
         preview_skipped: Vec::new(),
+        projection: None,
     }
 }
 
