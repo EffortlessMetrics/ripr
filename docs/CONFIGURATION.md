@@ -668,7 +668,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). `perl` parses for forward compatibility but is intentionally omitted from the valid-values list: the Perl adapter is `#[cfg(test)] mod perl;`, `lang-perl` is not in the default Cargo features, the production path router ignores `.pm`/`.pl`/`.t`/`.psgi`, and the pipeline returns a fail-closed stub even with the feature on. Perl's support tier is `scaffold` (see [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379), not `preview` — so advertising it here would be misleading. |
 
 `[languages]` controls runtime routing for the selected repository. The `ripr`
 binary must also be built with the corresponding adapter feature. The default

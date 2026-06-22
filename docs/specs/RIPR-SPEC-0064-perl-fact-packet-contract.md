@@ -16,15 +16,21 @@ Linked ADRs:
 
 Linked plan:
 
-- Perl repair routing campaign, future plan file
+- Campaign 31: Perl Repair-Routing Usable Alpha,
+  `docs/IMPLEMENTATION_CAMPAIGNS.md` → Campaign 31 (status: tracker).
+  Tracker manifest: `.ripr/goals/perl-repair-routing.toml`.
 
 Linked issues:
 
-- None yet
+- Umbrella: #1379 (Campaign 31: Perl Repair-Routing Usable Alpha).
+- Phase A (ripr-swarm): #1394, #1395, #1396.
+- Phase B producer (perl-lsp-swarm): perl-lsp-swarm#2591-#2595.
+- Phase C consumer (ripr-swarm): #1402-#1406.
+- Phase D product loop (ripr-swarm): #1407-#1411.
 
 Linked PRs:
 
-- None yet
+- Planning: #1412 (Campaign 31 restructured plan, scout-verified + 2x adversarially reviewed).
 
 Support-tier impact:
 

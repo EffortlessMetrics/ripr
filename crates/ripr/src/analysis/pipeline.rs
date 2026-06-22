@@ -357,6 +357,26 @@ mod tests {
         fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
     }
 
+    /// A root path that is guaranteed to fail file-system traversal on both
+    /// Linux and Windows: a path that points at a *file* (not a directory),
+    /// so any attempt to walk it as a repository root surfaces an error.
+    ///
+    /// The earlier form used `/nonexistent`, which on Windows is coerced to a
+    /// drive-relative path that the walker treats as an empty-but-valid root,
+    /// turning the expected error into an empty `Ok` result. Using a real file
+    /// as the root makes the failure mode identical across platforms.
+    fn invalid_root_path() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let file_path = std::env::temp_dir().join(format!("ripr-pipeline-not-a-dir-{stamp}.txt"));
+        // Create the file (not a directory). A subsequent directory walk of
+        // this path fails with ENOTDIR / "not a directory" on both platforms.
+        let _ = fs::write(&file_path, b"this is a file, not a directory");
+        file_path
+    }
+
     #[test]
     fn diff_pipeline_is_callable() {
         // Seam test: verify the function signature and basic error handling.
@@ -364,7 +384,7 @@ mod tests {
         // This test simply ensures the extracted function compiles and can be called.
         let result = run_diff_pipeline_with_oracle_policy(
             &AnalysisOptions {
-                root: PathBuf::from("/nonexistent"),
+                root: invalid_root_path(),
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,
@@ -384,7 +404,7 @@ mod tests {
         // Integration tests in analysis::tests verify actual pipeline output behavior.
         let result = run_repo_pipeline_with_oracle_policy(
             &AnalysisOptions {
-                root: PathBuf::from("/nonexistent"),
+                root: invalid_root_path(),
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,

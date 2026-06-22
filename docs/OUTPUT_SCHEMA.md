@@ -776,7 +776,15 @@ The evidence-first fields are additive in schema `0.2`:
   evidence, receipt evidence, stop conditions, must-not-change constraints, and
   safe repo-relative raw evidence refs. It is a check JSON, human CLI, SARIF,
   GitHub annotation, and gap-ledger Markdown advisory card, not a public repair
-  packet. The v1 card carries
+  packet. **Scope caveat (Campaign 31 #1379):** the renderer is real production
+  code, but in the current state it projects only from synthetic test findings —
+  no production Perl source can produce a finding that carries this card,
+  because the Perl adapter module is `#[cfg(test)] mod perl;`, the path router
+  ignores `.pm`/`.pl`/`.t`/`.psgi`, and the upstream `perl-lsp ripr-facts`
+  exporter does not exist yet. Perl's support tier is `scaffold`, not `preview`
+  (see [Support Tiers](status/SUPPORT_TIERS.md)). The card lights up for real
+  Perl source once Campaign 31 lands the production exporter + consumer bridge.
+  The v1 card carries
   `card_version`, `source`,
   `language`, `language_status`, `authority_boundary`, `surface_scope`,
   `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,

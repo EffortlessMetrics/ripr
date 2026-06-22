@@ -4102,6 +4102,22 @@ fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
     let mut suggestions = Vec::new();
     for id in &preview_detected {
         if id.is_available() && !enabled.contains(id) {
+            // Perl detects as a preview language (see language_status). In a
+            // default build, `LanguageId::Perl.is_available()` is
+            // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
+            // Perl anyway. This guard is defense-in-depth for the
+            // `--features lang-perl` build: even when the Cargo feature is ON,
+            // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
+            // production-routable, pipeline fail-closed stub). Suggesting
+            // `enabled = ["rust", "perl"]` in that build would mislead: the
+            // user would enable it and get zero analysis plus an explicit
+            // error. Detection at detect_languages() stays honest; only the
+            // enablement Tip is suppressed for Perl until Campaign 31 (#1379)
+            // lands the production bridge. TypeScript/Python are real preview
+            // adapters and remain Tip-eligible.
+            if matches!(id, LanguageId::Perl) {
+                continue;
+            }
             suggestions.push(format!(
                 "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
                 id.as_str(),
