@@ -1782,6 +1782,121 @@ fn perl_lsp_exporter_unavailable_stays_non_actionable() {
     assert!(unavailable.reason.contains("not found"));
 }
 
+// ── Typed runner-command validation (Campaign 31 PR 13, #1406) ──
+// These tests prove the positional matching is replaced by a typed model
+// that recognizes prove flags (-l/-lv/-Ilib/-v/etc.) before trailing test
+// paths. Red-then-green: these would FAIL before PR 13 because the old
+// code treated every arg after "prove" as a test path.
+
+#[test]
+fn typed_prove_accepts_lib_flag() {
+    let cmd = vec!["prove".to_string(), "-l".to_string(), "t/app.t".to_string()];
+    assert!(is_verify_command(&cmd), "prove -l t/app.t must validate");
+}
+
+#[test]
+fn typed_prove_accepts_lib_verbose_flag() {
+    let cmd = vec![
+        "prove".to_string(),
+        "-lv".to_string(),
+        "t/app.t".to_string(),
+    ];
+    assert!(is_verify_command(&cmd), "prove -lv t/app.t must validate");
+}
+
+#[test]
+fn typed_prove_accepts_include_flag() {
+    let cmd = vec![
+        "prove".to_string(),
+        "-Ilib".to_string(),
+        "t/app.t".to_string(),
+    ];
+    assert!(is_verify_command(&cmd), "prove -Ilib t/app.t must validate");
+}
+
+#[test]
+fn typed_prove_accepts_long_verbose_flag() {
+    let cmd = vec![
+        "prove".to_string(),
+        "--verbose".to_string(),
+        "t/app.t".to_string(),
+    ];
+    assert!(
+        is_verify_command(&cmd),
+        "prove --verbose t/app.t must validate"
+    );
+}
+
+#[test]
+fn typed_carton_exec_prove_accepts_lib_flag() {
+    let cmd = vec![
+        "carton".to_string(),
+        "exec".to_string(),
+        "prove".to_string(),
+        "-l".to_string(),
+        "t/app.t".to_string(),
+    ];
+    assert!(
+        is_verify_command(&cmd),
+        "carton exec prove -l t/app.t must validate"
+    );
+}
+
+#[test]
+fn typed_prove_rejects_unknown_flag() {
+    let cmd = vec!["prove".to_string(), "-Z".to_string(), "t/app.t".to_string()];
+    assert!(
+        !is_verify_command(&cmd),
+        "prove -Z t/app.t must reject (unknown flag, fail-closed)"
+    );
+}
+
+#[test]
+fn typed_prove_rejects_non_repo_relative_test_path() {
+    let cmd = vec![
+        "prove".to_string(),
+        "-l".to_string(),
+        "/etc/passwd".to_string(),
+    ];
+    assert!(
+        !is_verify_command(&cmd),
+        "prove -l /etc/passwd must reject (non-repo-relative path)"
+    );
+}
+
+#[test]
+fn typed_prove_rejects_no_test_path() {
+    let cmd = vec!["prove".to_string(), "-l".to_string()];
+    assert!(
+        !is_verify_command(&cmd),
+        "prove -l (no test path) must reject"
+    );
+}
+
+#[test]
+fn typed_prove_still_accepts_bare_command() {
+    let cmd = vec!["prove".to_string(), "t/app.t".to_string()];
+    assert!(
+        is_verify_command(&cmd),
+        "prove t/app.t (no flags) must still validate"
+    );
+}
+
+#[test]
+fn typed_prove_accepts_multiple_flags_and_paths() {
+    let cmd = vec![
+        "prove".to_string(),
+        "-l".to_string(),
+        "-v".to_string(),
+        "t/app.t".to_string(),
+        "t/discount.t".to_string(),
+    ];
+    assert!(
+        is_verify_command(&cmd),
+        "prove -l -v t/app.t t/discount.t must validate"
+    );
+}
+
 const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",

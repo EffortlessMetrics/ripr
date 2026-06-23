@@ -1662,13 +1662,81 @@ fn combined_confidence(confidences: impl IntoIterator<Item = Confidence>) -> Con
     }
 }
 
+/// Short flags `prove` accepts that are NOT test paths (Campaign 31 PR 13,
+/// #1406). These are the common include/verbose/recurse/lib flags used in
+/// CPAN-style workflows. Unknown short flags are rejected (fail-closed).
+const PROVE_SHORT_FLAGS: &[&str] = &[
+    "-l",  // include lib/ in @INC
+    "-lv", // -l + verbose
+    "-v",  // verbose
+    "-r",  // recurse
+    "-b",  // blib (build directory)
+    "-s",  // shuffle
+    "-q",  // quiet
+    "-Q",  // very quiet
+    "-f",  // force
+];
+
+/// Long flags `prove` accepts.
+const PROVE_LONG_FLAGS: &[&str] = &[
+    "--verbose",
+    "--lib",
+    "--blib",
+    "--recurse",
+    "--merge",
+    "--shuffle",
+    "--jobs",
+    "--state",
+    "--ext",
+    "--timer",
+    "--comments",
+];
+
+/// Value-option prefixes for `prove` (these consume the next arg as a value).
+const PROVE_VALUE_OPTS: &[&str] = &["-I", "-M", "-j", "--include=", "--module=", "--state="];
+
+/// Split `prove`'s trailing args into (flags, test_paths). Flags are the
+/// recognized options; test_paths are the remaining positional args that must
+/// each be a safe `t/*.t` path. Returns `None` if an unrecognized flag is
+/// encountered (fail-closed: reject-by-default for unknown short flags).
+///
+/// This replaces the positional matching that treated every arg after `prove`
+/// as a test path — which rejected common commands like `prove -l t/app.t`.
+/// (Campaign 31 PR 13, ripr-swarm#1406.)
+fn split_prove_args(args: &[String]) -> Option<(Vec<String>, Vec<String>)> {
+    let mut flags = Vec::new();
+    let mut test_paths = Vec::new();
+    for arg in args {
+        if PROVE_SHORT_FLAGS.contains(&arg.as_str()) || PROVE_LONG_FLAGS.contains(&arg.as_str()) {
+            flags.push(arg.clone());
+        } else if PROVE_VALUE_OPTS
+            .iter()
+            .any(|prefix| arg.starts_with(prefix))
+        {
+            // Value option: either -Ilib (inline) or --include=lib (= form).
+            flags.push(arg.clone());
+        } else if arg.starts_with('-') {
+            // Unknown short/long flag — reject (fail-closed).
+            return None;
+        } else {
+            // Positional — must be a test path.
+            test_paths.push(arg.clone());
+        }
+    }
+    Some((flags, test_paths))
+}
+
 fn is_verify_command(command: &[String]) -> bool {
     if command.iter().any(|arg| !is_safe_command_arg(arg)) {
         return false;
     }
 
     match command {
-        [program, test_paths @ ..] if program == "prove" => {
+        // prove [flags] <test_paths...> — typed flag recognition (PR 13, #1406).
+        [program, trailing @ ..] if program == "prove" => {
+            let Some((_flags, test_paths)) = split_prove_args(trailing) else {
+                return false;
+            };
             !test_paths.is_empty() && test_paths.iter().all(|path| is_safe_test_path(path))
         }
         [program, subcommand, test_paths @ ..] if program == "yath" && subcommand == "test" => {
@@ -1677,6 +1745,11 @@ fn is_verify_command(command: &[String]) -> bool {
         [program, subcommand, runner, test_paths @ ..]
             if program == "carton" && subcommand == "exec" && runner == "prove" =>
         {
+            // carton exec prove [flags] <test_paths...> — delegate to the
+            // typed prove parser for the inner prove args.
+            let Some((_flags, test_paths)) = split_prove_args(test_paths) else {
+                return false;
+            };
             !test_paths.is_empty() && test_paths.iter().all(|path| is_safe_test_path(path))
         }
         [program, subcommand, test_flag, test_path]
