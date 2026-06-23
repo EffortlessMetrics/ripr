@@ -583,7 +583,18 @@ impl PerlFactPacket {
         let related = self.related_test_evidence_for_change(change_id);
         let evidence = related
             .iter()
-            .find(|evidence| evidence.class == ExposureClass::WeaklyExposed)
+            // Campaign 31 PR 12 (#1405): gate by relation KIND, not just class.
+            // Only DirectOwnerCall / HelperCall are eligible for strict
+            // actionability. PackageReference / TestNameMatch / FileProximity
+            // are advisory-only (they provide context but not proof the test
+            // observes the changed owner). Unknown is a limitation.
+            .find(|evidence| {
+                evidence.class == ExposureClass::WeaklyExposed
+                    && matches!(
+                        evidence.relation_kind,
+                        RelationKind::DirectOwnerCall | RelationKind::HelperCall
+                    )
+            })
             .ok_or(PerlActionabilityBlocker::MissingStrongRelatedEvidence)?;
         if !evidence.confidence.is_strict_actionable() {
             return Err(PerlActionabilityBlocker::LowConfidence);
@@ -976,10 +987,25 @@ impl PerlFactPacket {
 
         let owner = self.canonical_owner_identity(&change.owner_id)?;
         let behavior_kind = change.behavior_hint.as_str().to_string();
+        // Campaign 31 PR 12 (#1405): use a concrete missing discriminator,
+        // NOT the generic `default_missing_discriminator()` enum label.
+        // The concrete discriminator must come from the change fact (which
+        // the perl-lsp producer emits in PR 7, e.g. "$amount == $threshold").
+        // If the change fact doesn't carry a concrete discriminator, fall
+        // back to the generic label + emit a note that the gap record is
+        // not strongly actionable (the relation gate + the generic
+        // discriminator together ensure conservative behavior).
         let missing_discriminator = change
-            .behavior_hint
-            .default_missing_discriminator()
-            .to_string();
+            .changed_text_digest
+            .as_str()
+            .strip_prefix("discriminator:")
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                change
+                    .behavior_hint
+                    .default_missing_discriminator()
+                    .to_string()
+            });
         let id = canonical_perl_gap_id([
             owner.id.as_str(),
             behavior_kind.as_str(),

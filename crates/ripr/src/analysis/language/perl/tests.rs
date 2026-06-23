@@ -1782,6 +1782,69 @@ fn perl_lsp_exporter_unavailable_stays_non_actionable() {
     assert!(unavailable.reason.contains("not found"));
 }
 
+// ── Relation-kind gating tests (Campaign 31 PR 12, #1405) ──
+// These prove that strict_actionability_for_change now gates by relation
+// KIND, not just exposure class. Only DirectOwnerCall / HelperCall relations
+// are eligible; PackageReference / TestNameMatch / FileProximity are
+// advisory-only (they fail the find() and return MissingStrongRelatedEvidence).
+
+#[test]
+fn relation_gate_accepts_direct_owner_call() {
+    // Build a packet where the related test evidence has a DirectOwnerCall
+    // relation kind — this must pass the strict-actionability gate.
+    let adapter = PerlAdapter;
+    let packet_text = EXACT_RETURN_PACKET.replace(
+        "\"relation_kind\": \"file_proximity\"",
+        "\"relation_kind\": \"direct_owner_call\"",
+    );
+    let result_parse = adapter.consume_fact_packet(&packet_text);
+    assert!(result_parse.is_ok(), "valid packet must parse");
+    let packet = match result_parse {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let ctx = complete_perl_actionability_context();
+    let result = packet.strict_actionability_for_change("change:lib/My/App.pm:15:return", &ctx);
+    // DirectOwnerCall should pass the relation gate (may still fail on other
+    // gates, but NOT on MissingStrongRelatedEvidence).
+    assert!(
+        result.is_ok()
+            || !matches!(
+                result.as_ref().err(),
+                Some(PerlActionabilityBlocker::MissingStrongRelatedEvidence)
+            ),
+        "DirectOwnerCall must not be rejected for MissingStrongRelatedEvidence"
+    );
+}
+
+#[test]
+fn relation_gate_rejects_file_proximity_only() {
+    // The reference packet uses DirectOwnerCall relations. To test the gate,
+    // modify the relation_kind to file_proximity — this must fail strict
+    // actionability with MissingStrongRelatedEvidence.
+    let adapter = PerlAdapter;
+    let packet_text = EXACT_RETURN_PACKET.replace(
+        "\"relation_kind\": \"direct_owner_call\"",
+        "\"relation_kind\": \"file_proximity\"",
+    );
+    let result_parse = adapter.consume_fact_packet(&packet_text);
+    assert!(result_parse.is_ok(), "valid packet must parse");
+    let packet = match result_parse {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let ctx = complete_perl_actionability_context();
+    let result = packet.strict_actionability_for_change("change:lib/My/App.pm:15:return", &ctx);
+    assert!(
+        matches!(
+            result.as_ref().err(),
+            Some(PerlActionabilityBlocker::MissingStrongRelatedEvidence)
+        ),
+        "file_proximity-only relation must fail strict actionability (advisory-only): {:?}",
+        result
+    );
+}
+
 // ── Typed runner-command validation (Campaign 31 PR 13, #1406) ──
 // These tests prove the positional matching is replaced by a typed model
 // that recognizes prove flags (-l/-lv/-Ilib/-v/etc.) before trailing test
