@@ -26,6 +26,14 @@ impl PerlAdapter {
                 packet.schema_version
             ));
         }
+        // Production ingestion boundary (Campaign 31 PR 9, ripr-swarm#1402):
+        // validate the packet as untrusted production input. Each check fails
+        // closed to a named error string; no silent acceptance of bad input.
+        // The fixture-only parser checked only schema_version; this boundary
+        // adds 9 integrity checks. Under-emit before over-emit: a false
+        // rejection (good packet rejected) is a usability bug; a false
+        // acceptance (bad packet trusted) is an honesty bug. Prefer the former.
+        packet.validate_ingestion()?;
         Ok(packet)
     }
 }
@@ -175,6 +183,174 @@ struct PerlFactPacket {
 }
 
 impl PerlFactPacket {
+    /// Production ingestion boundary (Campaign 31 PR 9, ripr-swarm#1402).
+    ///
+    /// Validates this packet as untrusted production input. Each check fails
+    /// closed to a named error; no silent acceptance. Called by
+    /// `PerlAdapter::consume_fact_packet` after the schema_version check.
+    fn validate_ingestion(&self) -> Result<(), String> {
+        // 1. Packet status must be Complete or Partial (not Unavailable —
+        //    an unavailable packet carries no usable facts).
+        if matches!(self.packet_status, PacketStatus::Unavailable) {
+            return Err(
+                "ingestion: packet_status is `unavailable`; no facts to consume".to_string(),
+            );
+        }
+
+        // 2. Producer identity: must be perl-lsp.
+        if self.producer.name != PERL_LSP_FACT_EXPORTER {
+            return Err(format!(
+                "ingestion: producer name `{}` does not match expected `{PERL_LSP_FACT_EXPORTER}`",
+                self.producer.name
+            ));
+        }
+
+        // 3. ID uniqueness: every fact ID must be unique within its array.
+        //    Duplicate IDs create ambiguous references.
+        let id_checks: [(&str, Vec<&str>); 10] = [
+            (
+                "files",
+                self.files.iter().map(|f| f.file_id.as_str()).collect(),
+            ),
+            (
+                "owners",
+                self.owners.iter().map(|o| o.owner_id.as_str()).collect(),
+            ),
+            (
+                "changes",
+                self.changes.iter().map(|c| c.change_id.as_str()).collect(),
+            ),
+            (
+                "tests",
+                self.tests.iter().map(|t| t.test_id.as_str()).collect(),
+            ),
+            (
+                "oracles",
+                self.oracles.iter().map(|o| o.oracle_id.as_str()).collect(),
+            ),
+            (
+                "relations",
+                self.relations
+                    .iter()
+                    .map(|r| r.relation_id.as_str())
+                    .collect(),
+            ),
+            (
+                "dynamic_boundaries",
+                self.dynamic_boundaries
+                    .iter()
+                    .map(|b| b.boundary_id.as_str())
+                    .collect(),
+            ),
+            (
+                "verify_commands",
+                self.verify_commands
+                    .iter()
+                    .map(|v| v.command_id.as_str())
+                    .collect(),
+            ),
+            (
+                "limitations",
+                self.limitations
+                    .iter()
+                    .map(|l| l.limitation_id.as_str())
+                    .collect(),
+            ),
+            (
+                "provenance",
+                self.provenance
+                    .iter()
+                    .map(|p| p.provenance_id.as_str())
+                    .collect(),
+            ),
+        ];
+        for (field, ids) in &id_checks {
+            let mut seen = BTreeSet::new();
+            for id in ids {
+                if !seen.insert(*id) {
+                    return Err(format!(
+                        "ingestion: duplicate {field} ID `{id}` — IDs must be unique"
+                    ));
+                }
+            }
+        }
+
+        // 4. Referential integrity: every owner_id/change_id/test_id/oracle_id
+        //    referenced by a relation/verify_command must exist.
+        let owner_ids: BTreeSet<&str> = self.owners.iter().map(|o| o.owner_id.as_str()).collect();
+        let change_ids: BTreeSet<&str> =
+            self.changes.iter().map(|c| c.change_id.as_str()).collect();
+        let test_ids: BTreeSet<&str> = self.tests.iter().map(|t| t.test_id.as_str()).collect();
+        let oracle_ids: BTreeSet<&str> =
+            self.oracles.iter().map(|o| o.oracle_id.as_str()).collect();
+        for relation in &self.relations {
+            if !change_ids.contains(relation.change_id.as_str()) {
+                return Err(format!(
+                    "ingestion: relation `{}` references unknown change_id `{}`",
+                    relation.relation_id, relation.change_id
+                ));
+            }
+            if !owner_ids.contains(relation.owner_id.as_str()) {
+                return Err(format!(
+                    "ingestion: relation `{}` references unknown owner_id `{}`",
+                    relation.relation_id, relation.owner_id
+                ));
+            }
+            if !test_ids.contains(relation.test_id.as_str()) {
+                return Err(format!(
+                    "ingestion: relation `{}` references unknown test_id `{}`",
+                    relation.relation_id, relation.test_id
+                ));
+            }
+            if let Some(ref oracle_id) = relation.oracle_id
+                && !oracle_ids.contains(oracle_id.as_str())
+            {
+                return Err(format!(
+                    "ingestion: relation `{}` references unknown oracle_id `{oracle_id}`",
+                    relation.relation_id
+                ));
+            }
+        }
+
+        // 5. Change referential integrity: every change's owner_id + file_id
+        //    must exist.
+        let file_ids: BTreeSet<&str> = self.files.iter().map(|f| f.file_id.as_str()).collect();
+        for change in &self.changes {
+            if !file_ids.contains(change.file_id.as_str()) {
+                return Err(format!(
+                    "ingestion: change `{}` references unknown file_id `{}`",
+                    change.change_id, change.file_id
+                ));
+            }
+            if !owner_ids.contains(change.owner_id.as_str()) {
+                return Err(format!(
+                    "ingestion: change `{}` references unknown owner_id `{}`",
+                    change.change_id, change.owner_id
+                ));
+            }
+        }
+
+        // 6. Oversized packet guard: reject packets with absurdly large arrays
+        //    (resource-exhaustion protection).
+        const MAX_FACTS_PER_ARRAY: usize = 10_000;
+        for (field, count) in [
+            ("files", self.files.len()),
+            ("owners", self.owners.len()),
+            ("changes", self.changes.len()),
+            ("tests", self.tests.len()),
+            ("oracles", self.oracles.len()),
+            ("relations", self.relations.len()),
+        ] {
+            if count > MAX_FACTS_PER_ARRAY {
+                return Err(format!(
+                    "ingestion: {field} array has {count} entries; max is {MAX_FACTS_PER_ARRAY}"
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     fn file(&self, file_id: &str) -> Option<&FileFact> {
         self.files.iter().find(|file| file.file_id == file_id)
     }

@@ -1897,6 +1897,97 @@ fn typed_prove_accepts_multiple_flags_and_paths() {
     );
 }
 
+// ── Ingestion boundary tests (Campaign 31 PR 9, #1402) ──
+// These prove the 9 integrity checks reject bad packets. Each test
+// constructs a modified packet (from the valid EXACT_RETURN_PACKET) that
+// violates one check, then asserts consume_fact_packet returns Err.
+
+#[test]
+fn ingestion_rejects_unavailable_packet_status() {
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"packet_status\": \"complete\"",
+        "\"packet_status\": \"unavailable\"",
+    );
+    let adapter = PerlAdapter;
+    let result = adapter.consume_fact_packet(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(
+        result.is_err(),
+        "unavailable packet_status must be rejected"
+    );
+    assert!(
+        err.contains("packet_status is `unavailable`"),
+        "error must name the check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_wrong_producer_name() {
+    let packet =
+        EXACT_RETURN_PACKET.replace("\"name\": \"perl-lsp\"", "\"name\": \"bogus-producer\"");
+    let adapter = PerlAdapter;
+    let result = adapter.consume_fact_packet(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "wrong producer name must be rejected");
+    assert!(
+        err.contains("producer name"),
+        "error must name the producer check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_dangling_relation_owner_id() {
+    // Change ONLY the relation's owner_id to nonexistent, leaving the owners
+    // array entry intact. Use replacen on the owner_id value string.
+    let needle = "perl:lib/My/App.pm::My::App::discount";
+    let count = EXACT_RETURN_PACKET.matches(needle).count();
+    // Replace the LAST occurrence (the relation's owner_id) with a bogus value.
+    let packet = EXACT_RETURN_PACKET.replacen(needle, "perl:NONEXISTENT::Owner", count);
+    // Restore the earlier occurrences (owners array + change's owner_id) back.
+    let packet = packet.replacen("perl:NONEXISTENT::Owner", needle, count - 1);
+    let adapter = PerlAdapter;
+    let result = adapter.consume_fact_packet(&packet);
+    assert!(
+        result.is_err(),
+        "dangling relation owner_id must be rejected"
+    );
+}
+
+#[test]
+fn ingestion_rejects_dangling_relation_change_id() {
+    // Change ONLY the relation's change_id to nonexistent, leaving the changes
+    // array entry intact. Use replacen to replace just the last occurrence.
+    let needle = "\"change_id\": \"change:lib/My/App.pm:15:return\"";
+    let count = EXACT_RETURN_PACKET.matches(needle).count();
+    // Replace the LAST occurrence (the relation ref) with a bogus value.
+    let packet =
+        EXACT_RETURN_PACKET.replacen(needle, "\"change_id\": \"change:NONEXISTENT\"", count);
+    // Restore the earlier occurrences (changes array) back to original.
+    let packet = packet.replacen("\"change_id\": \"change:NONEXISTENT\"", needle, count - 1);
+    let adapter = PerlAdapter;
+    let result = adapter.consume_fact_packet(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(
+        result.is_err(),
+        "dangling relation change_id must be rejected"
+    );
+    assert!(
+        err.contains("unknown change_id"),
+        "error must name the referential-integrity check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_accepts_well_formed_reference_packet() {
+    let adapter = PerlAdapter;
+    let result = adapter.consume_fact_packet(EXACT_RETURN_PACKET);
+    assert!(
+        result.is_ok(),
+        "the well-formed reference packet must pass all ingestion checks: {:?}",
+        result.err()
+    );
+}
+
 const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",
