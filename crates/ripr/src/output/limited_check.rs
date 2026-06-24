@@ -77,6 +77,7 @@ mod tests {
             mode: Mode::Draft,
             format: OutputFormat::Json,
             include_unchanged_tests: true,
+            perl_facts_path: None,
         }
     }
 

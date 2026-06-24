@@ -3390,6 +3390,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
             }
+            "--perl-facts" => {
+                i += 1;
+                input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -3641,6 +3645,7 @@ fn run_diff_check_from_file(
         mode: options.mode.clone(),
         format: OutputFormat::Json,
         include_unchanged_tests: options.include_unchanged_tests,
+        perl_facts_path: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)

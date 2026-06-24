@@ -13,6 +13,6 @@ pub(super) fn analysis_options_from_input_and_config(
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
         resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
-        perl_facts_path: None,
+        perl_facts_path: input.perl_facts_path.clone(),
     }
 }

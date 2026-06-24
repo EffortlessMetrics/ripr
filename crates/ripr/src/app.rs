@@ -45,6 +45,11 @@ pub struct CheckInput {
     pub format: OutputFormat,
     /// Whether unchanged tests may still be used as static evidence.
     pub include_unchanged_tests: bool,
+    /// Path to a `ripr-perl-facts-v1` packet for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
 }
 
 impl Default for CheckInput {
@@ -56,6 +61,7 @@ impl Default for CheckInput {
             mode: Mode::Draft,
             format: OutputFormat::Human,
             include_unchanged_tests: true,
+            perl_facts_path: None,
         }
     }
 }

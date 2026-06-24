@@ -4,6 +4,7 @@ use crate::analysis::{
     run_worktree_analysis_with_oracle_policy,
 };
 use crate::config::RiprConfig;
+use crate::domain::LanguageId;
 use crate::domain::Summary;
 
 mod options_builder;
@@ -95,22 +96,25 @@ fn run_check(
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
     let options = options_builder::analysis_options_from_input_and_config(&input, config);
+
+    // Build the language list from config. When --perl-facts is provided,
+    // automatically add Perl to the enabled list (the user explicitly opted in
+    // by supplying a packet path). Campaign 31, #1429.
+    let mut languages = config.languages().enabled().to_vec();
+    if options.perl_facts_path.is_some() && !languages.contains(&LanguageId::Perl) {
+        languages.push(LanguageId::Perl);
+    }
+
     let analysis = match mode {
-        AnalysisMode::Diff => run_analysis_with_oracle_policy(
-            &options,
-            config.oracles(),
-            config.languages().enabled(),
-        )?,
-        AnalysisMode::Worktree => run_worktree_analysis_with_oracle_policy(
-            &options,
-            config.oracles(),
-            config.languages().enabled(),
-        )?,
-        AnalysisMode::Repo => run_repo_analysis_with_oracle_policy(
-            &options,
-            config.oracles(),
-            config.languages().enabled(),
-        )?,
+        AnalysisMode::Diff => {
+            run_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
+        }
+        AnalysisMode::Worktree => {
+            run_worktree_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
+        }
+        AnalysisMode::Repo => {
+            run_repo_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
+        }
     };
 
     Ok(output_builder::check_output_from_analysis(input, analysis))
