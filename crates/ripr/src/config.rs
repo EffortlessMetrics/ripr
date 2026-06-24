@@ -15,7 +15,8 @@ mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, OraclePolicy, RiprConfig, SeverityConfig, TypescriptConfig,
+    CheckInputExplicit, ConfigSeverity, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig,
+    TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -222,6 +223,14 @@ impl RiprConfig {
                 resolve_tsconfig_paths: ts.resolve_tsconfig_paths.unwrap_or(false),
             };
         }
+        if let Some(perl) = raw.perl {
+            config.perl = PerlConfig {
+                producer: perl.producer,
+                executable: perl.executable.map(PathBuf::from),
+                timeout_ms: perl.timeout_ms.unwrap_or(30_000),
+                cache_dir: perl.cache_dir.map(PathBuf::from),
+            };
+        }
         Ok(config)
     }
 }
@@ -302,6 +311,7 @@ struct RawConfig {
     languages: Option<RawLanguagesConfig>,
     profiles: Option<RawProfilesConfig>,
     typescript: Option<RawTypescriptConfig>,
+    perl: Option<RawPerlConfig>,
 }
 
 #[derive(Deserialize)]
@@ -314,6 +324,15 @@ struct RawTypescriptConfig {
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPerlConfig {
+    producer: Option<String>,
+    executable: Option<String>,
+    timeout_ms: Option<u64>,
+    cache_dir: Option<String>,
 }
 
 #[derive(Deserialize)]

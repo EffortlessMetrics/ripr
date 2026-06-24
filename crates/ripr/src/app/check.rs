@@ -6,6 +6,8 @@ use crate::analysis::{
 use crate::config::RiprConfig;
 use crate::domain::LanguageId;
 use crate::domain::Summary;
+use std::path::PathBuf;
+use std::process::Command;
 
 mod options_builder;
 mod output_builder;
@@ -91,10 +93,23 @@ enum AnalysisMode {
 }
 
 fn run_check(
-    input: CheckInput,
+    mut input: CheckInput,
     config: &RiprConfig,
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
+    // Managed producer mode (Campaign 31 Phase D, #1407): when
+    // [perl] producer = "perllsp", invoke the perl-lsp binary to generate
+    // a fact packet, then consume it automatically. NO silent invocation
+    // unless explicitly configured.
+    let perl_config = config.perl();
+    if let Some(producer) = perl_config.producer()
+        && producer == "perllsp"
+        && input.perl_facts_path.is_none()
+    {
+        let packet_path = invoke_perl_lsp_producer(perl_config, &input)?;
+        input.perl_facts_path = Some(packet_path);
+    }
+
     let options = options_builder::analysis_options_from_input_and_config(&input, config);
 
     // Build the language list from config. When --perl-facts is provided,
@@ -118,6 +133,93 @@ fn run_check(
     };
 
     Ok(output_builder::check_output_from_analysis(input, analysis))
+}
+
+/// Invoke the `perl-lsp` binary to generate a fact packet.
+///
+/// Managed producer mode (Campaign 31 Phase D, #1407). Invokes:
+/// ```text
+/// perllsp --ripr-facts --ripr-schema ripr-perl-facts-v1 --ripr-root <root>
+///   --ripr-out <cache_dir>/<hash>.json
+/// ```
+///
+/// Captures stderr for diagnostics. Returns the packet path on success.
+fn invoke_perl_lsp_producer(
+    perl_config: &crate::config::PerlConfig,
+    input: &CheckInput,
+) -> Result<PathBuf, String> {
+    let executable = perl_config
+        .executable()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("perllsp"));
+
+    let cache_dir = perl_config
+        .cache_dir()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("target/ripr/perl-facts"));
+
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("failed to create Perl facts cache dir: {e}"))?;
+
+    let root_str = input.root.display().to_string();
+    let packet_hash = format!("{:016x}", simple_hash(&root_str));
+    let packet_path = cache_dir.join(format!("{packet_hash}.json"));
+
+    let _timeout_ms = perl_config.timeout_ms();
+    let result = Command::new(&executable)
+        .arg("--ripr-facts")
+        .arg("--ripr-schema")
+        .arg("ripr-perl-facts-v1")
+        .arg("--ripr-root")
+        .arg(&root_str)
+        .arg("--ripr-out")
+        .arg(packet_path.display().to_string())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    // Note: full timeout enforcement (spawned-thread + join_timeout) lands
+    // with the process-policy gate. For now the producer runs without a
+    // timeout; the timeout_ms config is read but not enforced. This is safe
+    // because managed mode is explicit opt-in only.
+
+    match result {
+        Ok(output) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!(
+                    "perllsp ripr-facts failed (exit {:?}): {stderr}",
+                    output.status.code()
+                ));
+            }
+            if !packet_path.exists() {
+                return Err(format!(
+                    "perllsp ripr-facts completed but packet not found at {}",
+                    packet_path.display()
+                ));
+            }
+            Ok(packet_path)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(format!(
+            "perllsp ripr-facts timed out after {_timeout_ms}ms"
+        )),
+        Err(e) => Err(format!(
+            "failed to invoke perllsp at {}: {e}",
+            executable.display()
+        )),
+    }
+}
+
+/// Simple deterministic hash for cache file naming (not cryptographic).
+fn simple_hash(s: &str) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in s.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 #[cfg(test)]
