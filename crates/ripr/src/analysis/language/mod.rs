@@ -22,7 +22,7 @@
 
 mod adapter;
 mod id;
-#[cfg(test)]
+#[cfg(feature = "lang-perl")]
 mod perl;
 #[cfg(feature = "lang-python")]
 mod python;
@@ -33,6 +33,8 @@ mod typescript;
 
 pub(crate) use adapter::{LanguageAdapter, LanguageDiffResult, LanguageRepoResult};
 pub(crate) use id::LanguageId;
+#[cfg(feature = "lang-perl")]
+pub(crate) use perl::PerlAdapter;
 #[cfg(feature = "lang-python")]
 pub(crate) use python::PythonAdapter;
 pub(crate) use router::route;

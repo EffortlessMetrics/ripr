@@ -76,6 +76,11 @@ pub struct AnalysisOptions {
     ///
     /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
     pub resolve_tsconfig_paths: bool,
+    /// Path to a `ripr-perl-facts-v1` packet file for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
 }
 
 /// Advisory record for one compiled preview-language adapter whose files are
@@ -326,6 +331,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -343,6 +349,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Instant,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -391,6 +398,7 @@ fn premium_customer_gets_discount() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if out.findings.is_empty() {
@@ -494,6 +502,7 @@ fn test_with_predicate() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         for finding in &out.findings {
@@ -557,6 +566,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -570,6 +580,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if repo_out.findings.is_empty() {
