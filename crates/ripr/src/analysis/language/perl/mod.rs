@@ -76,14 +76,19 @@ impl LanguageAdapter for PerlAdapter {
         })?;
         let packet = self.consume_fact_packet(&packet_text)?;
 
-        // C2 (ripr-swarm#1429): the packet→Finding mapping is not yet
-        // implemented. Return Err so the pipeline non-abort contract records
-        // this as `unavailable` in language_runs — NOT Ok(empty), which would
-        // look like a successful clean Perl analysis.
-        Err(
-            "Perl fact packet parsed and validated, but packet-to-Finding conversion is not yet implemented (C2, ripr-swarm#1429)"
-                .to_string(),
-        )
+        // C2: convert the packet into Findings.
+        let findings = packet_to_findings(&packet);
+        let changed_files = packet
+            .changes
+            .iter()
+            .map(|c| c.file_id.clone())
+            .collect::<BTreeSet<_>>()
+            .len();
+
+        Ok(LanguageDiffResult {
+            findings,
+            changed_files,
+        })
     }
 
     fn analyze_repo(
@@ -106,12 +111,283 @@ impl LanguageAdapter for PerlAdapter {
         })?;
         let packet = self.consume_fact_packet(&packet_text)?;
 
-        // C2: same as analyze_diff — mapper not yet implemented.
-        Err(
-            "Perl fact packet parsed and validated, but packet-to-Finding conversion is not yet implemented (C2, ripr-swarm#1429)"
-                .to_string(),
-        )
+        let findings = packet_to_findings(&packet);
+        let production_files = packet
+            .files
+            .iter()
+            .filter(|f| f.role.iter().any(|r| matches!(r, FileRole::Source)))
+            .count();
+
+        Ok(LanguageRepoResult {
+            findings,
+            production_files,
+        })
     }
+}
+
+/// Convert a validated PerlFactPacket into ripr domain Findings.
+///
+/// C2 (ripr-swarm#1429): for each change in the packet, build a Finding
+/// carrying the evidence the perl_gap_record_for projection expects. The
+/// adapter NEVER sets repair_packet_ready itself — that's the shared
+/// validator's job via perl_gap_record_for.
+///
+/// Packets that are partial, stale, heuristic-only, dynamically blocked,
+/// misaligned, low-confidence or missing provenance produce advisory
+/// findings or named-limitation findings, never actionable ones.
+fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
+    use crate::domain::{
+        ActivationEvidence, Confidence as RiprConfidence, DeltaKind, ExposureClass,
+        FindingCanonicalGap, LanguageId as DomainLanguageId, LanguageStatus,
+        MissingDiscriminatorFact, OracleKind as DomainOracleKind,
+        OracleStrength as DomainOracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest,
+        RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, SymbolId,
+    };
+
+    let mut findings = Vec::new();
+
+    for change in &packet.changes {
+        // Find the owning entity.
+        let Some(owner) = packet.owner(&change.owner_id) else {
+            continue;
+        };
+        // Find the source file.
+        let Some(file) = packet.file(&change.file_id) else {
+            continue;
+        };
+
+        // Check for blocking dynamic boundaries.
+        let has_boundary = packet
+            .dynamic_boundaries
+            .iter()
+            .any(|b| b.file_id == change.file_id);
+
+        // Find related-test evidence for this change.
+        let related: Vec<RelatedTest> = packet
+            .relations
+            .iter()
+            .filter(|r| r.change_id == change.change_id)
+            .filter_map(|relation| {
+                let test = packet.test(&relation.test_id)?;
+                let oracle = relation
+                    .oracle_id
+                    .as_ref()
+                    .and_then(|oid| packet.oracle(oid));
+                Some(RelatedTest {
+                    name: test.name.clone(),
+                    file: std::path::PathBuf::from(&file.path),
+                    line: 1,
+                    oracle: oracle.map(|o| o.expression.clone().unwrap_or_default()),
+                    oracle_kind: oracle
+                        .map(|o| match o.kind {
+                            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
+                            OracleKind::PredicateBoundaryAssertion => {
+                                DomainOracleKind::RelationalCheck
+                            }
+                            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
+                            _ => DomainOracleKind::Unknown,
+                        })
+                        .unwrap_or(DomainOracleKind::Unknown),
+                    oracle_strength: oracle
+                        .map(|o| match o.strength {
+                            OracleStrength::StrongExact => DomainOracleStrength::Strong,
+                            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
+                            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
+                            _ => DomainOracleStrength::Unknown,
+                        })
+                        .unwrap_or(DomainOracleStrength::Unknown),
+                    relation_reason: None,
+                    relation_confidence: None,
+                })
+            })
+            .collect();
+
+        // Determine exposure class.
+        let class = if has_boundary {
+            ExposureClass::StaticUnknown
+        } else if related.is_empty() {
+            ExposureClass::NoStaticPath
+        } else {
+            ExposureClass::WeaklyExposed
+        };
+
+        // Build evidence strings (perl_*: keys the projection reads).
+        let mut evidence = vec![
+            format!(
+                "perl_repair_kind: {}",
+                change.behavior_hint.repair_kind().unwrap_or("unknown")
+            ),
+            format!(
+                "perl_target_test_shape: {}",
+                change.behavior_hint.default_assertion_shape()
+            ),
+            format!(
+                "perl_suggested_test_location: {}",
+                related
+                    .first()
+                    .map(|t| format!("{}::{}", t.file.display(), t.name))
+                    .unwrap_or_default()
+            ),
+            format!(
+                "perl_suggested_assertion: {}",
+                change.behavior_hint.default_missing_discriminator()
+            ),
+        ];
+
+        // Add verify command evidence if available.
+        if let Some(verify_cmd) = packet
+            .verify_commands
+            .iter()
+            .find(|v| v.scope == CommandScope::Test)
+        {
+            evidence.push(format!(
+                "perl_verify_command: {}",
+                verify_cmd.argv.join(" ")
+            ));
+        }
+
+        // Missing discriminator.
+        let missing_discriminators = vec![MissingDiscriminatorFact {
+            value: change
+                .behavior_hint
+                .default_missing_discriminator()
+                .to_string(),
+            reason: format!(
+                "changed Perl {} at {} lacks a concrete discriminator",
+                change.behavior_hint.as_str(),
+                file.path
+            ),
+            flow_sink: None,
+        }];
+
+        // Canonical gap.
+        let canonical_gap = FindingCanonicalGap {
+            id: format!(
+                "gap:perl:{}:{}:{}",
+                file.path,
+                owner.name.as_deref().unwrap_or("unknown"),
+                change.behavior_hint.as_str()
+            ),
+            language: "perl".to_string(),
+            file: file.path.clone(),
+            owner: owner.name.clone().unwrap_or_default(),
+            behavior_kind: change.behavior_hint.as_str().to_string(),
+            probe_kind: change.behavior_hint.default_assertion_shape().to_string(),
+            normalized_discriminator: change
+                .behavior_hint
+                .default_missing_discriminator()
+                .to_string(),
+        };
+
+        // Build the Finding.
+        let probe_id = format!(
+            "probe:{}:{}:{}:perl",
+            file.path,
+            owner.range.start_line,
+            change.behavior_hint.as_str()
+        );
+        let probe = Probe {
+            id: ProbeId(probe_id.clone()),
+            location: SourceLocation::new(
+                std::path::PathBuf::from(&file.path),
+                owner.range.start_line as usize,
+                owner.range.start_column as usize,
+            ),
+            owner: owner
+                .name
+                .as_ref()
+                .map(|n| SymbolId(format!("perl:{}::{}", file.path, n))),
+            family: match change.behavior_hint {
+                BehaviorHint::PredicateBoundary => ProbeFamily::Predicate,
+                BehaviorHint::ReturnValue => ProbeFamily::ReturnValue,
+                BehaviorHint::ExceptionPath => ProbeFamily::ErrorPath,
+                _ => ProbeFamily::StaticUnknown,
+            },
+            delta: DeltaKind::Value,
+            before: None,
+            after: None,
+            expression: change.behavior_hint.as_str().to_string(),
+            expected_sinks: vec![
+                change
+                    .behavior_hint
+                    .default_missing_discriminator()
+                    .to_string(),
+            ],
+            required_oracles: vec![change.behavior_hint.default_assertion_shape().to_string()],
+        };
+
+        let reach = StageEvidence::new(
+            if related.is_empty() {
+                StageState::No
+            } else {
+                StageState::Yes
+            },
+            RiprConfidence::Medium,
+            "Perl fact packet relation evidence",
+        );
+        let unknown = StageEvidence::new(
+            StageState::Unknown,
+            RiprConfidence::Low,
+            "Perl preview adapter does not model infection/propagation",
+        );
+
+        findings.push(crate::domain::Finding {
+            id: probe_id,
+            canonical_gap: Some(canonical_gap),
+            probe,
+            class,
+            ripr: RiprEvidence {
+                reach: reach.clone(),
+                infect: unknown.clone(),
+                propagate: unknown,
+                reveal: RevealEvidence {
+                    observe: reach,
+                    discriminate: StageEvidence::new(
+                        StageState::Weak,
+                        RiprConfidence::Medium,
+                        "Missing discriminator from packet",
+                    ),
+                },
+            },
+            confidence: 0.5,
+            evidence,
+            missing: vec![
+                change
+                    .behavior_hint
+                    .default_missing_discriminator()
+                    .to_string(),
+            ],
+            flow_sinks: Vec::new(),
+            activation: ActivationEvidence {
+                observed_values: Vec::new(),
+                missing_discriminators,
+            },
+            stop_reasons: Vec::new(),
+            related_tests: related,
+            recommended_next_step: Some(
+                "Add a focused Perl assertion that pins the changed behavior.".to_string(),
+            ),
+            language: Some(DomainLanguageId::Perl),
+            language_status: Some(LanguageStatus::Preview),
+            owner_kind: None,
+            static_limit_kind: if has_boundary {
+                Some(crate::domain::StaticLimitKind::DynamicDispatch)
+            } else {
+                None
+            },
+            changed_sink: Some(
+                change
+                    .behavior_hint
+                    .default_missing_discriminator()
+                    .to_string(),
+            ),
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+        });
+    }
+
+    findings
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
