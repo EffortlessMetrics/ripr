@@ -4185,7 +4185,38 @@ fn report_detected_test_surfaces(root: &Path) {
                 }
             }
             LanguageId::Perl => {
-                lines.push("perl: test framework not detected".to_string());
+                // Phase D PR 2 (#1408): upgraded Perl doctor diagnostics.
+                let pm_count = count_files(root, "pm");
+                let pl_count = count_files(root, "pl");
+                let t_count = count_files(root, "t");
+                if pm_count > 0 || pl_count > 0 || t_count > 0 {
+                    let framework = detect_perl_framework(root);
+                    lines.push(format!(
+                        "perl: {} .pm, {} .pl, {} .t; framework: {}",
+                        pm_count, pl_count, t_count, framework
+                    ));
+                    // Report adapter availability.
+                    if id.is_available() {
+                        lines.push("perl: adapter compiled (lang-perl feature ON)".to_string());
+                    } else {
+                        lines.push(
+                            "perl: adapter NOT compiled (build with --features lang-perl)"
+                                .to_string(),
+                        );
+                    }
+                    // Report runner availability.
+                    if which("prove") {
+                        lines.push("perl: prove available on PATH".to_string());
+                    } else {
+                        lines.push("perl: prove NOT found on PATH".to_string());
+                    }
+                    // Report exact first command.
+                    if id.is_available() {
+                        lines.push("perl: first command: ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string());
+                    }
+                } else {
+                    lines.push("perl: no Perl files detected".to_string());
+                }
             }
         }
     }
@@ -4203,6 +4234,62 @@ fn report_detected_test_surfaces(root: &Path) {
 ///   - `StaticLimitKind::CrossLanguageOracleVisibilityUnresolved` wire string
 ///     and its doc comment.
 ///   - 0.9.0 CHANGELOG non-claims.
+///
+/// Count files with a given extension in the root (shallow, non-recursive).
+fn count_files(root: &Path, ext: &str) -> usize {
+    shallow_has_extension(root, ext) as usize
+}
+
+/// Detect the Perl test framework from .t files (shallow scan).
+fn detect_perl_framework(root: &Path) -> &'static str {
+    let t_dir = root.join("t");
+    let Ok(entries) = std::fs::read_dir(&t_dir) else {
+        return "not detected (no t/ directory)";
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "t")
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            if content.contains("use Test2::V0") {
+                return "Test2::V0";
+            }
+            if content.contains("use Test::More") {
+                return "Test::More";
+            }
+            if content.contains("use Test::Exception") {
+                return "Test::Exception";
+            }
+            if content.contains("use Test::Fatal") {
+                return "Test::Fatal";
+            }
+        }
+    }
+    "not detected"
+}
+
+/// Check if a binary is available on PATH.
+fn which(bin: &str) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("which")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+    #[cfg(not(unix))]
+    {
+        std::process::Command::new("where")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+}
+
 fn report_known_limitations() {
     println!("- Known limitations:");
     println!(
