@@ -2051,6 +2051,266 @@ fn ingestion_accepts_well_formed_reference_packet() {
     );
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// PR H1 — mapping-integrity adversarial tests.
+//
+// These are the FIRST tests to exercise the production mapper
+// `packet_to_findings` directly. Before H1, every `related_test.file` was
+// built from the PRODUCTION source path (mod.rs:178), so the edit surface
+// could point at `lib/*.pm`. These tests pin the H1 contract: the test file
+// resolves through `test.file_id`, verify commands are selected by `test_id`,
+// dynamic boundaries keep their conservative scope, advisory relations never
+// promote past ReachableUnrevealed, and no canonical repair gap is built from
+// a generic discriminator label.
+// ──────────────────────────────────────────────────────────────────────
+
+/// Drive the production mapper: consume a packet, then map to Findings.
+fn findings_from_packet(text: &str) -> Result<Vec<crate::domain::Finding>, String> {
+    let packet = PerlAdapter.consume_fact_packet(text)?;
+    Ok(packet_to_findings(&packet))
+}
+
+/// The cardinal regression: a change in `lib/My/App.pm` linked to a test in
+/// `t/app.t` must NEVER project the production source path as the related-test
+/// file. Every `related_tests[*].file` must resolve to the test file.
+#[test]
+fn h1_production_source_path_never_becomes_related_test_file() -> Result<(), String> {
+    let findings = findings_from_packet(EXACT_RETURN_PACKET)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding from EXACT_RETURN_PACKET".to_string())?;
+    assert!(
+        finding.related_tests.iter().all(|t| {
+            let p = t.file.display().to_string();
+            p == "t/app.t"
+        }),
+        "every related-test file must be the TEST path (t/app.t), never the \
+         production source (lib/My/App.pm); got: {:?}",
+        finding
+            .related_tests
+            .iter()
+            .map(|t| t.file.display().to_string())
+            .collect::<Vec<_>>()
+    );
+    // The probe location, by contrast, IS the production source — that's
+    // correct and must remain so.
+    assert_eq!(
+        finding.probe.location.file.display().to_string(),
+        "lib/My/App.pm",
+        "probe location stays on the production source file"
+    );
+    Ok(())
+}
+
+/// The related-test line must come from the TestFact range, not the hardcoded
+/// `1`. EXACT_RETURN_PACKET's test starts at line 4; its oracle at line 8.
+#[test]
+fn h1_related_test_line_uses_test_range_not_hardcoded_one() -> Result<(), String> {
+    let findings = findings_from_packet(EXACT_RETURN_PACKET)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    let related = finding
+        .related_tests
+        .first()
+        .ok_or_else(|| "expected a related test".to_string())?;
+    assert_ne!(
+        related.line, 1,
+        "related-test line must not be the hardcoded 1"
+    );
+    assert!(
+        related.line >= 4,
+        "related-test line should reflect the test/oracle range (>=4); got {}",
+        related.line
+    );
+    Ok(())
+}
+
+/// A `file_proximity` relation must NOT promote the change to `WeaklyExposed`.
+/// It is advisory-only and is capped at `ReachableUnrevealed`, and carries no
+/// repair-gap fields (no `perl_suggested_test_location`).
+#[test]
+fn h1_file_proximity_relation_is_not_eligible() -> Result<(), String> {
+    let packet = EXACT_RETURN_PACKET.replace("\"direct_owner_call\"", "\"file_proximity\"");
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_ne!(
+        finding.class,
+        crate::domain::ExposureClass::WeaklyExposed,
+        "file_proximity must not promote to WeaklyExposed; got {:?}",
+        finding.class
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_test_location")),
+        "file_proximity must not emit a repair-gap test location"
+    );
+    Ok(())
+}
+
+/// The emitted verify command must belong to the selected test (keyed by
+/// `test_id`), never a different test's runner. EXACT_RETURN_PACKET's verify
+/// command is `prove t/app.t` scoped to `test:t/app.t:test_discount_threshold`.
+#[test]
+fn h1_verify_command_belongs_to_selected_test() -> Result<(), String> {
+    let findings = findings_from_packet(EXACT_RETURN_PACKET)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    let verify = finding
+        .evidence
+        .iter()
+        .find_map(|e| e.strip_prefix("perl_verify_command: "))
+        .ok_or_else(|| "expected a perl_verify_command".to_string())?;
+    assert_eq!(
+        verify, "prove t/app.t",
+        "verify command must be the per-test command, not a global scan result"
+    );
+    Ok(())
+}
+
+/// A dynamic boundary on a DIFFERENT explicit owner AND a different file must
+/// not block this change's classification. (A boundary on the *changed file*
+/// conservatively blocks regardless of owner — that is tested separately by
+/// `h1_ownerless_file_boundary_still_blocks`. This test isolates the
+/// owner-match path: boundary is on another file+owner entirely.)
+#[test]
+fn h1_boundary_on_explicit_other_owner_does_not_block() -> Result<(), String> {
+    // Add a second file for the boundary to live on (different from the changed
+    // file and the test file), owned by a different owner.
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"dynamic_boundaries\": []",
+            "\"dynamic_boundaries\": [{\
+           \"boundary_id\":\"bnd:other-owner\",\
+           \"kind\":\"dynamic_dispatch\",\
+           \"file_id\":\"file:lib/Other.pm\",\
+           \"owner_id\":\"perl:lib/Other.pm::Other::thing\",\
+           \"range\":{\"start_line\":1,\"start_column\":1,\"end_line\":1,\"end_column\":2},\
+           \"confidence\":\"medium\",\
+           \"provenance_refs\":[\"prov:bnd:1\"]\
+         }]",
+        )
+        .replace(
+            "\"provenance_refs\":[\"prov:runner:1\"]\n      }\n    ]",
+            "\"provenance_refs\":[\"prov:runner:1\"]\n      },\n      {\
+           \"provenance_id\":\"prov:bnd:1\",\
+           \"source\":\"semantic\",\
+           \"file_id\":\"file:lib/Other.pm\",\
+           \"range\":null,\
+           \"confidence\":\"medium\"\
+         }]",
+        );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_ne!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "a boundary on a different file+owner must not block this change; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// An OWNERLESS file-level boundary on the changed file must STILL block
+/// (conservative). This pins that H1 does NOT narrow to owner-only.
+#[test]
+fn h1_ownerless_file_boundary_still_blocks() -> Result<(), String> {
+    // Boundary with no owner_id, on the changed file.
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"dynamic_boundaries\": []",
+        "\"dynamic_boundaries\": [{\
+           \"boundary_id\":\"bnd:file-level\",\
+           \"kind\":\"dynamic_dispatch\",\
+           \"file_id\":\"file:lib/My/App.pm\",\
+           \"owner_id\":null,\
+           \"range\":{\"start_line\":1,\"start_column\":1,\"end_line\":1,\"end_column\":2},\
+           \"confidence\":\"medium\",\
+           \"provenance_refs\":[\"prov:bnd:1\"]\
+         }]",
+    );
+    let packet = packet.replace(
+        "\"provenance_refs\":[\"prov:runner:1\"]\n      }\n    ]",
+        "\"provenance_refs\":[\"prov:runner:1\"]\n      },\n      {\
+           \"provenance_id\":\"prov:bnd:1\",\
+           \"source\":\"semantic\",\
+           \"file_id\":\"file:lib/My/App.pm\",\
+           \"range\":null,\
+           \"confidence\":\"medium\"\
+         }]",
+    );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "an ownerless file-level boundary on the changed file must still block; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// A change whose `changed_text_digest` is NOT a `discriminator:`-prefixed
+/// concrete discriminator must NOT carry a canonical repair gap. EXACT_RETURN_PACKET
+/// uses `"sha256:return"` (generic), so it must yield `canonical_gap: None`.
+#[test]
+fn h1_generic_discriminator_produces_no_canonical_repair_gap() -> Result<(), String> {
+    let findings = findings_from_packet(EXACT_RETURN_PACKET)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert!(
+        finding.canonical_gap.is_none(),
+        "a generic (non-`discriminator:`-prefixed) changed_text_digest must not \
+         produce a canonical repair gap; got {:?}",
+        finding.canonical_gap
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_test_location")),
+        "generic discriminator must not emit a repair-gap test location"
+    );
+    Ok(())
+}
+
+/// Conversely, when the producer DOES supply a concrete discriminator
+/// (`discriminator:` prefix), the canonical gap IS attached. This proves the
+/// gate opens for the real-producer case (PRs 4–7).
+#[test]
+fn h1_concrete_discriminator_attaches_canonical_gap() -> Result<(), String> {
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\"",
+        "\"changed_text_digest\": \"discriminator:$amount == $threshold\"",
+    );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert!(
+        finding.canonical_gap.is_some(),
+        "a `discriminator:`-prefixed changed_text_digest must attach a canonical \
+         repair gap; got None"
+    );
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_test_location")),
+        "concrete discriminator must emit the repair-gap test location"
+    );
+    Ok(())
+}
+
 const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",

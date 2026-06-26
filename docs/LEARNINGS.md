@@ -1574,3 +1574,64 @@ until base-class tracking exists. This is the recurring rule for the whole annot
 family: the suppression's safety comes from *where* the annotation lives, not just from
 *what* changed. (See `docs/DEFERRED.md` § python-annotation-only-no-probe for the two
 remaining open sub-cases: class-body annotations and multiline-docstring interiors.)
+
+## 2026-06-26: Perl mapper honesty — owner-target is not sink observation; the producer gate is the wrong harness
+
+From the Campaign 31 Phase D mapper hotfix (PR H1, #1409). Two distinct lessons,
+both load-bearing for any preview-language adapter that consumes a producer's
+fact packet.
+
+### Owner-target identity is not changed-sink observation
+
+The Perl packet can prove `oracle.target_owner_id == changed_owner_id` — the
+oracle targets the same owner the change lives in. That is **not** the same as
+the oracle observing the **specific changed sink**. The production Finding
+leaves `observed_sink`, `oracle_alignment`, and `alignment_reason` all `None`
+because the packet carries no sink-level detail. Crediting reach-plus-a-strong
+-oracle as "already discriminated" on owner-target identity alone is exactly the
+recurring false-`exposed` family (cf. "Token coincidence" above): proximity
+dressed up as discrimination.
+
+The honest interim policy, until the producer contract adds
+`ChangeFact.changed_observable` and `OracleFact.observed_sink`, is to **fail
+closed**: a strong oracle aligned to the owner stays `WeaklyExposed` (or is
+downgraded to `ReachableUnrevealed` for advisory relations), never promoted to
+an "observed" claim. Do not encode the three-way matrix until sink alignment is
+real; split "mapping integrity" (H1) from "classification semantics" (H2) so the
+integrity fix can land without assuming the unprovable. This mirrors the
+"Real producers only" rule: do not flip a field to a fabricated taxonomy before
+a real production condition populates it.
+
+### The feature gate makes the default-feature gate a false-green oracle
+
+`lang-perl` is **not** a default feature (`crates/ripr/Cargo.toml`: `default =
+["lang-rust","lang-typescript","lang-python"]`). The Perl module is
+`#[cfg(feature = "lang-perl")]`. CI's `cargo clippy --workspace --all-targets`
+runs on default features, so it **never compiles the Perl module** — it reports
+green for code it did not see. Any validation command for a feature-gated module
+must pass `--features <feature>` explicitly, or it is the wrong harness
+manufacturing a false negative. (This is the "verify the artifact" rule cutting
+the other way: a gate that passes because it never ran is not evidence.) The
+signal that you have the right harness: the targeted test count is non-zero and
+the module's symbols resolve.
+
+### Concrete shape
+
+PR H1 rewrote `packet_to_findings` to route through the packet-owned helpers
+(`related_test_evidence_for_change`, `verify_command_for_test`,
+`has_blocking_dynamic_boundary`, `canonical_gap_identity_for_change`) instead
+of a parallel classifier. Before H1, every `related_test.file` was built from
+the **production** source path (`PathBuf::from(&file.path)`) — the edit surface
+could point at `lib/*.pm`. The cardinal regression was latent (the projection
+gate returns `None` at the `gap_state:` check before production findings reach
+it), not live — but it would have flipped `repair_packet_ready: true` against a
+production file the moment H2 wired the evidence. The 8 adversarial tests added
+were the **first** direct coverage of the mapper; it previously had zero, which
+is why the bug survived three merged PRs.
+
+Followups tracked separately: H2 classification semantics (after cross-repo
+contract freeze adds sink fields), and a `perl-lsp-swarm` CI scratch-GC fix
+(that repo's orphan reaper searches `/mnt/ci-scratch -maxdepth 1 -name 'ripr-*'`
+but the per-run dirs nest under `/mnt/ci-scratch/perl-lsp-swarm/ripr-*` and
+`/mnt/ci-scratch/tmp/ripr-*` — `ripr-swarm`'s own `scratch-gc.yml` does the
+sweep correctly and is the reference pattern).

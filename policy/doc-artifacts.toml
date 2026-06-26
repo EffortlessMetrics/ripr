@@ -561,3 +561,11 @@ path = "docs/specs/RIPR-SPEC-0120-rust-macro-wrapped-assertion-limitation.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Rust macro-wrapped assertion limitation: when a reachable related test has no recognized oracle but invokes an assertion-like custom macro, name the limitation as static_limit_kind=rust_macro_wrapped_assertion_unresolved; fail-closed (classification stays reachable_unrevealed, no macro expansion, no generic assert_* semantics, no repair packet, no schema_version bump)."
+
+[[artifact]]
+id = "RIPR-SPEC-0121"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "perl-lsp-swarm CI scratch-GC orphan-reaper path mismatch: spec-only — the fix lands in the perl-lsp-swarm repo (unreachable from this session), mirroring ripr-swarm scratch-gc.yml which sweeps inside each scratch subdir at -maxdepth 1 rather than scanning the parent at depth 1. No ripr product, schema, or classification change."

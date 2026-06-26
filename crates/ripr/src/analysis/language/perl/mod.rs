@@ -135,6 +135,30 @@ impl LanguageAdapter for PerlAdapter {
 /// Packets that are partial, stale, heuristic-only, dynamically blocked,
 /// misaligned, low-confidence or missing provenance produce advisory
 /// findings or named-limitation findings, never actionable ones.
+///
+/// # H1 mapping-integrity contract (ripr-swarm PR H1)
+///
+/// This function reuses the packet-owned relation/oracle/command/identity
+/// helpers rather than maintaining a parallel classifier:
+/// - `related_test_evidence_for_change` resolves the **test** file (via
+///   `test.file_id`) and the test-specific verify command — never the
+///   production source path. (Cardinal-sin guard: the edit surface must
+///   never point at `lib/*.pm`.)
+/// - `has_blocking_dynamic_boundary` keeps the conservative owner-OR-file
+///   -OR-test-file boundary scope (an ownerless file-level boundary still
+///   blocks).
+/// - A canonical repair gap is attached **only** when a concrete
+///   discriminator is present (`changed_text_digest` prefixed
+///   `discriminator:`). Generic enum labels yield an informational Finding
+///   with `canonical_gap: None`.
+/// - Advisory relation kinds (`FileProximity`, `PackageReference`,
+///   `TestNameMatch`, `FixtureSetup`, `Unknown`) never promote a change past
+///   `ReachableUnrevealed`; `HelperCall` is deferred for alpha. This is the
+///   relation-kind gate `classify_related_relation` does not apply.
+///
+/// This hotfix is classification **conservative-or-stricter** only. The full
+/// `WeaklyExposed`-with-sink-alignment matrix lands in PR H2, once the
+/// producer contract can prove the changed sink was observed.
 fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
     use crate::domain::{
         ActivationEvidence, Confidence as RiprConfidence, DeltaKind, ExposureClass,
@@ -151,33 +175,44 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         let Some(owner) = packet.owner(&change.owner_id) else {
             continue;
         };
-        // Find the source file.
+        // Find the source file (for the probe location only).
         let Some(file) = packet.file(&change.file_id) else {
             continue;
         };
 
-        // Check for blocking dynamic boundaries.
-        let has_boundary = packet
-            .dynamic_boundaries
-            .iter()
-            .any(|b| b.file_id == change.file_id);
+        // Resolve related-test evidence through the packet helper. This is the
+        // key H1 fix: each evidence carries the *test* file path (resolved via
+        // `test.file_id`), the per-test verify command, and the relation kind.
+        let related_evidence = packet.related_test_evidence_for_change(&change.change_id);
 
-        // Find related-test evidence for this change.
-        let related: Vec<RelatedTest> = packet
-            .relations
+        // Conservative dynamic-boundary scope: owner OR file OR selected test
+        // file (has_blocking_dynamic_boundary). An ownerless file-level
+        // boundary still blocks — do NOT narrow to owner-only.
+        let has_boundary = related_evidence
+            .first()
+            .map(|ev| packet.has_blocking_dynamic_boundary(change, Some(ev)))
+            .unwrap_or_else(|| packet.has_blocking_dynamic_boundary(change, None));
+
+        // Build the projected RelatedTests from the packet evidence. The test
+        // FILE comes from `ev.test_path` (resolved from test.file_id), never
+        // from the production `file.path`. The test LINE is re-resolved from
+        // the TestFact (PerlRelatedTestEvidence intentionally carries no
+        // range), so the projection sees the real assertion location.
+        let related: Vec<RelatedTest> = related_evidence
             .iter()
-            .filter(|r| r.change_id == change.change_id)
-            .filter_map(|relation| {
-                let test = packet.test(&relation.test_id)?;
-                let oracle = relation
-                    .oracle_id
-                    .as_ref()
-                    .and_then(|oid| packet.oracle(oid));
-                Some(RelatedTest {
-                    name: test.name.clone(),
-                    file: std::path::PathBuf::from(&file.path),
-                    line: 1,
-                    oracle: oracle.map(|o| o.expression.clone().unwrap_or_default()),
+            .map(|ev| {
+                let test_line = packet
+                    .test(&ev.test_id)
+                    .map(|test| test.range.start_line)
+                    .unwrap_or(0);
+                let oracle = ev.oracle_id.as_deref().and_then(|oid| packet.oracle(oid));
+                let (perl_relation_reason, perl_relation_confidence) =
+                    perl_relation_to_domain(ev.relation_kind);
+                RelatedTest {
+                    name: ev.test_name.clone(),
+                    file: std::path::PathBuf::from(&ev.test_path),
+                    line: test_line,
+                    oracle: oracle.and_then(|o| o.expression.clone()),
                     oracle_kind: oracle
                         .map(|o| match o.kind {
                             OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
@@ -188,96 +223,137 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                             _ => DomainOracleKind::Unknown,
                         })
                         .unwrap_or(DomainOracleKind::Unknown),
-                    oracle_strength: oracle
-                        .map(|o| match o.strength {
+                    oracle_strength: ev
+                        .oracle_strength
+                        .map(|strength| match strength {
                             OracleStrength::StrongExact => DomainOracleStrength::Strong,
                             OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
                             OracleStrength::WeakBroad => DomainOracleStrength::Weak,
                             _ => DomainOracleStrength::Unknown,
                         })
                         .unwrap_or(DomainOracleStrength::Unknown),
-                    relation_reason: None,
-                    relation_confidence: None,
-                })
+                    relation_reason: perl_relation_reason,
+                    relation_confidence: perl_relation_confidence,
+                }
             })
             .collect();
 
-        // Determine exposure class.
+        // Determine exposure class — conservative-or-stricter.
+        //
+        // Start from the packet's relation/oracle-aware classifier, then apply
+        // the relation-kind gate the packet classifier omits: advisory kinds
+        // can never promote past ReachableUnrevealed. We never *raise* the
+        // class beyond what the packet computes; we only *downgrade* advisory
+        // relations and override to StaticUnknown on a blocking boundary.
         let class = if has_boundary {
             ExposureClass::StaticUnknown
         } else if related.is_empty() {
             ExposureClass::NoStaticPath
         } else {
-            ExposureClass::WeaklyExposed
+            let packet_class = packet.classify_change_from_related_tests(&change.change_id);
+            // Downgrade advisory-only relations: only DirectOwnerCall can keep
+            // a WeaklyExposed (positive-reachability) class. Every other
+            // relation kind is capped at ReachableUnrevealed, regardless of
+            // oracle. (Sink alignment is unknown today, so we never credit
+            // reach-plus-strong-oracle as discriminated — see AGENTS.md
+            // "Discrimination vs Coverage".)
+            if packet_class == ExposureClass::WeaklyExposed
+                && !related_evidence
+                    .iter()
+                    .any(|ev| ev.relation_kind.supports_positive_reachability())
+            {
+                ExposureClass::ReachableUnrevealed
+            } else {
+                packet_class
+            }
         };
 
-        // Build evidence strings (perl_*: keys the projection reads).
-        let mut evidence = vec![
-            format!(
-                "perl_repair_kind: {}",
-                change.behavior_hint.repair_kind().unwrap_or("unknown")
-            ),
-            format!(
-                "perl_target_test_shape: {}",
-                change.behavior_hint.default_assertion_shape()
-            ),
-            format!(
-                "perl_suggested_test_location: {}",
-                related
-                    .first()
-                    .map(|t| format!("{}::{}", t.file.display(), t.name))
-                    .unwrap_or_default()
-            ),
-            format!(
+        // Concrete discriminator gate (H1). A canonical repair gap requires a
+        // concrete, packet-provided discriminator (`discriminator:` prefix on
+        // `changed_text_digest`). Generic enum labels are not actionable gaps.
+        let concrete_discriminator = change
+            .changed_text_digest
+            .as_str()
+            .strip_prefix("discriminator:")
+            .map(str::to_string);
+        let has_concrete_discriminator = concrete_discriminator.is_some();
+
+        // Use the selected eligible oracle's assertion shape (the one actually
+        // linked to this change), not a generic behavior-hint default.
+        let selected_assertion_shape = related_evidence
+            .iter()
+            .find_map(|ev| ev.oracle_shape.clone())
+            .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string());
+
+        // Canonical gap: only when a concrete discriminator exists and the
+        // packet can form a stable identity. Otherwise None (informational
+        // Finding, no repair identity).
+        let canonical_gap: Option<FindingCanonicalGap> = if has_concrete_discriminator {
+            packet
+                .canonical_gap_identity_for_change_with_assertion_shape(
+                    &change.change_id,
+                    &selected_assertion_shape,
+                )
+                .map(|gap| FindingCanonicalGap {
+                    id: gap.id,
+                    language: "perl".to_string(),
+                    file: file.path.clone(),
+                    owner: owner.name.clone().unwrap_or_default(),
+                    behavior_kind: gap.behavior_kind,
+                    probe_kind: gap.assertion_shape,
+                    normalized_discriminator: gap.missing_discriminator,
+                })
+        } else {
+            None
+        };
+
+        // Build evidence strings (perl_*: keys the projection reads). Only emit
+        // the repair-gap fields when a concrete discriminator exists; an
+        // informational finding carries only the repair-kind/shape context.
+        let mut evidence: Vec<String> = Vec::new();
+        evidence.push(format!(
+            "perl_repair_kind: {}",
+            change.behavior_hint.repair_kind().unwrap_or("unknown")
+        ));
+        evidence.push(format!(
+            "perl_target_test_shape: {}",
+            change.behavior_hint.default_assertion_shape()
+        ));
+        if has_concrete_discriminator && let Some(first) = related.first() {
+            evidence.push(format!(
+                "perl_suggested_test_location: {}::{}",
+                first.file.display(),
+                first.name
+            ));
+            evidence.push(format!(
                 "perl_suggested_assertion: {}",
                 change.behavior_hint.default_missing_discriminator()
-            ),
-        ];
-
-        // Add verify command evidence if available.
-        if let Some(verify_cmd) = packet
-            .verify_commands
-            .iter()
-            .find(|v| v.scope == CommandScope::Test)
-        {
-            evidence.push(format!(
-                "perl_verify_command: {}",
-                verify_cmd.argv.join(" ")
             ));
         }
+        // Verify command: per-test, from the related evidence (already keyed by
+        // test_id). Never a global CommandScope::Test scan.
+        if let Some(first_ev) = related_evidence.first()
+            && let Some(argv) = first_ev.verify_command.as_ref()
+            && !argv.is_empty()
+        {
+            evidence.push(format!("perl_verify_command: {}", argv.join(" ")));
+        }
 
-        // Missing discriminator.
-        let missing_discriminators = vec![MissingDiscriminatorFact {
-            value: change
-                .behavior_hint
-                .default_missing_discriminator()
-                .to_string(),
-            reason: format!(
-                "changed Perl {} at {} lacks a concrete discriminator",
-                change.behavior_hint.as_str(),
-                file.path
-            ),
-            flow_sink: None,
-        }];
-
-        // Canonical gap.
-        let canonical_gap = FindingCanonicalGap {
-            id: format!(
-                "gap:perl:{}:{}:{}",
-                file.path,
-                owner.name.as_deref().unwrap_or("unknown"),
-                change.behavior_hint.as_str()
-            ),
-            language: "perl".to_string(),
-            file: file.path.clone(),
-            owner: owner.name.clone().unwrap_or_default(),
-            behavior_kind: change.behavior_hint.as_str().to_string(),
-            probe_kind: change.behavior_hint.default_assertion_shape().to_string(),
-            normalized_discriminator: change
-                .behavior_hint
-                .default_missing_discriminator()
-                .to_string(),
-        };
+        // Missing discriminator: only when concrete. An informational finding
+        // (no concrete discriminator) carries no missing-discriminator entry.
+        let missing_discriminators: Vec<MissingDiscriminatorFact> = concrete_discriminator
+            .clone()
+            .map(|value| MissingDiscriminatorFact {
+                value,
+                reason: format!(
+                    "changed Perl {} at {} lacks a concrete discriminator",
+                    change.behavior_hint.as_str(),
+                    file.path
+                ),
+                flow_sink: None,
+            })
+            .into_iter()
+            .collect();
 
         // Build the Finding.
         let probe_id = format!(
@@ -307,13 +383,13 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             before: None,
             after: None,
             expression: change.behavior_hint.as_str().to_string(),
-            expected_sinks: vec![
-                change
-                    .behavior_hint
-                    .default_missing_discriminator()
-                    .to_string(),
-            ],
-            required_oracles: vec![change.behavior_hint.default_assertion_shape().to_string()],
+            expected_sinks: change
+                .behavior_hint
+                .repair_kind()
+                .map(|_| selected_assertion_shape.clone())
+                .into_iter()
+                .collect(),
+            required_oracles: vec![selected_assertion_shape.clone()],
         };
 
         let reach = StageEvidence::new(
@@ -333,7 +409,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
 
         findings.push(crate::domain::Finding {
             id: probe_id,
-            canonical_gap: Some(canonical_gap),
+            canonical_gap,
             probe,
             class,
             ripr: RiprEvidence {
@@ -351,12 +427,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             },
             confidence: 0.5,
             evidence,
-            missing: vec![
-                change
-                    .behavior_hint
-                    .default_missing_discriminator()
-                    .to_string(),
-            ],
+            missing: concrete_discriminator.clone().into_iter().collect(),
             flow_sinks: Vec::new(),
             activation: ActivationEvidence {
                 observed_values: Vec::new(),
@@ -375,12 +446,15 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             } else {
                 None
             },
-            changed_sink: Some(
+            // changed_sink uses the concrete discriminator when present;
+            // otherwise the behavior-hint label (advisory only, since no
+            // canonical gap is attached).
+            changed_sink: Some(concrete_discriminator.clone().unwrap_or_else(|| {
                 change
                     .behavior_hint
                     .default_missing_discriminator()
-                    .to_string(),
-            ),
+                    .to_string()
+            })),
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
@@ -2059,6 +2133,64 @@ enum ReachabilityHint {
     Reachable,
     WeaklyReachable,
     StaticUnknown,
+}
+
+impl RelationKind {
+    /// True when this relation kind can *positively* support reachability of
+    /// the changed owner. Only `DirectOwnerCall` qualifies; `HelperCall` is
+    /// deferred for alpha, and the rest (`PackageReference`, `TestNameMatch`,
+    /// `FileProximity`, `FixtureSetup`, `Unknown`) are advisory-only.
+    ///
+    /// This is the relation-kind gate the packet classifier
+    /// (`classify_related_relation`) does NOT apply — see PR H1. The mapper
+    /// uses it to *downgrade* advisory relations to `ReachableUnrevealed`
+    /// (never to promote), so classification stays conservative-or-stricter.
+    fn supports_positive_reachability(self) -> bool {
+        matches!(self, Self::DirectOwnerCall)
+    }
+}
+
+/// Map a Perl `RelationKind` to the domain `(RelationReason, RelationConfidence)`.
+///
+/// Mirrors `ts_relation_to_domain`
+/// (`analysis/language/typescript/related_tests.rs`): populates the
+/// `relation_reason` / `relation_confidence` fields of `RelatedTest` for
+/// disclosure in JSON output. Returns `(None, None)` for heuristic relations
+/// with no clear domain mapping (those stay `relation_reason: null`).
+///
+/// Confidence derives from the reason (matching the domain convention in
+/// `RelationReason::confidence`), not from the packet's own confidence — this
+/// keeps the Perl adapter consistent with the TypeScript adapter.
+fn perl_relation_to_domain(
+    kind: RelationKind,
+) -> (
+    Option<crate::domain::RelationReason>,
+    Option<crate::domain::RelationConfidence>,
+) {
+    use crate::domain::{RelationConfidence, RelationReason};
+    let reason = match kind {
+        RelationKind::DirectOwnerCall => RelationReason::DirectOwnerCall,
+        RelationKind::HelperCall => RelationReason::HelperOwnerCall,
+        RelationKind::PackageReference => RelationReason::ImportPathAffinity,
+        RelationKind::MethodReceiver => RelationReason::DirectOwnerCall,
+        RelationKind::TestNameMatch => RelationReason::OwnerNamedTest,
+        // Advisory-only signals with no clean owner-call mapping: emit None so
+        // they disclose as `relation_reason: null` (legacy advisory style),
+        // matching how the TS adapter treats SameFileProximity/DescribeName.
+        RelationKind::FileProximity | RelationKind::FixtureSetup | RelationKind::Unknown => {
+            return (None, None);
+        }
+    };
+    let confidence = match kind {
+        RelationKind::DirectOwnerCall | RelationKind::MethodReceiver => RelationConfidence::High,
+        RelationKind::HelperCall => RelationConfidence::High,
+        RelationKind::PackageReference | RelationKind::TestNameMatch => RelationConfidence::Medium,
+        // Unreachable: the match above returns early for these.
+        RelationKind::FileProximity | RelationKind::FixtureSetup | RelationKind::Unknown => {
+            RelationConfidence::Low
+        }
+    };
+    (Some(reason), Some(confidence))
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

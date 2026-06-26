@@ -6462,3 +6462,22 @@ metrics = [
   "golden_fixture_pass_rate",
   "honesty_corpus_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0121"
+name = "perl-lsp-swarm CI scratch-GC orphan-reaper path mismatch"
+spec = "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md"
+# Spec-only: the fix lands in the perl-lsp-swarm repo, not ripr-swarm. Status
+# is `proposed` until the fix is applied there; there is no ripr test, fixture,
+# or code to trace. ripr-swarm's own scratch-gc.yml is the reference pattern
+# cited in the spec. The metric is a CI-operability signal produced in the
+# perl-lsp-swarm lane, not a ripr product metric.
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md",
+]
+metrics = [
+  "ci_scratch_disk_free_space_after_gc",
+]
