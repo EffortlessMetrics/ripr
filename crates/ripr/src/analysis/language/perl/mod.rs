@@ -1891,6 +1891,17 @@ struct ChangeFact {
     range: RangeFact,
     behavior_hint: BehaviorHint,
     changed_text_digest: String,
+    /// Campaign 31 step 2 contract freeze (ripr-swarm#1379): the observable
+    /// the change produces (e.g. `"$amount / 2"` for a return change).
+    /// Producer-emitted; consumed by H2 classification for sink alignment.
+    /// `#[serde(default)]` so older packets without the field still parse.
+    #[serde(default)]
+    changed_observable: Option<String>,
+    /// The concrete discriminator derived from the change (e.g.
+    /// `"$amount == $threshold"`). Used to build a real canonical gap instead
+    /// of a generic enum label. `#[serde(default)]` for backward compat.
+    #[serde(default)]
+    missing_discriminator: Option<String>,
     provenance_refs: Vec<String>,
 }
 
@@ -1983,6 +1994,8 @@ enum TestFramework {
     TestMore,
     #[serde(rename = "Test2::V0")]
     Test2V0,
+    #[serde(rename = "Test2::V1")]
+    Test2V1,
     #[serde(rename = "Test2::Suite")]
     Test2Suite,
     #[serde(rename = "Test::Exception")]
@@ -1998,6 +2011,7 @@ impl TestFramework {
         match self {
             Self::TestMore => "Test::More",
             Self::Test2V0 => "Test2::V0",
+            Self::Test2V1 => "Test2::V1",
             Self::Test2Suite => "Test2::Suite",
             Self::TestException => "Test::Exception",
             Self::TestFatal => "Test::Fatal",
@@ -2010,6 +2024,7 @@ impl TestFramework {
             self,
             Self::TestMore
                 | Self::Test2V0
+                | Self::Test2V1
                 | Self::Test2Suite
                 | Self::TestException
                 | Self::TestFatal
@@ -2035,6 +2050,18 @@ struct OracleFact {
     strength: OracleStrength,
     target_owner_id: Option<String>,
     expression: Option<String>,
+    /// Campaign 31 step 2 contract freeze: the specific value/sink the oracle
+    /// observes (the first arg of `is(got, expected)`). Consumed by H2 for
+    /// changed-sink alignment — without it, owner-target identity is not
+    /// changed-sink observation (the false-exposed family). `#[serde(default)]`
+    /// so older packets without the field still parse.
+    #[serde(default)]
+    observed_sink: Option<String>,
+    /// The expected expression/value the oracle asserts against
+    /// (the second arg of `is(got, expected)`). `#[serde(default)]` for
+    /// backward compat.
+    #[serde(default)]
+    expected_expression: Option<String>,
     range: RangeFact,
     confidence: Confidence,
     provenance_refs: Vec<String>,

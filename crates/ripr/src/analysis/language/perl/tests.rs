@@ -2052,6 +2052,98 @@ fn ingestion_accepts_well_formed_reference_packet() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Campaign 31 step 2 — consumer-side contract-freeze parity tests.
+//
+// The producer (perl-lsp-swarm #3104) now emits `changed_observable`,
+// `missing_discriminator` on changes and `observed_sink`,
+// `expected_expression` on oracles, plus the `Test2::V1` framework wire name.
+// These tests prove ripr's deserializer ACCEPTS a packet carrying the new
+// fields (so real producer packets don't fail closed) and that the fields are
+// accessible to H2 classification. They use #[serde(default)] so older
+// packets without the fields still parse.
+// ──────────────────────────────────────────────────────────────────────
+
+#[test]
+fn consumer_accepts_packet_with_frozen_contract_fields() -> Result<(), String> {
+    // Take the base packet and add the new contract fields to its change + oracle.
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"$amount / 2\",\n      \"missing_discriminator\": \"$amount == 100\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$got\",\n      \"expected_expression\": \"10\",",
+        );
+    let parsed = PerlAdapter.consume_fact_packet(&packet)?;
+    let change = parsed
+        .change("change:lib/My/App.pm:15:return")
+        .ok_or_else(|| "missing change".to_string())?;
+    assert_eq!(
+        change.changed_observable.as_deref(),
+        Some("$amount / 2"),
+        "consumer must read changed_observable"
+    );
+    assert_eq!(
+        change.missing_discriminator.as_deref(),
+        Some("$amount == 100"),
+        "consumer must read missing_discriminator"
+    );
+    let oracle = parsed
+        .oracle("oracle:t/app.t:8:is")
+        .ok_or_else(|| "missing oracle".to_string())?;
+    assert_eq!(
+        oracle.observed_sink.as_deref(),
+        Some("$got"),
+        "consumer must read observed_sink"
+    );
+    assert_eq!(
+        oracle.expected_expression.as_deref(),
+        Some("10"),
+        "consumer must read expected_expression"
+    );
+    Ok(())
+}
+
+#[test]
+fn consumer_accepts_test2_v1_framework_wire_name() -> Result<(), String> {
+    // The producer (post #3104) emits "Test2::V1". ripr's TestFramework must
+    // deserialize it — serde rejects unknown enum variants by default, so a
+    // missing variant would fail closed on real producer packets.
+    let packet = EXACT_RETURN_PACKET.replace("\"Test::More\"", "\"Test2::V1\"");
+    let parsed = PerlAdapter.consume_fact_packet(&packet)?;
+    assert_eq!(
+        parsed.tests_for_framework(TestFramework::Test2V1).len(),
+        1,
+        "Test2::V1 framework must deserialize and be queryable"
+    );
+    assert!(
+        TestFramework::Test2V1.supports_strict_actionability(),
+        "Test2::V1 must support strict actionability (alpha requirement)"
+    );
+    Ok(())
+}
+
+#[test]
+fn consumer_still_parses_legacy_packets_without_frozen_fields() -> Result<(), String> {
+    // Backward compat: the base EXACT_RETURN_PACKET has NONE of the new fields.
+    // It must still parse (#[serde(default)] on the new fields).
+    let parsed = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let change = parsed
+        .change("change:lib/My/App.pm:15:return")
+        .ok_or_else(|| "missing change".to_string())?;
+    assert!(
+        change.changed_observable.is_none(),
+        "legacy packet without changed_observable must default to None, not fail"
+    );
+    assert!(
+        change.missing_discriminator.is_none(),
+        "legacy packet without missing_discriminator must default to None"
+    );
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // PR H1 — mapping-integrity adversarial tests.
 //
 // These are the FIRST tests to exercise the production mapper
