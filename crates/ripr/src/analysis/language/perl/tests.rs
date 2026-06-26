@@ -2311,6 +2311,79 @@ fn h1_concrete_discriminator_attaches_canonical_gap() -> Result<(), String> {
     Ok(())
 }
 
+/// A dynamic boundary tied to a SECOND/subsequent related test's file must
+/// STILL block the change — the boundary check must not depend on which
+/// related evidence happens to be first (ordering independence, PR H1 followup
+/// to the droid-review finding). Before the fix, only `.first()` was sampled,
+/// so a boundary on the 2nd test was silently missed.
+#[test]
+fn h1_boundary_check_is_ordering_independent_across_related_tests() -> Result<(), String> {
+    // Two related tests on two test files; the boundary is on the SECOND
+    // test's file (file:t/second.t), not the first (file:t/app.t).
+    let packet = EXACT_RETURN_PACKET
+        // 1. Add the second test file.
+        .replace(
+            "],\n  \"owners\": [",
+            ",{\n      \"file_id\": \"file:t/second.t\",\n      \"path\": \"t/second.t\",\n      \"role\": [\"test\"],\n      \"digest\": \"sha256:second\",\n      \"package_names\": [],\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    }\n  ],\n  \"owners\": [",
+        )
+        // 2. Add the second test + second oracle + second relation pointing at
+        //    the changed owner, with the boundary on the SECOND test's file.
+        .replace(
+            "\"dynamic_boundaries\": [],",
+            "\"dynamic_boundaries\": [{\
+               \"boundary_id\":\"bnd:second-file\",\
+               \"kind\":\"dynamic_dispatch\",\
+               \"file_id\":\"file:t/second.t\",\
+               \"owner_id\":null,\
+               \"range\":{\"start_line\":1,\"start_column\":1,\"end_line\":1,\"end_column\":2},\
+               \"confidence\":\"medium\",\
+               \"provenance_refs\":[\"prov:bnd:1\"]\
+             }],",
+        )
+        .replace(
+            "\"provenance_refs\":[\"prov:runner:1\"]\n      }\n    ]",
+            "\"provenance_refs\":[\"prov:runner:1\"]\n      },\n      {\
+               \"provenance_id\":\"prov:file-index:second\",\
+               \"source\":\"workspace\",\
+               \"file_id\":\"file:t/second.t\",\
+               \"range\":null,\
+               \"confidence\":\"high\"\
+             },{\n               \"provenance_id\":\"prov:bnd:1\",\
+               \"source\":\"semantic\",\
+               \"file_id\":\"file:t/second.t\",\
+               \"range\":null,\
+               \"confidence\":\"medium\"\
+             }]",
+        );
+    // Append a second test + oracle + relation (linked to the changed owner).
+    let packet = packet.replace(
+        "  \"tests\": [\n    {",
+        "  \"tests\": [\n    {\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"file_id\": \"file:t/second.t\",\n      \"framework\": \"Test::More\",\n      \"name\": \"second_discount\",\n      \"range\": {\"start_line\": 3, \"start_column\": 1, \"end_line\": 8, \"end_column\": 2},\n      \"runner_hints\": [\"prove\"],\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    },\n    {",
+    );
+    let packet = packet.replace(
+        "  \"oracles\": [\n    {",
+        "  \"oracles\": [\n    {\n      \"oracle_id\": \"oracle:t/second.t:4:is\",\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"kind\": \"exact_return_assertion\",\n      \"strength\": \"strong_exact\",\n      \"target_owner_id\": \"perl:lib/My/App.pm::My::App::discount\",\n      \"expression\": \"is($got, 10)\",\n      \"range\": {\"start_line\": 4, \"start_column\": 1, \"end_line\": 4, \"end_column\": 20},\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    },\n    {",
+    );
+    let packet = packet.replace(
+        "  \"relations\": [\n    {",
+        "  \"relations\": [\n    {\n      \"relation_id\": \"relation:change:discount:return:test:second\",\n      \"change_id\": \"change:lib/My/App.pm:15:return\",\n      \"owner_id\": \"perl:lib/My/App.pm::My::App::discount\",\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"oracle_id\": \"oracle:t/second.t:4:is\",\n      \"relation_kind\": \"direct_owner_call\",\n      \"reachability_hint\": \"reachable\",\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    },\n    {",
+    );
+
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "a boundary on the SECOND related test's file must still block; got \
+         {:?} (before the fix this returned non-StaticUnknown because only \
+         .first() was sampled)",
+        finding.class
+    );
+    Ok(())
+}
+
 const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",

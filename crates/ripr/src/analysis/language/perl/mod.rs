@@ -185,13 +185,19 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // `test.file_id`), the per-test verify command, and the relation kind.
         let related_evidence = packet.related_test_evidence_for_change(&change.change_id);
 
-        // Conservative dynamic-boundary scope: owner OR file OR selected test
-        // file (has_blocking_dynamic_boundary). An ownerless file-level
-        // boundary still blocks — do NOT narrow to owner-only.
-        let has_boundary = related_evidence
-            .first()
-            .map(|ev| packet.has_blocking_dynamic_boundary(change, Some(ev)))
-            .unwrap_or_else(|| packet.has_blocking_dynamic_boundary(change, None));
+        // Conservative dynamic-boundary scope: owner OR file OR any related
+        // test file (has_blocking_dynamic_boundary). Check EVERY related
+        // evidence — not just the first — so a dynamic boundary tied to a
+        // second/subsequent test's file still blocks (no ordering dependency).
+        // An ownerless file-level boundary still blocks; do NOT narrow to
+        // owner-only.
+        let has_boundary = if related_evidence.is_empty() {
+            packet.has_blocking_dynamic_boundary(change, None)
+        } else {
+            related_evidence
+                .iter()
+                .any(|ev| packet.has_blocking_dynamic_boundary(change, Some(ev)))
+        };
 
         // Build the projected RelatedTests from the packet evidence. The test
         // FILE comes from `ev.test_path` (resolved from test.file_id), never
@@ -2168,29 +2174,37 @@ fn perl_relation_to_domain(
     Option<crate::domain::RelationConfidence>,
 ) {
     use crate::domain::{RelationConfidence, RelationReason};
-    let reason = match kind {
-        RelationKind::DirectOwnerCall => RelationReason::DirectOwnerCall,
-        RelationKind::HelperCall => RelationReason::HelperOwnerCall,
-        RelationKind::PackageReference => RelationReason::ImportPathAffinity,
-        RelationKind::MethodReceiver => RelationReason::DirectOwnerCall,
-        RelationKind::TestNameMatch => RelationReason::OwnerNamedTest,
-        // Advisory-only signals with no clean owner-call mapping: emit None so
-        // they disclose as `relation_reason: null` (legacy advisory style),
-        // matching how the TS adapter treats SameFileProximity/DescribeName.
+    // Single exhaustive match: maps the Perl relation kind to the domain
+    // (RelationReason, RelationConfidence). Advisory-only signals with no
+    // clean owner-call mapping (`FileProximity`, `FixtureSetup`, `Unknown`)
+    // return (None, None) so they disclose as `relation_reason: null` (legacy
+    // advisory style), matching how the TS adapter treats
+    // SameFileProximity/DescribeName.
+    match kind {
+        RelationKind::DirectOwnerCall => (
+            Some(RelationReason::DirectOwnerCall),
+            Some(RelationConfidence::High),
+        ),
+        RelationKind::HelperCall => (
+            Some(RelationReason::HelperOwnerCall),
+            Some(RelationConfidence::High),
+        ),
+        RelationKind::MethodReceiver => (
+            Some(RelationReason::DirectOwnerCall),
+            Some(RelationConfidence::High),
+        ),
+        RelationKind::PackageReference => (
+            Some(RelationReason::ImportPathAffinity),
+            Some(RelationConfidence::Medium),
+        ),
+        RelationKind::TestNameMatch => (
+            Some(RelationReason::OwnerNamedTest),
+            Some(RelationConfidence::Medium),
+        ),
         RelationKind::FileProximity | RelationKind::FixtureSetup | RelationKind::Unknown => {
-            return (None, None);
+            (None, None)
         }
-    };
-    let confidence = match kind {
-        RelationKind::DirectOwnerCall | RelationKind::MethodReceiver => RelationConfidence::High,
-        RelationKind::HelperCall => RelationConfidence::High,
-        RelationKind::PackageReference | RelationKind::TestNameMatch => RelationConfidence::Medium,
-        // Unreachable: the match above returns early for these.
-        RelationKind::FileProximity | RelationKind::FixtureSetup | RelationKind::Unknown => {
-            RelationConfidence::Low
-        }
-    };
-    (Some(reason), Some(confidence))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
