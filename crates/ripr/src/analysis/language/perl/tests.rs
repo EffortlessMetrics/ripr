@@ -2365,14 +2365,20 @@ fn h1_boundary_check_is_ordering_independent_across_related_tests() -> Result<()
         "  \"oracles\": [\n    {\n      \"oracle_id\": \"oracle:t/second.t:4:is\",\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"kind\": \"exact_return_assertion\",\n      \"strength\": \"strong_exact\",\n      \"target_owner_id\": \"perl:lib/My/App.pm::My::App::discount\",\n      \"expression\": \"is($got, 10)\",\n      \"range\": {\"start_line\": 4, \"start_column\": 1, \"end_line\": 4, \"end_column\": 20},\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    },\n    {",
     );
     let packet = packet.replace(
-        "  \"relations\": [\n    {",
-        "  \"relations\": [\n    {\n      \"relation_id\": \"relation:change:discount:return:test:second\",\n      \"change_id\": \"change:lib/My/App.pm:15:return\",\n      \"owner_id\": \"perl:lib/My/App.pm::My::App::discount\",\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"oracle_id\": \"oracle:t/second.t:4:is\",\n      \"relation_kind\": \"direct_owner_call\",\n      \"reachability_hint\": \"reachable\",\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    },\n    {",
+        "      \"provenance_refs\": [\"prov:relation:1\"]\n    }\n  ],\n  \"dynamic_boundaries\":",
+        "      \"provenance_refs\": [\"prov:relation:1\"]\n    },\n    {\n      \"relation_id\": \"relation:change:discount:return:test:second\",\n      \"change_id\": \"change:lib/My/App.pm:15:return\",\n      \"owner_id\": \"perl:lib/My/App.pm::My::App::discount\",\n      \"test_id\": \"test:t/second.t:second_discount\",\n      \"oracle_id\": \"oracle:t/second.t:4:is\",\n      \"relation_kind\": \"direct_owner_call\",\n      \"reachability_hint\": \"reachable\",\n      \"confidence\": \"medium\",\n      \"provenance_refs\": [\"prov:file-index:second\"]\n    }\n  ],\n  \"dynamic_boundaries\":",
     );
 
     let findings = findings_from_packet(&packet)?;
     let finding = findings
         .first()
         .ok_or_else(|| "expected one finding".to_string())?;
+    // There must be at least 2 related tests for ordering to matter at all.
+    assert!(
+        finding.related_tests.len() >= 2,
+        "ordering test requires >=2 related tests; got {}",
+        finding.related_tests.len()
+    );
     assert_eq!(
         finding.class,
         crate::domain::ExposureClass::StaticUnknown,
