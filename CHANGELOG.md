@@ -9,9 +9,112 @@ are scoped or reviewed.
 
 ## Unreleased
 
-## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
+## 0.11.0 - Perl language support (preview) + cross-language honesty hardening
 
 Release date: staged (unreleased).
+
+RIPR 0.11.0 syncs release-intended `ripr-swarm` work back into source `ripr`
+with a history-preserving merge commit (swarm range `36909460..826a1289`, ~100
+commits). Source `ripr` remains the release, publish, signing, marketplace,
+badge, and distribution authority.
+
+The release has two faces. **Perl** moves from a fixture-only adapter to a
+productionized, opt-in language lane — but stays at preview/advisory tier: Perl
+findings are visible and bounded, do **not** emit public repair packets, and get
+no support-tier promotion. **Honesty** hardens across the existing languages:
+Python trap-45 / f-string / literal-change exposure gates, TypeScript
+execution-context oracles and test-directory discovery, Rust transitive-reach
+static-limitation naming, and a corpus-honesty wave that pins limitation
+projection and re-bless survival behind typed assertions.
+
+### Release themes
+
+- Perl productionized: opt-in, advisory, no repair-packet authority.
+- Cross-language honesty: over-claims fail closed into named limitations.
+- Corpus honesty: typed assertions pin limitation projection and re-bless.
+- Output honesty: honest `no_static_path` messaging and scope disclosure.
+
+### Added
+
+#### Perl language adapter (preview / advisory, opt-in)
+
+- **Productionized `PerlAdapter`** (#1431): `impl LanguageAdapter`, pipeline
+  dispatch, and a `lang-perl` CI lane. `.pm`/`.pl`/`.t`/`.psgi` files route to
+  `LanguageId::Perl`. Perl is enabled only when configured; it does not change
+  analysis for Rust/TypeScript/Python repositories.
+- **Managed producer mode** (#1435): `[perl] producer = "perllsp"` selects the
+  fact producer. The `--perl-facts PATH` option (#1434) feeds a pre-built
+  `ripr-perl-facts-v1` packet; Perl auto-enables when a Perl producer or fact
+  packet is present. No `perl-lsp`, Perl runtime, or LSP session is launched by
+  default.
+- **`packet_to_findings()`** (#1432): converts a validated fact packet into
+  `Finding` records with shared `GapRecord` validator parity (#1415), so Perl
+  findings use the same gap-record contract as other languages.
+- **Relation-kind gating + concrete discriminator** (#1428): Perl relation
+  evidence is gated by relation kind and requires a concrete discriminator.
+- **Typed command validation** (#1421): `prove` / `yath` / `carton` commands are
+  validated by type before projection.
+- **`language_runs[]` status** (#1418): the report emits a per-language run
+  status and the pipeline no longer aborts when one language is limited
+  (multi-language pipeline is non-aborting).
+- **Perl-aware `doctor`** (#1436): `ripr doctor` reports Perl producer
+  configuration and readiness.
+
+#### Cross-language honesty
+
+- **Honest `no_static_path` messaging** (RIPR-SPEC-0113, #1300): when a finding
+  reaches a test but lacks a static discriminator, the message names the witness
+  test instead of claiming "no static test path".
+- **Worktree scope disclosure** (RIPR-SPEC-0112, #1295): `--base` discloses any
+  unanalyzed working-tree scope rather than silently narrowing.
+- **Rust transitive-reach limitation** (RIPR-SPEC-0114/#0115, #1305/#1310):
+  transitive reach that cannot be statically confirmed is named as a static
+  limitation (fail-closed), including the witness test in the no-static-path
+  limitation.
+- **First-run trust** (#1308): `doctor` recommends commit/stage first on a dirty
+  worktree.
+
+### Fixed (honesty hardening)
+
+- **Python exposure gates**: f-string length-invariant changes seen only via
+  `len()` (#1302/#1309), dict-literal key changes (#1297/#1298), list-literal
+  index changes (#1299), and error-path / `raise` changes (#1306) now require
+  observing the changed element or an exception oracle; annotation-only,
+  docstring/comment-only, and module-scope annotation-only changes emit no probe
+  (#1294/#1281/#1289/#1322); a changed default never exercised is not credited
+  (#1316).
+- **TypeScript**: execution-context assertion oracles are recognized (#1323);
+  `test/`-directory files are detected as tests for AVA / Mocha / `node:test`
+  (#1317); negated `t` assertions stay weak.
+- **Rust**: exact error-payload assertions and string error-payload oracles are
+  credited (#1351/#a431fce6); macro reach and oversized diff probe expansion are
+  named as limitations (#6fa4499d/#5dfd79dd); deeper Rust transitive reach is
+  named.
+
+### Internal / CI
+
+- **Corpus honesty wave**: typed `xtask` evidence-corpus assertions pin evidence
+  promotion, limitation projection, scope disclosure, and re-bless survival
+  across languages, so a dishonest re-bless fails a typed assertion.
+- `release-readiness` now fails closed when the extension version does not match
+  the crate version (#1287).
+- Badge public projection into closed `RIPR-SPEC-0066` states (#1416); badges
+  regenerated for the merged tree.
+
+### Non-claims
+
+- Perl is **preview/advisory**: findings are visible and bounded but do not emit
+  public repair packets and are not gate authority. No support-tier promotion.
+- TypeScript, JavaScript, Python, and Perl remain preview/advisory tiers.
+- No runtime mutation execution, no generated tests, no full typechecker, no
+  autonomous edits. Findings use honest static-exposure vocabulary
+  (`exposed` / `weakly_exposed` / `reachable_unrevealed` / `no_static_path` /
+  named limitations); RIPR does not claim `killed`, `survived`, `proven`, or
+  `adequate`.
+
+## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
+
+Release date: 2026-06-15.
 
 RIPR 0.10.0 hardens the central promise that evidence is only credited to a seam
 it actually observes. The headline is honesty-by-construction: across Rust,
