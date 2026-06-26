@@ -217,6 +217,11 @@ can show:
 - VS Code e2e smoke covers opening a TypeScript file when the adapter is
   enabled
 - `cargo xtask dogfood` records a checked TypeScript preview receipt
+- the preview repair-loop corpus can opt into semantic assertions that require
+  an operator verify command and receipt command while also requiring the source
+  fixture to withhold packet-ready verify evidence (`typescript_verify_command`
+  and preview-card `verify.command`) until a complete repair-packet contract
+  exists
 - the capability matrix gains `TypeScript preview static facts` at
   `alpha`, marked preview, with metrics from RIPR-SPEC-0026 plus
   TypeScript-specific counts where the language adds vocabulary

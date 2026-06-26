@@ -67,6 +67,24 @@ omitted when no supported alignment item is present, so existing consumers can
 continue to read `findings` directly. Raw findings remain unchanged and are
 repeated only as supporting evidence for the canonical item.
 
+When Rust diff-scoped analysis stops at a configured budget before probe
+expansion, `ripr check --json` still exits non-zero, but it writes a limited
+check artifact to stdout before reporting the error on stderr. This artifact
+preserves the normal check envelope (`schema_version`, `tool`, `mode`, `root`,
+`summary`, and `findings`) and adds:
+
+- `analysis_scope.run_status: "diff_scope_oversized"`
+- `analysis_scope.basis: "rust_diff_scope_budget"`
+- `analysis_scope.downstream_consumable: false`
+- `analysis_scope.limitation: "diff_scope_oversized"`
+- `analysis_scope.repair_route: "analysis/diff-scope-budget"`
+- `run_limitations[]` with the same category, run status, repair route, and the
+  budget diagnostic message
+
+Consumers must not treat a limited `diff_scope_oversized` artifact as a clean
+or complete analysis. The zero summary and empty `findings` array mean analysis
+did not run far enough to classify probes, not that the diff has no findings.
+
 ```json
 {
   "finding_alignment": {
@@ -758,7 +776,15 @@ The evidence-first fields are additive in schema `0.2`:
   evidence, receipt evidence, stop conditions, must-not-change constraints, and
   safe repo-relative raw evidence refs. It is a check JSON, human CLI, SARIF,
   GitHub annotation, and gap-ledger Markdown advisory card, not a public repair
-  packet. The v1 card carries
+  packet. **Scope caveat (Campaign 31 #1379):** the renderer is real production
+  code, but in the current state it projects only from synthetic test findings —
+  no production Perl source can produce a finding that carries this card,
+  because the Perl adapter module is `#[cfg(test)] mod perl;`, the path router
+  ignores `.pm`/`.pl`/`.t`/`.psgi`, and the upstream `perl-lsp ripr-facts`
+  exporter does not exist yet. Perl's support tier is `scaffold`, not `preview`
+  (see [Support Tiers](status/SUPPORT_TIERS.md)). The card lights up for real
+  Perl source once Campaign 31 lands the production exporter + consumer bridge.
+  The v1 card carries
   `card_version`, `source`,
   `language`, `language_status`, `authority_boundary`, `surface_scope`,
   `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,
@@ -828,7 +854,23 @@ The evidence-first fields are additive in schema `0.2`:
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
   `decorator_indirection`, `mocked_module`,
   `opaque_custom_assertion_helper`, `property_based_test`,
-  `unresolved_pytest_fixture`, or `unsupported_syntax`.
+  `unresolved_pytest_fixture`, `unsupported_syntax`,
+  `cross_language_oracle_visibility_unresolved`,
+  `rust_transitive_reach_unresolved`,
+  `rust_integration_public_api_path_unresolved`, or
+  `rust_macro_reach_unresolved`, or
+  `rust_macro_wrapped_test_call_unresolved`, or
+  `rust_macro_wrapped_assertion_unresolved`.
+- `static_limitation` is an additive optional per-finding object emitted only
+  when a finding with `static_limit_kind` also carries a complete structured
+  limitation detail. Current Rust transitive-reach, integration public-API path,
+  macro-reach, direct test macro-call, and macro-wrapped assertion limitations
+  populate it from the same evidence lines rendered in human output. Fields are
+  `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`,
+  and `non_claim`. The object is absent for static limits that do not have all
+  four detail fields; consumers should keep using `static_limit_kind` as the
+  limitation discriminator and treat `static_limitation` as richer detail when
+  present.
 
 ### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
 
@@ -900,6 +942,35 @@ requires no disclosure.
 - `category` — always `"no_scope_disclosure"` for machine filtering
 - `why` — advisory rationale string guiding the user to the correct invocation
 
+### `unanalyzed_working_tree` (top-level additive boolean, RIPR-SPEC-0112)
+
+Added as an additive optional top-level boolean. Emitted (as `true`) only when
+ALL of the following are true:
+
+1. `ripr check --base <rev>` was invoked (i.e. `--base` was explicit).
+2. `--diff <file>` was NOT also supplied.
+3. The working tree has at least one uncommitted change to a tracked source
+   file, as reported by `git status --porcelain`.
+
+Absent (not emitted) when `false`. Does not bump `schema_version`.
+
+This field closes the false-clean gap where `ripr check --base HEAD` with an
+uncommitted `.rs` edit returns 0 probes and exit 0 — a result that is honest
+for the committed diff but misleading if the user assumes it covers their
+working-tree change. When `unanalyzed_working_tree: true` is present, the
+result is NOT a clean pass for the uncommitted changes.
+
+Example:
+
+```json
+"unanalyzed_working_tree": true
+```
+
+The field is absent when the worktree is clean, when `--diff <file>` was used
+instead of `--base`, when `--worktree` was used to include staged and unstaged
+tracked edits in the analyzed diff, or when `git status --porcelain` cannot be
+run (fail-closed: no fabricated disclosure).
+
 ## Enums
 
 `classification` values:
@@ -948,6 +1019,15 @@ requires no disclosure.
 - `unresolved_pytest_fixture`
 - `unsupported_syntax`
 - `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
+- `rust_transitive_reach_unresolved` — (RIPR-SPEC-0114, additive) A test appears to call public API that may transitively reach the changed Rust owner through a pub->pub(crate) helper chain or similar internal call graph, but ripr cannot fully resolve the path (macros, generics, trait dispatch, or depth>5 stop the walk). Classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
+- `rust_integration_public_api_path_unresolved` -- (RIPR-SPEC-0118, additive) An integration test appears to call crate public API, or a test helper that calls crate public API, along a candidate path toward the changed Rust owner. RIPR cannot fully resolve that integration/public-API path, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
+
+- `rust_macro_reach_unresolved` -- (RIPR-SPEC-0117, additive) A test appears to call a Rust entry point whose path toward the changed owner stops at a same-repo macro invocation. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
+- `rust_macro_wrapped_test_call_unresolved` -- (RIPR-SPEC-0119, additive) A Rust test directly invokes a same-repo macro whose definition mentions the changed owner. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
+
+- `rust_macro_wrapped_assertion_unresolved` -- (RIPR-SPEC-0120, additive) A Rust test reaches the changed owner, but its assertion-like custom macro is not classified as an oracle. Classification stays `reachable_unrevealed`; this is a named limitation, not an oracle, coverage, or repair-packet claim.
 
 Reserved `flow_sink` values:
 
@@ -1026,6 +1106,7 @@ while `call_effect` remains the fallback for other observable calls.
 - `feature_unknown`
 - `async_boundary_opaque`
 - `no_changed_rust_line`
+- `macro_reach_unresolved`
 - `infection_evidence_unknown`
 - `propagation_evidence_unknown`
 - `static_probe_unknown`
@@ -1048,16 +1129,16 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.5`:
+Native schema `0.7`:
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.7",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
   "label": "ripr",
-  "message": "0",
+  "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
   "counts": {
@@ -1090,17 +1171,29 @@ Native schema `0.5`:
     "test_intent_path": ".ripr/test_intent.toml",
     "suppressions_path": ".ripr/suppressions.toml"
   },
-  "warnings": []
+  "warnings": [],
+  "preview_skipped": [],
+  "public_projection": {
+    "state": "zero_actionable",
+    "message": "0 actionable",
+    "run_status": "full",
+    "generated_at": "2026-06-20T00:00:00Z",
+    "actionable_count": 0,
+    "limited_reason": null,
+    "stale_age_secs": 0,
+    "source_report": "target/ripr/reports/repo-ripr-badge.json"
+  }
 }
 ```
 
 Field contract:
 
-- `schema_version` — currently `"0.5"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.7"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
   `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
   `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
-  projection.
+  projection; `0.6` adds `preview_skipped`; `0.7` adds the
+  `public_projection` object (RIPR-SPEC-0066) on repo-scoped public badges.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
@@ -1111,8 +1204,12 @@ Field contract:
   rendered from supplied GapRecord projection targets. Diff-scoped badge
   formats currently use `finding_exposure`; repo-scoped public badge formats
   use `canonical_actionable_gap` unless `--gap-ledger` is supplied.
-- `message` — the headline count rendered as a string for Shields
-  compatibility. It is a count, never a denominator or coverage fraction.
+- `message` — the headline rendered as a string for Shields compatibility.
+  Diff-scoped and internal badges render the bare count (for example `"5"`).
+  Repo-scoped public badges render the closed RIPR-SPEC-0066 vocabulary
+  (`"0 actionable"`, `"<n> actionable"`, `"limited"`, `"stale"`, or
+  `"unknown"`), combined with the `label` to read as `ripr: <n> actionable`.
+  It is a count or a named state, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
   `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
   repo public scope: unresolved actionable canonical repair items; seam-native
@@ -1132,6 +1229,33 @@ Field contract:
   canonical-actionable basis; `0` for finding-exposure and seam-native badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
+- `preview_skipped` — (v0.6) array of preview-language adapter names detected
+  in the diff but not enabled; a non-empty list means the result is not a
+  clean Rust-grade result. Always present as an array (possibly empty).
+- `public_projection` — (v0.7) present only on repo-scoped public badges
+  (`canonical_actionable_gap` or `gap_decision_ledger` basis). The
+  RIPR-SPEC-0066 projection of the badge into one closed public state plus
+  the required sidecar fields. Absent on diff-scoped and internal badges.
+  When present, the native `message` / `status` / `color` are projected from
+  it. Fields:
+  - `state` — one of `zero_actionable`, `actionable`, `limited`, `stale`,
+    `unknown`. Selected with fail-closed precedence
+    (`unknown > stale > limited > count`); a degraded input never resolves
+    toward the cleaner-looking state.
+  - `message` — the Shields message for the state (label-agnostic, e.g.
+    `0 actionable`, `limited`).
+  - `run_status` — Lane-1 completeness state of the source run (`full` or a
+    named `limited_*` value).
+  - `generated_at` — RFC3339 UTC timestamp the badge was generated, or `null`.
+  - `actionable_count` — unresolved canonical actionable gap count; present
+    only for the count states (`zero_actionable` / `actionable`), `null`
+    alongside any degraded state.
+  - `limited_reason` — the `limitation_category` (and repair route) for a
+    `limited` state; `null` otherwise.
+  - `stale_age_secs` — age of the artifact relative to its source at
+    evaluation time, in seconds; `null` when `generated_at` is unknown.
+  - `source_report` — repo-relative path the badge was projected from, or
+    `null`.
 
 Shields projection:
 
@@ -5852,8 +5976,11 @@ instead of full-repo truth: changed production files plus bounded immediate
 caller files. The JSON and Markdown carry `analysis_scope.run_status =
 "limited_diff_scope"` and the `review_comments_diff_scope_only` limitation
 route so large-repo users can see the narrowed basis. When `--gap-ledger` is
-supplied, the command does not rerun analysis; it renders changed-line repair
-cards only from explicit `GapRecord` entries with
+supplied, the JSON and Markdown carry `analysis_scope.run_status =
+"artifact_scope"` and the `review_comments_gap_ledger_artifact_scope_only`
+limitation route so users can see that RIPR consumed a supplied ledger artifact
+rather than rerunning diff or full-repo analysis. The command renders
+changed-line repair cards only from explicit `GapRecord` entries with
 `projection_eligibility.pr_comment.eligible = true`, PR-local scope, a stable
 anchor, a dedupe fingerprint, a repair route, and verification commands. It
 does not post to GitHub, run mutation testing, refresh LSP state, edit source
@@ -5876,22 +6003,22 @@ JSON shape:
     "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
   },
   "analysis_scope": {
-    "scope": "diff_scoped_changed_files",
-    "run_status": "limited_diff_scope",
-    "basis": "changed_production_files_plus_immediate_callers",
+    "scope": "gap_ledger_artifact",
+    "run_status": "artifact_scope",
+    "basis": "supplied_gap_decision_ledger",
     "changed_files": ["src/pricing.rs"],
     "changed_lines": 1,
-    "changed_owner_functions": 1,
+    "changed_owner_functions": 0,
     "changed_production_files": ["src/pricing.rs"],
-    "immediate_caller_files": ["src/checkout.rs"],
-    "scoped_production_files": ["src/pricing.rs", "src/checkout.rs"],
-    "total_rust_files": 412000,
-    "total_production_files": 411000,
-    "production_files_considered": 2,
-    "classified_seams_considered": 7,
+    "immediate_caller_files": [],
+    "scoped_production_files": ["src/pricing.rs"],
+    "total_rust_files": null,
+    "total_production_files": null,
+    "production_files_considered": 1,
+    "classified_seams_considered": 1,
     "downstream_consumable": true,
-    "limitation": "review_comments_diff_scope_only",
-    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
+    "limitation": "review_comments_gap_ledger_artifact_scope_only",
+    "repair_route": "reports/gap-decision-ledger"
   },
   "limits": {
     "max_inline_comments": 3,
@@ -5971,15 +6098,19 @@ Field contract:
   and RIPR analysis mode used to render the report.
 - `inputs.gap_ledger` - optional explicit gap decision ledger used for
   repair-card projection. It is present only when `--gap-ledger` is supplied.
-- `analysis_scope` - optional scoped-input metadata for renderer paths that
-  run analysis. The default diff renderer emits `scope =
-  "diff_scoped_changed_files"`, `run_status = "limited_diff_scope"`, changed
-  files, changed owner count, changed production files, immediate caller files,
-  total production-file counts, the classified seam count considered, and the
-  `review_comments_diff_scope_only` limitation route. This makes the report
-  useful on large repos without representing the scoped review as full-repo
-  evidence. Gap-ledger rendering may omit this field because its authority is
-  the supplied ledger artifact.
+- `analysis_scope` - scoped-input metadata for the renderer path. The default
+  diff renderer emits `scope = "diff_scoped_changed_files"`, `run_status =
+  "limited_diff_scope"`, changed files, changed owner count, changed production
+  files, immediate caller files, total production-file counts, the classified
+  seam count considered, and the `review_comments_diff_scope_only` limitation
+  route. This makes the report useful on large repos without representing the
+  scoped review as full-repo evidence. Gap-ledger rendering emits `scope =
+  "gap_ledger_artifact"` and `run_status = "artifact_scope"` with `basis =
+  "supplied_gap_decision_ledger"`, ledger anchor files, the supplied GapRecord
+  count in `classified_seams_considered`, and the
+  `review_comments_gap_ledger_artifact_scope_only` limitation route. That path
+  does not rerun diff or full-repo analysis; its authority is the supplied
+  ledger artifact.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line
@@ -6203,8 +6334,9 @@ Field contract:
   claim runtime mutation results.
 - `skipped[]` records capped, summary-only, suppressed, disabled, and
   already-current items.
-- `skip_reason` is `mode_off`, `summary_only`, `suppressed`, `cap_reached`,
-  `unchanged_tests`, `not_publishable`, or `already_current`.
+- `skip_reason` is `mode_off`, `summary_only`, `suppressed`,
+  `inline_comment_cap_reached`, `unchanged_tests`, `not_publishable`, or
+  `already_current`.
 - `blocked[]` records hard safety blockers such as missing permissions,
   untrusted forks, missing PR context, unsafe events, missing dedupe keys, or
   malformed inputs.

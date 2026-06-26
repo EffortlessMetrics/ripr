@@ -162,5 +162,8 @@ Weakness
 Stop reasons:
   - dynamic_dispatch_unresolved
 
+Static limitation
+  dynamic_dispatch — Dynamic dispatch (trait objects or virtual calls) hides which implementation runs, so ripr cannot statically resolve whether a test reaches this change.
+
 
 Note: 4 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

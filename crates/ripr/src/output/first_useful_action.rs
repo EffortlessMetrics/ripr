@@ -1161,9 +1161,14 @@ fn has_suppressed_guidance(pr_guidance: Option<&Value>) -> bool {
             .get("warnings")
             .and_then(Value::as_array)
             .is_some_and(|warnings| {
-                warnings.iter().filter_map(Value::as_str).any(|warning| {
-                    warning.contains("configured off") || warning.contains("suppressed")
-                })
+                // review-comments warnings are objects `{ kind, message }`; match
+                // against the message text, not a bare string.
+                warnings
+                    .iter()
+                    .filter_map(|warning| warning.get("message").and_then(Value::as_str))
+                    .any(|warning| {
+                        warning.contains("configured off") || warning.contains("suppressed")
+                    })
             })
 }
 

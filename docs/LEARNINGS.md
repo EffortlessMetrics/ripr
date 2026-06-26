@@ -1497,3 +1497,141 @@ non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
 --check` under the pinned toolchain. When a fix "doesn't work" but the builder
 insists it does, suspect your own harness before the builder — inject a unique
 string into the output to confirm your edits are even in the binary you're running.
+
+## 2026-06-15: Not every adversarial "false-`exposed`" is a bug — separate the runtime-equivalence floor from the static missing-discriminator
+
+A broad red-team round (40 traps) surfaced a large residue after the token-identity
+families were closed. Triaging by the **missing signal** — not the surface vector —
+split them three ways, and only some are `ripr`'s to fix:
+
+- **Tractable sink-precision (fix it).** The oracle observes the owner's *output* but
+  the wrong *part* of it: a sibling dict key (`{"port": 9090}` changed,
+  `cfg()["host"]` observed), a sibling list index, or an aggregate (`len(...)`). This
+  is syntactic and in-contract — credit only when a strong oracle observes the
+  *changed* element (changed key/index subscript, changed value, or whole-collection
+  comparison). Fixed via the dict/list element gate (`field_construction_credit_ok`).
+- **Runtime-equivalence floor (do NOT fix; document).** The oracle observes the
+  changed output, but only *evaluation* shows old ≡ new for the test's input
+  (operator identity at `0`/`1`, coincident slice/`len`, boolean short-circuit,
+  ASCII `lower`/`casefold`). Detecting these = running the mutant; `ripr` is static
+  and cannot, and cannot conservatively downgrade without also dropping the genuine
+  discriminators (it can't tell `compute(10,3)==7` from `apply_discount(5,100)==5`
+  without evaluation). This is the honest floor — see
+  `docs/STATIC_EXPOSURE_MODEL.md` § The static/runtime boundary.
+- **Static missing-discriminator (in scope, as a gap).** A boundary change
+  (`>= → >`) is discriminated only at `total == threshold`; a far-from-boundary test
+  is genuinely non-discriminating, but the gap is *nameable* and stays a valid
+  repair-routing candidate — not floor, not `exposed`.
+
+**The durable rule:** input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope. "Drive false-`exposed`
+to zero" is not achievable purely statically — the honest target is *zero confirmed
+in-contract false-`exposed`*, with the floor explicitly bounded. **A regression
+caught the same run:** a literal-element gate that locates the brace with `find('{')`
+mis-reads an f-string (`f"{value:.3f}"`) as a dict literal — require the expression
+to *start with* the literal opener, and re-run the full adversarial trap set after
+merge to catch downgraded positives (goldens won't cover a synthetic trap that has no
+fixture).
+
+## 2026-06-16: "Observed but not reached" is a distinct, tractable false-`exposed` family from "observed the wrong part"
+
+Trap 45 (changed default value not exercised) is a *third* tractable sink-precision
+shape, orthogonal to the dict/list/f-string "wrong part of the output" gates. Here the
+oracle observes the owner's output *correctly and exactly*, but the changed code path
+is **never reached**: `def render(name, verbose=True)` changes its default, yet the
+only strong test calls `render("Sam", verbose=False)` — binding the parameter
+explicitly, so the default is irrelevant and the assertion passes identically before
+and after. This is *static and in-contract* (no evaluation needed — argument binding is
+syntactic), so it is `ripr`'s to fix, unlike the runtime-equivalence floor. The
+mirror image of error-path Class C (`raise` change on an untaken branch): both are
+"strong oracle reaches the owner but the *specific changed behavior* is not exercised."
+
+**Implementation rule that keeps it honest (fail open, never false-clean):** block
+`exposed` only when you can *positively prove* every strong reaching call overrides the
+changed default. Concretely (`changed_default_overridden_params`): (a) restrict to a
+*pure* default-value change (added/removed default, rename, or method/classmethod owner
+→ fail open — a method's implicit `self`/`cls` shifts positional indexing); (b) require
+**each** strong related test to contain at least one *directly analyzable* `owner(...)`
+call — if a strong test reaches the owner via an alias/wrapper the scanner can't
+resolve, fail open (it might omit the parameter and be the real discriminator); (c)
+treat `*args`/`**kwargs` unpacking or any unparseable call as fail-open. A coarse
+"does any related test omit the param" gate is *not* safe — a sibling override test plus
+an aliased omitting test would wrongly block. Per-candidate "must have a direct call I
+can read" is what avoids the false-clean.
+
+## 2026-06-16: Annotation-only suppression is safe at module scope, not in class bodies
+
+The #1289 annotation-only no-probe family splits cleanly on owner scope. At **module
+scope**, Python annotations are never enforced at runtime, so an annotation-only change
+(identical target name and value, only the annotation text differs) has no behavior
+delta and can be safely suppressed — mirror the `def`-header skeleton pattern
+(`variable_annotation_skeleton` re-parses the line as an `AnnAssign` and compares the
+target+value, excluding the annotation). Inside a **class body**, the same change is
+behavioral: `@dataclass`, Pydantic `BaseModel`, and `attrs` drive runtime validation and
+coercion from field annotations, so suppressing there would be a false-clean. The guard
+is therefore `owner.is_module_owner()` first, and fails closed for every class body
+until base-class tracking exists. This is the recurring rule for the whole annotation
+family: the suppression's safety comes from *where* the annotation lives, not just from
+*what* changed. (See `docs/DEFERRED.md` § python-annotation-only-no-probe for the two
+remaining open sub-cases: class-body annotations and multiline-docstring interiors.)
+
+## 2026-06-26: Perl mapper honesty — owner-target is not sink observation; the producer gate is the wrong harness
+
+From the Campaign 31 Phase D mapper hotfix (PR H1, #1409). Two distinct lessons,
+both load-bearing for any preview-language adapter that consumes a producer's
+fact packet.
+
+### Owner-target identity is not changed-sink observation
+
+The Perl packet can prove `oracle.target_owner_id == changed_owner_id` — the
+oracle targets the same owner the change lives in. That is **not** the same as
+the oracle observing the **specific changed sink**. The production Finding
+leaves `observed_sink`, `oracle_alignment`, and `alignment_reason` all `None`
+because the packet carries no sink-level detail. Crediting reach-plus-a-strong
+-oracle as "already discriminated" on owner-target identity alone is exactly the
+recurring false-`exposed` family (cf. "Token coincidence" above): proximity
+dressed up as discrimination.
+
+The honest interim policy, until the producer contract adds
+`ChangeFact.changed_observable` and `OracleFact.observed_sink`, is to **fail
+closed**: a strong oracle aligned to the owner stays `WeaklyExposed` (or is
+downgraded to `ReachableUnrevealed` for advisory relations), never promoted to
+an "observed" claim. Do not encode the three-way matrix until sink alignment is
+real; split "mapping integrity" (H1) from "classification semantics" (H2) so the
+integrity fix can land without assuming the unprovable. This mirrors the
+"Real producers only" rule: do not flip a field to a fabricated taxonomy before
+a real production condition populates it.
+
+### The feature gate makes the default-feature gate a false-green oracle
+
+`lang-perl` is **not** a default feature (`crates/ripr/Cargo.toml`: `default =
+["lang-rust","lang-typescript","lang-python"]`). The Perl module is
+`#[cfg(feature = "lang-perl")]`. CI's `cargo clippy --workspace --all-targets`
+runs on default features, so it **never compiles the Perl module** — it reports
+green for code it did not see. Any validation command for a feature-gated module
+must pass `--features <feature>` explicitly, or it is the wrong harness
+manufacturing a false negative. (This is the "verify the artifact" rule cutting
+the other way: a gate that passes because it never ran is not evidence.) The
+signal that you have the right harness: the targeted test count is non-zero and
+the module's symbols resolve.
+
+### Concrete shape
+
+PR H1 rewrote `packet_to_findings` to route through the packet-owned helpers
+(`related_test_evidence_for_change`, `verify_command_for_test`,
+`has_blocking_dynamic_boundary`, `canonical_gap_identity_for_change`) instead
+of a parallel classifier. Before H1, every `related_test.file` was built from
+the **production** source path (`PathBuf::from(&file.path)`) — the edit surface
+could point at `lib/*.pm`. The cardinal regression was latent (the projection
+gate returns `None` at the `gap_state:` check before production findings reach
+it), not live — but it would have flipped `repair_packet_ready: true` against a
+production file the moment H2 wired the evidence. The 8 adversarial tests added
+were the **first** direct coverage of the mapper; it previously had zero, which
+is why the bug survived three merged PRs.
+
+Followups tracked separately: H2 classification semantics (after cross-repo
+contract freeze adds sink fields), and a `perl-lsp-swarm` CI scratch-GC fix
+(that repo's orphan reaper searches `/mnt/ci-scratch -maxdepth 1 -name 'ripr-*'`
+but the per-run dirs nest under `/mnt/ci-scratch/perl-lsp-swarm/ripr-*` and
+`/mnt/ci-scratch/tmp/ripr-*` — `ripr-swarm`'s own `scratch-gc.yml` does the
+sweep correctly and is the reference pattern).

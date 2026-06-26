@@ -1,4 +1,4 @@
-pub(super) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
+pub(crate) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
     ["assert_eq!", "assert_ne!"]
         .iter()
         .find_map(|macro_name| macro_invocation_arguments(line, macro_name))

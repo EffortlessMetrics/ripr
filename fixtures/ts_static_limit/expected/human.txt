@@ -44,6 +44,9 @@ Weakness
   - Related test reaches `dispatchAction` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
 
+Static limitation
+  dynamic_dispatch — Dynamic dispatch (trait objects or virtual calls) hides which implementation runs, so ripr cannot statically resolve whether a test reaches this change.
+
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
   authority: preview_advisory_only (typescript/preview)

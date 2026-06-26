@@ -44,6 +44,9 @@ Weakness
   - Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   - Static limit `mocked_module`: related test file mocks `./api` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.
 
+Static limitation
+  mocked_module — A mocked module replaces the real implementation, so a passing test may not observe the actual changed behavior.
+
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
   authority: preview_advisory_only (typescript/preview)

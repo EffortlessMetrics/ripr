@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::Finding;
+use std::collections::BTreeSet;
 
 /// Render the complete check report in the human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
@@ -39,7 +40,18 @@ Run `ripr check --base origin/main` to analyze your changes, or \
 An empty result here does NOT mean your changed behavior is covered.\n",
             );
         }
+        // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+        // changes were NOT analyzed. An empty result here does NOT mean those changes
+        // are covered — they were excluded from the committed-history diff.
+        if output.unanalyzed_working_tree {
+            out.push_str(
+                "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only — commit or stage these changes and re-run, \
+or analyze a committed branch with `ripr check --base origin/main`.\n",
+            );
+        }
         render_preview_language_advisories(&mut out, output);
+        render_language_runs(&mut out, output);
         return out;
     }
 
@@ -48,7 +60,18 @@ An empty result here does NOT mean your changed behavior is covered.\n",
         out.push('\n');
     }
     render_all_no_path_disclosure(&mut out, output);
+    // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+    // changes were NOT analyzed. Fires whether or not the committed diff had findings —
+    // those uncommitted edits are still unanalyzed regardless.
+    if output.unanalyzed_working_tree {
+        out.push_str(
+            "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only; run `ripr check` (no --base) to analyze \
+your working tree.\n",
+        );
+    }
     render_preview_language_advisories(&mut out, output);
+    render_language_runs(&mut out, output);
     out
 }
 
@@ -74,10 +97,49 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
     if all_no_path_count != s.findings {
         return;
     }
+    // Honesty guard (dogfood: anyhow `Chain::len`): the unknown classes
+    // (`static_unknown` / `infection_unknown` / `propagation_unknown`) can carry
+    // `reach: yes` — a test DOES reach the change, ripr just could not classify
+    // or propagate it. Claiming "no static test path" for the diff then
+    // contradicts the finding's own reach evidence. A reaching test IS a static
+    // test path, so suppress the all-no-path note whenever any finding reaches.
+    if output
+        .findings
+        .iter()
+        .any(|finding| finding.ripr.reach.state == crate::domain::StageState::Yes)
+    {
+        return;
+    }
+    let related_tests_total = output
+        .findings
+        .iter()
+        .flat_map(|finding| finding.related_tests.iter())
+        .map(|test| {
+            (
+                test.file.to_string_lossy().into_owned(),
+                test.name.clone(),
+                test.line,
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    let scope_summary = if s.changed_rust_files > 0 {
+        format!(
+            "Scope analyzed: {} changed Rust file(s), {} changed expression(s), and {} statically linked related test(s).",
+            s.changed_rust_files, all_no_path_count, related_tests_total
+        )
+    } else {
+        format!(
+            "Scope analyzed: {} changed expression(s) and {} statically linked related test(s).",
+            all_no_path_count, related_tests_total
+        )
+    };
     out.push_str(&format!(
         "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
-This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.\n",
-        all_no_path_count
+{} This is not a coverage assessment. A test may already exercise these changes through macros, \
+helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, \
+add co-located tests that observe the changed behavior.\n",
+        all_no_path_count, scope_summary
     ));
 }
 
@@ -109,6 +171,28 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
                 "\nNote: this diff contains {} {}(s). The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
                 advisory.file_count, language, language,
             ));
+        }
+    }
+}
+
+/// Render per-language run-status lines for languages that did not complete
+/// successfully (non-abort contract, Campaign 31 PR 10, #1403). Silent when
+/// every language ran to completion.
+fn render_language_runs(out: &mut String, output: &CheckOutput) {
+    for run in &output.language_runs {
+        let language = capitalize_first(&run.language);
+        match &run.reason {
+            Some(reason) => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above. Reason: {}\n",
+                language,
+                run.status.as_str(),
+                reason,
+            )),
+            None => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above.\n",
+                language,
+                run.status.as_str(),
+            )),
         }
     }
 }
@@ -166,7 +250,9 @@ mod tests {
             },
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -492,6 +578,55 @@ mod tests {
         assert!(output.contains("  - static_probe_unknown"));
     }
 
+    // RIPR-SPEC-0115: a transitive-reach witness line in `evidence` (recognized
+    // by the shared prefix) renders as a concrete "Where to look" pointer.
+    #[test]
+    fn human_output_surfaces_transitive_reach_witness_as_where_to_look() {
+        let mut finding = sample_finding();
+        finding.evidence.push(
+            "For example, the test `test_uses_outer` (tests/it.rs:12) calls `outer`, an entry \
+             point that may lead here. Inspect it to judge whether this change is observed."
+                .to_string(),
+        );
+        let output = render_finding(&finding);
+        assert!(output.contains("Where to look\n"));
+        assert!(output.contains("the test `test_uses_outer` (tests/it.rs:12) calls `outer`"));
+        assert!(output.contains("may lead here"));
+    }
+
+    #[test]
+    fn human_output_surfaces_static_limitation_detail() {
+        let mut finding = sample_finding();
+        finding.evidence.extend([
+            "limitation_last_established_edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`".to_string(),
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path".to_string(),
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach".to_string(),
+            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change".to_string(),
+        ]);
+
+        let output = render_finding(&finding);
+
+        assert!(output.contains("Limitation detail\n"));
+        assert!(output.contains(
+            "  last established edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`\n"
+        ));
+        assert!(output.contains(
+            "  first unresolved edge: entry `outer` -> owner `inner` through a transitive Rust helper path\n"
+        ));
+        assert!(output.contains("  analyzer route: analysis/rust-public-api-transitive-reach\n"));
+        assert!(output.contains(
+            "  non-claim: named limitation only; ripr cannot confirm or deny that this path observes the change\n"
+        ));
+    }
+
+    // No witness line -> no "Where to look" section (fail-closed: only render
+    // when the limitation actually named a witness).
+    #[test]
+    fn human_output_omits_where_to_look_without_witness() {
+        let output = render_finding(&sample_finding());
+        assert!(!output.contains("Where to look"));
+    }
+
     fn add_perl_preview_card_inputs(finding: &mut Finding) {
         finding.id = "probe:lib_My_App_pm:8:perl_return".to_string();
         finding.canonical_gap = Some(FindingCanonicalGap {
@@ -728,7 +863,9 @@ mod tests {
                 sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -763,7 +900,9 @@ mod tests {
                 sample_paths: vec!["app/main.py".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -789,7 +928,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -821,7 +962,9 @@ mod tests {
                 sample_paths: vec!["src/lib.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -851,7 +994,9 @@ mod tests {
                 sample_paths: vec!["src/utils.ts".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -903,7 +1048,9 @@ mod tests {
                 sample_paths: vec!["app/models.py".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -971,7 +1118,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1014,7 +1163,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1044,7 +1195,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1075,7 +1228,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1102,6 +1257,7 @@ mod tests {
             root: PathBuf::from("repo"),
             base: None,
             summary: Summary {
+                changed_rust_files: 1,
                 probes: 2,
                 findings: 2,
                 no_static_path: 2,
@@ -1109,7 +1265,9 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1124,8 +1282,14 @@ mod tests {
             "expected honesty note; got:\n{rendered}"
         );
         assert!(
-            rendered.contains("no co-located test was found that statically discriminates"),
-            "expected absence-of-path wording; got:\n{rendered}"
+            rendered.contains("A test may already exercise these changes through macros"),
+            "expected honest untraced-test wording; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related test(s)."
+            ),
+            "expected scope-count disclosure; got:\n{rendered}"
         );
     }
 
@@ -1146,7 +1310,9 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1155,6 +1321,86 @@ mod tests {
             rendered
                 .contains("ripr found no static test path for any of the 1 changed expression(s)"),
             "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_counts_linked_related_tests() {
+        let mut finding = unknown_finding();
+        let related_test = RelatedTest {
+            name: "test_handles_disabled".to_string(),
+            file: PathBuf::from("tests/sample.rs"),
+            line: 22,
+            oracle: Some("assert_eq!(actual, expected)".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+        };
+        finding.related_tests.push(related_test.clone());
+        let mut duplicate_finding = unknown_finding();
+        duplicate_finding.related_tests.push(related_test);
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 2,
+                static_unknown: 2,
+                ..Summary::default()
+            },
+            findings: vec![finding, duplicate_finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 2 changed expression(s) and 1 statically linked related test(s)."
+            ),
+            "expected related-test count disclosure; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_a_finding_reaches() {
+        // Honesty (dogfood: anyhow Chain::len): an unknown-class finding can carry
+        // reach=yes (a test DOES reach the change). Claiming "no static test path"
+        // then contradicts the finding's own reach evidence, so the all-no-path
+        // note must be suppressed when any finding reaches.
+        let mut finding = unknown_finding();
+        finding.ripr.reach.state = StageState::Yes;
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any"),
+            "must not claim no-static-path when a finding reaches; got:\n{rendered}"
         );
     }
 
@@ -1177,7 +1423,9 @@ mod tests {
             },
             findings: vec![sample_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1204,7 +1452,9 @@ mod tests {
             },
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1228,7 +1478,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1257,7 +1509,9 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1285,7 +1539,9 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);

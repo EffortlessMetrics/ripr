@@ -19,7 +19,9 @@ pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;
 
-pub(crate) use diff::{load_diff, load_diff_range, parse_unified_diff};
+pub(crate) use diff::{
+    load_diff, load_diff_range, parse_unified_diff, working_tree_has_tracked_changes,
+};
 pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
@@ -74,6 +76,11 @@ pub struct AnalysisOptions {
     ///
     /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
     pub resolve_tsconfig_paths: bool,
+    /// Path to a `ripr-perl-facts-v1` packet file for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
 }
 
 /// Advisory record for one compiled preview-language adapter whose files are
@@ -108,6 +115,59 @@ pub struct PreviewLanguageAdvisory {
     pub enabled: bool,
 }
 
+/// Per-language run status for one language adapter invocation.
+///
+/// A `LanguageRun` is recorded for every language that was *attempted* but
+/// did not complete successfully. Languages that ran to completion are
+/// omitted (their findings speak for themselves). This keeps the field
+/// conditional on non-success so the common single-language-success case
+/// stays silent and no golden re-bless is needed.
+///
+/// This is the non-abort contract (Campaign 31 PR 10, ripr-swarm#1403): a
+/// single language's failure (e.g. a Perl preview adapter that returns
+/// `Err`, or a packet-ingestion rejection) must not abort the whole report.
+/// Instead the failed language is recorded here and the other languages'
+/// findings still emit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LanguageRun {
+    /// Stable language wire string (e.g. `"rust"`, `"perl"`).
+    pub language: String,
+    /// Outcome of the run.
+    pub status: LanguageRunStatus,
+    /// Human-readable reason for a non-ok status (absent for `Ok`).
+    pub reason: Option<String>,
+}
+
+/// Outcome of one language adapter invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LanguageRunStatus {
+    /// The adapter completed (findings, if any, are in `result.findings`).
+    /// Recorded only when the caller explicitly asks for full accounting;
+    /// the pipeline omits `Ok` runs by default to keep the field conditional.
+    Ok,
+    /// The adapter was invoked but returned a named limitation (e.g. a Perl
+    /// preview adapter that is scaffold-only and returns `Err`).
+    Unavailable,
+    /// The adapter ran but produced a partial result (e.g. a packet was
+    /// rejected by ingestion checks; some findings may still be present).
+    Partial,
+    /// The adapter could not run at all (e.g. required Cargo feature is off,
+    /// or the producer binary is missing).
+    Invalid,
+}
+
+impl LanguageRunStatus {
+    /// Stable wire string for JSON / human output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Unavailable => "unavailable",
+            Self::Partial => "partial",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
     pub summary: Summary,
@@ -117,6 +177,11 @@ pub struct AnalysisResult {
     /// Empty when only Rust (stable) files are in scope. Non-empty only when
     /// at least one file routed to a preview adapter (TypeScript/JS or Python).
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion
+    /// (the common single-language-success case). Non-abort contract: a
+    /// failure here does not abort the report (Campaign 31 PR 10, #1403).
+    pub language_runs: Vec<LanguageRun>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.
@@ -135,6 +200,14 @@ pub(crate) fn run_analysis_with_oracle_policy(
     languages: &[language::LanguageId],
 ) -> Result<AnalysisResult, String> {
     pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
+}
+
+pub(crate) fn run_worktree_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_worktree_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
@@ -258,6 +331,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -275,6 +349,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Instant,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -323,6 +398,7 @@ fn premium_customer_gets_discount() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if out.findings.is_empty() {
@@ -426,6 +502,7 @@ fn test_with_predicate() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         for finding in &out.findings {
@@ -489,6 +566,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -502,6 +580,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if repo_out.findings.is_empty() {

@@ -84,6 +84,9 @@ Options:
   --root PATH              Workspace root. Defaults to current directory.
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
+  --worktree               Diff the base revision against the live working tree
+                           instead of HEAD, including staged and unstaged
+                           tracked edits. Cannot be combined with --diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
   --format FORMAT          human, json, github, sarif, badge-json, badge-shields,
                            badge-plus-json, badge-plus-shields, repo-badge-json,
@@ -105,9 +108,22 @@ Options:
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 
+Environment variables:
+  RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
+                                    before check fails closed as
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 2000.
+  RIPR_MAX_DIFF_INDEX_FILES         Maximum Rust files loaded into the diff
+                                    index before check fails closed as
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 800.
+
 Examples:
   ripr check
   ripr check --base HEAD~1
+  ripr check --base HEAD --worktree
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
 "#;

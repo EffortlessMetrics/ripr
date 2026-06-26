@@ -1,0 +1,103 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_local_assignment_operator_input/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_calc.py:python_preview:3ddbe784",
+      "canonical_gap_id": "gap:python:src/calc.py:compute:predicate_boundary:predicate:total=base-bonus",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/calc.py:compute:predicate_boundary:predicate:total=base-bonus",
+        "language": "python",
+        "file": "src/calc.py",
+        "owner": "compute",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "total=base-bonus"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_calc.py:python_preview:3ddbe784",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/calc.py",
+        "line": 2,
+        "expression": "    total = base - bonus",
+        "owner": "python:src/calc.py::compute"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `compute`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `compute`", "infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`", "propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches unknown sink: total = base - bonus (line 2)", "related test tests/test_calc.py:4 test_base_unchanged uses strong exact value oracle: assert base == 10"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"total = base - bonus","line":2}
+      ],
+      "evidence": ["owner: compute", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_calc.py", "suggested_test_name: test_base_unchanged", "suggested_test_node_id: tests/test_calc.py::test_base_unchanged", "suggested_verify_command: pytest tests/test_calc.py::test_base_unchanged", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_base_unchanged)", "test_verify_command: pytest tests/test_calc.py::test_base_unchanged (test_base_unchanged)", "related_test_relation: syntactic_call (test_base_unchanged)", "test_oracle: exact_value strong (test_base_unchanged)"],
+      "missing": ["A strong Python oracle reaches `compute`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_base_unchanged",
+          "file": "tests/test_calc.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert base == 10"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_calc.py",
+        "suggested_test_name": "test_base_unchanged",
+        "suggested_test_node_id": "tests/test_calc.py::test_base_unchanged",
+        "verify_command": "pytest tests/test_calc.py::test_base_unchanged",
+        "verify_command_confidence": "high"
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "total, base, bonus",
+      "observed_sink": "assert base == 10",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/calc.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

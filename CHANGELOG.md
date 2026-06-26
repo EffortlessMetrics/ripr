@@ -68,8 +68,8 @@ badge, and distribution authority.
 ### Release themes
 
 - TypeScript/Bun bounded preview adapter (opt-in, advisory).
-- Perl strict actionability enforcement.
-- Preview cards across every output surface.
+- Perl strict actionability **model** (fixture-only / test-scoped — the adapter is `#[cfg(test)] mod perl;` and not production-routable yet; see Campaign 31, #1379).
+- Preview cards across every output surface (renderers exist; Perl cards project only from synthetic test findings until the production exporter/consumer bridge lands).
 - Diff-first changed-surface review.
 - Cache sharding and explicit large-repo cache limits.
 - No new authority: preview evidence does not emit public repair packets.
@@ -99,6 +99,18 @@ badge, and distribution authority.
 - Added preview cards to check JSON, human output, SARIF, GitHub annotations,
   and gap ledger Markdown, so preview evidence renders consistently on every
   surface without becoming a public repair packet.
+
+**Scope caveat (recorded retroactively for honesty, Campaign 31 #1379):** the
+Perl work in 0.9.0 is fixture-only and test-scoped. The adapter module is
+`#[cfg(test)] mod perl;` (`crates/ripr/src/analysis/language/mod.rs:25-26`),
+`lang-perl` is an empty Cargo feature not in `default`, the production path
+router recognizes no `.pm`/`.pl`/`.t`/`.psgi` extension, and the pipeline
+returns a fail-closed stub even with the feature on. The preview-card
+renderers are real production code, but they project only from synthetic test
+findings — no production Perl source can feed them until the
+`perl-lsp ripr-facts` exporter and the production `PerlAdapter` bridge land.
+Perl's support tier is `scaffold`, not `preview`; see
+[Support Tiers](docs/status/SUPPORT_TIERS.md).
 
 #### Diff-first review
 

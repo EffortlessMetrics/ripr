@@ -130,6 +130,35 @@ pub enum StaticLimitKind {
     /// behavior is not statically known — verify the external oracle rather
     /// than adding a Rust test.
     CrossLanguageOracleVisibilityUnresolved,
+    /// A test appears to call public API that may transitively reach the
+    /// changed owner through a `pub -> pub(crate)` helper chain or similar
+    /// internal call graph, but ripr's lexical call facts cannot fully resolve
+    /// the path (macro invocations, generics, trait dispatch, or depth > 5
+    /// stop the walk). The classification stays `no_static_path` -- this label
+    /// is a named limitation, not a coverage claim. See RIPR-SPEC-0114.
+    RustTransitiveReachUnresolved,
+    /// An integration test appears to call a crate public API, or a test helper
+    /// that calls that public API, and a bounded same-repo lexical path may lead
+    /// toward the changed owner. The classification stays `no_static_path`;
+    /// this label names the unresolved integration/public-API edge, not a
+    /// coverage claim. See RIPR-SPEC-0118.
+    RustIntegrationPublicApiPathUnresolved,
+    /// A Rust test reaches an entry point whose path toward the changed owner
+    /// stops at a same-repo macro invocation that ripr does not expand. The
+    /// macro definition lexically mentions the changed owner, but the
+    /// classification stays `no_static_path`; this label names the unresolved
+    /// macro edge, not a coverage claim. See RIPR-SPEC-0117.
+    RustMacroReachUnresolved,
+    /// A Rust test directly invokes a same-repo macro whose definition
+    /// lexically mentions the changed owner. ripr does not expand the macro,
+    /// so the classification stays `no_static_path`; this label names the
+    /// unresolved test-macro edge, not a coverage claim. See RIPR-SPEC-0119.
+    RustMacroWrappedTestCallUnresolved,
+    /// A Rust test reaches the changed owner, but the only assertion-like
+    /// observer ripr can see is a custom macro that it does not classify as an
+    /// oracle. The classification stays reachable-but-undiscriminated; this
+    /// label names the unresolved assertion macro, not a coverage claim.
+    RustMacroWrappedAssertionUnresolved,
 }
 
 impl StaticLimitKind {
@@ -148,6 +177,93 @@ impl StaticLimitKind {
             StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved => {
                 "cross_language_oracle_visibility_unresolved"
+            }
+            StaticLimitKind::RustTransitiveReachUnresolved => "rust_transitive_reach_unresolved",
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved => {
+                "rust_integration_public_api_path_unresolved"
+            }
+            StaticLimitKind::RustMacroReachUnresolved => "rust_macro_reach_unresolved",
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved => {
+                "rust_macro_wrapped_test_call_unresolved"
+            }
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved => {
+                "rust_macro_wrapped_assertion_unresolved"
+            }
+        }
+    }
+
+    /// One-sentence plain-English explanation of what this limitation means and
+    /// why ripr cannot resolve the path — surfaced next to the stable
+    /// [`as_str`](Self::as_str) token so a reader sees *why* a finding is
+    /// limited, not just an opaque snake_case label (#1162 explain enhancement).
+    /// Conservative static language only: these describe what ripr could NOT
+    /// statically resolve; none assert coverage or adequacy.
+    pub fn describe(&self) -> &'static str {
+        match self {
+            StaticLimitKind::DynamicDispatch => {
+                "Dynamic dispatch (trait objects or virtual calls) hides which implementation runs, \
+                 so ripr cannot statically resolve whether a test reaches this change."
+            }
+            StaticLimitKind::Metaprogramming => {
+                "Metaprogramming (macros or code generation) produces calls ripr cannot see in the \
+                 source, so the reaching path is not statically resolvable."
+            }
+            StaticLimitKind::MissingImportGraph => {
+                "The import graph could not be resolved (for example a relative or dynamic import), \
+                 so ripr cannot connect a test to this change."
+            }
+            StaticLimitKind::DecoratorIndirection => {
+                "A decorator wraps the changed owner, so ripr cannot statically confirm a test \
+                 exercises the underlying behavior."
+            }
+            StaticLimitKind::MockedModule => {
+                "A mocked module replaces the real implementation, so a passing test may not \
+                 observe the actual changed behavior."
+            }
+            StaticLimitKind::OpaqueCustomAssertionHelper => {
+                "A custom assertion helper hides what is checked, so ripr cannot confirm the \
+                 assertion would discriminate this change."
+            }
+            StaticLimitKind::PropertyBasedTest => {
+                "A property-based test generates its inputs at runtime, so ripr cannot statically \
+                 confirm it exercises this specific change."
+            }
+            StaticLimitKind::UnresolvedPytestFixture => {
+                "A pytest fixture could not be resolved, so ripr cannot statically connect the test \
+                 setup to this change."
+            }
+            StaticLimitKind::UnsupportedSyntax => {
+                "The surrounding syntax is not yet supported by ripr's static model, so the \
+                 reaching path is not resolvable."
+            }
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved => {
+                "This owner is exposed across a language boundary (FFI or binding); whether an \
+                 external-language test observes the change is not statically known \u{2014} verify \
+                 the external oracle rather than adding a same-language test."
+            }
+            StaticLimitKind::RustTransitiveReachUnresolved => {
+                "A test may reach this change through an internal helper-call chain ripr cannot \
+                 fully trace (macros, generics, trait dispatch, or depth greater than 5). This is a \
+                 named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved => {
+                "An integration test may reach this change through a crate public API or test-helper \
+                 path ripr cannot fully trace. This is a named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustMacroReachUnresolved => {
+                "A test may reach this change through a Rust macro path ripr cannot expand. The \
+                 classification stays no_static_path because the macro edge is unresolved; this is \
+                 a named limitation, not a coverage claim."
+            }
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved => {
+                "A test directly invokes a Rust macro whose definition mentions this change, but \
+                 ripr cannot expand the macro to confirm the path. This is a named limitation, not \
+                 a coverage claim."
+            }
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved => {
+                "A reachable Rust test uses an assertion-like macro that ripr does not classify, \
+                 so the assertion semantics are unresolved. This is a named limitation, not a \
+                 coverage claim."
             }
         }
     }
@@ -238,6 +354,70 @@ mod tests {
         assert_eq!(
             StaticLimitKind::CrossLanguageOracleVisibilityUnresolved.as_str(),
             "cross_language_oracle_visibility_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustTransitiveReachUnresolved.as_str(),
+            "rust_transitive_reach_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved.as_str(),
+            "rust_integration_public_api_path_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustMacroReachUnresolved.as_str(),
+            "rust_macro_reach_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved.as_str(),
+            "rust_macro_wrapped_test_call_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved.as_str(),
+            "rust_macro_wrapped_assertion_unresolved"
+        );
+    }
+
+    #[test]
+    fn static_limit_kind_describe_is_present_and_distinct() {
+        let kinds = [
+            StaticLimitKind::DynamicDispatch,
+            StaticLimitKind::Metaprogramming,
+            StaticLimitKind::MissingImportGraph,
+            StaticLimitKind::DecoratorIndirection,
+            StaticLimitKind::MockedModule,
+            StaticLimitKind::OpaqueCustomAssertionHelper,
+            StaticLimitKind::PropertyBasedTest,
+            StaticLimitKind::UnresolvedPytestFixture,
+            StaticLimitKind::UnsupportedSyntax,
+            StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
+            StaticLimitKind::RustTransitiveReachUnresolved,
+            StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
+            StaticLimitKind::RustMacroReachUnresolved,
+            StaticLimitKind::RustMacroWrappedTestCallUnresolved,
+            StaticLimitKind::RustMacroWrappedAssertionUnresolved,
+        ];
+        // Every variant has a non-empty, distinct explanation. Conservative
+        // static-language vocabulary is enforced repo-wide by
+        // `cargo xtask check-static-language` (which scans this prose too), so it
+        // is not re-checked here with literal forbidden terms.
+        let mut seen = std::collections::HashSet::new();
+        for kind in kinds {
+            let described = kind.describe();
+            assert!(described.len() > 20, "describe too short for {kind:?}");
+            assert!(
+                seen.insert(described),
+                "duplicate describe text for {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rust_transitive_reach_description_matches_depth_contract() {
+        assert!(
+            StaticLimitKind::RustTransitiveReachUnresolved
+                .describe()
+                .contains("depth greater than 5"),
+            "transitive-reach limitation text must match RIPR-SPEC-0114's depth-5 bound"
         );
     }
 }

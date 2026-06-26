@@ -408,7 +408,11 @@ fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
         lines.push("Evidence: syntax-first".to_string());
     }
     if let Some(static_limit_kind) = &finding.static_limit_kind {
-        lines.push(format!("Static limit: {}", static_limit_kind.as_str()));
+        lines.push(format!(
+            "Static limit: {} \u{2014} {}",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
     }
     if finding.language_status.is_some() {
         lines.push("Action: advisory only".to_string());

@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_operator_delta_input_operand/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_counter.py:python_preview:a702e9d2",
+      "canonical_gap_id": "gap:python:src/counter.py:next_value:return_value:return_value:count-1",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/counter.py:next_value:return_value:return_value:count-1",
+        "language": "python",
+        "file": "src/counter.py",
+        "owner": "next_value",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "count-1"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_counter.py:python_preview:a702e9d2",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/counter.py",
+        "line": 2,
+        "expression": "    return count - 1",
+        "owner": "python:src/counter.py::next_value"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `next_value`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return count - 1`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `next_value`", "infection yes: Changed Python return expression can alter the owner return value: `return count - 1`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return count - 1 (line 2)", "related test tests/test_counter.py:4 test_next uses strong exact value oracle: assert count == 5", "missing discriminator return value == count - 1: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return count - 1","line":2}
+      ],
+      "evidence": ["owner: next_value", "owner_kind: function", "missing_discriminator: return value == count - 1", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_counter.py", "suggested_test_name: test_next", "suggested_test_node_id: tests/test_counter.py::test_next", "suggested_verify_command: pytest tests/test_counter.py::test_next", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_next)", "test_verify_command: pytest tests/test_counter.py::test_next (test_next)", "related_test_relation: syntactic_call (test_next)", "test_oracle: exact_value strong (test_next)"],
+      "missing": ["A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == count - 1",
+            "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return count - 1","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == count - 1",
+          "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return count - 1","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_next",
+          "file": "tests/test_counter.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert count == 5"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_counter.py",
+        "suggested_test_name": "test_next",
+        "suggested_test_node_id": "tests/test_counter.py::test_next",
+        "verify_command": "pytest tests/test_counter.py::test_next",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/counter.py:next_value:return_value:return_value:count-1",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "next_value",
+        "changed_behavior": "return_value changed at src/counter.py:2: `return count - 1`",
+        "current_test_evidence": "tests/test_counter.py:4 test_next currently has oracle_strength=strong, oracle_kind=exact_value: assert count == 5",
+        "missing_discriminator": "return value == count - 1",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == count - 1`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_counter.py",
+          "test_name": "test_next",
+          "pytest_node_id": "tests/test_counter.py::test_next"
+         },
+        "verify": {
+          "command": "pytest tests/test_counter.py::test_next",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "count",
+      "observed_sink": "assert count == 5",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/counter.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

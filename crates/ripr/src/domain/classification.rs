@@ -1,3 +1,32 @@
+/// RIPR-SPEC-0113: honest per-finding guidance for `no_static_path` findings.
+///
+/// Defined once here in `domain/` so both `analysis::classify::decision` (production path)
+/// and `analysis::classifier` (test assertions) can reference the same literal without
+/// duplicating it. Exported via `crate::domain::*`.
+pub(crate) const NO_STATIC_PATH_NEXT_STEP: &str = "ripr found no static test path to this change \u{2014} this is not a coverage assessment. \
+A test may already exercise it through macros, helper-call chains, or integration tests that \
+ripr's static model does not yet trace. If none does, add a co-located test that reaches and \
+observes the changed behavior so a discriminator exists.";
+
+/// RIPR-SPEC-0115: stable leading phrase of the transitive-reach *witness*
+/// pointer. The producer (`analysis::classify::transitive_reach`) begins the
+/// pointer with this phrase, and the human renderer (`output::human`) recognizes
+/// it in `Finding.evidence` to surface a concrete "Where to look" line. Shared
+/// here in `domain/` so the producer and renderer agree on one literal across
+/// the analysis/output seam (reuse, don't fork).
+pub(crate) const TRANSITIVE_REACH_WITNESS_PREFIX: &str = "For example, the test ";
+
+/// RIPR-SPEC-0114/0117: stable evidence prefixes for named static-limitation
+/// detail. Producers append these lines to `Finding.evidence`; renderers and
+/// corpus checks consume the same prefixes so the unresolved edge stays visible
+/// across JSON and human projections.
+pub(crate) const LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX: &str =
+    "limitation_last_established_edge: ";
+pub(crate) const LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX: &str =
+    "limitation_first_unresolved_edge: ";
+pub(crate) const LIMITATION_ANALYZER_ROUTE_PREFIX: &str = "limitation_analyzer_route: ";
+pub(crate) const LIMITATION_NON_CLAIM_PREFIX: &str = "limitation_non_claim: ";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExposureClass {
     Exposed,

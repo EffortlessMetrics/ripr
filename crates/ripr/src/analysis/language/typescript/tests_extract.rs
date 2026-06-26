@@ -155,21 +155,47 @@ pub(crate) fn test_name_and_assertions_from_call(
 ) -> Option<(String, Vec<TypeScriptAssertion>)> {
     if test_callee_is_identifier(call) {
         let name = string_argument(call.arguments.first()?)?;
-        let assertions = function_body_statements_from_argument(call.arguments.get(1)?)
-            .map(|statements| collect_expect_assertions_in_statements(statements, source))
+        let callback = call.arguments.get(1)?;
+        let receiver = test_callback_receiver_name(callback);
+        let assertions = function_body_statements_from_argument(callback)
+            .map(|statements| {
+                collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
+            })
             .unwrap_or_default();
         return Some((name, assertions));
     }
 
     if test_callee_is_each(call) {
         let name = string_argument(call.arguments.first()?)?;
-        let assertions = function_body_statements_from_argument(call.arguments.get(1)?)
-            .map(|statements| collect_expect_assertions_in_statements(statements, source))
+        let callback = call.arguments.get(1)?;
+        let receiver = test_callback_receiver_name(callback);
+        let assertions = function_body_statements_from_argument(callback)
+            .map(|statements| {
+                collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
+            })
             .unwrap_or_default();
         return Some((name, assertions));
     }
 
     None
+}
+
+/// Extract the name bound to the test callback's first parameter.
+///
+/// AVA / node:test / tape pass an execution context (conventionally `t`) as the
+/// first argument of the test callback, and assertions are made on it
+/// (`t.is(...)`, `t.deepEqual(...)`). Jest/Vitest callbacks take no such
+/// receiver, so this returns `None` for a zero-parameter callback and the AVA
+/// assertion matcher is never attempted (fail-closed: no receiver, no AVA
+/// assertions credited).
+fn test_callback_receiver_name(arg: &oxc_ast::ast::Argument<'_>) -> Option<String> {
+    let params = match arg {
+        oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => &arrow.params,
+        oxc_ast::ast::Argument::FunctionExpression(func) => &func.params,
+        _ => return None,
+    };
+    let first = params.items.first()?;
+    super::owners::binding_identifier_name(&first.pattern).map(|name| name.to_string())
 }
 
 pub(crate) fn test_callee_is_identifier(call: &oxc_ast::ast::CallExpression<'_>) -> bool {

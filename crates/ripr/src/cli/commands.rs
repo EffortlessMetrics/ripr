@@ -3334,7 +3334,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
     // RIPR-SPEC-0083: track whether the user provided any analysis scope.
-    // Starts false; set true when --diff or --base is parsed from argv.
+    // Starts false; set true when --diff, --base, or --worktree is parsed from argv.
     // --mode is a SPEED TIER on the diff path, NOT a scope provider — a bare
     // `ripr check --mode fast` analyzes nothing and must still show the no-scope
     // disclosure. When still false at analysis time, the output discloses that
@@ -3345,6 +3345,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // running analysis. An explicit bad --base keeps its error; only the
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
+    let mut worktree_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3362,6 +3363,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
                 scope_explicitly_provided = true;
+            }
+            "--worktree" => {
+                scope_explicitly_provided = true;
+                worktree_explicitly_provided = true;
             }
             "--mode" => {
                 i += 1;
@@ -3385,6 +3390,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
             }
+            "--perl-facts" => {
+                i += 1;
+                input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -3403,6 +3412,9 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // is explicitly given, base_explicitly_provided is true and we preserve it.
     if !base_explicitly_provided && input.diff_file.is_none() {
         input.base = None;
+    }
+    if worktree_explicitly_provided && input.diff_file.is_some() {
+        return Err("check --worktree cannot be combined with --diff".to_string());
     }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
@@ -3429,22 +3441,57 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
-    let mut output = if format.is_repo_seam_inventory() {
+    // Capture root and diff_file before input is moved into the analysis call.
+    // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
+    let input_root = input.root.clone();
+    let input_diff_file_is_some = input.diff_file.is_some();
+    let limited_check_input = input.clone();
+    let output_result = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
         // `CheckOutput` carries only the fields these renderers read.
-        app::repo_seam_inventory_input(input)
+        Ok(app::repo_seam_inventory_input(input))
     } else if format.is_repo_scope() {
-        app::check_workspace_repo_with_config(input, &config)?
+        app::check_workspace_repo_with_config(input, &config)
+    } else if worktree_explicitly_provided {
+        app::check_workspace_worktree_with_config(input, &config)
     } else {
-        app::check_workspace_with_config(input, &config)?
+        app::check_workspace_with_config(input, &config)
+    };
+    let mut output = match output_result {
+        Ok(output) => output,
+        Err(err) => {
+            if matches!(format, OutputFormat::Json)
+                && let Some(rendered) = output::limited_check::render_diff_scope_limited_check_json(
+                    &limited_check_input,
+                    &err,
+                )?
+            {
+                write_stdout_chunked(&rendered)?;
+            }
+            return Err(err);
+        }
     };
     // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
     // The guidance fires only when scope was NOT explicitly provided — it must
     // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
     if !scope_explicitly_provided && output.findings.is_empty() {
         output.no_scope_provided = true;
+    }
+    // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
+    // diff) AND the working tree has uncommitted changes to tracked source files.
+    // Those changes were NOT analyzed. A zero-finding result in this state must NOT
+    // be read as a clean pass — the user's uncommitted edits were excluded from the diff.
+    // Fires independent of findings.is_empty() (honest whether or not committed diff
+    // had findings), but the false-clean risk is highest when findings are empty.
+    // Does NOT fire when --diff was used (file-based diff; no live worktree scope).
+    if base_explicitly_provided
+        && !worktree_explicitly_provided
+        && !input_diff_file_is_some
+        && analysis::working_tree_has_tracked_changes(&input_root)
+    {
+        output.unanalyzed_working_tree = true;
     }
     write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
     Ok(())
@@ -3598,6 +3645,7 @@ fn run_diff_check_from_file(
         mode: options.mode.clone(),
         format: OutputFormat::Json,
         include_unchanged_tests: options.include_unchanged_tests,
+        perl_facts_path: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)
@@ -3692,7 +3740,8 @@ fn render_check_gap_ledger_badge(
         suppressions_path: config.suppressions().display_path(),
         ..output::badge::BadgePolicy::default()
     };
-    let summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    let mut summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     if shields {
         Ok(output::badge::render_shields_json(&summary))
     } else {
@@ -3876,7 +3925,20 @@ fn print_doctor_start_here_guidance(root: &Path) {
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
-    println!("- Recommended first command: ripr check --base origin/main");
+    // First-run honesty: when the working tree has uncommitted changes,
+    // `ripr check --base origin/main` analyzes committed history only and would
+    // silently exclude the user's draft (the RIPR-SPEC-0112 dirty-worktree case).
+    // Route them to the command that actually covers their edits instead of the
+    // one that looks clean while ignoring them. Reuses the same helper as the
+    // check-time disclosure (reuse, don't fork).
+    if analysis::working_tree_has_tracked_changes(root) {
+        println!("- Recommended first command: ripr check --base HEAD --worktree");
+        println!(
+            "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
+        );
+    } else {
+        println!("- Recommended first command: ripr check --base origin/main");
+    }
 }
 
 /// Language-to-status mapping used by the doctor first-run diagnosis.
@@ -4046,6 +4108,22 @@ fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
     let mut suggestions = Vec::new();
     for id in &preview_detected {
         if id.is_available() && !enabled.contains(id) {
+            // Perl detects as a preview language (see language_status). In a
+            // default build, `LanguageId::Perl.is_available()` is
+            // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
+            // Perl anyway. This guard is defense-in-depth for the
+            // `--features lang-perl` build: even when the Cargo feature is ON,
+            // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
+            // production-routable, pipeline fail-closed stub). Suggesting
+            // `enabled = ["rust", "perl"]` in that build would mislead: the
+            // user would enable it and get zero analysis plus an explicit
+            // error. Detection at detect_languages() stays honest; only the
+            // enablement Tip is suppressed for Perl until Campaign 31 (#1379)
+            // lands the production bridge. TypeScript/Python are real preview
+            // adapters and remain Tip-eligible.
+            if matches!(id, LanguageId::Perl) {
+                continue;
+            }
             suggestions.push(format!(
                 "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
                 id.as_str(),
@@ -4107,7 +4185,38 @@ fn report_detected_test_surfaces(root: &Path) {
                 }
             }
             LanguageId::Perl => {
-                lines.push("perl: test framework not detected".to_string());
+                // Phase D PR 2 (#1408): upgraded Perl doctor diagnostics.
+                let pm_count = count_files(root, "pm");
+                let pl_count = count_files(root, "pl");
+                let t_count = count_files(root, "t");
+                if pm_count > 0 || pl_count > 0 || t_count > 0 {
+                    let framework = detect_perl_framework(root);
+                    lines.push(format!(
+                        "perl: {} .pm, {} .pl, {} .t; framework: {}",
+                        pm_count, pl_count, t_count, framework
+                    ));
+                    // Report adapter availability.
+                    if id.is_available() {
+                        lines.push("perl: adapter compiled (lang-perl feature ON)".to_string());
+                    } else {
+                        lines.push(
+                            "perl: adapter NOT compiled (build with --features lang-perl)"
+                                .to_string(),
+                        );
+                    }
+                    // Report runner availability.
+                    if which("prove") {
+                        lines.push("perl: prove available on PATH".to_string());
+                    } else {
+                        lines.push("perl: prove NOT found on PATH".to_string());
+                    }
+                    // Report exact first command.
+                    if id.is_available() {
+                        lines.push("perl: first command: ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string());
+                    }
+                } else {
+                    lines.push("perl: no Perl files detected".to_string());
+                }
             }
         }
     }
@@ -4125,6 +4234,62 @@ fn report_detected_test_surfaces(root: &Path) {
 ///   - `StaticLimitKind::CrossLanguageOracleVisibilityUnresolved` wire string
 ///     and its doc comment.
 ///   - 0.9.0 CHANGELOG non-claims.
+///
+/// Count files with a given extension in the root (shallow, non-recursive).
+fn count_files(root: &Path, ext: &str) -> usize {
+    shallow_has_extension(root, ext) as usize
+}
+
+/// Detect the Perl test framework from .t files (shallow scan).
+fn detect_perl_framework(root: &Path) -> &'static str {
+    let t_dir = root.join("t");
+    let Ok(entries) = std::fs::read_dir(&t_dir) else {
+        return "not detected (no t/ directory)";
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "t")
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            if content.contains("use Test2::V0") {
+                return "Test2::V0";
+            }
+            if content.contains("use Test::More") {
+                return "Test::More";
+            }
+            if content.contains("use Test::Exception") {
+                return "Test::Exception";
+            }
+            if content.contains("use Test::Fatal") {
+                return "Test::Fatal";
+            }
+        }
+    }
+    "not detected"
+}
+
+/// Check if a binary is available on PATH.
+fn which(bin: &str) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("which")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+    #[cfg(not(unix))]
+    {
+        std::process::Command::new("where")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+}
+
 fn report_known_limitations() {
     println!("- Known limitations:");
     println!(
@@ -4601,6 +4766,50 @@ mod tests {
         std::fs::remove_dir_all(root)
             .map_err(|err| format!("failed to remove temp sample workspace: {err}"))?;
         Ok(())
+    }
+
+    #[test]
+    fn check_json_returns_limited_artifact_error_for_oversized_diff() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("oversized-diff");
+        let diff = root.join("oversized.diff");
+        std::fs::create_dir_all(&root)
+            .map_err(|err| format!("failed to create oversized diff root: {err}"))?;
+        std::fs::write(&diff, oversized_rust_diff(2001))
+            .map_err(|err| format!("failed to write oversized diff: {err}"))?;
+        let root_arg = root.to_string_lossy().into_owned();
+        let diff_arg = diff.to_string_lossy().into_owned();
+
+        let result = check(&[
+            "--root".to_string(),
+            root_arg,
+            "--diff".to_string(),
+            diff_arg,
+            "--json".to_string(),
+        ]);
+
+        let cleanup = std::fs::remove_dir_all(&root)
+            .map_err(|err| format!("failed to remove oversized diff root: {err}"));
+        assert!(
+            matches!(result, Err(ref message) if message.contains("diff_scope_oversized")),
+            "expected diff_scope_oversized error, got {result:?}"
+        );
+        cleanup
+    }
+
+    fn oversized_rust_diff(changed_lines: usize) -> String {
+        let mut diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             index 0000000..1111111 100644\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,{changed_lines} @@\n",
+        );
+        for index in 0..changed_lines {
+            diff.push_str(&format!(
+                "+pub fn generated_{index}() -> usize {{ {index} }}\n"
+            ));
+        }
+        diff
     }
 
     #[test]
@@ -7246,7 +7455,20 @@ language = "rust"
             .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
         assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
         assert!(rendered_json.contains(r#""repair_card""#));
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse gap-ledger review comments JSON: {err}"))?;
+        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
+        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
+        assert_eq!(
+            value["analysis_scope"]["basis"],
+            "supplied_gap_decision_ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["changed_files"],
+            serde_json::json!(["src/pricing.rs"])
+        );
         assert!(rendered_md.contains("ripr first-action"));
+        assert!(rendered_md.contains("analysis scope: `gap_ledger_artifact`"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
@@ -9429,6 +9651,17 @@ language = "rust"
             check(&args(&["--wat"])),
             Err("unknown check argument \"--wat\"".to_string())
         );
+    }
+
+    #[test]
+    fn check_rejects_diff_file_plus_worktree_mode() -> Result<(), String> {
+        let result = check(&args(&["--diff", "change.patch", "--worktree"]));
+        match result {
+            Err(message) if message == "check --worktree cannot be combined with --diff" => Ok(()),
+            other => Err(format!(
+                "expected --diff plus --worktree rejection, got {other:?}"
+            )),
+        }
     }
 
     #[test]

@@ -550,6 +550,7 @@ pub(crate) fn classify_change(
         static_limit.as_ref(),
         has_oracle_eligible_relation,
         &missing_discriminators,
+        observed_evidence_label(&related),
     );
     missing.push(actionability.missing_summary());
 
@@ -728,6 +729,18 @@ pub(crate) fn classify_change(
         oracle_alignment: None,
         alignment_reason: None,
     })
+}
+
+fn observed_evidence_label(related: &[RelatedTest]) -> &'static str {
+    if related.iter().any(|test| {
+        test.oracle
+            .as_deref()
+            .is_some_and(|oracle| oracle.starts_with("t."))
+    }) {
+        "related TypeScript `t.*` evidence"
+    } else {
+        "related Jest/Vitest evidence"
+    }
 }
 
 pub(crate) fn no_static_path_missing(owner: &TypeScriptOwner) -> String {

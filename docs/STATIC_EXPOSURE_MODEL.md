@@ -210,6 +210,37 @@ The second is the more dangerous: it is the failure that makes a discriminator
 indistinguishable from coverage, and the one a cheap robustness sweep
 structurally cannot see.
 
+### The static/runtime boundary
+
+`exposed` is a **static** claim: *a strong oracle observes the changed sink's
+output*. It is **not** the runtime claim *the mutant is killed under this test's
+inputs*. Those differ whenever a test observes the changed output but its concrete
+input makes the old and new behavior coincide. Adversarial sweeps surface many such
+cases; they split into two kinds, and only one is a `ripr` bug.
+
+- **Runtime-equivalence floor (out of contract).** The oracle genuinely observes the
+  changed output, but only *evaluation* reveals old ≡ new for the chosen input:
+  an operator identity (`total += amount` vs `-=` tested with `amount == 0`), a
+  coincident result (`s[::2]` and `s[::3]` both yield `"aa"` for `"aaaa"`), a
+  boolean short-circuit, or an ASCII-only `lower()`/`casefold()`. Detecting these
+  requires running the (mutated) expression under the test's arguments — i.e.
+  mutation testing — which `ripr` does not do. `ripr` cannot distinguish a
+  discriminating `compute(10, 3) == 7` from a non-discriminating
+  `apply_discount(5, 100) == 5` without evaluation, so it must not over-tighten here:
+  a conservative downgrade would also drop the genuine discriminators. This is the
+  honest floor of static exposure analysis, not a defect.
+
+- **Static missing-discriminator (in contract).** A predicate/boundary change has a
+  discriminator `ripr` *can name syntactically*: `if total >= threshold` → `>` is
+  discriminated only by an input where `total == threshold`. A test that exercises a
+  value far from the boundary does not discriminate the change — and `ripr` should
+  not call it `exposed` — but the gap is nameable (`missing discriminator: total ==
+  threshold`) and therefore a valid static **repair-routing candidate**, not floor.
+
+The line to hold: *input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope as a gap.* `exposed`
+should never silently mean "the mutant survives for this input."
+
 ## Finding Shape
 
 A useful finding should include:

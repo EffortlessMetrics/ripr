@@ -10,7 +10,10 @@ mod selector;
 
 pub use crate::output::format::OutputFormat;
 pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};
-pub(crate) use check::{check_workspace_repo_with_config, check_workspace_with_config};
+pub(crate) use check::{
+    check_workspace_repo_with_config, check_workspace_with_config,
+    check_workspace_worktree_with_config,
+};
 pub(crate) use context::collect_context_with_config;
 pub use context::{collect_context, collect_context_with_input};
 pub(crate) use explain::explain_finding_with_config;
@@ -42,6 +45,11 @@ pub struct CheckInput {
     pub format: OutputFormat,
     /// Whether unchanged tests may still be used as static evidence.
     pub include_unchanged_tests: bool,
+    /// Path to a `ripr-perl-facts-v1` packet for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
 }
 
 impl Default for CheckInput {
@@ -53,6 +61,7 @@ impl Default for CheckInput {
             mode: Mode::Draft,
             format: OutputFormat::Human,
             include_unchanged_tests: true,
+            perl_facts_path: None,
         }
     }
 }
@@ -126,11 +135,22 @@ pub struct CheckOutput {
     /// analyzed the scope but found nothing actionable at this time.
     /// See RIPR-SPEC-0082.
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion.
+    /// Non-abort contract (Campaign 31 PR 10, #1403): a failure here does not
+    /// abort the report.
+    pub language_runs: Vec<crate::analysis::LanguageRun>,
     /// When `true`, no analysis scope was provided by the caller (no `--diff`,
     /// `--base`, `--files`, or full-repo mode flag). An empty result in this
     /// state does NOT mean the changed behavior is covered — it means nothing
     /// was analyzed. See RIPR-SPEC-0083.
     pub no_scope_provided: bool,
+    /// When `true`, `--base` was used to analyze committed history AND the
+    /// working tree has uncommitted changes to tracked source files that were
+    /// NOT part of the analyzed diff. An empty result in this state does NOT
+    /// mean the working-tree changes are covered — they were silently excluded
+    /// from the analysis. See RIPR-SPEC-0112.
+    pub unanalyzed_working_tree: bool,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

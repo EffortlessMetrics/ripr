@@ -266,6 +266,40 @@ fn check_json_output_has_stable_contract_fields() {
 }
 
 #[test]
+fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr_with_env(
+        &["check", "--root", &root, "--diff", &diff, "--json"],
+        &[("RIPR_MAX_DIFF_CHANGED_RUST_LINES", "1")],
+    );
+    assert_failure(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("limited stdout should parse as JSON: {err}\n{stdout}"))?;
+    assert_eq!(value["schema_version"], "0.2");
+    assert_eq!(
+        value["analysis_scope"]["run_status"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["analysis_scope"]["downstream_consumable"], false);
+    assert_eq!(
+        value["run_limitations"][0]["category"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["run_limitations"][0]["downstream_consumable"], false);
+    assert_eq!(value["findings"].as_array().map(Vec::len), Some(0));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("diff_scope_oversized"),
+        "stderr should still report failed analysis: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
 fn diff_json_reports_changed_surface_before_full_repo_context() -> Result<(), String> {
     let workspace = unique_temp_workspace("diff-first");
     std::fs::create_dir_all(workspace.join("src")).map_err(|e| format!("create src dir: {e}"))?;
@@ -1405,7 +1439,9 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    // Diff-scoped badge JSON never carries a public projection.
+    assert!(!stdout.contains(r#""public_projection""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -1614,13 +1650,74 @@ fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
         "expected cross_language_oracle_visibility_unresolved in stdout:\n{stdout}"
     );
 
-    // Section 4: Recommended first command.
+    // Section 4: Recommended first command. The exact wording is
+    // worktree-state-aware (see doctor_recommends_worktree_check_on_dirty_worktree);
+    // here we only require the diff-first command to be present.
     assert!(
-        stdout.contains("Recommended first command: ripr check --base origin/main"),
-        "expected 'Recommended first command: ripr check --base origin/main' in stdout:\n{stdout}"
+        stdout.contains("ripr check --base origin/main"),
+        "expected the diff-first recommended command in stdout:\n{stdout}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_recommends_worktree_check_on_dirty_worktree() -> Result<(), String> {
+    // First-run honesty: doctor must not route a user with uncommitted edits to
+    // `ripr check --base origin/main`, which analyzes committed history only and
+    // would silently exclude their draft (the RIPR-SPEC-0112 dirty-worktree case).
+    let root = unique_temp_workspace("doctor-dirty-wt");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"doctor-dirty-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 1 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+    let root_str = root.display().to_string();
+
+    // CLEAN worktree: recommend the diff-first command directly.
+    let clean = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&clean);
+    let clean_out = String::from_utf8_lossy(&clean.stdout);
+    assert!(
+        clean_out.contains("Recommended first command: ripr check --base origin/main"),
+        "clean worktree must recommend the diff-first command directly:\n{clean_out}"
+    );
+
+    // DIRTY worktree: route the user to the explicit live-worktree diff.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 2 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let dirty = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&dirty);
+    let dirty_out = String::from_utf8_lossy(&dirty.stdout);
+    assert!(
+        dirty_out.contains("Recommended first command: ripr check --base HEAD --worktree"),
+        "dirty worktree must recommend the worktree command:\n{dirty_out}"
+    );
+    assert!(
+        dirty_out.contains("staged and unstaged tracked edits"),
+        "dirty worktree must disclose the tracked-edit scope:\n{dirty_out}"
+    );
+    assert!(
+        !dirty_out.contains("Recommended first command: ripr check --base origin/main"),
+        "dirty worktree must NOT give the unconditional clean recommendation:\n{dirty_out}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
 
@@ -2804,7 +2901,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2812,6 +2909,9 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""run_status": "full""#));
     assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""unknowns_test_efficiency": 0"#));
@@ -2903,7 +3003,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2913,6 +3013,9 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     );
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""source_report": "target/ripr/reports/repo-ripr-badge.json""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -2973,10 +3076,13 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
-    assert!(stdout.contains(r#""message": "1""#));
+    // The gap-ledger repo badge is projected into the closed public vocabulary.
+    assert!(stdout.contains(r#""message": "1 actionable""#));
     assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
+    assert!(stdout.contains(r#""state": "actionable""#));
+    assert!(stdout.contains(r#""actionable_count": 1"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -3026,11 +3132,12 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
+    assert!(stdout.contains(r#""public_projection""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -4103,4 +4210,230 @@ fn check_with_base_scope_does_not_show_no_scope_disclosure_smoke() {
         "check --base HEAD must NOT show no-scope disclosure; got stdout:\n{stdout}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// RIPR-SPEC-0112 regression guards: --base must disclose uncommitted working-tree changes.
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD --json` with an uncommitted change to a
+/// tracked .rs file must emit `unanalyzed_working_tree: true` in JSON and the human
+/// Note in stdout. The committed diff vs HEAD is empty (no new commits), so findings
+/// are zero — this is the false-clean case the disclosure must prevent.
+#[test]
+fn check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-fires");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // Make an UNCOMMITTED edit to a tracked .rs file — this is the uncommitted change
+    // that --base HEAD will not analyze.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b + 1 }\n",
+    )
+    .unwrap();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    // JSON mode: assert unanalyzed_working_tree == true
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"unanalyzed_working_tree\": true"),
+        "check --base HEAD with uncommitted edit must emit unanalyzed_working_tree: true in JSON; got:\n{stdout}"
+    );
+    // Human mode: assert the Note is present
+    let output_human = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD"])
+        .output()
+        .unwrap();
+    let human = String::from_utf8_lossy(&output_human.stdout);
+    assert!(
+        human.contains("uncommitted changes to tracked source were not analyzed"),
+        "check --base HEAD with uncommitted edit must show Note in human output; got:\n{human}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD` with a CLEAN worktree (no uncommitted changes)
+/// must NOT show the unanalyzed-working-tree disclosure. A genuinely clean worktree
+/// means no uncommitted edits — the disclosure must not fire.
+#[test]
+fn check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-clean");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-clean-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // No uncommitted changes — worktree is clean.
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("unanalyzed_working_tree"),
+        "check --base HEAD with clean worktree must NOT emit unanalyzed_working_tree; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("uncommitted changes"),
+        "check --base HEAD with clean worktree must NOT mention uncommitted changes; got:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// RIPR-SPEC-0116: `ripr check --base HEAD --worktree --json` analyzes the
+/// user's uncommitted tracked edit instead of reporting the committed `HEAD`
+/// diff as empty.
+#[test]
+fn check_worktree_base_head_analyzes_uncommitted_tracked_edit() -> Result<(), String> {
+    let root = unique_temp_workspace("worktree-mode-dirty");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|err| format!("write base lib.rs: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0116-worktree-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold\n}\n",
+    )
+    .map_err(|err| format!("write dirty lib.rs: {err}"))?;
+
+    let root_str = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--base",
+        "HEAD",
+        "--worktree",
+        "--json",
+    ]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("parse check JSON: {err}\n{stdout}"))?;
+    let findings = report
+        .pointer("/findings")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("expected findings array in JSON:\n{stdout}"))?;
+    if findings.is_empty() {
+        return Err(format!(
+            "--worktree must analyze the uncommitted tracked edit; got no findings:\n{stdout}"
+        ));
+    }
+    if stdout.contains("unanalyzed_working_tree") {
+        return Err(format!(
+            "--worktree analysis must not claim the tracked edit was excluded:\n{stdout}"
+        ));
+    }
+    if stdout.contains("no_scope_provided") {
+        return Err(format!(
+            "--worktree must count as an explicit analysis scope:\n{stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// RIPR-SPEC-0116: an empty `--worktree` result is honest when the working tree
+/// has no tracked changes against the requested base.
+#[test]
+fn check_worktree_base_head_clean_worktree_has_no_scope_or_unanalyzed_disclosure()
+-> Result<(), String> {
+    let root = unique_temp_workspace("worktree-mode-clean");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|err| format!("write base lib.rs: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0116-worktree-clean-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+
+    let root_str = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--base",
+        "HEAD",
+        "--worktree",
+        "--json",
+    ]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.contains("unanalyzed_working_tree") {
+        return Err(format!(
+            "clean --worktree result must not emit unanalyzed_working_tree:\n{stdout}"
+        ));
+    }
+    if stdout.contains("no_scope_provided") {
+        return Err(format!(
+            "clean --worktree result must still count as scoped analysis:\n{stdout}"
+        ));
+    }
+    let report: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("parse check JSON: {err}\n{stdout}"))?;
+    let findings = report
+        .pointer("/findings")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("expected findings array in JSON:\n{stdout}"))?;
+    if !findings.is_empty() {
+        return Err(format!(
+            "clean HEAD-vs-worktree diff should not produce findings:\n{stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
 }

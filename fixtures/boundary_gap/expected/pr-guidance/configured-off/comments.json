@@ -43,6 +43,9 @@
   "suppressed": [],
   "tool": "ripr",
   "warnings": [
-    "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results"
+    {
+      "kind": "other",
+      "message": "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results"
+    }
   ]
 }

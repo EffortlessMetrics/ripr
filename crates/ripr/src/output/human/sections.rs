@@ -97,6 +97,41 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
+    // #1162 explain enhancement: when a named static limitation is present,
+    // surface its plain-English meaning (not just the snake_case token) so a CLI
+    // reader understands *why* ripr could not resolve the path. Fail-closed
+    // disclosure only — `describe()` asserts no coverage.
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        out.push_str("\nStatic limitation\n");
+        out.push_str(&format!(
+            "  {} \u{2014} {}\n",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
+    }
+
+    // RIPR-SPEC-0115/0117: when a Rust no_static_path limitation named a
+    // witnessing test, surface it in human output as a concrete "Where to look"
+    // pointer. The witness prose lives in `evidence` (the limitation channel);
+    // we recognize it by the shared prefix so JSON evidence and human output
+    // stay single-sourced.
+    if let Some(witness) = finding
+        .evidence
+        .iter()
+        .find(|line| line.starts_with(crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX))
+    {
+        out.push_str("\nWhere to look\n");
+        out.push_str(&format!("  {witness}\n"));
+    }
+
+    let limitation_details = limitation_detail_lines(finding);
+    if !limitation_details.is_empty() {
+        out.push_str("\nLimitation detail\n");
+        for (label, value) in limitation_details {
+            out.push_str(&format!("  {label}: {value}\n"));
+        }
+    }
+
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
@@ -126,6 +161,33 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn limitation_detail_lines(finding: &Finding) -> Vec<(&'static str, &str)> {
+    [
+        (
+            "last established edge",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        ),
+        (
+            "first unresolved edge",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        ),
+        (
+            "analyzer route",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX,
+        ),
+        ("non-claim", crate::domain::LIMITATION_NON_CLAIM_PREFIX),
+    ]
+    .into_iter()
+    .filter_map(|(label, prefix)| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+            .map(|value| (label, value))
+    })
+    .collect()
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {

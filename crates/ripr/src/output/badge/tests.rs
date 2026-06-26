@@ -93,7 +93,9 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         summary: Summary::default(),
         findings,
         preview_language_advisories: Vec::new(),
+        language_runs: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
     }
 }
 
@@ -394,8 +396,10 @@ fn badge_native_json_uses_snake_case_schema_version_and_all_required_fields() {
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
-    assert!(json.contains("\"schema_version\": \"0.6\""));
+    assert!(json.contains("\"schema_version\": \"0.7\""));
     assert!(!json.contains("\"schemaVersion\""));
+    // Diff-scoped badges carry no public projection.
+    assert!(!json.contains("\"public_projection\""));
     assert!(json.contains("\"kind\": \"ripr\""));
     assert!(json.contains("\"scope\": \"diff\""));
     assert!(json.contains("\"basis\": \"finding_exposure\""));
@@ -1538,7 +1542,9 @@ fn check_output_with_preview_advisory(
             sample_paths: vec![format!("src/foo.{language}")],
             enabled,
         }],
+        language_runs: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
     }
 }
 
@@ -1658,14 +1664,14 @@ fn typescript_disabled_with_rust_findings_keeps_warn_and_names_skip() {
 }
 
 #[test]
-fn native_json_schema_version_is_0_6() {
+fn native_json_schema_version_is_0_7() {
     let output = check_output(vec![]);
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
     assert!(
-        json.contains("\"schema_version\": \"0.6\""),
-        "schema_version must be 0.6 after preview_skipped addition"
+        json.contains("\"schema_version\": \"0.7\""),
+        "schema_version must be 0.7 after public_projection addition"
     );
 }
 

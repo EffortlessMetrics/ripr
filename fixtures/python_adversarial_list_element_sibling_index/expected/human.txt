@@ -1,0 +1,69 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_list_element_sibling_index/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/routes.py:2
+
+Changed
+  after:      return ["index", "browse", "detail"]
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/routes.py::route_order
+  canonical gap: gap:python:src/routes.py:route_order:return_value:return_value:[index_browse_detail]
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `route_order`
+  - infection yes: Changed Python return expression can alter the owner return value: `return ["index", "browse", "detail"]`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches returned value: return ["index", "browse", "detail"] (line 2)
+  - related test tests/test_routes.py:4 test_first uses strong exact value oracle: assert route_order()[0] == "index"
+
+Weakness
+  - A strong Python oracle reaches `route_order`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.
+  - missing discriminator return value == ["index", "browse", "detail"]: changed Python returned-value at line 2 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/routes.py:route_order:return_value:return_value:[index_browse_detail]
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: route_order
+  changed behavior: return_value changed at src/routes.py:2: `return ["index", "browse", "detail"]`
+  current test evidence: tests/test_routes.py:4 test_first currently has oracle_strength=strong, oracle_kind=exact_value: assert route_order()[0] == "index"
+  missing discriminator: return value == ["index", "browse", "detail"]
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == ["index", "browse", "detail"]`.
+  suggested assertion: Assert the returned value equals the expected value for the changed inputs.
+  suggested file: tests/test_routes.py
+  suggested test: test_first
+  pytest node: tests/test_routes.py::test_first
+  verify: pytest tests/test_routes.py::test_first (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == ["index", "browse", "detail"]`.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

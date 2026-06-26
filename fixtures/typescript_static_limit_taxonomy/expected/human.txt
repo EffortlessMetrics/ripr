@@ -44,6 +44,9 @@ Weakness
   - No trusted TypeScript method receiver relation for `save`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, prototype aliases, and dynamic property access stay ambiguous in preview.
   - Static limit `decorator_indirection`: owner `save` uses TypeScript decorators; syntax-first preview evidence does not resolve decorator-modified call behavior. Repair route: add decorator-aware owner modeling or verify decorator-modified behavior manually before issuing a repair packet.
 
+Static limitation
+  decorator_indirection — A decorator wraps the changed owner, so ripr cannot statically confirm a test exercises the underlying behavior.
+
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
   authority: preview_advisory_only (typescript/preview)
@@ -108,6 +111,9 @@ Evidence
 Weakness
   - Related test reaches `dispatch` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
+
+Static limitation
+  dynamic_dispatch — Dynamic dispatch (trait objects or virtual calls) hides which implementation runs, so ripr cannot statically resolve whether a test reaches this change.
 
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
@@ -176,6 +182,9 @@ Weakness
   - Related test reaches `LabelView` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `missing_import_graph`: the changed line calls imported symbol `normalizeLabel` from `./labels`; the TypeScript preview adapter does not build a package or import graph for production implementation semantics. Repair route: add import graph support or inspect the imported implementation before issuing a repair packet.
 
+Static limitation
+  missing_import_graph — The import graph could not be resolved (for example a relative or dynamic import), so ripr cannot connect a test to this change.
+
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1
   authority: preview_advisory_only (javascript/preview)
@@ -242,6 +251,9 @@ Evidence
 Weakness
   - Related test reaches `wrap` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair packet.
   - Static limit `metaprogramming`: the TypeScript preview adapter saw Proxy, Reflect, or property-definition metaprogramming syntax and does not infer runtime-created behavior. Repair route: add metaprogramming-aware modeling or keep the finding as human-review-only before issuing a repair packet.
+
+Static limitation
+  metaprogramming — Metaprogramming (macros or code generation) produces calls ripr cannot see in the source, so the reaching path is not statically resolvable.
 
 TypeScript preview card (advisory)
   card version: typescript_preview_card.v1

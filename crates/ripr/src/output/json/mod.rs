@@ -151,7 +151,9 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -270,7 +272,9 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -435,7 +439,9 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -726,6 +732,70 @@ mod tests {
         finding_json(&mut out, &finding, 0);
 
         assert!(out.contains("\"static_limit_kind\": \"mocked_module\""));
+    }
+
+    #[test]
+    fn finding_json_emits_static_limitation_detail_when_complete() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding.evidence = vec![
+            "limitation_last_established_edge: test `test_outer` (tests/it.rs:4) -> entry `outer`"
+                .to_string(),
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path"
+                .to_string(),
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach".to_string(),
+            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                .to_string(),
+        ];
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(
+            value["static_limitation"]["kind"],
+            "rust_transitive_reach_unresolved"
+        );
+        assert_eq!(
+            value["static_limitation"]["last_established_edge"],
+            "test `test_outer` (tests/it.rs:4) -> entry `outer`"
+        );
+        assert_eq!(
+            value["static_limitation"]["first_unresolved_edge"],
+            "entry `outer` -> owner `inner` through a transitive Rust helper path"
+        );
+        assert_eq!(
+            value["static_limitation"]["analyzer_route"],
+            "analysis/rust-public-api-transitive-reach"
+        );
+        assert_eq!(
+            value["static_limitation"]["non_claim"],
+            "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn finding_json_omits_static_limitation_detail_when_incomplete() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding.evidence = vec![
+            "limitation_last_established_edge: test `test_outer` (tests/it.rs:4) -> entry `outer`"
+                .to_string(),
+        ];
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(
+            value["static_limit_kind"],
+            "rust_transitive_reach_unresolved"
+        );
+        assert!(value.get("static_limitation").is_none());
+        Ok(())
     }
 
     #[test]
@@ -1038,7 +1108,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         }
     }
 
@@ -1108,7 +1180,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1152,7 +1226,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1204,7 +1280,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);
@@ -1235,7 +1313,9 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
         };
 
         let rendered = render(&output);

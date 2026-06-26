@@ -78,11 +78,13 @@ stop_reason|external_crate_boundary|Static analysis stop reason value.
 stop_reason|feature_unknown|Static analysis stop reason value.
 stop_reason|fixture_opaque|Static analysis stop reason value.
 stop_reason|infection_evidence_unknown|Static analysis stop reason value.
+stop_reason|macro_reach_unresolved|Static analysis stop reason value.
 stop_reason|max_depth_reached|Static analysis stop reason value.
 stop_reason|no_changed_rust_line|Static analysis stop reason value.
 stop_reason|proc_macro_opaque|Static analysis stop reason value.
 stop_reason|propagation_evidence_unknown|Static analysis stop reason value.
 stop_reason|static_probe_unknown|Static analysis stop reason value.
+stop_reason|transitive_reach_unresolved|Static analysis stop reason value.
 value_context|assertion_argument|Activation value context.
 value_context|builder_method|Activation value context.
 value_context|enum_variant|Activation value context.

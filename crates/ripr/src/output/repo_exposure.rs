@@ -390,7 +390,7 @@ fn push_classified_json(
     out.push_str(&format!("      \"kind\": \"{}\",\n", seam.kind().as_str()));
     out.push_str(&format!(
         "      \"file\": \"{}\",\n",
-        json_escape(&seam.file().to_string_lossy())
+        json_escape(&display_path(seam.file()))
     ));
     out.push_str(&format!("      \"line\": {},\n", seam.display_line()));
     out.push_str(&format!(
@@ -454,7 +454,7 @@ fn push_classified_json(
             ));
             out.push_str(&format!(
                 "\"file\": \"{}\", ",
-                json_escape(&grip.file.to_string_lossy())
+                json_escape(&display_path(&grip.file))
             ));
             out.push_str(&format!("\"line\": {}, ", grip.line));
             out.push_str(&format!(
@@ -637,7 +637,7 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     let evidence = &entry.evidence;
     out.push_str(&format!(
         "### {}:{} {}\n\n",
-        md_escape(&seam.file().to_string_lossy()),
+        md_escape(&display_path(seam.file())),
         seam.display_line(),
         seam.kind().as_str()
     ));
@@ -1239,6 +1239,42 @@ mod tests {
             "Markdown missing direct_owner_call tag: {md}"
         );
         assert!(md.contains("high"), "Markdown missing confidence tag: {md}");
+    }
+
+    #[test]
+    fn repo_exposure_json_normalizes_seam_and_related_test_paths() -> Result<(), String> {
+        let mut classified = classified_at(
+            r"crates\faultline-app\src\lib.rs",
+            "faultline_app::calculate",
+            7,
+            SeamGripClass::WeaklyGripped,
+        );
+        classified.evidence.related_tests[0].file =
+            std::path::PathBuf::from(r"crates\faultline-app\tests\integration.rs");
+
+        let json = render_repo_exposure_json(&[classified], None, None);
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("parse repo exposure JSON failed: {err}\n{json}"))?;
+        let seam = value["seams"]
+            .as_array()
+            .and_then(|seams| seams.first())
+            .ok_or_else(|| format!("repo exposure JSON missing first seam: {value}"))?;
+        let seam_file = seam["file"]
+            .as_str()
+            .ok_or_else(|| format!("seam file is not a string: {seam}"))?;
+        let related_file = seam["related_tests"][0]["file"]
+            .as_str()
+            .ok_or_else(|| format!("related test file is not a string: {seam}"))?;
+
+        if seam_file != "crates/faultline-app/src/lib.rs" {
+            return Err(format!("seam file must use forward slashes: {seam_file}"));
+        }
+        if related_file != "crates/faultline-app/tests/integration.rs" {
+            return Err(format!(
+                "related test file must use forward slashes: {related_file}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
