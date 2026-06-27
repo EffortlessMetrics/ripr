@@ -5102,3 +5102,328 @@ Non-goals:
 - Completeness across all Python constructs or frameworks.
 - A `stable` claim; the target is `usable`.
 - Supporting Django/SQLAlchemy/etc — only failing closed (named limitation) there.
+
+## Campaign 31: Perl Repair-Routing Usable Alpha
+
+Campaign ID: `perl-repair-routing-bridge`
+
+Status: tracker
+
+Tracker: `.ripr/goals/perl-repair-routing.toml` · umbrella issue #1379
+
+Note: this is a focused tracker campaign, not the selected active campaign in
+`.ripr/goals/active.toml` (which remains `use-case-spec-spine`). Promotion into
+`active.toml` is a maintainer decision.
+
+### Objective
+
+A working alpha lets a maintainer configure an explicit `perl-lsp` producer and
+use the normal RIPR loop:
+
+```toml
+[languages]
+enabled = ["perl"]
+
+[perl]
+producer = "perllsp"
+```
+
+```bash
+ripr doctor --root .
+ripr check --root . --base origin/main
+# add or strengthen one test
+prove -l t/example.t
+ripr check --root . --base origin/main --json > after.json
+ripr outcome --before before.json --after after.json
+```
+
+The result is exactly one honest outcome: (1) a bounded Perl test-repair packet
+with a concrete missing discriminator, test location, verify command, edit cage,
+stop conditions, and receipt path; (2) already-observed evidence explaining why
+no new test is needed; or (3) a named limitation explaining why the Perl change
+is not statically actionable.
+
+**Not** general Perl correctness, coverage adequacy, runtime mutation testing,
+or support for every dynamic Perl construct.
+
+### Why the restructure (ADR 0019)
+
+An earlier draft of this campaign proposed moving the existing
+`PerlStrictActionability` out of `#[cfg(test)]` as the actionability flip
+authority, with `PerlRepairCard`/`PerlInternalAgentPacket` as bespoke
+renderers. That approach **violates ADR 0019** (line 83-86: "An adapter MUST
+NOT introduce a parallel, mirror, or inline validator; a language-local
+`repair_packet_ready` boolean; or a bespoke packet renderer"). The shared
+authority is `validate_agent_gap_record_packet` (`agent_seam_packets.rs`), already
+used by the TypeScript projection (`typescript_gap_record_for` + `validator_parity_*`
+tests). Perl follows the same pattern.
+
+### Verified ground truth (scout-passed, file:line-confirmed)
+
+- The Perl adapter module is `#[cfg(test)] mod perl;` under
+  `crates/ripr/src/analysis/language/`. After PR 2 (#1417) the former 4036-line
+  monolith `perl.rs` is split into `perl/mod.rs` + `perl/tests.rs`.
+- `missing_discriminator` formerly defaulted to generic enum labels
+  (`default_missing_discriminator()` returned `"return_value"` etc.), NOT
+  concrete expressions. TypeScript/Python populate the **same shared slot**
+  (`GapRepairRoute.missing_discriminator`, `gap_decision_ledger.rs`) with
+  concrete values (`"amount >= threshold"`). Correction #2 is a Perl-local fix —
+  **no shared-contract change, no golden re-bless**. Landed in PR 12 (#1428).
+- Relations formerly gated by exposure class + confidence + oracle shape but
+  **NOT by relation kind**. `direct_owner_call` and `file_proximity` were treated
+  identically. Correction #3 landed in PR 12 (#1428).
+- `prove -l`/`-lv`/`-Ilib` were rejected by positional matching. Correction #4
+  landed in PR 13 (#1421).
+- perl-lsp already produced a serde `FileFactShard`; the exporter is a thin new
+  `LaunchAction` variant, not a from-scratch build.
+- `lang-perl = []` exists but is not in `default` (`Cargo.toml`); the pipeline
+  returns a fail-closed stub when the feature is off.
+- **Pre-existing ADR-0019 violation (still open as of 2026-06-27):** the bespoke
+  Perl projection `gap_record_from_perl_preview_finding`
+  (`gap_decision_ledger.rs:756`, read at `:424`) and the bespoke
+  `perl_preview_card` renderer (`crates/ripr/src/output/perl_preview_card.rs`,
+  called from `github.rs:99` and `human/sections.rs:143`) predate ADR 0019 and are
+  **still wired into production output on `main`**. They are dormant only because
+  they set `agent_packet` ineligible + `receipt_command: None` (failing shared
+  validator gates #1/#6). PR 16 (D16) MUST delete or formally scope them down
+  before the shared-validator path goes live — see Blocking conditions.
+
+### Four corrections before productionizing
+
+1. **Shared `GapRecord` authority.** Do not merely remove `#[cfg(test)]` from
+   `PerlStrictActionability`. Perl must project into `GapRecord` via
+   `perl_gap_record_for()`, pass `validate_agent_gap_record_packet`, reuse shared
+   edit-surface/render helpers, and carry `validator_parity_perl_*` tests. The
+   Perl-local model decides eligibility; only the shared validator flips
+   `repair_packet_ready`.
+
+2. **Concrete discriminator.** Stop emitting generic enum labels. The producer
+   must emit concrete facts (`$amount == $threshold`,
+   `returned status changed from pending to paid`,
+   `exception class/message InvalidAmount`); RIPR aligns the changed observable
+   with the assertion's observed sink. A strong assertion somewhere in the same
+   test is not enough.
+
+3. **Relation gating by reason.** Restrict actionability by relation kind:
+   `direct_owner_call`/proven helper-call chain eligible; `package_reference`/
+   `test-name match`/`file proximity` advisory-only; `unknown` a limitation.
+   Every related test exposes `relation_reason` and `relation_confidence`
+   (Perl-local model + thread into existing `RelatedTestGrip`; no shared-contract
+   change this campaign).
+
+4. **Typed runner commands.** Replace positional matching with a structural
+   model (runner, flags, test targets, working dir, preconditions, scope,
+   confidence). RIPR generates the receipt command; the producer does not.
+
+### Phases (each PR one scoped slice)
+
+| PR | Phase | Repo | Slice | Landed |
+| -: | - | --- | --- | --- |
+| 1 | A | ripr-swarm | Refresh PROP-0018/SPEC-0064, record landed work, add `Perl scaffold — blocked on live fact producer` support-tier row, create tracker. | #1413 |
+| 2 | A | ripr-swarm | Split the test-only `perl.rs` into `perl/mod.rs` + `perl/tests.rs`; zero behavior change, zero golden drift. | #1417 |
+| 3 | A | ripr-swarm | Replace Perl-local readiness authority with `perl_gap_record_for()` + shared `GapRecord` validation + `validator_parity_perl_*` tests. Public projection stays disabled. | #1415 |
+| 4 | B | perl-lsp | `perllsp ripr-facts` command parsing, capability reporting, canonical JSON writer, valid `unavailable` packets. No LSP server, no Perl execution. | — |
+| 5 | B | perl-lsp | Export files, owners, changes, source digests, ranges, provenance, packet fingerprint, diff identity. | — |
+| 6 | B | perl-lsp | Export Test::More/Test2/Test::Exception/Test::Fatal test + oracle facts. | — |
+| 7 | B | perl-lsp | Export relations with reason/confidence, concrete changed-observable + discriminator facts, oracle-observed-sink facts. | — |
+| 8 | B | perl-lsp | Export dynamic boundaries, limitations, typed verify-command candidates, deterministic goldens, schema-capability tests. | — |
+| 9 | C | ripr-swarm | `--perl-facts PATH` + productionize packet parsing with schema/size/uniqueness/referential-integrity/path/fingerprint/source-digest/root/diff-coherence checks. | #1422, #1434, #1448 |
+| 10 | C | ripr-swarm | `language_runs[]` status output (`complete`/`partial`/`unavailable`/`invalid`). Missing Perl facts must not abort valid Rust/Python/TS output. | #1418 |
+| 11 | C | ripr-swarm | Production `PerlAdapter`, `.pm`/`.pl`/`.t`/`.psgi` routing, packet→`Finding`/limitation conversion. | #1426, #1431, #1432 |
+| 12 | C | ripr-swarm | Concrete discriminator + sink alignment + strict relation gating. Heuristic-only relations and generic discriminators cannot project a `GapRecord`. | #1428, #1451, #1449 |
+| 13 | C | ripr-swarm | Typed `prove`/`yath`/`carton exec prove`/`dzil` command validation incl. `-l`/`-v` flags. RIPR generates the receipt command. | #1421 |
+| 14 | D | ripr-swarm | Managed producer mode: `[perl] producer = "perllsp"` / `--perl-producer`; timeout, executable override, version/schema capability check, cache location, stderr diagnostics. No silent invocation unless configured. | #1435 |
+| 15 | D | ripr-swarm | `ripr doctor` Perl upgrade: project markers, producer availability/version, schema compatibility, detected framework, runner availability, exact first command. | #1436 |
+| 16 | D | ripr-swarm | Project validated Perl `GapRecord`s as public repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger via shared renderers. Gates/badges/RIPR Zero stay false. | — (open; ADR-0019 blocker) |
+| 17 | D | ripr-swarm | Bounded agent packets + PR/CI/LSP/swarm advisory projection. Only the selected test file is editable; production files forbidden. | — |
+| 18 | D | ripr-swarm | Perl before/after snapshots + outcome receipts keyed by canonical gap ID + producer packet fingerprint. | — |
+
+### Landed work beyond the 18-slice spine
+
+The 18-slice table predates the consumer-side contract freeze and the mapper-
+integrity hotfix wave. These landed after the plan was authored and are recorded
+here for tracker completeness:
+
+- **#1433 (E1)** — CPAN-style three-outcome alpha fixture (`fixtures/perl_cpan_alpha/`).
+- **#1447 (H1)** — mapping-integrity hotfix for `packet_to_findings`:
+  `related_test.file` routed through packet-owned helpers; the test file is read
+  via `test.file_id`, with test-specific verify commands, real test lines, and
+  relation reason/confidence. Avoids canonical gaps from generic discriminators.
+- **#1448** — boundary check made ordering-independent: the mapper checks all
+  related evidence, not just `.first()`, so a boundary on a later related test
+  file still blocks. `perl_relation_to_domain` refactored.
+- **#1449** — corrected a false-green test introduced by #1448; proves the
+  ordering test fails on the buggy `.first()` behavior and passes on `.any()`.
+- **#1450 (contract freeze step 2)** — consumer-side contract freeze: accepts
+  `Test2::V1` and the frozen `ChangeFact`/`OracleFact` fields
+  (`changed_observable`, `missing_discriminator`, `observed_sink`,
+  `expected_expression`).
+- **#1451 (H2)** — already-observed classification via sink alignment: a Perl
+  change classifies as `Exposed` only when a direct owner call links a strong
+  exact oracle whose `observed_sink` aligns to the change's `changed_observable`;
+  owner-target identity alone is explicitly not enough.
+- **perl-lsp-swarm #3104** — producer-side contract freeze: schema-drift fix,
+  `Test2::V1` added, nullable `changed_observable`/`missing_discriminator` and
+  `observed_sink`/`expected_expression` fields. Parser-backed Test2 facts are
+  explicitly left for a later step (still emits `null` when fields are not
+  derived).
+
+### Alpha producer scope (deliberately narrow start)
+
+```text
+lib/**/*.pm
+t/**/*.t
+
+Test::More
+Test2::V0
+Test::Exception / Test::Fatal
+
+predicate boundary
+exact return
+exception path
+```
+
+Scripts, fields, output/warnings, Moose/Moo synthesis, Carton, Dist::Zilla land
+only when each passes the same fixture + dogfood gates. Existing vocabulary can
+remain broader than the first release claim.
+
+### End-to-end alpha fixture (release-blocking)
+
+Real CPAN-style project: `Makefile.PL` + `lib/Pricing.pm` + `t/pricing.t`,
+proving all three outcomes:
+
+- **Actionable** — `ok(calculate_discount(100));` — a changed equality boundary
+  yields a bounded recommendation for an exact boundary assertion.
+- **Already observed** — `is(calculate_discount(100), 10, 'threshold equality');`
+  — no repair packet emitted.
+- **Limited** — `my $method = $config->{method}; $obj->$method();` — relation
+  visible but dynamic dispatch yields a named limitation and no packet.
+
+The fixture landed (#1433); the **two-binary proof** (real `perllsp ripr-facts`
+output consumed end-to-end) is the still-open milestone that turns the consumer
+from scaffold into a working preview. Committed expected packets are regression
+fixtures, not proof.
+
+### Release gates (usable alpha)
+
+Contract & safety (**mechanically enforced**):
+- 100% pass on packet schema, referential-integrity, path-safety, stale-digest,
+  partial-packet, and dynamic-boundary fixtures.
+- Zero public repair packets from heuristic-only relations, generic
+  discriminators, low/unknown confidence, partial packets, or unsupported
+  dynamics — enforced by the Perl `must_not_emit_repair_packet`
+  evidence-promotion-honesty corpus entry added in PR 16.
+- Validator parity demonstrates Perl uses the same shared packet authority as
+  Rust/TypeScript/Python (PR 3 `validator_parity_perl_*` unit tests +
+  cross-language corpus).
+- `lang-perl` feature-gated code path exercised in CI (PR 11 matrix job).
+
+Real-world evidence (**human-judgment, recorded in PR 18** — there is no
+`perl-real-repo-evals` corpus analogous to `python-real-repo-evals`; adding one
+is a post-alpha follow-up):
+- ≥5 materially different Perl repositories; ≥20 human-reviewed candidate routes.
+- top-1 repair-card precision ≥ 80%; verify-command validity ≥ 90%;
+  false-actionable rate ≤ 5%; zero severe false-actionables permitting
+  production edits; ≥5 before/after receipts with ≥3 improved/resolved.
+
+The feature is labelled "usable alpha" only when **both** the mechanical gates
+pass in CI **and** the human-judgment thresholds are documented as met in
+PR 18's description.
+
+### Alpha release claim
+
+> **Perl repair routing usable alpha:** opt-in static analysis for selected
+> CPAN-style Test::More/Test2/Test::Exception/Test::Fatal workflows, powered by
+> deterministic `perl-lsp` fact packets. RIPR can identify selected changed
+> owners, related tests, concrete missing discriminators, bounded test-only
+> repairs, verify commands, and before/after receipts. Dynamic and unsupported
+> Perl fails closed into named limitations.
+
+Explicit non-claims: no general Perl correctness proof; no coverage/mutation
+adequacy; no automatic test execution by default; no generated tests; no source
+edits; no arbitrary custom-helper understanding; no default gate/badge/baseline/
+RIPR Zero authority.
+
+### Non-goals
+
+- `stable` support tier.
+- General Perl correctness or coverage adequacy.
+- Auto-test-execution by default, generated tests, or source edits.
+- Custom-helper understanding beyond the named frameworks.
+- Reconciling the FNV-1a gap-id scheme (deferred; lands before IDs become public
+  receipt keys — receipt keys are established in PR 18, so the reconciliation
+  lands before or with PR 18).
+
+### Dependencies
+
+- Phase A is unblocked. PR 1 (docs) and PR 2 (split) are independent; PR 3
+  (GapRecord projection) is sequenced after PR 2 for review flow but does NOT
+  hard-depend on it — `perl_gap_record_for` lives in `output/` and reads the
+  public `Finding` domain surface + `perl_*` evidence keys, none of which the
+  split changes.
+- Phase B (producer, perl-lsp repo) depends on Phase A PR 1 (frozen schema/plan)
+  but can otherwise proceed in parallel with PRs 2-3.
+- Phase C depends on Phase A PR 3 (shared GapRecord projection) AND Phase B PR 8
+  (real packets to consume). Within Phase C: PR 9 (ingestion) → PR 11 (adapter);
+  PR 10 (language_runs) independent; PR 12 (discriminator/relations) needs PR 11
+  + PR 7 (producer facts); PR 13 (typed commands) depends on PR 11.
+- Phase D depends on Phase C complete. Within Phase D: PR 14 (producer mode) →
+  PR 15 (doctor); PR 16 (public projection) needs PR 14 + PR 12; PR 17 (agent
+  packets) needs PR 16; PR 18 (receipts) needs PR 16.
+
+### Blocking conditions
+
+- Any output-shape change to `perl_preview_card.v1` or `GapRecord` requires a
+  full golden re-bless in the same PR (single-writer-collision awareness).
+- Any flip of a gate/badge/RIPR Zero authority flag to `true` (out of alpha
+  scope; only `repair_packet_ready` flips, and only via the shared validator).
+- **ADR-0019 parallel-renderer decommissioning (PR 16, blocker, still open as of
+  2026-06-27):** the pre-existing bespoke Perl projection
+  `gap_record_from_perl_preview_finding` (`gap_decision_ledger.rs:756`, read at
+  `:424`) and the bespoke `perl_preview_card` renderer (`perl_preview_card.rs`)
+  are **still wired into production output on `main`** (`github.rs:99`,
+  `human/sections.rs:143`). They predate ADR 0019 and are currently dormant only
+  because they set `agent_packet` ineligible + `receipt_command: None`. PR 16
+  MUST delete or formally scope them down before the shared-validator path goes
+  live, or the campaign creates the exact parallel-renderer drift surface ADR
+  0019 line 83-86 forbids.
+- `lang-perl` added to `default` features is **out of scope for this campaign**
+  (not a timer that expires when PR 14 lands). PR 14 makes default-inclusion
+  *considerable*; the actual flip is a separate decision tracked elsewhere.
+- Spec status flip of SPEC-0064 / PROP-0018 / ADR-0018 / ADR-0019 before
+  Phase C completes.
+
+### Review policy
+
+- Each PR follows `docs/SCOPED_PR_CONTRACT.md`.
+- Phase A PR 1 (docs) is stackable. PR 2 (split) is `stackable = false` (large
+  mechanical diff; needs independent review). PR 3 (GapRecord) is
+  `stackable = false` (architectural).
+- Phase B/C/D production-behavior PRs are all `stackable = false`; each needs a
+  failing fixture that passes only after the change.
+- Cardinal-sin seam: the `repair_packet_ready` flip must route through
+  `validate_agent_gap_record_packet`. A Perl-local flip is the forbidden pattern.
+- No merge on self-report — verify the artifact by running the binary.
+
+Commands (non-exhaustive; each PR's issue carries its specific gate set):
+
+```bash
+cargo xtask check-pr
+cargo xtask module-health         # PR 2 proof: perl/ no longer over threshold
+cargo xtask goldens check         # PR 2 proof: zero golden drift
+cargo xtask check-fixture-contracts
+cargo xtask check-evidence-promotion-honesty
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
+cargo xtask check-public-api
+cargo xtask check-output-contracts
+cargo xtask check-architecture
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo fmt --check
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+# perl-lsp side (Phase B): cargo test -p perl-lsp-rs-core, cargo test -p perl-workspace
+# alpha gate (Phase D PR 18): the CPAN-style end-to-end fixture proves all three outcomes
+```

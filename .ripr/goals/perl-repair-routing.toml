@@ -1,0 +1,384 @@
+id = "perl-repair-routing-bridge"
+title = "Perl Repair-Routing Usable Alpha"
+status = "tracker"
+lane = 2
+
+# Focused Perl usable-alpha tracker.
+# This is not the active Codex Goals manifest. `.ripr/goals/active.toml` remains
+# the active execution manifest (currently `use-case-spec-spine`). Promotion into
+# `active.toml` is a maintainer decision recorded here.
+#
+# Durable plan: docs/IMPLEMENTATION_CAMPAIGNS.md -> Campaign 31
+# Spec: docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md (proposed)
+# Proposal: docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md (proposed)
+# ADR: docs/adr/0018-perl-lsp-fact-substrate.md (proposed)
+# ADR: docs/adr/0019-language-adapters-reuse-shared-packet-contract.md (proposed)
+# Producer repo: perl-lsp-swarm (published crate: perl-lsp-rs-core)
+#
+# Public tracker: https://github.com/EffortlessMetrics/ripr-swarm/issues/1379
+#
+# ADR 0019 is load-bearing: the Perl adapter MUST project into the shared
+# GapRecord and flip repair_packet_ready only via the shared
+# validate_agent_gap_record_packet (agent_seam_packets.rs), mirroring the
+# TypeScript pattern (typescript_gap_record_for + validator_parity_* tests). A
+# Perl-local readiness validator or repair_packet_ready boolean is forbidden.
+#
+# Phase + PR number are encoded in each work_item id/branch (perl-A1..D18). The
+# durable plan doc carries the phase table; this tracker carries execution state.
+#
+# NOTE on status vocabulary: ready/blocked/done per .ripr/goals/README.md. There
+# is no "deferred" status; "deferred to a later PR/campaign" items are recorded
+# as status = "blocked" with a note (keeps the manifest promotion-safe for
+# check-goals).
+#
+# Reconciliation (2026-06-27): this tracker and the Campaign 31 plan doc were
+# authored on an unmerged planning branch (PR #1412) and landed after the
+# consumer-side work. Items A1..D15 plus C2/H1/H2/contract-freeze/E1 are now
+# `done`; the bespoke-renderer ADR-0019 blocker (D16) and the two-binary producer
+# proof (Phase B) remain genuinely open. The perl.rs monolith referenced in the
+# original plan was split (#1417) into perl/mod.rs + perl/tests.rs; all path
+# references below point at the post-split layout.
+
+objective = """
+A working alpha: a maintainer configures [perl] producer = \"perllsp\", runs the
+normal RIPR loop (doctor, check, edit one test, check, outcome), and gets exactly
+one honest result — a bounded Perl test-repair packet (concrete discriminator,
+test location, verify command, edit cage, stop conditions, receipt path),
+already-observed evidence explaining why no new test is needed, or a named
+limitation explaining why safe routing is impossible. Not general Perl
+correctness, coverage adequacy, or mutation testing.
+"""
+
+non_goals = [
+  "stable support tier.",
+  "General Perl correctness or coverage adequacy.",
+  "Auto-test-execution by default, generated tests, or source edits.",
+  "Custom-helper understanding beyond the named Test::More/Test2/Test::Exception/Test::Fatal frameworks.",
+  "Reconciling the FNV-1a gap-id scheme with ripr's SHA-256-based finding identity (blocked work item; lands before or with PR 18 when receipt keys are established).",
+]
+
+end_state = [
+  "A maintainer can configure [perl] producer = \"perllsp\" and run the normal RIPR loop end-to-end on a CPAN-style repo.",
+  "perl-lsp ripr-facts emits deterministic ripr-perl-facts-v1 packets with concrete discriminators, relation reasons, and observed-sink facts.",
+  "ripr consumes packets via a production PerlAdapter routing through the shared GapRecord + validate_agent_gap_record_packet (no Perl-local flip).",
+  "Three-outcome CPAN-style fixture proves actionable / already-observed / limited paths against REAL perllsp output, not committed expected packets.",
+  "top-1 repair-card precision >= 80%, verify-command validity >= 90%, false-actionable rate <= 5%, zero severe false-actionables, >= 5 before/after receipts with >= 3 improved/resolved, across >= 5 real Perl repos.",
+  "Validator parity demonstrates Perl uses the same shared packet authority as Rust/TypeScript/Python.",
+  "Gates/badges/baseline/RIPR Zero authority stay false; only repair_packet_ready flips, and only via the shared validator.",
+]
+
+# --- Phase A: align the architecture (ripr-swarm) -- LANDED ---
+
+[[work_item]]
+id = "perl-A1/docs-and-tier-row"
+status = "done"
+stackable = true
+branch = "perl-A1-docs-tier-row"
+acceptance = "Phase A PR 1 (ripr-swarm, #1413). Refreshed docs/proposals/RIPR-PROP-0018 and docs/specs/RIPR-SPEC-0064 to record landed work and the usable-alpha target; added a 'Perl scaffold' row to docs/status/SUPPORT_TIERS.md (names the cfg-test-only adapter, no production routing, lang-perl not default). Documents that gap_state=\"actionable\" means static-evidence-actionable, not repair-packet-ready."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-A2/split-monolith"
+status = "done"
+stackable = false
+branch = "perl-A2-split-perl-rs"
+acceptance = "Phase A PR 2 (ripr-swarm, #1417). Split the former 4036-line test-only perl.rs into perl/mod.rs + perl/tests.rs. Zero behavior change, zero golden drift (the proof). module-health no longer lists perl.rs over threshold; goldens check clean. Behaviour-preserving decomposition per AGENTS.md module-health guidance."
+commands = [
+  "cargo xtask module-health",
+  "cargo xtask goldens check",
+  "cargo test -p ripr --lib",
+  "cargo xtask check-architecture",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-A3/shared-gap-record"
+status = "done"
+stackable = false
+branch = "perl-A3-shared-gap-record-projection"
+acceptance = "Phase A PR 3 (ripr-swarm, #1415). Replaced the Perl-local readiness authority with the shared contract: perl_gap_record_for(finding: &Finding) -> Option<GapRecord> mirroring typescript_gap_record_for. repair_packet_ready computed ONLY via validate_agent_gap_record_packet. Added validator_parity_perl_* tests mirroring the 8 TS cases. PUBLIC PROJECTION STAYS DISABLED (surface wiring + render-helper consumption lands in D16)."
+commands = [
+  "cargo test -p ripr --lib",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+# --- Phase B: build the real producer in perl-lsp --- OPEN ---
+
+[[work_item]]
+id = "perl-B4/ripr-facts-command"
+status = "blocked"
+stackable = false
+branch = "perl-B4-ripr-facts-command"
+blocked_by = ["perl-A1/docs-and-tier-row"]
+acceptance = "Phase B PR 4 (perl-lsp). In perl-lsp-swarm: add perllsp ripr-facts command parsing, capability reporting, canonical JSON writer, and valid unavailable packets. Do NOT start the LSP server, do NOT execute Perl. Arg validation: schema must equal ripr-perl-facts-v1; root/out repo-relative; fact-classes comma-separated subset, deduplicated, deterministic order."
+commands = [
+  "cargo test -p perl-lsp-rs-core",
+]
+
+[[work_item]]
+id = "perl-B5/files-owners-changes"
+status = "blocked"
+stackable = false
+branch = "perl-B5-files-owners-changes"
+blocked_by = ["perl-B4/ripr-facts-command"]
+acceptance = "Phase B PR 5 (perl-lsp). First emitter slice: map perl-workspace FileFactShard into ripr-perl-facts-v1 files/owners/changes arrays with source digests, ranges, provenance, packet fingerprint, and diff identity. Do NOT infer owners with string scans; SHA-256 source digests (not FNV hashes labelled as SHA-256); real source lines (not sequential counters)."
+commands = [
+  "cargo test -p perl-lsp-rs-core",
+  "cargo test -p perl-workspace",
+]
+
+[[work_item]]
+id = "perl-B6/tests-oracles"
+status = "blocked"
+stackable = false
+branch = "perl-B6-tests-oracles"
+blocked_by = ["perl-B5/files-owners-changes"]
+acceptance = "Phase B PR 6 (perl-lsp). Export Test::More/Test2::V0/Test2::Suite/Test::Exception/Test::Fatal test facts and oracle facts. Map conservatively: where extraction is unsure, OracleKind::Unknown (ripr fails closed on unknown). Distinguish exact oracles from smoke/mention-only/dies-only/unknown-helper/dynamic-framework evidence. Producer-side contract freeze (perl-lsp-swarm #3104) added the nullable fields; parser-backed Test2 facts are explicitly left for this step (still emits null when not derived)."
+commands = [
+  "cargo test -p perl-lsp-rs-core",
+  "cargo test -p perl-workspace",
+]
+
+[[work_item]]
+id = "perl-B7/relations-discriminators"
+status = "blocked"
+stackable = false
+branch = "perl-B7-relations-discriminators-sinks"
+blocked_by = ["perl-B6/tests-oracles"]
+acceptance = "Phase B PR 7 (perl-lsp). The load-bearing semantic slice. Export relations WITH reason + confidence (direct_owner_call / established-helper-call-chain eligible; package_reference / test-name-match / file-proximity advisory; unknown limitation). Export concrete changed-observable + missing-discriminator facts (e.g. '$amount == $threshold') — NOT generic enum labels. Export oracle-observed-sink facts so ripr can align the changed observable with the assertion's observed sink. This is the hardest mapping; pair-review with the C12 author."
+commands = [
+  "cargo test -p perl-lsp-rs-core",
+  "cargo test -p perl-workspace",
+]
+
+[[work_item]]
+id = "perl-B8/boundaries-commands-goldens"
+status = "blocked"
+stackable = false
+branch = "perl-B8-boundaries-commands-goldens"
+blocked_by = ["perl-B7/relations-discriminators"]
+acceptance = "Phase B PR 8 (perl-lsp). Export dynamic boundaries, limitations, and TYPED verify-command candidates (runner + flags + test targets + working dir + preconditions + scope + confidence — NOT shell strings; ripr generates the receipt command in C13). Deterministic goldens. Schema-capability tests. This PR closes Phase B: a real, deterministic packet exists. This is the milestone that unblocks the two-binary proof."
+commands = [
+  "cargo test -p perl-lsp-rs-core",
+  "cargo test -p perl-workspace",
+]
+
+# --- Phase C: production packet consumption in ripr --- MOSTLY LANDED ---
+
+[[work_item]]
+id = "perl-C9/ingestion-and-facts-option"
+status = "done"
+stackable = false
+branch = "perl-C9-ingestion-facts-option"
+acceptance = "Phase C PR 9 (ripr-swarm). --perl-facts PATH CLI option (#1434 auto-enables Perl) and production packet parsing with a real ingestion boundary: schema/size/uniqueness/referential-integrity/path-safety/fingerprint/source-digest/root/diff-coherence checks (#1422). Boundary check made ordering-independent in #1448 (checks all related evidence, not just .first()). Each check fails closed to a named PerlActionabilityBlocker; no silent acceptance. NOTE: fingerprint recomputation, full root/base/head/diff coherence, file-digest freshness, producer-capability compatibility, and stable-ID re-validation remain to be hardened in the next packet-integrity slice (item 2 of the active lane)."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-C10/language-runs-status"
+status = "done"
+stackable = false
+branch = "perl-C10-language-runs-status"
+acceptance = "Phase C PR 10 (ripr-swarm, #1418). language_runs[] status output (complete/partial/unavailable/invalid). A missing or invalid Perl packet does NOT abort valid Rust/Python/TS output — the Perl run is reported as unavailable/invalid and the other languages continue. NOTE: explicit stale/invalid packet states still need refinement (item 2 of the active lane)."
+commands = [
+  "cargo test -p ripr",
+  "cargo xtask check-output-contracts",
+  "cargo xtask goldens check",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-C11/adapter-and-routing"
+status = "done"
+stackable = false
+branch = "perl-C11-adapter-routing"
+acceptance = "Phase C PR 11 (ripr-swarm). Production PerlAdapter implementing LanguageAdapter (#1431): accepts_path for .pm/.pl/.t/.psgi (#1426 routing under #[cfg(feature = \"lang-perl\")]); analyze_diff/analyze_repo read the packet via --perl-facts, feed through the ingestion boundary, produce Vec<Finding> carrying perl_* evidence keys. lang-perl feature CI matrix job added. Adapter Err becomes a named limitation, never run-aborting. lang-perl stays opt-in."
+commands = [
+  "cargo check -p ripr --no-default-features --features lang-perl",
+  "cargo test -p ripr --features lang-perl",
+  "cargo test -p ripr",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workflows",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-C2/packet-to-findings"
+status = "done"
+stackable = false
+branch = "perl-C2-packet-to-finding"
+acceptance = "Phase C PR (ripr-swarm, #1432). packet_to_findings() converts a validated packet into Finding records, carrying perl_* evidence keys that perl_gap_record_for can project. The converter is the bridge between the ingestion boundary and the RIPR evidence domain. (Originally the 'C2' slice; recorded separately because it was not a numbered row in the 18-slice table but is a distinct landed milestone.)"
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-C12/discriminator-relation-gating"
+status = "done"
+stackable = false
+branch = "perl-C12-discriminator-relation-gating"
+acceptance = "Phase C PR 12 (ripr-swarm). Two coupled corrections, both landed. (1) CONCRETE DISCRIMINATOR + SINK ALIGNMENT (#1428): stopped using generic enum labels; the GapRecord projects ONLY when the changed observable aligns with the assertion's observed sink. (2) RELATION GATING BY REASON (#1428): actionability gated by relation kind (direct_owner_call eligible; package_reference/test-name-match/file-proximity advisory-only; unknown limitation). H2 (#1451) added already-observed classification: a Perl change classifies as Exposed only when a direct owner call links a strong exact oracle whose observed_sink aligns to the change's changed_observable. #1449 corrected a false-green test proving the ordering check fails on the buggy .first() behavior."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-evidence-promotion-honesty",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-H1/mapping-integrity-hotfix"
+status = "done"
+stackable = false
+branch = "perl-mapper-boundary-any-fix"
+acceptance = "Phase C hotfix (ripr-swarm, #1447). Mapping-integrity fix for packet_to_findings: related_test.file is routed through packet-owned helpers and read via test.file_id, never the production source path. Uses test-specific verify commands, real test lines, and relation reason/confidence. Avoids canonical gaps from generic discriminators. The cardinal mapper bug where related_test.file could be the production source path is closed."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-contract-freeze/consumer-side"
+status = "done"
+stackable = false
+branch = "perl-contract-freeze-consumer"
+acceptance = "Consumer-side contract freeze (ripr-swarm, #1450). Accepts Test2::V1 and the frozen ChangeFact/OracleFact fields (changed_observable, missing_discriminator, observed_sink, expected_expression). The producer-side freeze landed in perl-lsp-swarm #3104 (schema-drift fix, Test2::V1, nullable fields); parser-backed Test2 facts remain a later producer step. Recorded as a tracker item because it postdates the 18-slice table."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-C13/typed-commands"
+status = "done"
+stackable = false
+branch = "perl-C13-typed-commands"
+acceptance = "Phase C PR 13 (ripr-swarm, #1421). Replaced positional matching with a TYPED runner-command model: runner (prove/yath/carton exec/dzil), runner flags (-l/-lv/-v/-r/-b/-I<path>/-M<module>/--verbose/--jobs), test targets (t/*.t repo-relative), working directory, preconditions, scope, confidence. RIPR GENERATES the receipt command; the producer emits only typed verify-command candidates. Accepts prove -l t/app.t, prove -lv t/app.t, prove -Ilib t/app.t, carton exec prove -l t/app.t, yath test t/app.t, dzil test --test t/app.t. Rejects path-traversal and missing positionals. Never routes through a shell string."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo test -p ripr --lib",
+  "cargo xtask check-pr",
+]
+
+# --- Phase D: make it a usable product loop -- PARTIALLY LANDED ---
+
+[[work_item]]
+id = "perl-E1/cpan-fixture"
+status = "done"
+stackable = false
+branch = "perl-E1-cpan-fixture"
+acceptance = "Phase E1 (ripr-swarm, #1433). CPAN-style three-outcome alpha fixture (fixtures/perl_cpan_alpha/: Makefile.PL + lib/Pricing.pm + t/pricing.t) proving the actionable / already-observed / limited shape against committed expected packets. NOTE: committed expected packets are REGRESSION FIXTURES, not proof — the two-binary proof (real perllsp ripr-facts output consumed end-to-end) remains open and depends on Phase B."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-D14/managed-producer-mode"
+status = "done"
+stackable = false
+branch = "perl-D14-managed-producer-mode"
+acceptance = "Phase D PR 14 (ripr-swarm, #1435). Added explicit managed producer mode: [perl] producer = \"perllsp\" config and --perl-producer flag. When configured, ripr invokes the perl-lsp ripr-facts exporter with a timeout, executable-path override, version/schema capability check, cache location (target/ripr/perl-facts/), and stderr diagnostics. NO SILENT INVOCATION unless explicitly configured. NOTE: this is currently a scaffold — real timeout enforcement and child kill, base/head passed to the producer, atomic packet writes, cache key including content/diff/schema/version/config, freshness validation, capability handshake, and clean partial/unavailable states remain to be hardened (item 4 of the active lane). lang-perl stays opt-in."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-network-policy",
+  "cargo xtask check-process-policy",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-D15/doctor-upgrade"
+status = "done"
+stackable = false
+branch = "perl-D15-doctor-upgrade"
+acceptance = "Phase D PR 15 (ripr-swarm, #1436). Perl-aware ripr doctor diagnostics: detects Perl project markers, reports producer availability + version + schema compatibility, detected test framework (Test::More/Test2/Test::Exception/Test::Fatal), runner availability (prove/yath/carton/dzil on PATH), and an exact first command. NOTE: doctor is currently shallow — recursive Perl markers, t2/ roots, exact next-command for partial states, and Yath detection still need hardening (item 5 of the active lane)."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask goldens check",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-D16/public-projection"
+status = "blocked"
+stackable = false
+branch = "perl-D16-public-projection"
+blocked_by = ["perl-D14/managed-producer-mode", "perl-C12/discriminator-relation-gating"]
+blocked_reason = "needs validated GapRecords AND the two-binary proof (Phase B); ADR-0019 bespoke-renderer decommissioning is a confirmed-open blocker (perl_preview_card.rs is still wired into production output on main)."
+acceptance = "Phase D PR 16 (ripr-swarm, OPEN). AFTER the real two-binary proof, project validated Perl GapRecords as PUBLIC repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger using the SHARED renderers — NOT bespoke Perl renderers (ADR 0019). repair_packet_ready flips to true ONLY via validate_agent_gap_record_packet. Gates/badges/baseline/RIPR Zero authority stay false. ADR-0019 DECOMMISSIONING (CONFIRMED-OPEN BLOCKER as of 2026-06-27): this PR MUST remove or formally scope-down gap_record_from_perl_preview_finding (gap_decision_ledger.rs:756, read at :424) and the bespoke perl_preview_card renderer (perl_preview_card.rs, called from github.rs:99 + human/sections.rs:143) — both still wired into production output on main. Either (a) delete them once shared renderers cover Perl, re-blessing the test at gap_decision_ledger.rs:2824; or (b) pin the old path to markdown_advisory-only and add a regression test proving it can never reach repair_packet_ready=true. Option (a) preferred. Also adds the Perl must_not_emit_repair_packet case to fixtures/evidence-promotion-honesty-corpus/corpus.json."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-output-contracts",
+  "cargo xtask goldens check",
+  "cargo xtask check-evidence-promotion-honesty",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-D17/agent-packets"
+status = "blocked"
+stackable = false
+branch = "perl-D17-agent-packets"
+blocked_by = ["perl-D16/public-projection"]
+acceptance = "Phase D PR 17 (ripr-swarm, OPEN). Bounded agent packets and PR/CI/LSP/swarm advisory projection for validated Perl gaps. ONLY the selected test file is editable (allowed_edit_surface from the shared helper); production files are forbidden (must_not_change via gap_record_packet_do_not_do). Agent packets carry the concrete discriminator, verify command, receipt command, edit cage, and stop conditions — all sourced from the validated GapRecord. No source edits, no generated tests (alpha non-claim)."
+commands = [
+  "cargo test -p ripr --features lang-perl",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-D18/receipts-and-alpha-gate"
+status = "blocked"
+stackable = false
+branch = "perl-D18-receipts-alpha-gate"
+blocked_by = ["perl-D16/public-projection", "perl-D17/agent-packets"]
+acceptance = "Phase D PR 18 (ripr-swarm, OPEN). The campaign capstone + release gate. Perl before/after snapshots and outcome receipts keyed by canonical gap ID + producer packet fingerprint (the ripr outcome loop). The three-outcome CPAN fixture must prove against REAL perllsp output (the two-binary proof), not committed expected packets. ALPHA RELEASE GATE: the 5-repo / top-1-precision>=80% / verify-command-validity>=90% / false-actionable<=5% / >=5-receipts thresholds are HUMAN-JUDGMENT gates recorded in this PR's description, NOT mechanically enforced. The MECHANICAL gates are: the three-outcome CPAN fixture, check-evidence-promotion-honesty (with the D16 Perl entry), goldens check, dogfood. Only when BOTH pass is the feature labelled 'usable alpha'. The FNV-1a gap-id reconciliation MUST land before or with this PR."
+commands = [
+  "cargo test -p ripr --features lang-perl --test perl_end_to_end",
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask metrics",
+  "cargo xtask check-evidence-promotion-honesty",
+  "cargo xtask check-pr",
+]
+
+# --- Blocked = deferred (no "deferred" status; see header note) ---
+
+[[work_item]]
+id = "perl-identity/gap-id-reconciliation"
+status = "blocked"
+stackable = false
+branch = "perl-identity-gap-id-sha256"
+blocked_reason = "receipt keys established in D18; this lands before or with D18"
+acceptance = "DEFERRED but MUST land before or with perl-D18/receipts-and-alpha-gate. Reconcile the FNV-1a 64-bit gap-id hashing (canonical_perl_gap_id in perl/mod.rs) with ripr's general SHA-256-derived finding identity, OR explicitly document why the Perl path-based id is canonical and the FNV hash is vestigial. Decide representation before any public receipt command is enabled (D18). Recorded as blocked to keep the manifest promotion-safe."
+commands = [
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "perl-ux/gap-state-vocabulary-rename"
+status = "blocked"
+stackable = false
+branch = "perl-ux-gap-state-rename"
+blocked_reason = "out of alpha scope; deferred to a UX-hardening PR after the alpha lands. A1 documents the semantics; this item records the rename itself."
+acceptance = "DEFERRED to a post-alpha UX-hardening PR. The current vocabulary gap_state=\"actionable\" alongside repair_packet_ready=false is publicly confusing; 'actionable' means static-evidence-actionable, not repair-packet-ready. A1 documents this semantics in OUTPUT_SCHEMA.md. This work item records the RENAME itself as deferred. Rename is an output-shape change that re-blesses every golden — explicitly out of alpha scope."
+commands = [
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
