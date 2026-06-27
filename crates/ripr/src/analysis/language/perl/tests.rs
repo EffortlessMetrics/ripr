@@ -2162,7 +2162,187 @@ fn findings_from_packet(text: &str) -> Result<Vec<crate::domain::Finding>, Strin
     Ok(packet_to_findings(&packet))
 }
 
-/// The cardinal regression: a change in `lib/My/App.pm` linked to a test in
+// ──────────────────────────────────────────────────────────────────────
+// PR H2 — classification semantics: the "already-observed" outcome.
+//
+// H2 uses oracle.observed_sink aligned to change.changed_observable to
+// distinguish a test that ALREADY discriminates the changed sink (Exposed /
+// already-observed — no test needed) from one that merely reaches the owner
+// (WeaklyExposed). This is the discrimination distinction: owner-
+// target identity is NOT observation (the false-exposed family). These tests
+// pin both the promotion and the fail-closed behavior.
+// ──────────────────────────────────────────────────────────────────────
+
+/// A packet where a strong-exact oracle's `observed_sink` aligns exactly to
+/// the change's `changed_observable` must classify `Exposed` (already-observed),
+/// emit `perl_already_discriminated:` evidence, and carry NO repair gap
+/// (no test needs adding). This is maintainer end-state outcome #2.
+#[test]
+fn h2_sink_aligned_oracle_classifies_exposed_and_suppresses_repair_gap() -> Result<(), String> {
+    // changed_observable == observed_sink == "$amount / 2" (exact alignment).
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"$amount / 2\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$amount / 2\",\n      \"expected_expression\": \"10\",",
+        );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::Exposed,
+        "sink-aligned strong oracle must classify Exposed (already-observed)"
+    );
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_already_discriminated:")),
+        "already-observed must emit perl_already_discriminated evidence"
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_test_location")),
+        "already-observed must NOT suggest a test location (no test needed)"
+    );
+    assert!(
+        finding.canonical_gap.is_none(),
+        "already-observed must carry no repair gap"
+    );
+    assert!(
+        finding.activation.missing_discriminators.is_empty(),
+        "already-observed must have no missing discriminator"
+    );
+    Ok(())
+}
+
+/// A strong-exact oracle whose `observed_sink` does NOT match the change's
+/// `changed_observable` must NOT classify Exposed. Owner-target identity is
+/// not sink observation — this is the cardinal false-exposed guard.
+#[test]
+fn h2_non_aligned_sink_stays_weakly_exposed() -> Result<(), String> {
+    // changed_observable = "$rate * 0.9" but observed_sink = "$amount / 2".
+    // Same owner, strong oracle, but the oracle observes a DIFFERENT sink.
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"$rate * 0.9\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$amount / 2\",\n      \"expected_expression\": \"10\",",
+        );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_ne!(
+        finding.class,
+        crate::domain::ExposureClass::Exposed,
+        "non-aligned sink must NOT promote to Exposed; got {:?}",
+        finding.class
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_already_discriminated:")),
+        "non-aligned sink must not emit already-discriminated evidence"
+    );
+    Ok(())
+}
+
+/// An advisory relation (file_proximity) with a matching sink must NOT
+/// classify Exposed. The relation-kind gate holds even when sinks align —
+/// only DirectOwnerCall can prove observation.
+#[test]
+fn h2_advisory_relation_with_matching_sink_does_not_promote() -> Result<(), String> {
+    // Matching sinks, but the relation is file_proximity (advisory).
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"$amount / 2\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$amount / 2\",",
+        )
+        .replace("\"direct_owner_call\"", "\"file_proximity\"");
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_ne!(
+        finding.class,
+        crate::domain::ExposureClass::Exposed,
+        "file_proximity relation must not promote to Exposed even with matching sink; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// Token-substring coincidence must NOT pass as sink alignment. `buffer` vs
+/// `buffered_stream` is the recurring false-exposed family — the sink must
+/// match exactly, not as a substring.
+#[test]
+fn h2_token_substring_coincidence_does_not_align() -> Result<(), String> {
+    // changed_observable = "buffer", observed_sink = "buffered_stream".
+    // Substring coincidence — must NOT align.
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"buffer\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"buffered_stream\",",
+        );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_ne!(
+        finding.class,
+        crate::domain::ExposureClass::Exposed,
+        "token-substring coincidence (buffer vs buffered_stream) must not align; got {:?}",
+        finding.class
+    );
+    Ok(())
+}
+
+/// `return <expr>` alignment: a change whose observable is `return $x` aligns
+/// to an oracle observing `$x` (the normalized form). This is the legitimate
+/// aliasing the helper accepts.
+#[test]
+fn h2_return_prefix_aliasing_aligns() -> Result<(), String> {
+    let packet = EXACT_RETURN_PACKET
+        .replace(
+            "\"changed_text_digest\": \"sha256:return\",",
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"return $discounted\",",
+        )
+        .replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$discounted\",",
+        );
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::Exposed,
+        "`return $x` observable must align to `$x` observed_sink (normalized)"
+    );
+    Ok(())
+}
+
 /// `t/app.t` must NEVER project the production source path as the related-test
 /// file. Every `related_tests[*].file` must resolve to the test file.
 #[test]

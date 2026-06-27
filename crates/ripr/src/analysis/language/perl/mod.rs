@@ -246,23 +246,37 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
 
         // Determine exposure class — conservative-or-stricter.
         //
-        // Start from the packet's relation/oracle-aware classifier, then apply
-        // the relation-kind gate the packet classifier omits: advisory kinds
-        // can never promote past ReachableUnrevealed. We never *raise* the
-        // class beyond what the packet computes; we only *downgrade* advisory
+        // H2 (Campaign 31): sink alignment is now computable. When a
+        // DirectOwnerCall relation links a strong-exact oracle whose
+        // `observed_sink` aligns to the change's `changed_observable`, the
+        // change is ALREADY OBSERVED → `Exposed` (the maintainer end-state
+        // outcome #2: "no test is needed"). This is the discrimination-vs-
+        // discrimination distinction made concrete: owner-target identity alone is
+        // NOT observation (the false-exposed family); the oracle must observe
+        // the *specific changed sink*.
+        //
+        // Otherwise: start from the packet's relation/oracle-aware classifier,
+        // then apply the relation-kind gate the packet classifier omits:
+        // advisory kinds can never promote past ReachableUnrevealed. We never
+        // *raise* the class beyond what the packet computes except for the
+        // established-sink-alignment Exposed promotion; we downgrade advisory
         // relations and override to StaticUnknown on a blocking boundary.
+        let sink_aligned_evidence = sink_aligned_observation(&related_evidence, change, packet);
         let class = if has_boundary {
             ExposureClass::StaticUnknown
         } else if related.is_empty() {
             ExposureClass::NoStaticPath
+        } else if sink_aligned_evidence.is_some() {
+            // H2: established sink alignment → already observed. The strongest
+            // honest claim in the conservative taxonomy. No repair gap is
+            // needed because a discriminator already exists.
+            ExposureClass::Exposed
         } else {
             let packet_class = packet.classify_change_from_related_tests(&change.change_id);
             // Downgrade advisory-only relations: only DirectOwnerCall can keep
             // a WeaklyExposed (positive-reachability) class. Every other
             // relation kind is capped at ReachableUnrevealed, regardless of
-            // oracle. (Sink alignment is unknown today, so we never credit
-            // reach-plus-strong-oracle as discriminated — see AGENTS.md
-            // "Discrimination vs Coverage".)
+            // oracle.
             if packet_class == ExposureClass::WeaklyExposed
                 && !related_evidence
                     .iter()
@@ -273,6 +287,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                 packet_class
             }
         };
+        let is_already_observed = class == ExposureClass::Exposed;
 
         // Concrete discriminator gate (H1). A canonical repair gap requires a
         // concrete, packet-provided discriminator (`discriminator:` prefix on
@@ -291,31 +306,38 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             .find_map(|ev| ev.oracle_shape.clone())
             .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string());
 
-        // Canonical gap: only when a concrete discriminator exists and the
-        // packet can form a stable identity. Otherwise None (informational
-        // Finding, no repair identity).
-        let canonical_gap: Option<FindingCanonicalGap> = if has_concrete_discriminator {
-            packet
-                .canonical_gap_identity_for_change_with_assertion_shape(
-                    &change.change_id,
-                    &selected_assertion_shape,
-                )
-                .map(|gap| FindingCanonicalGap {
-                    id: gap.id,
-                    language: "perl".to_string(),
-                    file: file.path.clone(),
-                    owner: owner.name.clone().unwrap_or_default(),
-                    behavior_kind: gap.behavior_kind,
-                    probe_kind: gap.assertion_shape,
-                    normalized_discriminator: gap.missing_discriminator,
-                })
-        } else {
-            None
-        };
+        // Canonical gap: only when a concrete discriminator exists, the packet
+        // can form a stable identity, AND the change is NOT already observed.
+        // An already-observed change needs no repair gap. Otherwise None
+        // (informational Finding, no repair identity).
+        let canonical_gap: Option<FindingCanonicalGap> =
+            if has_concrete_discriminator && !is_already_observed {
+                packet
+                    .canonical_gap_identity_for_change_with_assertion_shape(
+                        &change.change_id,
+                        &selected_assertion_shape,
+                    )
+                    .map(|gap| FindingCanonicalGap {
+                        id: gap.id,
+                        language: "perl".to_string(),
+                        file: file.path.clone(),
+                        owner: owner.name.clone().unwrap_or_default(),
+                        behavior_kind: gap.behavior_kind,
+                        probe_kind: gap.assertion_shape,
+                        normalized_discriminator: gap.missing_discriminator,
+                    })
+            } else {
+                None
+            };
 
-        // Build evidence strings (perl_*: keys the projection reads). Only emit
-        // the repair-gap fields when a concrete discriminator exists; an
-        // informational finding carries only the repair-kind/shape context.
+        // Build evidence strings (perl_*: keys the projection reads).
+        //
+        // H2: when the change is ALREADY OBSERVED (established sink alignment),
+        // emit `perl_already_discriminated:` explaining why no test is needed
+        // (maintainer end-state outcome #2) and SUPPRESS the repair-gap fields
+        // (perl_suggested_test_location / perl_suggested_assertion) — telling a
+        // maintainer to ADD a test when one already discriminates the change
+        // would be the cardinal sin.
         let mut evidence: Vec<String> = Vec::new();
         evidence.push(format!(
             "perl_repair_kind: {}",
@@ -325,7 +347,18 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             "perl_target_test_shape: {}",
             change.behavior_hint.default_assertion_shape()
         ));
-        if has_concrete_discriminator && let Some(first) = related.first() {
+        if is_already_observed && let Some(aligned) = sink_aligned_evidence.as_ref() {
+            // The sink-aligned evidence explains the observation: which test +
+            // oracle observes which changed sink. This is the "already-observed
+            // evidence explaining why no test is needed" (goal outcome #2).
+            evidence.push(format!(
+                "perl_already_discriminated: {} observes changed sink `{}` via {}",
+                aligned.test_name, aligned.observed_sink, aligned.oracle_shape
+            ));
+        } else if !is_already_observed
+            && has_concrete_discriminator
+            && let Some(first) = related.first()
+        {
             evidence.push(format!(
                 "perl_suggested_test_location: {}::{}",
                 first.file.display(),
@@ -345,21 +378,27 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             evidence.push(format!("perl_verify_command: {}", argv.join(" ")));
         }
 
-        // Missing discriminator: only when concrete. An informational finding
-        // (no concrete discriminator) carries no missing-discriminator entry.
-        let missing_discriminators: Vec<MissingDiscriminatorFact> = concrete_discriminator
-            .clone()
-            .map(|value| MissingDiscriminatorFact {
-                value,
-                reason: format!(
-                    "changed Perl {} at {} lacks a concrete discriminator",
-                    change.behavior_hint.as_str(),
-                    file.path
-                ),
-                flow_sink: None,
-            })
-            .into_iter()
-            .collect();
+        // Missing discriminator: only when concrete AND not already observed.
+        // An already-observed change has NO missing discriminator — it is
+        // discriminated. An informational finding (no concrete discriminator)
+        // carries no missing-discriminator entry either.
+        let missing_discriminators: Vec<MissingDiscriminatorFact> = if is_already_observed {
+            Vec::new()
+        } else {
+            concrete_discriminator
+                .clone()
+                .map(|value| MissingDiscriminatorFact {
+                    value,
+                    reason: format!(
+                        "changed Perl {} at {} lacks a concrete discriminator",
+                        change.behavior_hint.as_str(),
+                        file.path
+                    ),
+                    flow_sink: None,
+                })
+                .into_iter()
+                .collect()
+        };
 
         // Build the Finding.
         let probe_id = format!(
@@ -433,7 +472,11 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             },
             confidence: 0.5,
             evidence,
-            missing: concrete_discriminator.clone().into_iter().collect(),
+            missing: if is_already_observed {
+                Vec::new()
+            } else {
+                concrete_discriminator.clone().into_iter().collect()
+            },
             flow_sinks: Vec::new(),
             activation: ActivationEvidence {
                 observed_values: Vec::new(),
@@ -441,9 +484,15 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             },
             stop_reasons: Vec::new(),
             related_tests: related,
-            recommended_next_step: Some(
-                "Add a focused Perl assertion that pins the changed behavior.".to_string(),
-            ),
+            recommended_next_step: Some(if is_already_observed {
+                // H2: the change is already discriminated by an existing test.
+                // No new test is needed; this is maintainer end-state outcome #2.
+                "No test change needed — an existing test already observes the \
+                 changed behavior (sink aligned)."
+                    .to_string()
+            } else {
+                "Add a focused Perl assertion that pins the changed behavior.".to_string()
+            }),
             language: Some(DomainLanguageId::Perl),
             language_status: Some(LanguageStatus::Preview),
             owner_kind: None,
@@ -2232,6 +2281,97 @@ fn perl_relation_to_domain(
             (None, None)
         }
     }
+}
+
+/// Evidence that a related test's oracle observes the changed sink (H2).
+///
+/// Returned by `sink_aligned_observation` when sink alignment is ESTABLISHED, so the
+/// change can be classified `Exposed` (already-observed). Carries the
+/// human-readable pieces for the `perl_already_discriminated:` evidence line.
+#[derive(Clone, Debug)]
+struct SinkAlignedObservation {
+    test_name: String,
+    observed_sink: String,
+    oracle_shape: String,
+}
+
+/// H2 (Campaign 31): determine whether a related test's oracle observes the
+/// *specific changed sink*, not merely the same owner.
+///
+/// Returns `Some` when ALL of the following hold for at least one related
+/// evidence:
+/// - the relation is a `DirectOwnerCall` with `Reachable` reachability (advisory
+///   relations can never prove observation);
+/// - the linked oracle is strong-exact and targets the changed owner;
+/// - the oracle carries a non-empty `observed_sink`;
+/// - the change carries a non-empty `changed_observable`;
+/// - `observed_sink` and `changed_observable` refer to the same sink.
+///
+/// The last check is the discrimination gate. Token-substring
+/// matching is the recurring false-`exposed` family, so this is conservative:
+/// alignment is accepted when the two expressions are exactly equal, OR when
+/// one is a recognized trivial aliasing of the other (e.g. the observable is
+/// `return <expr>` and the sink is `<expr>`). Any uncertainty fails closed to
+/// `WeaklyExposed` (caller's responsibility — this returns `None`).
+fn sink_aligned_observation(
+    related_evidence: &[PerlRelatedTestEvidence],
+    change: &ChangeFact,
+    packet: &PerlFactPacket,
+) -> Option<SinkAlignedObservation> {
+    // The change's observable — must be present and non-empty.
+    let changed_observable = change.changed_observable.as_deref()?.trim();
+    if changed_observable.is_empty() {
+        return None;
+    }
+    // Normalize: strip a leading "return " so `return $x` aligns to `$x`.
+    let normalized_observable = changed_observable
+        .strip_prefix("return ")
+        .unwrap_or(changed_observable)
+        .trim();
+
+    for ev in related_evidence {
+        // Only a direct owner call with positive reachability can prove
+        // observation. Advisory relations (file_proximity, package_reference,
+        // ...) never can.
+        if !ev.relation_kind.supports_positive_reachability()
+            || ev.reachability_hint != ReachabilityHint::Reachable
+        {
+            continue;
+        }
+        let Some(oracle_id) = ev.oracle_id.as_deref() else {
+            continue;
+        };
+        let oracle = packet.oracle(oracle_id)?;
+        // Strong-exact oracle targeting the changed owner.
+        if !oracle.is_strong_exact() {
+            continue;
+        }
+        if oracle.target_owner_id.as_deref() != Some(change.owner_id.as_str()) {
+            continue;
+        }
+        let Some(observed_sink) = oracle.observed_sink.as_deref() else {
+            continue;
+        };
+        let observed_sink = observed_sink.trim();
+        if observed_sink.is_empty() {
+            continue;
+        }
+        // Sink alignment: the observed sink must refer to the same value as the
+        // changed observable. Exact equality is the safe bar; the normalized
+        // observable covers the common `return <expr>` form. Anything else
+        // fails closed (returns None at the end of the loop).
+        if observed_sink == changed_observable || observed_sink == normalized_observable {
+            return Some(SinkAlignedObservation {
+                test_name: ev.test_name.clone(),
+                observed_sink: observed_sink.to_string(),
+                oracle_shape: ev
+                    .oracle_shape
+                    .clone()
+                    .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string()),
+            });
+        }
+    }
+    None
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
