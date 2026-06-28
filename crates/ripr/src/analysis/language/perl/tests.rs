@@ -2226,6 +2226,126 @@ fn ingestion_rejects_stale_file_digest_against_on_disk_source() -> Result<(), St
     Ok(())
 }
 
+// ── Two-binary proof harness regression corpus (Campaign 31 item 3) ──
+// Three committed regression packets under
+// fixtures/perl_cpan_alpha/expected/regression-packets/, one per honest
+// outcome (actionable / already-observed / limited). These are REGRESSION
+// FIXTURES, not producer proof: they prove the consumer pipeline is intact
+// independent of the producer. Real producer proof requires the two-binary
+// harness (tests/perl_two_binary_harness.rs) running against real perllsp
+// output from perl-lsp-swarm Phase B. Each packet carries real inner digests
+// for lib/Pricing.pm and t/pricing.t and is consumed with the real fixture
+// root, so item 2's freshness check validates the on-disk source.
+
+/// Resolve the perl_cpan_alpha/input fixture root (where lib/Pricing.pm and
+/// t/pricing.t live on disk) for the freshness check.
+fn cpan_alpha_input_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/perl_cpan_alpha/input")
+}
+
+/// Read one of the three committed regression packets.
+fn cpan_alpha_regression_packet(name: &str) -> Result<String, String> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/perl_cpan_alpha/expected/regression-packets")
+        .join(name);
+    std::fs::read_to_string(&path).map_err(|err| format!("read regression packet {path:?}: {err}"))
+}
+
+#[test]
+fn cpan_alpha_actionable_regression_packet_yields_reachable_unrevealed_candidate()
+-> Result<(), String> {
+    // Outcome 1 (actionable): the boundary change reaches the weak `ok()`
+    // oracle but the oracle does not pin the exact boundary. The honest
+    // static classification is ReachableUnrevealed — the changed owner is
+    // reachable through a direct call but the weak oracle does not reveal
+    // the changed behavior. This is the actionable candidate a bounded
+    // test-only repair packet would target (the missing discriminator is the
+    // boundary equality). NOT Exposed (that needs a strong aligned oracle).
+    let text = cpan_alpha_regression_packet("actionable-weak-ok.json")?;
+    let mut options = packet_test_options();
+    options.root = cpan_alpha_input_root();
+    let packet = PerlAdapter
+        .consume_fact_packet(&text, &options)
+        .map_err(|err| {
+            format!("actionable packet must pass ingestion (incl. on-disk freshness): {err}")
+        })?;
+    let findings = packet_to_findings(&packet);
+    let candidate = findings
+        .iter()
+        .find(|finding| {
+            finding.class == ExposureClass::ReachableUnrevealed
+                || finding.class == ExposureClass::WeaklyExposed
+        })
+        .ok_or_else(|| "the boundary change under a weak oracle must yield a reachable-but-not-revealed (actionable) finding, not Exposed".to_string())?;
+    assert_ne!(
+        candidate.class,
+        ExposureClass::Exposed,
+        "a weak oracle must not credit the change as Exposed"
+    );
+    Ok(())
+}
+
+#[test]
+fn cpan_alpha_already_observed_regression_packet_suppresses_repair_gap() -> Result<(), String> {
+    // Outcome 2 (already-observed): the exact `is()` oracle's observed_sink
+    // aligns to the change's changed_observable, so the H2 classifier marks
+    // the change already-observed (Exposed, no repair gap needed).
+    let text = cpan_alpha_regression_packet("already-observed-exact-is.json")?;
+    let mut options = packet_test_options();
+    options.root = cpan_alpha_input_root();
+    let packet = PerlAdapter
+        .consume_fact_packet(&text, &options)
+        .map_err(|err| format!("already-observed packet must pass ingestion: {err}"))?;
+    let findings = packet_to_findings(&packet);
+    let exposed = findings
+        .iter()
+        .find(|finding| finding.class == ExposureClass::Exposed)
+        .ok_or_else(|| {
+            "the boundary change with an aligned exact oracle must classify as Exposed (already-observed)"
+                .to_string()
+        })?;
+    assert!(
+        exposed.canonical_gap.is_none(),
+        "an already-observed (Exposed) finding must NOT carry a repair gap"
+    );
+    Ok(())
+}
+
+#[test]
+fn cpan_alpha_dynamic_limited_regression_packet_yields_named_limitation() -> Result<(), String> {
+    // Outcome 3 (limited): the changed owner is reached only through dynamic
+    // dispatch. The producer emits a dynamic_dispatch boundary + a named
+    // limitation, NOT a repair packet. No finding may classify as Exposed or
+    // carry a repair gap.
+    let text = cpan_alpha_regression_packet("dynamic-limited.json")?;
+    let mut options = packet_test_options();
+    options.root = cpan_alpha_input_root();
+    let packet = PerlAdapter
+        .consume_fact_packet(&text, &options)
+        .map_err(|err| format!("dynamic-limited packet must pass ingestion: {err}"))?;
+    assert_eq!(
+        packet.packet_status,
+        crate::analysis::language::perl::PacketStatus::Partial,
+        "a limited packet has status `partial`"
+    );
+    assert!(
+        !packet.dynamic_boundaries.is_empty(),
+        "a dynamic-limited packet must carry a dynamic boundary"
+    );
+    assert!(
+        !packet.limitations.is_empty(),
+        "a dynamic-limited packet must carry a named limitation"
+    );
+    let findings = packet_to_findings(&packet);
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.canonical_gap.is_none()),
+        "a limited packet must not produce any repair-shaped finding"
+    );
+    Ok(())
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Campaign 31 step 2 — consumer-side contract-freeze parity tests.
 //

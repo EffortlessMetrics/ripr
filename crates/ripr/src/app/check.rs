@@ -144,6 +144,19 @@ fn run_check(
 /// ```
 ///
 /// Captures stderr for diagnostics. Returns the packet path on success.
+///
+/// NOTE (Campaign 31 item 3 audit): the arg surface used here
+/// (`--ripr-facts`/`--ripr-schema`/`--ripr-root`/`--ripr-out`, no
+/// `--base`/`--head`/`--diff`) does NOT match the SPEC-0064-canonical surface
+/// (line 103: `perl-lsp ripr-facts --schema --root --base --head
+/// --fact-classes --out`) that `PerlLspFactExportRequest::render_command`
+/// builds and that the two-binary proof harness
+/// (`tests/perl_two_binary_harness.rs`) uses. A real perllsp would reject this
+/// arg surface. Reconciling `invoke_perl_lsp_producer` to the SPEC surface
+/// (and passing `--base`/`--head`/`--diff`) is item 4 (D14 managed-producer
+/// hardening) — see `fixtures/perl_cpan_alpha/README.md`. The binary name
+/// (`perllsp` here vs `perl-lsp` in the SPEC/mod.rs) is also a perl-lsp-swarm
+/// question the harness surfaces but does not resolve.
 fn invoke_perl_lsp_producer(
     perl_config: &crate::config::PerlConfig,
     input: &CheckInput,

@@ -16,6 +16,8 @@ crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|Fir
 crates/ripr/src/output/first_pr.rs|use std::process::Command|1|first-pr/front-door-polish|First-pr setup preflight imports Command for bounded git probes and temp-git test setup.
 crates/ripr/tests/cli_smoke.rs|Command::new|8|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides; +2 for RIPR-SPEC-0083 regression guard smoke tests; +3 for RIPR-SPEC-0112 unanalyzed-working-tree smoke tests (2 invocations in fires test + 1 in clean-worktree test).
 crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
+crates/ripr/tests/perl_two_binary_harness.rs|Command::new|3|perl-two-binary-harness|Campaign 31 item 3: the perllsp-to-ripr two-binary proof harness spawns the external perllsp producer (run_producer), the worktree-absolute ripr binary under test (run_ripr), and the which()/where lookup (which). Producer is opt-in via PATH; the harness skips cleanly when perllsp is absent.
+crates/ripr/tests/perl_two_binary_harness.rs|use std::process::Command|1|perl-two-binary-harness|The two-binary harness imports Command for the perllsp, ripr, and which/where spawns.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
 editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.
 editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader extracts archives with platform tools.

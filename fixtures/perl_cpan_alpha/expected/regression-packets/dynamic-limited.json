@@ -1,0 +1,125 @@
+{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:cpan-alpha:dynamic-limited",
+  "packet_status": "partial",
+  "packet_fingerprint": "sha256:c6e975492fc3f99ec721adbce5f17f22c2cac12fdce632c9e20e34eff0725ca2",
+  "producer": {
+    "name": "perl-lsp",
+    "version": "0.0.0-regression-fixture",
+    "capabilities": ["syntax", "workspace", "test_facts"]
+  },
+  "root": {
+    "repo_relative": ".",
+    "vcs_head": "pricing-alpha",
+    "path_style": "repo_relative"
+  },
+  "input": {
+    "base": "origin/main",
+    "head": "HEAD",
+    "diff_id": "sha256:diff:dynamic-dispatch",
+    "requested_fact_classes": ["owners", "changes", "tests", "oracles"]
+  },
+  "_regression_fixture_note": "REGRESSION FIXTURE, NOT PRODUCER PROOF. Hand-authored to mirror what a real `perllsp ripr-facts` run over the dynamic-dispatch diff (dynamic_dispatch.diff: `my $method = '...'; return shift->$method();`) would emit. The changed owner is reached only through dynamic dispatch, so the producer emits a dynamic_dispatch boundary + a named limitation, NOT a repair packet. Real inner digests for lib/Pricing.pm and t/pricing.t. Consumed by the lib regression test. Real producer proof requires the two-binary harness against perl-lsp-swarm Phase B output.",
+  "files": [
+    {
+      "file_id": "file:lib/Pricing.pm",
+      "path": "lib/Pricing.pm",
+      "role": ["source"],
+      "digest": "sha256:5db18e7549357d045473db167b5089f2e0e872729755597638c7b95453157bad",
+      "package_names": ["Pricing"],
+      "provenance_refs": ["prov:file-index:source"]
+    },
+    {
+      "file_id": "file:t/pricing.t",
+      "path": "t/pricing.t",
+      "role": ["test"],
+      "digest": "sha256:0c3456804f8f20c99372d9b55344c4907f8082f07a460e92d0e54423aebf5aed",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test"]
+    }
+  ],
+  "owners": [
+    {
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "file_id": "file:lib/Pricing.pm",
+      "kind": "sub",
+      "package": "Pricing",
+      "name": "calculate_discount",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 12, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:calculate_discount"]
+    }
+  ],
+  "changes": [
+    {
+      "change_id": "change:lib/Pricing.pm:8:dynamic-dispatch",
+      "file_id": "file:lib/Pricing.pm",
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 9, "end_column": 30},
+      "behavior_hint": "call_effect",
+      "changed_observable": null,
+      "changed_text_digest": "sha256:dynamic-dispatch-add",
+      "provenance_refs": ["prov:diff:dynamic"]
+    }
+  ],
+  "tests": [],
+  "oracles": [],
+  "relations": [],
+  "dynamic_boundaries": [
+    {
+      "boundary_id": "boundary:lib/Pricing.pm:8:dynamic-dispatch",
+      "kind": "dynamic_dispatch",
+      "file_id": "file:lib/Pricing.pm",
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 9, "end_column": 30},
+      "confidence": "high",
+      "provenance_refs": ["prov:boundary:dynamic"]
+    }
+  ],
+  "verify_commands": [],
+  "limitations": [
+    {
+      "limitation_id": "limitation:lib/Pricing.pm:dynamic-dispatch",
+      "kind": "dynamic_dispatch",
+      "message": "the changed owner is reachable only through dynamic dispatch (`shift->$method()`); static analysis cannot bind the call target, so safe repair routing is impossible",
+      "evidence_refs": ["prov:boundary:dynamic"]
+    }
+  ],
+  "provenance": [
+    {
+      "provenance_id": "prov:file-index:source",
+      "source": "workspace",
+      "file_id": "file:lib/Pricing.pm",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:file-index:test",
+      "source": "workspace",
+      "file_id": "file:t/pricing.t",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:syntax:calculate_discount",
+      "source": "syntax",
+      "file_id": "file:lib/Pricing.pm",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 12, "end_column": 2},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:diff:dynamic",
+      "source": "diff",
+      "file_id": "file:lib/Pricing.pm",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 9, "end_column": 30},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:boundary:dynamic",
+      "source": "unknown",
+      "file_id": "file:lib/Pricing.pm",
+      "range": {"start_line": 8, "start_column": 5, "end_line": 9, "end_column": 30},
+      "confidence": "high"
+    }
+  ]
+}
