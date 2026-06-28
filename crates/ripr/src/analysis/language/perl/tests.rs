@@ -45,6 +45,28 @@ fn command_args(args: &[&str]) -> Vec<String> {
     args.iter().map(|arg| (*arg).to_string()).collect()
 }
 
+/// A default `AnalysisOptions` for packet-parsing tests: a throwaway temp
+/// root, no base/diff. Coherence checks pass (no consumer base to compare
+/// against); freshness checks no-op (no source files exist on disk under the
+/// temp root, so the loop skips each file).
+fn packet_test_options() -> crate::analysis::AnalysisOptions {
+    use crate::analysis::{AnalysisMode, AnalysisOptions};
+    AnalysisOptions {
+        root: std::env::temp_dir().join("ripr-perl-packet-test"),
+        base: None,
+        diff_file: None,
+        mode: AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+    }
+}
+
+/// Convenience wrapper: consume a packet text with the default test options.
+fn consume(packet_text: &str) -> Result<PerlFactPacket, String> {
+    PerlAdapter.consume_fact_packet(packet_text, &packet_test_options())
+}
+
 fn blocking_boundary_kind_cases() -> [(BoundaryKind, &'static str); 14] {
     [
         (BoundaryKind::DynamicDispatch, "dynamic_dispatch"),
@@ -182,7 +204,7 @@ fn perl_strict_command_guards_accept_only_bounded_verify_and_receipt_shapes() {
 
 #[test]
 fn perl_fact_packet_adapter_consumes_exact_return_fixture() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let packet = consume(EXACT_RETURN_PACKET)?;
 
     assert_eq!(packet.schema_version, PERL_FACT_PACKET_SCHEMA);
     assert_eq!(packet.packet_status, PacketStatus::Complete);
@@ -212,7 +234,7 @@ fn perl_fact_packet_adapter_consumes_exact_return_fixture() -> Result<(), String
 
 #[test]
 fn perl_fact_packet_adapter_rejects_unknown_schema_version() -> Result<(), String> {
-    let err = match PerlAdapter.consume_fact_packet(
+    let err = match consume(
         &EXACT_RETURN_PACKET.replace("\"ripr-perl-facts-v1\"", "\"ripr-perl-facts-v2\""),
     ) {
         Ok(_) => return Err("unknown schema version should fail closed".to_string()),
@@ -227,7 +249,7 @@ fn perl_fact_packet_adapter_rejects_unknown_schema_version() -> Result<(), Strin
 
 #[test]
 fn perl_fact_packet_adapter_parses_partial_dynamic_boundary_limitation() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
+    let packet = consume(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
 
     assert_eq!(packet.packet_status, PacketStatus::Partial);
     assert_eq!(packet.dynamic_boundaries.len(), 1);
@@ -249,7 +271,7 @@ fn perl_fact_packet_adapter_parses_partial_dynamic_boundary_limitation() -> Resu
 
 #[test]
 fn perl_fact_packet_adapter_keeps_verify_command_as_fact_not_result() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let packet = consume(EXACT_RETURN_PACKET)?;
     let command = packet
         .verify_command_for_test("test:t/app.t:test_discount_threshold")
         .ok_or_else(|| "missing verify command fact".to_string())?;
@@ -271,7 +293,7 @@ fn perllsp_exporter_fixture_is_consumed_without_actionable_gap_state() -> Result
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
 
     assert_eq!(packet.producer.name, "perl-lsp");
     assert_eq!(packet.schema_version, PERL_FACT_PACKET_SCHEMA);
@@ -306,7 +328,7 @@ fn perl_fact_packet_adapter_preserves_source_test_and_oracle_taxonomy() -> Resul
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
 
     assert_eq!(packet.files_with_role(FileRole::Source).len(), 1);
     assert_eq!(packet.files_with_role(FileRole::Test).len(), 6);
@@ -401,7 +423,7 @@ fn perl_related_test_linking_classifies_reachability_and_revealability() -> Resu
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
 
     let return_related = packet.related_test_evidence_for_change("change:lib/My/App.pm:8:return");
     assert_eq!(return_related.len(), 1);
@@ -471,7 +493,7 @@ fn perl_related_test_linking_classifies_reachability_and_revealability() -> Resu
       "test_id": "test:t/app.t:discount_smoke",
       "oracle_id": "oracle:t/app.t:7:is""#,
     );
-    let stale_owner_packet = PerlAdapter.consume_fact_packet(&stale_owner_text)?;
+    let stale_owner_packet = consume(&bless_fingerprint(&stale_owner_text))?;
     assert!(
         stale_owner_packet
             .related_test_evidence_for_change("change:lib/My/App.pm:8:return")
@@ -495,7 +517,7 @@ fn perl_related_test_linking_classifies_reachability_and_revealability() -> Resu
       "test_id": "test:t/app.t:discount_smoke",
       "oracle_id": "oracle:t/app.t:6:ok""#,
     );
-    let weak_packet = PerlAdapter.consume_fact_packet(&weak_text)?;
+    let weak_packet = consume(&bless_fingerprint(&weak_text))?;
     let weak_related =
         weak_packet.related_test_evidence_for_change("change:lib/My/App.pm:8:return");
     assert_eq!(weak_related.len(), 1);
@@ -514,7 +536,7 @@ fn perl_related_test_linking_classifies_reachability_and_revealability() -> Resu
         r#""reachability_hint": "static_unknown""#,
         1,
     );
-    let static_unknown_packet = PerlAdapter.consume_fact_packet(&static_unknown_text)?;
+    let static_unknown_packet = consume(&bless_fingerprint(&static_unknown_text))?;
     assert_eq!(
         static_unknown_packet.classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
         ExposureClass::StaticUnknown
@@ -538,7 +560,7 @@ fn perl_strict_actionability_requires_all_packet_and_context_fields() -> Result<
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
     let context = complete_perl_actionability_context();
     let gap = packet
         .canonical_gap_identity_for_change("change:lib/My/App.pm:8:return")
@@ -658,7 +680,7 @@ fn perl_strict_actionability_uses_selected_strict_evidence_for_gap_identity() ->
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let mut packet = consume(fixture)?;
     packet.relations.insert(
         0,
         RelationFact {
@@ -707,7 +729,7 @@ fn perl_repair_card_and_agent_packet_project_strict_actionability() -> Result<()
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
     let context = complete_perl_actionability_context();
     let card = packet
         .repair_card_for_change("change:lib/My/App.pm:8:return", &context)
@@ -816,7 +838,7 @@ fn perl_private_repair_card_and_agent_packet_json_preserve_internal_projection_b
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
     let context = complete_perl_actionability_context();
     let card = packet
         .repair_card_for_change("change:lib/My/App.pm:8:return", &context)
@@ -902,7 +924,7 @@ fn perl_repair_card_and_agent_packet_fail_closed_without_strict_actionability() 
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
     let mut missing_receipt = complete_perl_actionability_context();
     missing_receipt.receipt_command = None;
     assert_eq!(
@@ -939,7 +961,7 @@ fn perl_strict_actionability_fails_closed_for_missing_or_weak_fields() -> Result
     let fixture = include_str!(
         "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
     );
-    let packet = PerlAdapter.consume_fact_packet(fixture)?;
+    let packet = consume(fixture)?;
     let context = complete_perl_actionability_context();
 
     let mut missing_receipt = context.clone();
@@ -1364,7 +1386,7 @@ fn perl_strict_actionability_fails_closed_for_missing_or_weak_fields() -> Result
         Err(PerlActionabilityBlocker::MissingChange)
     );
 
-    let partial = PerlAdapter.consume_fact_packet(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
+    let partial = consume(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
     assert_eq!(
         partial.strict_actionability_for_change("change:lib/My/App.pm:22:call", &context),
         Err(PerlActionabilityBlocker::PacketNotComplete)
@@ -1381,7 +1403,7 @@ fn perl_dynamic_boundary_kinds_fail_closed_before_canonical_gap_debt() -> Result
     let context = complete_perl_actionability_context();
 
     for (kind, label) in blocking_boundary_kind_cases() {
-        let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+        let mut packet = consume(fixture)?;
         let change = packet
             .change("change:lib/My/App.pm:8:return")
             .ok_or_else(|| "missing return change".to_string())?;
@@ -1429,7 +1451,7 @@ fn perl_blocking_limitation_kinds_fail_closed_before_repair_packets() -> Result<
     let context = complete_perl_actionability_context();
 
     for (kind, label) in blocking_boundary_kind_cases() {
-        let mut packet = PerlAdapter.consume_fact_packet(fixture)?;
+        let mut packet = consume(fixture)?;
         packet.limitations = vec![LimitationFact {
             limitation_id: format!("limitation:{label}:discount"),
             kind,
@@ -1465,7 +1487,7 @@ fn perl_blocking_limitation_kinds_fail_closed_before_repair_packets() -> Result<
 
 #[test]
 fn perl_owner_identity_is_packet_canonical_and_path_qualified() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let packet = consume(EXACT_RETURN_PACKET)?;
     let owner = packet
         .canonical_owner_identity("perl:lib/My/App.pm::My::App::discount")
         .ok_or_else(|| "missing canonical owner identity".to_string())?;
@@ -1481,7 +1503,7 @@ fn perl_owner_identity_is_packet_canonical_and_path_qualified() -> Result<(), St
 
 #[test]
 fn perl_gap_identity_uses_owner_behavior_discriminator_and_assertion_shape() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let packet = consume(EXACT_RETURN_PACKET)?;
     let gap = packet
         .canonical_gap_identity_for_change("change:lib/My/App.pm:15:return")
         .ok_or_else(|| "missing canonical gap identity".to_string())?;
@@ -1505,7 +1527,7 @@ fn perl_gap_identity_uses_owner_behavior_discriminator_and_assertion_shape() -> 
 
 #[test]
 fn perl_gap_identity_is_stable_across_locator_and_fact_id_movement() -> Result<(), String> {
-    let original = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let original = consume(EXACT_RETURN_PACKET)?;
     let moved_text = EXACT_RETURN_PACKET
         .replace(
             "change:lib/My/App.pm:15:return",
@@ -1520,7 +1542,7 @@ fn perl_gap_identity_is_stable_across_locator_and_fact_id_movement() -> Result<(
             r#""range": {"start_line": 15, "start_column": 10, "end_line": 15, "end_column": 18}"#,
             r#""range": {"start_line": 99, "start_column": 10, "end_line": 99, "end_column": 18}"#,
         );
-    let moved = PerlAdapter.consume_fact_packet(&moved_text)?;
+    let moved = consume(&bless_fingerprint(&moved_text))?;
 
     let original_gap = original
         .canonical_gap_identity_for_change("change:lib/My/App.pm:15:return")
@@ -1540,7 +1562,7 @@ fn perl_gap_identity_is_stable_across_locator_and_fact_id_movement() -> Result<(
 fn perl_gap_identity_fails_closed_for_unknown_owner() -> Result<(), String> {
     let unknown_owner_text =
         EXACT_RETURN_PACKET.replacen(r#""kind": "sub""#, r#""kind": "unknown""#, 1);
-    let packet = PerlAdapter.consume_fact_packet(&unknown_owner_text)?;
+    let packet = consume(&unknown_owner_text)?;
 
     assert!(
         packet
@@ -1560,7 +1582,7 @@ fn perl_gap_identity_fails_closed_for_unknown_owner() -> Result<(), String> {
 
 #[test]
 fn perl_gap_identity_fails_closed_for_partial_dynamic_boundary_packet() -> Result<(), String> {
-    let packet = PerlAdapter.consume_fact_packet(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
+    let packet = consume(PARTIAL_DYNAMIC_BOUNDARY_PACKET)?;
 
     assert!(
         packet
@@ -1797,7 +1819,7 @@ fn relation_gate_accepts_direct_owner_call() {
         "\"relation_kind\": \"file_proximity\"",
         "\"relation_kind\": \"direct_owner_call\"",
     );
-    let result_parse = adapter.consume_fact_packet(&packet_text);
+    let result_parse = consume(&packet_text);
     assert!(result_parse.is_ok(), "valid packet must parse");
     let packet = match result_parse {
         Ok(p) => p,
@@ -1827,7 +1849,7 @@ fn relation_gate_rejects_file_proximity_only() {
         "\"relation_kind\": \"direct_owner_call\"",
         "\"relation_kind\": \"file_proximity\"",
     );
-    let result_parse = adapter.consume_fact_packet(&packet_text);
+    let result_parse = consume(&packet_text);
     assert!(result_parse.is_ok(), "valid packet must parse");
     let packet = match result_parse {
         Ok(p) => p,
@@ -1972,7 +1994,7 @@ fn ingestion_rejects_unavailable_packet_status() {
         "\"packet_status\": \"unavailable\"",
     );
     let adapter = PerlAdapter;
-    let result = adapter.consume_fact_packet(&packet);
+    let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(
         result.is_err(),
@@ -1989,7 +2011,7 @@ fn ingestion_rejects_wrong_producer_name() {
     let packet =
         EXACT_RETURN_PACKET.replace("\"name\": \"perl-lsp\"", "\"name\": \"bogus-producer\"");
     let adapter = PerlAdapter;
-    let result = adapter.consume_fact_packet(&packet);
+    let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(result.is_err(), "wrong producer name must be rejected");
     assert!(
@@ -2009,7 +2031,7 @@ fn ingestion_rejects_dangling_relation_owner_id() {
     // Restore the earlier occurrences (owners array + change's owner_id) back.
     let packet = packet.replacen("perl:NONEXISTENT::Owner", needle, count - 1);
     let adapter = PerlAdapter;
-    let result = adapter.consume_fact_packet(&packet);
+    let result = consume(&packet);
     assert!(
         result.is_err(),
         "dangling relation owner_id must be rejected"
@@ -2028,7 +2050,7 @@ fn ingestion_rejects_dangling_relation_change_id() {
     // Restore the earlier occurrences (changes array) back to original.
     let packet = packet.replacen("\"change_id\": \"change:NONEXISTENT\"", needle, count - 1);
     let adapter = PerlAdapter;
-    let result = adapter.consume_fact_packet(&packet);
+    let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(
         result.is_err(),
@@ -2043,12 +2065,165 @@ fn ingestion_rejects_dangling_relation_change_id() {
 #[test]
 fn ingestion_accepts_well_formed_reference_packet() {
     let adapter = PerlAdapter;
-    let result = adapter.consume_fact_packet(EXACT_RETURN_PACKET);
+    let result = consume(EXACT_RETURN_PACKET);
     assert!(
         result.is_ok(),
         "the well-formed reference packet must pass all ingestion checks: {:?}",
         result.err()
     );
+}
+
+// ── Integrity hardening tests (Campaign 31 item 2) ──
+// These prove the new ingestion checks reject bad packets, one check per test.
+// Each test mutates EXACT_RETURN_PACKET to violate exactly one new check, then
+// asserts consume() returns Err naming that check. Mutated packets are blessed
+// (fingerprint recomputed) EXCEPT the fingerprint-mismatch test, which by
+// definition must keep a stale fingerprint.
+
+#[test]
+fn ingestion_rejects_mismatched_packet_fingerprint() {
+    // Declare a fingerprint that does NOT match the recomputed value. This is
+    // the load-bearing tamper/stale detection: a packet whose declared
+    // fingerprint disagrees with its content must be rejected.
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"packet_fingerprint\": \"sha256:dfbaf34aa66d58456a4640e909ca6f0f2b183aa1354543079724ad18735979cb\"",
+        "\"packet_fingerprint\": \"sha256:0000000000000000000000000000000000000000000000000000000000000000\"",
+    );
+    let result = consume(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "a mismatched fingerprint must be rejected");
+    assert!(
+        err.contains("packet_fingerprint mismatch"),
+        "error must name the fingerprint check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_base_mismatch_against_consumer_request() {
+    // The consumer asks for base `feature/x`, but the packet was built for
+    // `origin/main`. A cross-branch/cross-repo packet must be rejected.
+    let mut options = packet_test_options();
+    options.base = Some("feature/x".to_string());
+    let result = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET, &options);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "a base mismatch must be rejected");
+    assert!(
+        err.contains("base mismatch"),
+        "error must name the base coherence check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_missing_packet_head() {
+    // A complete packet must declare the head it was built against.
+    let packet = EXACT_RETURN_PACKET.replace("\"head\": \"HEAD\",", "\"head\": null,");
+    let result = consume(&bless_fingerprint(&packet));
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "a missing head must be rejected");
+    assert!(
+        err.contains("input.head"),
+        "error must name the head coherence check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_missing_test_facts_capability() {
+    // The packet carries tests/oracles but the producer did not advertise
+    // `test_facts`. Strip `test_facts` from the capabilities list.
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"capabilities\": [\"syntax\", \"workspace\", \"test_facts\"]",
+        "\"capabilities\": [\"syntax\", \"workspace\"]",
+    );
+    let result = consume(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(
+        result.is_err(),
+        "missing test_facts capability must be rejected"
+    );
+    assert!(
+        err.contains("test_facts"),
+        "error must name the capability check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_malformed_id_with_whitespace() {
+    // An ID with internal whitespace is not a stable token (SPEC-0064).
+    let packet = EXACT_RETURN_PACKET.replace(
+        "change:lib/My/App.pm:15:return",
+        "change:lib/My/App.pm:15:bad return",
+    );
+    let result = consume(&bless_fingerprint(&packet));
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(
+        result.is_err(),
+        "a whitespace-containing ID must be rejected"
+    );
+    assert!(
+        err.contains("malformed") && err.contains("whitespace"),
+        "error must name the ID-format check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_absolute_file_path() {
+    // An absolute file path is not repo-relative (SPEC-0064 path_style). Uses
+    // a non-home absolute path so the test fixture string does not trip the
+    // repo's check-local-context home-path guard.
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"path\": \"lib/My/App.pm\"",
+        "\"path\": \"/srv/lib/My/App.pm\"",
+    );
+    let result = consume(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "an absolute file path must be rejected");
+    assert!(
+        err.contains("not repo-relative") && err.contains("absolute"),
+        "error must name the path-normalization check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_backslash_file_path() {
+    // A backslash-separated path violates SPEC-0064 (`/`-separated required).
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"path\": \"lib/My/App.pm\"",
+        "\"path\": \"lib\\\\My\\\\App.pm\"",
+    );
+    let result = consume(&packet);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "a backslash path must be rejected");
+    assert!(
+        err.contains("backslash"),
+        "error must name the path-separator check: {err}"
+    );
+}
+
+#[test]
+fn ingestion_rejects_stale_file_digest_against_on_disk_source() -> Result<(), String> {
+    // Write a real file on disk under the test root at the packet's declared
+    // path, then keep the packet's stale `sha256:source` digest. The freshness
+    // check recomputes the digest from the on-disk bytes and must reject it.
+    let temp =
+        std::env::temp_dir().join(format!("ripr-perl-digest-freshness-{}", std::process::id()));
+    std::fs::create_dir_all(temp.join("lib/My"))
+        .map_err(|err| format!("create dir failed: {err}"))?;
+    std::fs::write(
+        temp.join("lib/My/App.pm"),
+        "# real perl source with different content than the declared digest\n",
+    )
+    .map_err(|err| format!("write file failed: {err}"))?;
+    let mut options = packet_test_options();
+    options.root = temp.clone();
+    let result = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET, &options);
+    let err = result.as_ref().err().map(String::as_str).unwrap_or("");
+    assert!(result.is_err(), "a stale digest must be rejected");
+    assert!(
+        err.contains("stale digest"),
+        "error must name the digest freshness check: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&temp);
+    Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2075,7 +2250,7 @@ fn consumer_accepts_packet_with_frozen_contract_fields() -> Result<(), String> {
             "\"expression\": \"is($got, 10, 'discount threshold')\",",
             "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"$got\",\n      \"expected_expression\": \"10\",",
         );
-    let parsed = PerlAdapter.consume_fact_packet(&packet)?;
+    let parsed = consume(&bless_fingerprint(&packet))?;
     let change = parsed
         .change("change:lib/My/App.pm:15:return")
         .ok_or_else(|| "missing change".to_string())?;
@@ -2111,7 +2286,7 @@ fn consumer_accepts_test2_v1_framework_wire_name() -> Result<(), String> {
     // deserialize it — serde rejects unknown enum variants by default, so a
     // missing variant would fail closed on real producer packets.
     let packet = EXACT_RETURN_PACKET.replace("\"Test::More\"", "\"Test2::V1\"");
-    let parsed = PerlAdapter.consume_fact_packet(&packet)?;
+    let parsed = consume(&packet)?;
     assert_eq!(
         parsed.tests_for_framework(TestFramework::Test2V1).len(),
         1,
@@ -2128,7 +2303,7 @@ fn consumer_accepts_test2_v1_framework_wire_name() -> Result<(), String> {
 fn consumer_still_parses_legacy_packets_without_frozen_fields() -> Result<(), String> {
     // Backward compat: the base EXACT_RETURN_PACKET has NONE of the new fields.
     // It must still parse (#[serde(default)] on the new fields).
-    let parsed = PerlAdapter.consume_fact_packet(EXACT_RETURN_PACKET)?;
+    let parsed = consume(EXACT_RETURN_PACKET)?;
     let change = parsed
         .change("change:lib/My/App.pm:15:return")
         .ok_or_else(|| "missing change".to_string())?;
@@ -2158,8 +2333,50 @@ fn consumer_still_parses_legacy_packets_without_frozen_fields() -> Result<(), St
 
 /// Drive the production mapper: consume a packet, then map to Findings.
 fn findings_from_packet(text: &str) -> Result<Vec<crate::domain::Finding>, String> {
-    let packet = PerlAdapter.consume_fact_packet(text)?;
+    let packet = consume(&bless_fingerprint(text))?;
     Ok(packet_to_findings(&packet))
+}
+
+/// Recompute and patch the `packet_fingerprint` field of a packet's JSON text
+/// so a test-built (mutated) packet passes the production fingerprint check.
+/// This mirrors exactly what a real producer must do after building a packet,
+/// and keeps the production `validate_ingestion` check strict rather than
+/// forking a test-only validation path. Returns the JSON with the fingerprint
+/// rewritten to the recomputed value. Panics-free: a malformed packet is
+/// returned unchanged so the downstream `consume()` reports the real error.
+fn bless_fingerprint(text: &str) -> String {
+    // Recompute from a single typed parse; bail out (return input unchanged)
+    // if the packet does not parse, so `consume()` surfaces the genuine error.
+    let Ok(packet) = serde_json::from_str::<PerlFactPacket>(text) else {
+        return text.to_string();
+    };
+    let recomputed = packet.recompute_packet_fingerprint();
+    rewrite_fingerprint_field(text, &recomputed)
+}
+
+/// Replace the value of the `"packet_fingerprint"` field in `text` with
+/// `new_value`, preserving the surrounding JSON. Done by locating the
+/// `"packet_fingerprint": "<old>"` substring and swapping `<old>`. Returns
+/// `text` unchanged if the field is not found.
+fn rewrite_fingerprint_field(text: &str, new_value: &str) -> String {
+    let key = "\"packet_fingerprint\":";
+    let Some(key_pos) = text.find(key) else {
+        return text.to_string();
+    };
+    let value_start = key_pos + key.len();
+    let Some(open_quote) = text[value_start..].find('"') else {
+        return text.to_string();
+    };
+    let value_open = value_start + open_quote + 1;
+    let Some(close_quote) = text[value_open..].find('"') else {
+        return text.to_string();
+    };
+    let value_close = value_open + close_quote;
+    let mut result = String::with_capacity(text.len() + new_value.len());
+    result.push_str(&text[..value_open]);
+    result.push_str(new_value);
+    result.push_str(&text[value_close..]);
+    result
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2666,7 +2883,7 @@ const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",
   "packet_status": "complete",
-  "packet_fingerprint": "sha256:exact-return",
+  "packet_fingerprint": "sha256:dfbaf34aa66d58456a4640e909ca6f0f2b183aa1354543079724ad18735979cb",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",
@@ -2840,11 +3057,11 @@ const PARTIAL_DYNAMIC_BOUNDARY_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:dynamic-boundary",
   "packet_status": "partial",
-  "packet_fingerprint": "sha256:dynamic-boundary",
+  "packet_fingerprint": "sha256:d761c7861709a68164989286f6f302787f3c5707821e1f138731c3bc6234ce69",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",
-    "capabilities": ["syntax", "workspace"]
+    "capabilities": ["syntax", "workspace", "test_facts"]
   },
   "root": {
     "repo_relative": ".",

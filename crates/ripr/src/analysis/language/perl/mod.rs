@@ -11,12 +11,98 @@ use crate::analysis::language::adapter::{LanguageAdapter, LanguageDiffResult, La
 use crate::config::OraclePolicy;
 use crate::domain::ExposureClass;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
 
 const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
 const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
+
+/// Validate that an ID is a stable, host-free token
+/// (RIPR-SPEC-0064: no host paths, usernames, temp paths, env vars, or
+/// wall-clock timestamps may participate in IDs or fingerprints).
+///
+/// Rules: non-empty, no internal whitespace, no Windows drive prefix, no
+/// absolute-path or temp-directory markers. A stable id may contain `/`
+/// (repo-relative path segments) and `:` (id-namespace separators).
+fn validate_stable_id(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("ID must be non-empty".to_string());
+    }
+    if id.chars().any(char::is_whitespace) {
+        return Err("ID must not contain whitespace".to_string());
+    }
+    if id.len() >= 2 && id.as_bytes()[1] == b':' {
+        return Err(format!("ID `{id}` looks like a Windows drive path"));
+    }
+    for marker in ["/tmp/", "/var/", "/Users/", "\\Users\\", "/home/", "$", "%"] {
+        if id.contains(marker) {
+            return Err(format!(
+                "ID `{id}` contains host/temp/env marker `{marker}` forbidden by SPEC-0064"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Normalize a repo-relative path to forward slashes (platform-independent,
+/// matching the `analysis/probes/ids.rs` fingerprint precedent). The producer
+/// MUST emit `/`-separated paths; this only repairs accidental `\` so the
+/// recomputed fingerprint is stable across OSes for the same packet.
+fn normalize_repo_relative(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+/// Validate that a path is repo-relative (RIPR-SPEC-0064
+/// `path_style: repo_relative`): `/`-separated, no leading `/`, no Windows
+/// drive prefix, no `..`, no host/temp segments. The literal `.` (repo root)
+/// is permitted. This catches a producer leaking absolute or host paths into
+/// a packet, which would make fingerprints and gap ids platform-dependent.
+fn validate_repo_relative_path(path: &str) -> Result<(), String> {
+    if path == "." {
+        return Ok(());
+    }
+    if path.is_empty() {
+        return Err("path must be non-empty (use `.` for the repo root)".to_string());
+    }
+    if path.starts_with('/') {
+        return Err(format!("path `{path}` is absolute; must be repo-relative"));
+    }
+    if path.len() >= 2 && path.as_bytes()[1] == b':' {
+        return Err(format!(
+            "path `{path}` has a Windows drive prefix; must be repo-relative"
+        ));
+    }
+    if path.contains('\\') {
+        return Err(format!(
+            "path `{path}` uses backslash separators; SPEC-0064 requires `/`"
+        ));
+    }
+    for segment in path.split('/') {
+        if segment == ".." {
+            return Err(format!(
+                "path `{path}` contains `..`; must stay within the repo"
+            ));
+        }
+    }
+    for marker in ["/tmp/", "/Users/", "/home/", "/var/"] {
+        if path.contains(marker) {
+            return Err(format!(
+                "path `{path}` contains host/temp marker `{marker}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Hex-encode a SHA-256 digest of `bytes`.
+fn hex_sha256(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
 /// Perl fact-packet adapter.
 ///
@@ -32,7 +118,11 @@ const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
 pub(crate) struct PerlAdapter;
 
 impl PerlAdapter {
-    fn consume_fact_packet(&self, text: &str) -> Result<PerlFactPacket, String> {
+    fn consume_fact_packet(
+        &self,
+        text: &str,
+        options: &AnalysisOptions,
+    ) -> Result<PerlFactPacket, String> {
         let packet: PerlFactPacket = serde_json::from_str(text)
             .map_err(|err| format!("parse ripr-perl-facts-v1 packet: {err}"))?;
         if packet.schema_version != PERL_FACT_PACKET_SCHEMA {
@@ -41,7 +131,7 @@ impl PerlAdapter {
                 packet.schema_version
             ));
         }
-        packet.validate_ingestion()?;
+        packet.validate_ingestion(options)?;
         Ok(packet)
     }
 }
@@ -74,7 +164,7 @@ impl LanguageAdapter for PerlAdapter {
                 facts_path.display()
             )
         })?;
-        let packet = self.consume_fact_packet(&packet_text)?;
+        let packet = self.consume_fact_packet(&packet_text, options)?;
 
         // C2: convert the packet into Findings.
         let findings = packet_to_findings(&packet);
@@ -109,7 +199,7 @@ impl LanguageAdapter for PerlAdapter {
                 facts_path.display()
             )
         })?;
-        let packet = self.consume_fact_packet(&packet_text)?;
+        let packet = self.consume_fact_packet(&packet_text, options)?;
 
         let findings = packet_to_findings(&packet);
         let production_files = packet
@@ -664,12 +754,16 @@ struct PerlFactPacket {
 }
 
 impl PerlFactPacket {
-    /// Production ingestion boundary (Campaign 31 PR 9, ripr-swarm#1402).
+    /// Production ingestion boundary (Campaign 31 PR 9, ripr-swarm#1402;
+    /// integrity hardening, Campaign 31 item 2).
     ///
     /// Validates this packet as untrusted production input. Each check fails
-    /// closed to a named error; no silent acceptance. Called by
-    /// `PerlAdapter::consume_fact_packet` after the schema_version check.
-    fn validate_ingestion(&self) -> Result<(), String> {
+    /// closed to a named error (prefixed `ingestion:`); no silent acceptance.
+    /// Called by `PerlAdapter::consume_fact_packet` after the schema_version
+    /// check. `options` provides the repo root + base/head the consumer is
+    /// analyzing, so the packet's declared identity can be checked for
+    /// coherence against the actual analysis request.
+    fn validate_ingestion(&self, options: &AnalysisOptions) -> Result<(), String> {
         // 1. Packet status must be Complete or Partial (not Unavailable —
         //    an unavailable packet carries no usable facts).
         if matches!(self.packet_status, PacketStatus::Unavailable) {
@@ -756,6 +850,34 @@ impl PerlFactPacket {
             }
         }
 
+        // 3b. ID format/stability: every fact ID must be a stable, host-free
+        //     token (RIPR-SPEC-0064: no host paths, usernames, temp paths, env
+        //     vars, or wall-clock timestamps may participate in IDs). IDs must
+        //     be non-empty and contain no internal whitespace. This catches a
+        //     producer leaking platform/temp state into a supposedly stable id
+        //     before it is used as a canonical gap or receipt key.
+        for (field, ids) in &id_checks {
+            for id in ids {
+                if let Err(reason) = validate_stable_id(*id) {
+                    return Err(format!("ingestion: malformed {field} ID `{id}` — {reason}"));
+                }
+            }
+        }
+
+        // 3c. Path normalization: every `file.path` must be repo-relative
+        //     (`/`-separated, no leading `/`, no drive letter, no `..`, no
+        //     host/temp segment — RIPR-SPEC-0064 `path_style: repo_relative`).
+        //     A non-normalized path would make fingerprints and canonical gap
+        //     ids platform- or machine-dependent.
+        for file in &self.files {
+            if let Err(reason) = validate_repo_relative_path(&file.path) {
+                return Err(format!(
+                    "ingestion: file `{}` path `{}` is not repo-relative — {reason}",
+                    file.file_id, file.path
+                ));
+            }
+        }
+
         // 4. Referential integrity: every owner_id/change_id/test_id/oracle_id
         //    referenced by a relation/verify_command must exist.
         let owner_ids: BTreeSet<&str> = self.owners.iter().map(|o| o.owner_id.as_str()).collect();
@@ -829,7 +951,234 @@ impl PerlFactPacket {
             }
         }
 
+        // 7. Producer capability compatibility: if the packet carries tests or
+        //    oracles, the producer must advertise the `test_facts` capability
+        //    (RIPR-SPEC-0064 example advertises `test_facts` alongside test
+        //    facts). A packet carrying test/oracle assertions from a producer
+        //    that did not advertise `test_facts` is untrustworthy. Only
+        //    `test_facts` is enforced — SPEC-0064 defines no capability name
+        //    for changes/relations/files, so this check does not fabricate one.
+        if !self.tests.is_empty() || !self.oracles.is_empty() {
+            if !self
+                .producer
+                .capabilities
+                .iter()
+                .any(|capability| capability == "test_facts")
+            {
+                return Err(
+                    "ingestion: packet carries tests/oracles but producer did not \
+                     advertise the `test_facts` capability"
+                        .to_string(),
+                );
+            }
+        }
+
+        // 8. Fingerprint recomputation (Campaign 31 item 2): the declared
+        //    `packet_fingerprint` MUST be `sha256:<64-hex>` and MUST equal a
+        //    recomputation over the packet's identity-bearing structural facts
+        //    (sorted file_id+normalized_path, change_ids, owner_ids,
+        //    oracle_id+kind+target, relation tuples). Volatile fields
+        //    (exported_at, provenance ranges, the fingerprint itself) are
+        //    excluded so the hash is deterministic and platform-independent.
+        //    This catches a stale/tampered/producer-mismatched packet that
+        //    otherwise parses cleanly.
+        let recomputed = self.recompute_packet_fingerprint();
+        if self.packet_fingerprint != recomputed {
+            return Err(format!(
+                "ingestion: packet_fingerprint mismatch — declared `{}` does not \
+                 match recomputed `{recomputed}`; the packet is stale, tampered, or \
+                 produced by a different fingerprint recipe",
+                self.packet_fingerprint
+            ));
+        }
+
+        // 9. root/base/head coherence: the packet must have been built for the
+        //    same analysis the consumer is running. When the consumer supplies
+        //    a `--base`, the packet's declared `input.base` must match it
+        //    (catches a packet from a different branch/repo being fed in). The
+        //    declared `input.head` must be non-empty, and `root.repo_relative`
+        //    must be `.` or a clean relative path (no absolute/host traversal).
+        if let Some(ref consumer_base) = options.base
+            && let Some(ref packet_base) = self.input.base
+            && consumer_base != packet_base
+        {
+            return Err(format!(
+                "ingestion: base mismatch — consumer is analyzing `{consumer_base}` but \
+                 packet was built for `{packet_base}`"
+            ));
+        }
+        match self.input.head.as_deref() {
+            None => {
+                return Err(
+                    "ingestion: packet `input.head` is missing; a complete packet must \
+                     declare the head it was built against"
+                        .to_string(),
+                );
+            }
+            Some(head) if head.trim().is_empty() => {
+                return Err(
+                    "ingestion: packet `input.head` is empty; a complete packet must \
+                     declare the head it was built against"
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
+        if let Err(reason) = validate_repo_relative_path(&self.root.repo_relative) {
+            // `repo_relative == "."` is allowed (it is the canonical repo root);
+            // validate_repo_relative_path permits `.` explicitly.
+            return Err(format!(
+                "ingestion: root.repo_relative `{}` is not repo-relative — {reason}",
+                self.root.repo_relative
+            ));
+        }
+
+        // 10. File digest freshness: for each file whose source exists on disk
+        //     under the analysis root, recompute the content digest and require
+        //     it to match the declared `file.digest`. A mismatch means the
+        //     packet is stale relative to the working tree. When the source is
+        //     NOT present on disk (fixture-only mode, or a path the consumer
+        //     cannot resolve), this check is skipped rather than failing — the
+        //     path-safety/coherence checks above already guarantee the path is
+        //     well-formed; an absent file is reported by other machinery, not
+        //     by hard-rejecting the packet.
+        for file in &self.files {
+            let on_disk = options.root.join(&file.path);
+            if !on_disk.is_file() {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&on_disk) else {
+                continue;
+            };
+            let recomputed_digest = format!("sha256:{}", hex_sha256(&bytes));
+            if file.digest != recomputed_digest {
+                return Err(format!(
+                    "ingestion: stale digest for file `{}` (`{}`) — declared `{}` does not \
+                     match the current on-disk content `{recomputed_digest}`; rebuild the packet",
+                    file.file_id, file.path, file.digest
+                ));
+            }
+        }
+
         Ok(())
+    }
+
+    /// Recompute the packet fingerprint over the identity-bearing structural
+    /// facts only. Excludes volatile fields (provenance ranges, the declared
+    /// fingerprint, exported metadata) so the hash is deterministic and
+    /// platform-independent (RIPR-SPEC-0064: no host paths/temp/username/wall
+    /// clock may participate in fingerprints). The recipe is a NUL-separated
+    /// concatenation, fed to SHA-256, emitted as `sha256:<hex>`.
+    ///
+    /// The covered facts are the stable string IDs and their anchoring tuples:
+    /// sorted `(file_id, normalized_path)`, all `change_id`s, all `owner_id`s,
+    /// `(oracle_id, target_owner_id)` pairs, and relation tuples. This is the
+    /// smallest set that uniquely identifies the packet's semantic content; a
+    /// packet that changes any owner/change/file/oracle/relation identity must
+    /// produce a different fingerprint.
+    fn recompute_packet_fingerprint(&self) -> String {
+        let mut hasher = Sha256::new();
+
+        // files: sorted by file_id, contribute file_id + normalized path.
+        let mut files_sorted: Vec<(&str, &str)> = self
+            .files
+            .iter()
+            .map(|file| (file.file_id.as_str(), file.path.as_str()))
+            .collect();
+        files_sorted.sort();
+        for (file_id, path) in &files_sorted {
+            hasher.update(b"file\0");
+            hasher.update(file_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(normalize_repo_relative(path).as_bytes());
+            hasher.update(b"\0");
+        }
+
+        // owners: sorted, contribute owner_id only (range/name are volatile
+        // enough to exclude; the id encodes file + symbol identity).
+        let mut owner_ids: Vec<&str> = self
+            .owners
+            .iter()
+            .map(|owner| owner.owner_id.as_str())
+            .collect();
+        owner_ids.sort();
+        for owner_id in &owner_ids {
+            hasher.update(b"owner\0");
+            hasher.update(owner_id.as_bytes());
+            hasher.update(b"\0");
+        }
+
+        // changes: sorted by change_id.
+        let mut change_ids: Vec<&str> = self
+            .changes
+            .iter()
+            .map(|change| change.change_id.as_str())
+            .collect();
+        change_ids.sort();
+        for change_id in &change_ids {
+            hasher.update(b"change\0");
+            hasher.update(change_id.as_bytes());
+            hasher.update(b"\0");
+        }
+
+        // oracles: sorted by oracle_id, contribute oracle_id + target_owner_id
+        // (the owner being observed). observed_sink/expected_expression are
+        // included because they are the load-bearing H2 sink-alignment facts.
+        let mut oracle_tuples: Vec<(&str, &str, &str, &str)> = self
+            .oracles
+            .iter()
+            .map(|oracle| {
+                (
+                    oracle.oracle_id.as_str(),
+                    oracle.target_owner_id.as_deref().unwrap_or(""),
+                    oracle.observed_sink.as_deref().unwrap_or(""),
+                    oracle.expected_expression.as_deref().unwrap_or(""),
+                )
+            })
+            .collect();
+        oracle_tuples.sort();
+        for (oracle_id, target, sink, expected) in &oracle_tuples {
+            hasher.update(b"oracle\0");
+            hasher.update(oracle_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(target.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(sink.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(expected.as_bytes());
+            hasher.update(b"\0");
+        }
+
+        // relations: sorted by relation_id, contribute the full identity tuple.
+        let mut relation_tuples: Vec<(&str, &str, &str, &str, &str)> = self
+            .relations
+            .iter()
+            .map(|relation| {
+                (
+                    relation.relation_id.as_str(),
+                    relation.change_id.as_str(),
+                    relation.owner_id.as_str(),
+                    relation.test_id.as_str(),
+                    relation.oracle_id.as_deref().unwrap_or(""),
+                )
+            })
+            .collect();
+        relation_tuples.sort();
+        for (relation_id, change_id, owner_id, test_id, oracle_id) in &relation_tuples {
+            hasher.update(b"relation\0");
+            hasher.update(relation_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(change_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(owner_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(test_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(oracle_id.as_bytes());
+            hasher.update(b"\0");
+        }
+
+        format!("sha256:{}", hex_sha256(&hasher.finalize()))
     }
 
     fn file(&self, file_id: &str) -> Option<&FileFact> {

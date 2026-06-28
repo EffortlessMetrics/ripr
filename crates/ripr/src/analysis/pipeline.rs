@@ -92,7 +92,7 @@ fn run_pipeline_for_diff_text(
             }
             Err(reason) => language_runs.push(LanguageRun {
                 language: language.as_str().to_string(),
-                status: LanguageRunStatus::Unavailable,
+                status: perl_run_status_for_err(&reason),
                 reason: Some(reason),
             }),
         }
@@ -152,7 +152,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
             }
             Err(reason) => language_runs.push(LanguageRun {
                 language: language.as_str().to_string(),
-                status: LanguageRunStatus::Unavailable,
+                status: perl_run_status_for_err(&reason),
                 reason: Some(reason),
             }),
         }
@@ -337,6 +337,24 @@ fn analyze_python_repo(
     _oracle_policy: &OraclePolicy,
 ) -> Result<LanguageRepoResult, String> {
     unavailable_language(LanguageId::Python)
+}
+
+/// Classify a Perl adapter `Err` into a `LanguageRunStatus` (Campaign 31
+/// item 2). A packet that was supplied but failed an ingestion integrity check
+/// (fingerprint/coherence/capability/path/id/digest) surfaces as `Invalid` —
+/// the producer emitted something untrustworthy, and that is distinct from the
+/// adapter simply being unavailable (no packet path, feature off, read error,
+/// parse error, or schema mismatch). The non-abort contract is preserved
+/// either way: the run is recorded, never propagated.
+fn perl_run_status_for_err(reason: &str) -> LanguageRunStatus {
+    // Integrity-check failures all carry the `ingestion:` prefix emitted by
+    // `PerlFactPacket::validate_ingestion`. Everything else is an
+    // availability/config failure.
+    if reason.starts_with("ingestion:") {
+        LanguageRunStatus::Invalid
+    } else {
+        LanguageRunStatus::Unavailable
+    }
 }
 
 #[cfg(feature = "lang-perl")]
@@ -559,6 +577,89 @@ mod tests {
         assert!(
             !analysis.language_runs.iter().any(|r| r.language == "rust"),
             "Rust (successful) must not appear in language_runs"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// Integrity-failure vs availability-failure status split (Campaign 31
+    /// item 2). A packet that is SUPPLIED but fails an ingestion integrity
+    /// check must surface as `LanguageRunStatus::Invalid` — distinct from the
+    /// no-packet / feature-off path that stays `Unavailable`. The non-abort
+    /// contract holds either way: the run is recorded, never propagated.
+    #[cfg(feature = "lang-perl")]
+    #[test]
+    fn diff_pipeline_marks_integrity_failure_as_invalid() -> Result<(), String> {
+        let root = temp_root("perl-integrity-invalid")?;
+        // A packet with a fingerprint that does not match its recomputed value
+        // — a tampered/stale packet that parses but fails validate_ingestion.
+        let facts = root.join("bad-facts.json");
+        write(
+            &facts,
+            r#"{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:repo:bad",
+  "packet_status": "complete",
+  "packet_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "producer": {"name": "perl-lsp", "version": "0.0.0", "capabilities": ["syntax"]},
+  "root": {"repo_relative": ".", "vcs_head": "abc", "path_style": "repo_relative"},
+  "input": {"base": "origin/main", "head": "HEAD", "diff_id": null, "requested_fact_classes": []},
+  "files": [], "owners": [], "changes": [], "tests": [], "oracles": [],
+  "relations": [], "dynamic_boundaries": [], "verify_commands": [],
+  "limitations": [], "provenance": []
+}"#,
+        )?;
+        // A Perl file in the diff so the adapter is dispatched.
+        let diff_file = root.join("perl.diff");
+        write(
+            &diff_file,
+            "diff --git a/lib/App.pm b/lib/App.pm\n\
+             --- /dev/null\n\
+             +++ b/lib/App.pm\n\
+             @@ -0,0 +1 @@\n\
+             +sub discount { return 0 }\n",
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: Some(facts),
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust, LanguageId::Perl],
+        );
+        let analysis = match result {
+            Ok(a) => a,
+            Err(reason) => {
+                return Err(format!(
+                    "pipeline aborted on Perl integrity failure, expected non-abort: {reason}"
+                ));
+            }
+        };
+        let perl_run = analysis
+            .language_runs
+            .iter()
+            .find(|run| run.language == "perl")
+            .ok_or_else(|| "expected a perl language_run entry".to_string())?;
+        assert_eq!(
+            perl_run.status,
+            super::LanguageRunStatus::Invalid,
+            "an integrity-check failure must be `invalid`, not `unavailable`"
+        );
+        assert!(
+            perl_run
+                .reason
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("ingestion:"),
+            "the reason must be the ingestion-check message, got: {:?}",
+            perl_run.reason
         );
 
         let _ = std::fs::remove_dir_all(&root);
