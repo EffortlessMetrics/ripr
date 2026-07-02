@@ -140,6 +140,10 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         // actionable, or the named limitation when blocked. Emitted after the
         // preview card so it reads as a separate operator-facing section.
         push_typescript_repair_packet_field_note(&mut out, finding);
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6): advisory-only,
+        // hard-pinned to never flip an authority flag. See perl_preview_card.rs
+        // `advisory_only_readiness()` + the invariant test. Decommissioned in
+        // the post-Phase-B PR.
     } else if let Some(card) = perl_preview_card(finding) {
         push_perl_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {

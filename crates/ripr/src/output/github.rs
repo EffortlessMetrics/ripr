@@ -96,6 +96,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 }
             }
         }
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6 formal scope-down):
+        // this `perl_preview_card` call is a bespoke renderer that violates
+        // ADR-0019's "no bespoke packet renderer" rule. It remains because the
+        // shared path (`perl_gap_record_for` → `validate_agent_gap_record_packet`)
+        // returns `None` for real Perl findings until perl-lsp-swarm Phase B.
+        // It is hard-pinned to advisory-only (`advisory_only_readiness()`); the
+        // regression test `perl_preview_card_advisory_only_readiness_never_flips_authority`
+        // proves no authority flag can flip true. Full decommissioning is the
+        // post-Phase-B PR.
         if let Some(card) = perl_preview_card(finding) {
             message.push_str(" Perl preview card: missing discriminator `");
             message.push_str(&card.missing_discriminator);

@@ -752,6 +752,19 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
     })
 }
 
+/// ADR-0019 §83-86 bespoke builder (Campaign 31 item 6 formal scope-down).
+///
+/// This is a parallel/bespoke GapRecord builder that bypasses the shared
+/// `validate_agent_gap_record_packet` authority — a structural violation of
+/// ADR-0019 §83-86. It remains because the shared path returns `None` for real
+/// Perl findings until perl-lsp-swarm Phase B. It is hard-pinned to
+/// advisory-only: every `projection_eligibility` authority surface is `false`
+/// (agent_packet, pr_comment, gate_candidate, ripr_zero_count, ripr_plus_count)
+/// and `receipt_command: None`; only `markdown_advisory` is eligible. It can
+/// never produce a `repair_packet_ready = true` gap record. The regression test
+/// `check_output_perl_preview_card_becomes_markdown_advisory_gap_record`
+/// (below) pins this. Full decommissioning is the post-Phase-B PR (route
+/// through `perl_gap_record_for` → shared validator).
 fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option<GapRecord> {
     let card = finding.get("perl_preview_card")?;
     if string_at(card, &["language"]) != Some("perl") {
