@@ -10,6 +10,13 @@ mod selector;
 
 pub use crate::output::format::OutputFormat;
 pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};
+
+/// The `ripr-perl-facts-v1` packet schema this ripr build consumes (Campaign 31
+/// item 5). Canonical, always-compiled declaration; the lang-perl-gated perl
+/// module (`app::check`, `analysis::language::perl`) and the doctor
+/// (`cli::commands`) reference this single source of truth via
+/// `crate::app::PERL_FACT_PACKET_SCHEMA`.
+pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 pub(crate) use check::{
     check_workspace_repo_with_config, check_workspace_with_config,
     check_workspace_worktree_with_config,

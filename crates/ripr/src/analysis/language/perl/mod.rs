@@ -15,7 +15,9 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
+/// The `ripr-perl-facts-v1` packet schema. Re-uses the canonical declaration
+/// from `app` (Campaign 31 item 5) so the schema version has one source of
+/// truth. References here use `crate::app::PERL_FACT_PACKET_SCHEMA`.
 const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
 const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
 
@@ -125,10 +127,11 @@ impl PerlAdapter {
     ) -> Result<PerlFactPacket, String> {
         let packet: PerlFactPacket = serde_json::from_str(text)
             .map_err(|err| format!("parse ripr-perl-facts-v1 packet: {err}"))?;
-        if packet.schema_version != PERL_FACT_PACKET_SCHEMA {
+        if packet.schema_version != crate::app::PERL_FACT_PACKET_SCHEMA {
             return Err(format!(
-                "unsupported Perl fact packet schema `{}`; expected `{PERL_FACT_PACKET_SCHEMA}`",
-                packet.schema_version
+                "unsupported Perl fact packet schema `{}`; expected `{}`",
+                packet.schema_version,
+                crate::app::PERL_FACT_PACKET_SCHEMA,
             ));
         }
         packet.validate_ingestion(options)?;
@@ -656,7 +659,7 @@ impl PerlLspFactExportRequest {
         let mut argv = vec![
             PERL_LSP_FACT_EXPORT_SUBCOMMAND.to_string(),
             "--schema".to_string(),
-            PERL_FACT_PACKET_SCHEMA.to_string(),
+            crate::app::PERL_FACT_PACKET_SCHEMA.to_string(),
             "--root".to_string(),
             self.root.clone(),
         ];

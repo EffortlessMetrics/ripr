@@ -206,7 +206,7 @@ fn perl_strict_command_guards_accept_only_bounded_verify_and_receipt_shapes() {
 fn perl_fact_packet_adapter_consumes_exact_return_fixture() -> Result<(), String> {
     let packet = consume(EXACT_RETURN_PACKET)?;
 
-    assert_eq!(packet.schema_version, PERL_FACT_PACKET_SCHEMA);
+    assert_eq!(packet.schema_version, crate::app::PERL_FACT_PACKET_SCHEMA);
     assert_eq!(packet.packet_status, PacketStatus::Complete);
     assert_eq!(packet.files.len(), 2);
 
@@ -242,7 +242,7 @@ fn perl_fact_packet_adapter_rejects_unknown_schema_version() -> Result<(), Strin
     };
 
     assert!(err.contains("unsupported Perl fact packet schema"));
-    assert!(err.contains(PERL_FACT_PACKET_SCHEMA));
+    assert!(err.contains(crate::app::PERL_FACT_PACKET_SCHEMA));
 
     Ok(())
 }
@@ -296,7 +296,7 @@ fn perllsp_exporter_fixture_is_consumed_without_actionable_gap_state() -> Result
     let packet = consume(fixture)?;
 
     assert_eq!(packet.producer.name, "perl-lsp");
-    assert_eq!(packet.schema_version, PERL_FACT_PACKET_SCHEMA);
+    assert_eq!(packet.schema_version, crate::app::PERL_FACT_PACKET_SCHEMA);
     assert_eq!(packet.packet_status, PacketStatus::Complete);
     assert_eq!(
         packet.input.requested_fact_classes,

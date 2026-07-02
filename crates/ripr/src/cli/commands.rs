@@ -3884,6 +3884,7 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     report_detected_languages(&root);
     suggest_preview_language_enablement(&root);
     report_detected_test_surfaces(&root);
+    report_perl_preview(&root);
     report_known_limitations();
 
     for (tool, args) in [
@@ -4235,9 +4236,31 @@ fn report_detected_test_surfaces(root: &Path) {
 ///     and its doc comment.
 ///   - 0.9.0 CHANGELOG non-claims.
 ///
-/// Count files with a given extension in the root (shallow, non-recursive).
+/// Count files with a given extension under the root (recursive). Used by the
+/// Perl preview to report real .pm/.pl/.t counts. Campaign 31 item 5: the
+/// prior `shallow_has_extension as usize` returned only 0/1, not a real count.
 fn count_files(root: &Path, ext: &str) -> usize {
-    shallow_has_extension(root, ext) as usize
+    fn count_recursive(dir: &Path, ext: &str) -> usize {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut n = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Skip hidden + build/dependency dirs that inflate counts.
+                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if name.starts_with('.') || matches!(name, "target" | "node_modules" | "blib") {
+                    continue;
+                }
+                n += count_recursive(&path, ext);
+            } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+                n += 1;
+            }
+        }
+        n
+    }
+    count_recursive(root, ext)
 }
 
 /// Detect the Perl test framework from .t files (shallow scan).
@@ -4287,6 +4310,231 @@ fn which(bin: &str) -> bool {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok_and(|s| s.success())
+    }
+}
+
+/// Rich Perl preview for the doctor (Campaign 31 item 5). Reports everything a
+/// maintainer needs to know whether Perl analysis is available and how to
+/// invoke it: project markers, lang-perl compiled, [perl] producer configured,
+/// perllsp/perl-lsp found + version, schema compatible, t/ and t2/ roots,
+/// detected test frameworks, runner availability, and an exact next command.
+///
+/// Conservative throughout: every line reports only what the static layer can
+/// determine. No claim is made that the producer works end-to-end (that is the
+/// two-binary proof, item 3). Prints only when Perl markers are detected.
+fn report_perl_preview(root: &Path) {
+    let pm_count = count_files(root, "pm");
+    let pl_count = count_files(root, "pl");
+    let t_count = count_files(root, "t");
+    let has_markers = pm_count > 0 || pl_count > 0 || t_count > 0 || has_perl_project_markers(root);
+    if !has_markers {
+        return;
+    }
+
+    println!("- Perl preview:");
+    println!("  project: {pm_count} .pm, {pl_count} .pl, {t_count} .t");
+
+    // lang-perl compiled? (cfg!(feature = "lang-perl") is build-time constant.)
+    if cfg!(feature = "lang-perl") {
+        println!("  adapter: compiled (lang-perl feature ON)");
+    } else {
+        println!("  adapter: NOT compiled (build with --features lang-perl)");
+    }
+
+    // [perl] producer configured? + perllsp/perl-lsp found? + version?
+    let producer_configured = perl_producer_configured(root);
+    match producer_configured.as_deref() {
+        Some("perllsp") => println!("  producer: configured as `perllsp`"),
+        Some(other) => println!("  producer: configured as `{other}`"),
+        None => println!("  producer: not configured (managed mode off)"),
+    }
+
+    // Find the producer binary and its version. Try both canonical names.
+    let (found_bin, version) = producer_binary_and_version(root);
+    match (found_bin.as_deref(), version.as_deref()) {
+        (Some(bin), Some(ver)) => println!("  perllsp: found at {bin} (version {ver})"),
+        (Some(bin), None) => println!("  perllsp: found at {bin} (version unknown)"),
+        _ => println!("  perllsp: NOT found on PATH"),
+    }
+
+    // schema compatible? (always reports the schema this ripr build consumes.)
+    println!("  schema: {} expected", crate::app::PERL_FACT_PACKET_SCHEMA);
+
+    // t/ and t2/ roots detected?
+    let roots = detect_perl_test_roots(root);
+    println!("  test roots: {roots}");
+
+    // Detected test frameworks.
+    let frameworks = detect_perl_frameworks(root);
+    println!("  frameworks: {frameworks}");
+
+    // Runner availability: prove/yath/carton/dzil.
+    let mut runners: Vec<&str> = Vec::new();
+    if which("prove") {
+        runners.push("prove");
+    }
+    if which("yath") {
+        runners.push("yath");
+    }
+    if which("carton") {
+        runners.push("carton");
+    }
+    if which("dzil") {
+        runners.push("dzil");
+    }
+    let runners_str = if runners.is_empty() {
+        "none found on PATH".to_string()
+    } else {
+        runners.join(", ")
+    };
+    println!("  runners: {runners_str}");
+
+    // Exact next command: branch on whether managed mode is configured and
+    // whether the producer is present.
+    let next = perl_next_command(producer_configured.as_deref(), found_bin.as_deref());
+    println!("  next: {next}");
+}
+
+/// Whether `[perl].producer` is configured in the root's ripr config. Returns
+/// the configured producer name, or None if not set / config unreadable.
+fn perl_producer_configured(root: &Path) -> Option<String> {
+    let config = crate::config::load_for_root(root).ok()?;
+    config.perl().producer().map(|s| s.to_string())
+}
+
+/// Resolve the producer binary path and version. Honors `[perl].executable`
+/// when set; otherwise probes PATH for `perllsp` then `perl-lsp`. Returns
+/// (resolved_path, version_string) where version comes from `--version` stdout.
+fn producer_binary_and_version(root: &Path) -> (Option<String>, Option<String>) {
+    // Honor explicit [perl].executable first.
+    let explicit = crate::config::load_for_root(root)
+        .ok()
+        .and_then(|c| c.perl().executable().map(|p| p.display().to_string()));
+    let candidates: Vec<String> = match explicit {
+        Some(path) => vec![path],
+        None => vec!["perllsp".to_string(), "perl-lsp".to_string()],
+    };
+    for candidate in &candidates {
+        let probe = std::process::Command::new(candidate)
+            .arg("--version")
+            .output();
+        if let Ok(output) = probe
+            && output.status.success()
+        {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let resolved = which(candidate)
+                .then(|| resolve_binary_path(candidate))
+                .flatten();
+            return (resolved.or_else(|| Some(candidate.clone())), Some(version));
+        }
+    }
+    (None, None)
+}
+
+/// Best-effort resolution of a PATH binary to an absolute path for display.
+/// Falls back to the name itself if resolution is unavailable.
+fn resolve_binary_path(bin: &str) -> Option<String> {
+    // `which`/`where` already proved existence; re-run capturing stdout.
+    let lookup = if cfg!(unix) { "which" } else { "where" };
+    std::process::Command::new(lookup)
+        .arg(bin)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+        })
+}
+
+/// Detect CPAN-style project markers beyond .pm/.pl/.t files: Makefile.PL,
+/// Build.PL, cpanfile. These confirm a real CPAN-style project a producer can
+/// index.
+fn has_perl_project_markers(root: &Path) -> bool {
+    ["Makefile.PL", "Build.PL", "cpanfile"]
+        .iter()
+        .any(|marker| root.join(marker).is_file())
+}
+
+/// Detect Perl test directories: `t/` and `t2/`. Returns a human-readable
+/// summary.
+fn detect_perl_test_roots(root: &Path) -> String {
+    let has_t = root.join("t").is_dir();
+    let has_t2 = root.join("t2").is_dir();
+    match (has_t, has_t2) {
+        (true, true) => "t/ and t2/ detected".to_string(),
+        (true, false) => "t/ detected".to_string(),
+        (false, true) => "t2/ detected".to_string(),
+        (false, false) => "none detected".to_string(),
+    }
+}
+
+/// Detect Perl test frameworks from .t files in t/ and t2/. Returns a
+/// comma-separated list of detected frameworks (Test::More, Test2::V0/V1/Suite,
+/// Test::Exception, Test::Fatal), or "none detected".
+fn detect_perl_frameworks(root: &Path) -> String {
+    let mut found: Vec<&str> = Vec::new();
+    let mut contents: Vec<String> = Vec::new();
+    for dir in ["t", "t2"] {
+        let test_dir = root.join(dir);
+        let Ok(entries) = std::fs::read_dir(&test_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "t")
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                contents.push(content);
+            }
+        }
+    }
+    let blob = contents.join("\n");
+    if blob.contains("use Test2::V1") || blob.contains("use Test2::Bundle::More") {
+        found.push("Test2::V1");
+    }
+    if blob.contains("use Test2::V0") || blob.contains("use Test2::Tools::Basic") {
+        found.push("Test2::V0");
+    }
+    if blob.contains("use Test2::Suite") {
+        found.push("Test2::Suite");
+    }
+    if blob.contains("use Test::More") {
+        found.push("Test::More");
+    }
+    if blob.contains("use Test::Exception") {
+        found.push("Test::Exception");
+    }
+    if blob.contains("use Test::Fatal") {
+        found.push("Test::Fatal");
+    }
+    if found.is_empty() {
+        "none detected".to_string()
+    } else {
+        found.join(", ")
+    }
+}
+
+/// Choose the exact next command based on producer configuration + presence.
+fn perl_next_command(producer_configured: Option<&str>, found_bin: Option<&str>) -> String {
+    let managed = producer_configured == Some("perllsp");
+    if managed && found_bin.is_some() {
+        // Managed mode + producer present: ripr invokes perllsp itself.
+        "ripr check --languages perl --base origin/main --head HEAD".to_string()
+    } else if managed {
+        // Managed mode configured but producer missing.
+        "install perllsp on PATH (or set [perl].executable), then: ripr check --languages perl"
+            .to_string()
+    } else {
+        // Explicit packet mode (or producer absent): supply --perl-facts.
+        "ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string()
     }
 }
 

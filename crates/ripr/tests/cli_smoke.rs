@@ -1663,6 +1663,130 @@ fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
 }
 
 #[test]
+fn doctor_reports_perl_preview_section_when_perl_markers_present() -> Result<(), String> {
+    // A workspace with Perl markers (Makefile.PL + lib/*.pm + t/*.t) must
+    // surface the rich "Perl preview:" section (Campaign 31 item 5):
+    // project counts, adapter, producer, perllsp, schema, test roots,
+    // frameworks, runners, and an exact next command.
+    let root = unique_temp_workspace("doctor-perl-preview");
+    std::fs::create_dir_all(root.join("lib")).map_err(|err| err.to_string())?;
+    std::fs::create_dir_all(root.join("t")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Makefile.PL"),
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Pricing');\n",
+    )
+    .map_err(|err| err.to_string())?;
+    // A minimal Cargo.toml so the doctor's root check passes (the realistic
+    // scenario is a mixed Rust+Perl repo; a pure-Perl repo would fail the
+    // Cargo.toml check, which is unrelated to the Perl preview).
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("lib/Pricing.pm"),
+        "package Pricing;\nuse strict;\nsub discount { return 0; }\n1;\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("t/pricing.t"),
+        "use Test::More;\nok(1, 'placeholder');\ndone_testing();\n",
+    )
+    .map_err(|err| err.to_string())?;
+
+    let root_str = root.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The Perl preview section heading.
+    assert!(
+        stdout.contains("- Perl preview:"),
+        "expected '- Perl preview:' in stdout:\n{stdout}"
+    );
+    // Each sub-line of the rich preview.
+    assert!(
+        stdout.contains("project:"),
+        "expected 'project:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("adapter:"),
+        "expected 'adapter:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("producer:"),
+        "expected 'producer:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("perllsp:"),
+        "expected 'perllsp:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("schema:"),
+        "expected 'schema:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test roots:"),
+        "expected 'test roots:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("frameworks:"),
+        "expected 'frameworks:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("runners:"),
+        "expected 'runners:' line:\n{stdout}"
+    );
+    assert!(stdout.contains("next:"), "expected 'next:' line:\n{stdout}");
+
+    // Schema reports the expected version (single-sourced from app::PERL_FACT_PACKET_SCHEMA).
+    assert!(
+        stdout.contains("ripr-perl-facts-v1 expected"),
+        "expected 'ripr-perl-facts-v1 expected' on the schema line:\n{stdout}"
+    );
+    // Test framework detection: Test::More is present in t/pricing.t.
+    assert!(
+        stdout.contains("Test::More"),
+        "expected 'Test::More' detected:\n{stdout}"
+    );
+    // Test root detection: t/ is present.
+    assert!(
+        stdout.contains("t/ detected"),
+        "expected 't/ detected' on test roots line:\n{stdout}"
+    );
+    // The recursive count_files now reports the real .pm/.pl/.t counts (> 0).
+    let project_line = stdout
+        .lines()
+        .find(|l| l.contains("project:"))
+        .unwrap_or("");
+    assert!(
+        !project_line.contains("1 .pm, 0 .pl, 0 .t") || project_line.contains("1 .pm, 0 .pl, 1 .t"),
+        "project counts must reflect the recursive scan (1 .pm, 1 .t): {project_line}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn doctor_omits_perl_preview_when_no_perl_markers() -> Result<(), String> {
+    // A Rust-only workspace must NOT emit a Perl preview section.
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("- Perl preview:"),
+        "must not emit a Perl preview for a Rust-only workspace:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn doctor_recommends_worktree_check_on_dirty_worktree() -> Result<(), String> {
     // First-run honesty: doctor must not route a user with uncommitted edits to
     // `ripr check --base origin/main`, which analyzes committed history only and

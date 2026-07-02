@@ -159,7 +159,7 @@ fn perl_facts_export_argv(
     let mut argv: Vec<String> = vec![
         "ripr-facts".to_string(),
         "--schema".to_string(),
-        PERL_FACT_PACKET_SCHEMA.to_string(),
+        crate::app::PERL_FACT_PACKET_SCHEMA.to_string(),
         "--root".to_string(),
         root.to_string(),
     ];
@@ -177,10 +177,6 @@ fn perl_facts_export_argv(
     argv.push(out.to_string());
     argv
 }
-
-/// The schema version this ripr build consumes (mirrors
-/// `analysis::language::perl::PERL_FACT_PACKET_SCHEMA`).
-const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 
 /// Maximum age (seconds) a cached Perl facts packet may be reused before it is
 /// regenerated. Bounds staleness across runs.
@@ -230,7 +226,7 @@ fn invoke_perl_lsp_producer(
         root_str,
         base.unwrap_or(""),
         head,
-        PERL_FACT_PACKET_SCHEMA,
+        crate::app::PERL_FACT_PACKET_SCHEMA,
         executable_str,
         timeout_ms,
     );
@@ -339,7 +335,8 @@ fn cached_packet_is_fresh(path: &Path) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
         return false;
     };
-    value.get("schema_version").and_then(|v| v.as_str()) == Some(PERL_FACT_PACKET_SCHEMA)
+    value.get("schema_version").and_then(|v| v.as_str())
+        == Some(crate::app::PERL_FACT_PACKET_SCHEMA)
 }
 
 /// Simple deterministic hash for cache file naming (not cryptographic).
