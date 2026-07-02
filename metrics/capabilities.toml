@@ -1696,6 +1696,28 @@ next = "dogfood/python-stability-evals-v1"
 metric = "language_adapter_python_repair_card_v1, language_adapter_python_agent_packet_v1, language_adapter_python_swarm_queue_stale_packets, language_adapter_python_gap_receipt_from_check_output, language_adapter_python_real_repair_attempt_receipt, language_adapter_python_real_repo_eval_receipt, language_adapter_python_repair_routing_quality_metrics, language_adapter_python_swarm_ingest, language_adapter_python_swarm_ingest_result_states"
 
 [[capability]]
+id = "perl_repair_routing_loop"
+name = "Perl repair routing loop"
+status = "planned"
+spec = "RIPR-SPEC-0064"
+evidence = [
+  "Consumer spine landed: production PerlAdapter, --perl-facts, packet-to-Finding mapping (C1/C2), H1 mapper-integrity fixes, H2 sink-aligned already-observed classification, Test2::V1 consumer support, and changed/observed sink fields (#1431, #1432, #1434, #1435, #1436, #1447, #1448, #1449, #1450, #1451).",
+  "Packet integrity boundary complete (Campaign 31 item 2): fingerprint recomputation, root/base/head/diff coherence, file-digest freshness, producer-capability compatibility, stable-ID checks, path normalization, and invalid/stale packet language_run states (#1454).",
+  "Two-binary proof harness exists (Campaign 31 item 3): tests/perl_two_binary_harness.rs runs perllsp ripr-facts | ripr check --perl-facts against the perl_cpan_alpha fixture; skips cleanly when perllsp absent (perl-lsp-swarm Phase B dependency). Three producer-independent regression packets under fixtures/perl_cpan_alpha/expected/regression-packets/ prove the consumer emits ReachableUnrevealed (actionable), Exposed (already-observed), and partial+dynamic_dispatch-limitation (limited) outcomes (#1455).",
+  "Managed producer mode hardened (Campaign 31 item 4): SPEC-canonical arg surface, real timeout/kill, atomic packet writes, content-aware cache key, freshness validation, clean partial/unavailable states (#1456). Capability handshake deferred (perl-lsp-swarm probe surface).",
+  "Doctor Perl preview (Campaign 31 item 5): ripr doctor reports producer configured/found/version/schema, Perl markers, t/ and t2/ roots, Test::More/Test2/V1/V0/Suite frameworks, prove/yath/carton/dzil runners, and an exact next command (#1457).",
+  "Bespoke perl_preview_card path formally scoped to advisory-only (Campaign 31 item 6): every authority-ready flag hard-pinned false by advisory_only_readiness(); mechanical invariant test guards against a future flip; ADR-0019 decommissioning deferred to the post-Phase-B PR (#1458).",
+  "BLOCKED on perl-lsp-swarm Phase B: the shared path (perl_gap_record_for -> validate_agent_gap_record_packet -> shared renderers) is built, wired, and parity-tested, but returns None for real Perl findings until a real perl-lsp ripr-facts producer emits findings carrying the gap_state:/actionability_category: evidence. No real producer data-plane proof exists yet.",
+  "Promotion to usable alpha requires: (1) the real two-binary proof (perllsp -> ripr) producing actionable / already-observed / limited outcomes against >= 5 real Perl repos; (2) top-1 repair-card precision >= 80%, verify-command validity >= 90%, false-actionable rate <= 5%; (3) >= 5 before/after receipts with >= 3 improved/resolved; (4) a perl-real-repo-evals dogfood corpus mirroring python-real-repo-evals; (5) decommissioning of the bespoke perl_preview_card in favor of the shared validator path. Until then gates/badges/RIPR Zero/stable Perl claims stay false."
+]
+fixtures = [
+  "fixtures/perl_cpan_alpha",
+  "fixtures/perl_lsp_facts_exporter"
+]
+next = "dogfood/perl-real-repo-evals-v1"
+metric = "language_adapter_perl_facts_packet_v1, language_adapter_perl_gap_record_projection, language_adapter_perl_doctor_preview, language_adapter_perl_bespoke_card_advisory_only_invariant"
+
+[[capability]]
 id = "typescript_preview_static_facts"
 name = "TypeScript preview static facts"
 status = "alpha"
