@@ -2226,6 +2226,60 @@ fn ingestion_rejects_stale_file_digest_against_on_disk_source() -> Result<(), St
     Ok(())
 }
 
+// ── Managed-mode argv parity with SPEC-0064 (Campaign 31 item 4) ──
+// The managed producer (`app::check::invoke_perl_lsp_producer`) builds its
+// argv via `perl_facts_export_argv`, which MUST match the surface this
+// module's `PerlLspFactExportRequest::render_command` builds. This test pins
+// `render_command`'s output to the SPEC-0064-canonical surface; the companion
+// test `perl_facts_export_argv_matches_spec_canonical_surface` in
+// `app::check::tests` pins the same surface. If either diverges, one fails —
+// single-source via test, not via shared code (the perl module is
+// cfg(feature = "lang-perl") and the managed producer must compile without it).
+
+#[test]
+fn render_command_matches_spec_canonical_surface() -> Result<(), String> {
+    let request = PerlLspFactExportRequest::new(
+        ".",
+        "out.json",
+        [
+            PerlFactClass::Owners,
+            PerlFactClass::Changes,
+            PerlFactClass::Tests,
+            PerlFactClass::Oracles,
+        ],
+    )?
+    .with_diff_range("origin/main", "HEAD");
+    let command = request.render_command();
+    assert_eq!(
+        command.program, "perl-lsp",
+        "the producer program name is `perl-lsp` (SPEC-0064); note managed mode spawns `perllsp` — see fixtures/perl_cpan_alpha/README.md"
+    );
+    assert_eq!(
+        command.argv,
+        vec![
+            "ripr-facts",
+            "--schema",
+            "ripr-perl-facts-v1",
+            "--root",
+            ".",
+            "--base",
+            "origin/main",
+            "--head",
+            "HEAD",
+            "--fact-classes",
+            "owners,changes,tests,oracles",
+            "--out",
+            "out.json",
+        ]
+    );
+    assert!(
+        !command.argv.iter().any(|arg| arg.starts_with("--ripr-")),
+        "render_command must not emit the non-spec `--ripr-*` surface: {:?}",
+        command.argv
+    );
+    Ok(())
+}
+
 // ── Two-binary proof harness regression corpus (Campaign 31 item 3) ──
 // Three committed regression packets under
 // fixtures/perl_cpan_alpha/expected/regression-packets/, one per honest
