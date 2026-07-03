@@ -108,8 +108,19 @@ fn run_check(
         && is_managed_perl_producer(producer)
         && input.perl_facts_path.is_none()
     {
-        let packet_path = invoke_perl_lsp_producer(perl_config, &input)?;
-        input.perl_facts_path = Some(packet_path);
+        // Item 4b: producer failure must NOT abort the whole `ripr check`.
+        // If invocation fails (missing binary, timeout, non-zero exit, no
+        // packet), leave perl_facts_path as None so the pipeline records a
+        // Perl `unavailable` language_runs[] entry and the other languages'
+        // findings still emit. The error is surfaced as the language_runs
+        // reason string.
+        match invoke_perl_lsp_producer(perl_config, &input) {
+            Ok(packet_path) => input.perl_facts_path = Some(packet_path),
+            Err(reason) => {
+                eprintln!("warning: Perl facts exporter failed: {reason}");
+                eprintln!("warning: Perl analysis will be unavailable; other languages continue.");
+            }
+        }
     }
 
     let options = options_builder::analysis_options_from_input_and_config(&input, config);
@@ -278,31 +289,42 @@ fn invoke_perl_lsp_producer(
 
     let argv = perl_facts_export_argv(&root_str, &tmp_path.display().to_string(), base, Some(head));
 
+    // Item 4b: redirect stdout/stderr to Stdio::null() instead of piping.
+    // The previous piped-without-draining approach risked a deadlock when a
+    // verbose producer filled the OS pipe buffer. We don't read the producer's
+    // stdout/stderr — we check the packet file's existence after exit. Stderr
+    // diagnostics from a failing producer are not captured here (the caller
+    // surfaces the failure reason, not the producer's stderr).
     let mut command = Command::new(&executable);
     command
         .args(&argv)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
 
     let mut child = command.spawn().map_err(|e| {
         format!(
-            "failed to spawn Perl producer at `{}`: {e}. Configure [perl].executable or \
-             put `perllsp` on PATH.",
+            "failed to spawn Perl facts exporter at `{}`: {e}. Configure [perl].executable or \
+             put `perl-ripr-facts` on PATH.",
             executable.display()
         )
     })?;
 
-    // Real timeout enforcement (item 4): wait up to `timeout_ms`; on timeout,
-    // kill the child and reap it so no orphan process holds a handle (the
-    // AGENTS.md Windows file-lock warning). `std` only — no new crate.
+    // Real timeout enforcement: wait up to `timeout_ms`; on timeout,
+    // kill the child and reap it so no orphan process holds a handle.
     let wait_result = child.wait_timeout(std::time::Duration::from_millis(timeout_ms));
     match wait_result {
         Ok(Some(status)) => {
-            // Child exited within the timeout. If it produced the packet,
-            // atomically rename to the final path. If not, surface a clear
-            // producer-failed message (the producer's own stderr went to its
-            // piped stderr; we rely on the packet-existence check because
-            // `try_wait` does not drain the pipes).
+            // Item 4b: non-zero exit must NEVER be accepted even if a tmp
+            // packet exists. Only accept the packet if the producer exited
+            // successfully AND the file exists.
+            if !status.success() {
+                // Clean up any partial tmp from a failing run.
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(format!(
+                    "Perl facts exporter exited with status {status} (non-zero); \
+                     packet rejected even if a partial file exists"
+                ));
+            }
             if tmp_path.is_file() {
                 std::fs::rename(&tmp_path, &packet_path).map_err(|e| {
                     format!(
@@ -313,8 +335,7 @@ fn invoke_perl_lsp_producer(
                 return Ok(packet_path);
             }
             Err(format!(
-                "perllsp ripr-facts exited (status: {status}) but wrote no packet at `{}`; \
-                 the producer failed before emitting facts",
+                "Perl facts exporter exited successfully but wrote no packet at `{}`",
                 tmp_path.display()
             ))
         }
@@ -323,13 +344,13 @@ fn invoke_perl_lsp_producer(
             let _ = child.kill();
             let _ = child.wait();
             Err(format!(
-                "perllsp ripr-facts timed out after {timeout_ms}ms (process terminated); no packet consumed"
+                "Perl facts exporter timed out after {timeout_ms}ms (process terminated); no packet consumed"
             ))
         }
         Err(e) => {
             let _ = child.kill();
             let _ = child.wait();
-            Err(format!("perllsp ripr-facts failed while waiting: {e}"))
+            Err(format!("Perl facts exporter failed while waiting: {e}"))
         }
     }
 }
@@ -349,8 +370,9 @@ fn cached_packet_is_fresh(path: &Path) -> bool {
         return false;
     };
     let Ok(elapsed) = modified.elapsed() else {
-        // mtime in the future (clock skew): treat as fresh rather than churning.
-        return true;
+        // Item 4b: mtime in the future (clock skew): treat as STALE, not
+        // fresh. A future-dated cached packet could mask a real change.
+        return false;
     };
     if elapsed.as_secs() > PERL_FACTS_MAX_AGE_SECS {
         return false;
@@ -582,11 +604,11 @@ mod tests {
         // executable by relying on the config default resolving to `perllsp`,
         // which is absent in ripr-swarm CI.
         let result = invoke_perl_lsp_producer(&config, &input);
-        // In an environment WITHOUT perllsp, this must be an Err naming the
-        // missing producer. If perllsp IS present (perl-lsp-swarm CI), skip.
+        // In an environment WITHOUT a Perl facts exporter, this must be an
+        // Err naming the missing producer.
         if let Err(reason) = result {
             assert!(
-                reason.contains("failed to spawn Perl producer") || reason.contains("perllsp"),
+                reason.contains("failed to spawn Perl facts exporter"),
                 "missing producer must surface a clear message: {reason}"
             );
         }
