@@ -4665,3 +4665,64 @@ fn pr_summary_does_not_invoke_cargo() -> Result<(), String> {
     let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
+
+// ── ripr annotations (Campaign 31 item 8b: binary-first annotations) ──
+
+#[test]
+fn annotations_help_exits_cleanly() {
+    let output = run_ripr(&["annotations", "--help"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--comments"),
+        "help must mention --comments:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--out"),
+        "help must mention --out:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+}
+
+#[test]
+fn annotations_with_missing_comments_writes_empty() -> Result<(), String> {
+    let root = unique_temp_workspace("annotations-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"annotations-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("annotations")
+        .output()
+        .map_err(|err| err.to_string())?;
+    assert!(
+        output.status.success(),
+        "annotations must succeed with missing comments.json:\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        root.join("target/ripr/review/annotations.txt").is_file(),
+        "must write annotations.txt even when comments.json is missing"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn annotations_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["annotations", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown annotations argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}

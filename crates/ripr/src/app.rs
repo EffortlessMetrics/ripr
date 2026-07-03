@@ -2,6 +2,7 @@ pub(crate) mod agent_brief;
 pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;
+pub(crate) mod annotations;
 mod check;
 mod context;
 mod explain;

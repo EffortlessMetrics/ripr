@@ -4722,6 +4722,13 @@ pub(super) fn pr_summary(args: &[String]) -> Result<(), String> {
     crate::app::pr_summary::run_pr_summary(args)
 }
 
+/// `ripr annotations` — binary-first GitHub Actions annotations (item 8b).
+/// Reads comments.json and emits `::warning` annotation lines. The canonical
+/// downstream replacement for `cargo xtask ripr-annotations`.
+pub(super) fn annotations(args: &[String]) -> Result<(), String> {
+    crate::app::annotations::run_annotations(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
