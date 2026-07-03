@@ -97,14 +97,15 @@ fn run_check(
     config: &RiprConfig,
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
-    // Managed producer mode (Campaign 31 Phase D, #1407): when
-    // [perl] producer = "perllsp", invoke a Perl facts exporter to generate
-    // a fact packet, then consume it automatically. The canonical producer
-    // is perl-ripr-facts; perllsp/perl-lsp are compatibility wrappers. NO
-    // silent invocation unless explicitly configured.
+    // Managed producer mode (Campaign 31 Phase D, #1407; architecture
+    // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
+    // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
+    // for backward compatibility), invoke the exporter binary to generate
+    // a fact packet, then consume it automatically. NO silent invocation
+    // unless explicitly configured.
     let perl_config = config.perl();
     if let Some(producer) = perl_config.producer()
-        && producer == "perllsp"
+        && is_managed_perl_producer(producer)
         && input.perl_facts_path.is_none()
     {
         let packet_path = invoke_perl_lsp_producer(perl_config, &input)?;
@@ -140,6 +141,29 @@ fn run_check(
 /// `ripr-facts` invocation (Campaign 31 item 4). This is the single source
 /// of truth for the managed-mode arg surface. It mirrors
 /// `PerlLspFactExportRequest::render_command` exactly; a
+/// Whether a configured `[perl] producer` value activates managed producer
+/// mode (post perl-lsp-swarm #3294). The canonical producer is
+/// `perl-ripr-facts`; `perllsp`/`perl-lsp` are accepted for backward
+/// compatibility (they must be wrappers over the same batch exporter).
+fn is_managed_perl_producer(producer: &str) -> bool {
+    matches!(producer, "perl-ripr-facts" | "perllsp" | "perl-lsp")
+}
+
+/// Resolve the default executable for a Perl facts exporter producer. When
+/// `[perl].executable` is set, use it exactly. Otherwise, derive the default
+/// from the producer name: `perl-ripr-facts` -> `perl-ripr-facts`,
+/// `perllsp`/`perl-lsp` -> `perllsp` (compat). Any unconfigured producer
+/// falls back to `perl-ripr-facts` (the canonical exporter).
+fn default_executable_for_producer(producer: Option<&str>) -> PathBuf {
+    match producer {
+        Some("perllsp") | Some("perl-lsp") => PathBuf::from("perllsp"),
+        _ => PathBuf::from("perl-ripr-facts"),
+    }
+}
+
+/// Build the SPEC-0064-canonical argv for the Perl facts exporter's
+/// item 4). This is the single source of truth for the managed-mode arg
+/// surface. It mirrors `PerlLspFactExportRequest::render_command` exactly; a
 /// `#[cfg(feature = "lang-perl")]` test (`perl_managed_mode_argv_matches_spec`)
 /// pins that the two agree so managed mode and the string builder can never
 /// diverge again (the item-3 audit found a `--ripr-*` vs `ripr-facts --schema
@@ -205,7 +229,7 @@ fn invoke_perl_lsp_producer(
     let executable = perl_config
         .executable()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("perllsp"));
+        .unwrap_or_else(|| default_executable_for_producer(perl_config.producer()));
 
     let cache_dir = perl_config
         .cache_dir()
@@ -565,6 +589,48 @@ mod tests {
                 reason.contains("failed to spawn Perl producer") || reason.contains("perllsp"),
                 "missing producer must surface a clear message: {reason}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_managed_perl_producer_accepts_all_known_exporters() {
+        assert!(is_managed_perl_producer("perl-ripr-facts"));
+        assert!(is_managed_perl_producer("perllsp"));
+        assert!(is_managed_perl_producer("perl-lsp"));
+        assert!(!is_managed_perl_producer("custom"));
+        assert!(!is_managed_perl_producer(""));
+    }
+
+    #[test]
+    fn default_executable_derives_from_producer_name() -> Result<(), String> {
+        // Canonical exporter: perl-ripr-facts -> perl-ripr-facts
+        let canonical = default_executable_for_producer(Some("perl-ripr-facts"));
+        if canonical != Path::new("perl-ripr-facts") {
+            return Err(format!(
+                "canonical producer must default to perl-ripr-facts, got {canonical:?}"
+            ));
+        }
+        // Compat wrapper: perllsp -> perllsp
+        let compat = default_executable_for_producer(Some("perllsp"));
+        if compat != Path::new("perllsp") {
+            return Err(format!(
+                "perllsp producer must default to perllsp, got {compat:?}"
+            ));
+        }
+        // Compat wrapper: perl-lsp -> perllsp
+        let compat2 = default_executable_for_producer(Some("perl-lsp"));
+        if compat2 != Path::new("perllsp") {
+            return Err(format!(
+                "perl-lsp producer must default to perllsp, got {compat2:?}"
+            ));
+        }
+        // Unconfigured: falls back to canonical perl-ripr-facts
+        let none = default_executable_for_producer(None);
+        if none != Path::new("perl-ripr-facts") {
+            return Err(format!(
+                "unconfigured producer must default to perl-ripr-facts, got {none:?}"
+            ));
         }
         Ok(())
     }
