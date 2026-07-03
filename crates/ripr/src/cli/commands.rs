@@ -4341,20 +4341,40 @@ fn report_perl_preview(root: &Path) {
         println!("  adapter: NOT compiled (build with --features lang-perl)");
     }
 
-    // [perl] producer configured? + perllsp/perl-lsp found? + version?
+    // [perl] producer configured? + Perl facts exporter found? + version?
     let producer_configured = perl_producer_configured(root);
     match producer_configured.as_deref() {
-        Some("perllsp") => println!("  producer: configured as `perllsp`"),
+        Some("perl-ripr-facts") => {
+            println!("  producer: configured as `perl-ripr-facts` (canonical)")
+        }
+        Some("perllsp") => println!("  producer: configured as `perllsp` (compatibility wrapper)"),
+        Some("perl-lsp") => {
+            println!("  producer: configured as `perl-lsp` (compatibility wrapper)")
+        }
         Some(other) => println!("  producer: configured as `{other}`"),
         None => println!("  producer: not configured (managed mode off)"),
     }
 
-    // Find the producer binary and its version. Try both canonical names.
+    // Find the producer binary and its version. Try canonical first, then wrappers.
     let (found_bin, version) = producer_binary_and_version(root);
     match (found_bin.as_deref(), version.as_deref()) {
-        (Some(bin), Some(ver)) => println!("  perllsp: found at {bin} (version {ver})"),
-        (Some(bin), None) => println!("  perllsp: found at {bin} (version unknown)"),
-        _ => println!("  perllsp: NOT found on PATH"),
+        (Some(bin), Some(ver)) => {
+            println!("  exporter: found at {bin} (version {ver})");
+            // If only a wrapper was found (not the canonical exporter), explain.
+            if bin.contains("perllsp") || bin.contains("perl-lsp") {
+                if which("perl-ripr-facts") {
+                    // Canonical also present — no warning needed.
+                } else {
+                    println!(
+                        "  note: `{bin}` must delegate to the batch perl-ripr-facts exporter; RIPR does not use LSP protocol"
+                    );
+                }
+            }
+        }
+        (Some(bin), None) => println!("  exporter: found at {bin} (version unknown)"),
+        _ => println!(
+            "  exporter: NOT found on PATH (expected: perl-ripr-facts, perllsp, or perl-lsp)"
+        ),
     }
 
     // schema compatible? (always reports the schema this ripr build consumes.)
@@ -4403,8 +4423,10 @@ fn perl_producer_configured(root: &Path) -> Option<String> {
 }
 
 /// Resolve the producer binary path and version. Honors `[perl].executable`
-/// when set; otherwise probes PATH for `perllsp` then `perl-lsp`. Returns
-/// (resolved_path, version_string) where version comes from `--version` stdout.
+/// when set; otherwise probes PATH for `perl-ripr-facts` (canonical, post
+/// perl-lsp-swarm #3294), then `perllsp`/`perl-lsp` (compatibility wrappers).
+/// Returns (resolved_path, version_string) where version comes from
+/// `--version` stdout.
 fn producer_binary_and_version(root: &Path) -> (Option<String>, Option<String>) {
     // Honor explicit [perl].executable first.
     let explicit = crate::config::load_for_root(root)
@@ -4412,7 +4434,11 @@ fn producer_binary_and_version(root: &Path) -> (Option<String>, Option<String>) 
         .and_then(|c| c.perl().executable().map(|p| p.display().to_string()));
     let candidates: Vec<String> = match explicit {
         Some(path) => vec![path],
-        None => vec!["perllsp".to_string(), "perl-lsp".to_string()],
+        None => vec![
+            "perl-ripr-facts".to_string(),
+            "perllsp".to_string(),
+            "perl-lsp".to_string(),
+        ],
     };
     for candidate in &candidates {
         let probe = std::process::Command::new(candidate)
@@ -4524,9 +4550,12 @@ fn detect_perl_frameworks(root: &Path) -> String {
 
 /// Choose the exact next command based on producer configuration + presence.
 fn perl_next_command(producer_configured: Option<&str>, found_bin: Option<&str>) -> String {
-    let managed = producer_configured == Some("perllsp");
+    let managed = matches!(
+        producer_configured,
+        Some("perl-ripr-facts") | Some("perllsp") | Some("perl-lsp")
+    );
     if managed && found_bin.is_some() {
-        // Managed mode + producer present: ripr invokes perllsp itself.
+        // Managed mode + producer present: ripr invokes the exporter itself.
         "ripr check --languages perl --base origin/main --head HEAD".to_string()
     } else if managed {
         // Managed mode configured but producer missing.

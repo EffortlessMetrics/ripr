@@ -1719,8 +1719,8 @@ fn doctor_reports_perl_preview_section_when_perl_markers_present() -> Result<(),
         "expected 'producer:' line:\n{stdout}"
     );
     assert!(
-        stdout.contains("perllsp:"),
-        "expected 'perllsp:' line:\n{stdout}"
+        stdout.contains("exporter:"),
+        "expected 'exporter:' line:\n{stdout}"
     );
     assert!(
         stdout.contains("schema:"),
