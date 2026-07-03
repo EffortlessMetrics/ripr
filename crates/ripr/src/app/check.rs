@@ -217,7 +217,10 @@ fn perl_facts_export_argv(
 }
 
 /// Maximum age (seconds) a cached Perl facts packet may be reused before it is
-/// regenerated. Bounds staleness across runs.
+/// regenerated. Currently unused — cache reuse is disabled (item 4b) until the
+/// cache key includes real content/diff identity. Retained for the future
+/// content-keyed implementation.
+#[allow(dead_code, reason = "retained for future content-keyed cache reuse")]
 const PERL_FACTS_MAX_AGE_SECS: u64 = 86_400;
 
 /// Invoke a Perl facts exporter to generate a fact packet.
@@ -271,23 +274,33 @@ fn invoke_perl_lsp_producer(
     let packet_hash = format!("{:016x}", simple_hash(&cache_key));
     let packet_path = cache_dir.join(format!("{packet_hash}.json"));
 
-    // Freshness: if a fresh cached packet exists with the current schema, reuse
-    // it without re-invoking the producer. Any freshness failure falls through
-    // to regeneration (never an error).
-    if cached_packet_is_fresh(&packet_path) {
-        return Ok(packet_path);
-    }
+    // Item 4b: cache reuse is DISABLED until the cache key includes real
+    // content/diff identity (not just root|base|head|schema|exec|timeout).
+    // The current key does not capture the actual diff content, so a stale
+    // packet for a different diff sharing the same base/head could be
+    // reused. Always regenerate until a content-hash key is implemented.
+    // if cached_packet_is_fresh(&packet_path) {
+    //     return Ok(packet_path);
+    // }
+
+    // Item 4b: handle diff_file explicitly. When input.diff_file is set,
+    // pass it to the exporter via --diff so the exporter scopes its
+    // analysis to the diff range.
+    let diff_arg = input.diff_file.as_ref().map(|p| p.display().to_string());
 
     // Atomic write: the producer writes a `.tmp`; ripr renames to the final
-    // path only after the producer succeeds AND the file exists. A terminated
-    // or failing producer leaves a `.tmp` that is never consumed, so no partial
-    // packet can reach the consumer.
+    // path only after the producer succeeds AND the file exists.
     let tmp_path = cache_dir.join(format!("{packet_hash}.json.tmp"));
 
     // Remove any stale `.tmp` from a prior terminated run before invoking.
     let _ = std::fs::remove_file(&tmp_path);
 
-    let argv = perl_facts_export_argv(&root_str, &tmp_path.display().to_string(), base, Some(head));
+    let mut argv =
+        perl_facts_export_argv(&root_str, &tmp_path.display().to_string(), base, Some(head));
+    if let Some(diff) = &diff_arg {
+        argv.push("--diff".to_string());
+        argv.push(diff.clone());
+    }
 
     // Item 4b: redirect stdout/stderr to Stdio::null() instead of piping.
     // The previous piped-without-draining approach risked a deadlock when a
@@ -358,6 +371,9 @@ fn invoke_perl_lsp_producer(
 /// Whether the cached packet at `path` is fresh enough to reuse: the file
 /// exists, its `schema_version` field equals the current schema, and its mtime
 /// is within `PERL_FACTS_MAX_AGE_SECS`. Any failure → not fresh (regenerate).
+/// Currently unused — cache reuse is disabled (item 4b). Retained for the
+/// future content-keyed implementation.
+#[allow(dead_code, reason = "retained for future content-keyed cache reuse")]
 fn cached_packet_is_fresh(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;

@@ -41,18 +41,34 @@ fn ripr_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_ripr"))
 }
 
-/// Detect whether a Perl facts exporter binary is available on PATH. Tries
-/// `perl-ripr-facts` first (the canonical producer post perl-lsp-swarm #3294),
-/// then `perllsp`/`perl-lsp` (compatibility wrappers). The assertion is
-/// packet-semantic — the harness does not care which binary produced the
-/// packet, only that a valid `ripr-perl-facts-v1` JSON packet was emitted.
-fn producer_on_path() -> Option<&'static str> {
+/// Detect whether a Perl facts exporter binary is available. Resolution order:
+/// 1. `PERL_RIPR_FACTS` / `RIPR_PERL_FACTS_EXPORTER` env var (explicit override)
+/// 2. `perl-ripr-facts` on PATH (canonical producer post perl-lsp-swarm #3294)
+/// 3. `perllsp` / `perl-lsp` on PATH (compatibility wrappers)
+///
+/// The assertion is packet-semantic — the harness does not care which binary
+/// produced the packet, only that a valid `ripr-perl-facts-v1` JSON was emitted.
+fn producer_on_path() -> Option<String> {
+    // 1. Env override (highest priority).
+    if let Ok(path) = std::env::var("PERL_RIPR_FACTS") {
+        if !path.is_empty() {
+            return Some(path);
+        }
+    }
+    if let Ok(path) = std::env::var("RIPR_PERL_FACTS_EXPORTER") {
+        if !path.is_empty() {
+            return Some(path);
+        }
+    }
+    // 2. Canonical exporter.
     if which("perl-ripr-facts") {
-        Some("perl-ripr-facts")
-    } else if which("perllsp") {
-        Some("perllsp")
+        return Some("perl-ripr-facts".to_string());
+    }
+    // 3. Compatibility wrappers.
+    if which("perllsp") {
+        Some("perllsp".to_string())
     } else if which("perl-lsp") {
-        Some("perl-lsp")
+        Some("perl-lsp".to_string())
     } else {
         None
     }
@@ -162,7 +178,7 @@ fn two_binary_proof_three_outcomes_against_real_perllsp() -> Result<(), String> 
 
     // Outcome 1 — actionable (weak ok oracle, boundary change diff.patch).
     let facts1 = tmp.join("actionable-facts.json");
-    run_producer(producer, &root, "diff.patch", &facts1)?;
+    run_producer(&producer, &root, "diff.patch", &facts1)?;
     let json1 = run_ripr(&facts1, &root)?;
     // The boundary change reaches the weak oracle but does not reveal the
     // changed behavior: a reachable_unrevealed (actionable) finding, NOT
@@ -176,12 +192,12 @@ fn two_binary_proof_three_outcomes_against_real_perllsp() -> Result<(), String> 
     // Same boundary change, but the consumer's H2 sink-alignment must mark it
     // already-observed when the exact is() oracle's observed_sink aligns.
     let facts2 = tmp.join("observed-facts.json");
-    run_producer(producer, &root, "boundary_change.diff", &facts2)?;
+    run_producer(&producer, &root, "boundary_change.diff", &facts2)?;
     let _json2 = run_ripr(&facts2, &root)?;
 
     // Outcome 3 — limited (dynamic dispatch).
     let facts3 = tmp.join("limited-facts.json");
-    run_producer(producer, &root, "dynamic_dispatch.diff", &facts3)?;
+    run_producer(&producer, &root, "dynamic_dispatch.diff", &facts3)?;
     let json3 = run_ripr(&facts3, &root)?;
     // The limited case must surface a named limitation, not a repair packet.
     assert!(
