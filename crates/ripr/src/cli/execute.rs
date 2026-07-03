@@ -38,6 +38,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Context(args) => commands::context(&args),
         CliCommand::Doctor(args) => commands::doctor(&args),
         CliCommand::Lsp(args) => commands::lsp(&args),
+        CliCommand::PrSummary(args) => commands::pr_summary(&args),
     }
 }
 

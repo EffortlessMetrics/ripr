@@ -4561,3 +4561,107 @@ fn check_worktree_base_head_clean_worktree_has_no_scope_or_unanalyzed_disclosure
     let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
+
+// ── ripr pr-summary (Campaign 31 item 8: binary-first downstream CI) ──
+
+#[test]
+fn pr_summary_help_exits_cleanly() {
+    let output = run_ripr(&["pr-summary", "--help"]);
+    assert!(
+        output.status.success(),
+        "pr-summary --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--baseline"),
+        "help must mention --baseline:\n{stdout}"
+    );
+}
+
+#[test]
+fn pr_summary_with_missing_artifacts_writes_outputs() -> Result<(), String> {
+    let root = unique_temp_workspace("pr-summary-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-summary-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-summary")
+        .output()
+        .map_err(|err| err.to_string())?;
+    assert!(
+        output.status.success(),
+        "pr-summary must succeed even with missing artifacts:\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        root.join("target/ripr/pr/summary.md").is_file(),
+        "must write target/ripr/pr/summary.md"
+    );
+    assert!(
+        root.join("target/ripr/reports/pr-evidence-summary.json")
+            .is_file(),
+        "must write pr-evidence-summary.json"
+    );
+    assert!(
+        root.join("target/ripr/reports/pr-evidence-summary.md")
+            .is_file(),
+        "must write pr-evidence-summary.md"
+    );
+    let json = std::fs::read_to_string(root.join("target/ripr/reports/pr-evidence-summary.json"))
+        .unwrap_or_default();
+    assert!(
+        json.contains("not_available"),
+        "missing artifacts must surface not_available, not zero:\n{json}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn pr_summary_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["pr-summary", "--bogus"]);
+    assert!(!output.status.success(), "unknown arg must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown pr-summary argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+#[test]
+fn pr_summary_does_not_invoke_cargo() -> Result<(), String> {
+    let root = unique_temp_workspace("pr-summary-no-compile");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-summary-no-compile\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let start = std::time::Instant::now();
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-summary")
+        .output()
+        .map_err(|err| err.to_string())?;
+    let elapsed = start.elapsed();
+    assert!(output.status.success(), "pr-summary must succeed");
+    assert!(
+        elapsed.as_secs() < 10,
+        "pr-summary must complete in <10s (no compile); took {elapsed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}

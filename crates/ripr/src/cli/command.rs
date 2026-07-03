@@ -29,6 +29,7 @@ pub(super) enum CliCommand {
     Context(Vec<String>),
     Doctor(Vec<String>),
     Lsp(Vec<String>),
+    PrSummary(Vec<String>),
 }
 
 impl CliCommand {
@@ -63,6 +64,7 @@ impl CliCommand {
             Some("context") => Ok(Self::Context(command_args)),
             Some("doctor") => Ok(Self::Doctor(command_args)),
             Some("lsp") => Ok(Self::Lsp(command_args)),
+            Some("pr-summary") => Ok(Self::PrSummary(command_args)),
             Some(command) => Err(unknown_command_error(command)),
         }
     }
@@ -190,6 +192,7 @@ mod tests {
             (Some("context"), CliCommand::Context(Vec::new())),
             (Some("doctor"), CliCommand::Doctor(Vec::new())),
             (Some("lsp"), CliCommand::Lsp(Vec::new())),
+            (Some("pr-summary"), CliCommand::PrSummary(Vec::new())),
         ] {
             assert_eq!(CliCommand::from_parts(arg, Vec::new()), Ok(expected));
         }

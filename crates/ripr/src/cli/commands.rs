@@ -4685,6 +4685,14 @@ pub(super) fn lsp(args: &[String]) -> Result<(), String> {
     crate::lsp::serve()
 }
 
+/// `ripr pr-summary` — binary-first PR readiness summary (Campaign 31 item 8).
+/// Composes existing RIPR artifacts into a PR evidence summary. Does NOT run
+/// analysis or invoke Cargo. The canonical downstream replacement for
+/// `cargo xtask ripr-pr-summary`.
+pub(super) fn pr_summary(args: &[String]) -> Result<(), String> {
+    crate::app::pr_summary::run_pr_summary(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
