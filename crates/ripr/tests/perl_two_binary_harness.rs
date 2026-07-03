@@ -1,27 +1,29 @@
-//! Two-binary proof harness for Perl (Campaign 31 item 3).
+//! Two-binary proof harness for Perl (Campaign 31 item 3; architecture
+//! corrected post perl-lsp-swarm #3294).
 //!
 //! Runs the real producer→consumer loop:
 //!
 //! ```text
-//! perllsp ripr-facts --schema ripr-perl-facts-v1 --root <fixture> ...
+//! perl-ripr-facts --schema ripr-perl-facts-v1 --root <fixture> ...
 //!   | ripr check --perl-facts <out> --json
 //! ```
 //!
 //! This is the harness that turns the Perl consumer from a scaffold into a
-//! *working preview* once a real `perllsp` is available. The producer side
-//! (`perllsp ripr-facts`) is owned by perl-lsp-swarm (Phase B); ripr-swarm does
-//! not build or vendor the binary. So this test is **gated on the producer
-//! being on PATH**: when `perllsp` (or `perl-lsp`) is absent, the test skips
-//! cleanly with a diagnostic naming the perl-lsp-swarm Phase B dependency
-//! (following the `which()` + graceful-degrade precedent in
-//! `cli/commands.rs`). When present, it runs all three outcome cases against
-//! the `fixtures/perl_cpan_alpha/input` CPAN-style project and asserts the
-//! honest outcome for each.
+//! *working preview* once a real Perl facts exporter is available. The producer
+//! (`perl-ripr-facts`, post perl-lsp-swarm #3294) is a thin batch CLI over
+//! parser/workspace/semantic-facts crates — NOT the LSP server. ripr-swarm does
+//! not build or vendor it. So this test is **gated on a Perl facts exporter
+//! being on PATH**: when no exporter (`perl-ripr-facts`, `perllsp`, `perl-lsp`)
+//! is found, the test skips cleanly with a diagnostic (following the `which()`
+//! + graceful-degrade precedent in `cli/commands.rs`). When present, it runs
+//!   all three outcome cases against the `fixtures/perl_cpan_alpha/input`
+//!   CPAN-style project and asserts the honest outcome for each.
 //!
 //! The committed regression packets under
 //! `fixtures/perl_cpan_alpha/expected/regression-packets/` are a SEPARATE,
 //! producer-independent baseline (covered by lib tests). This harness is the
-//! real-output proof; it is the milestone that depends on perl-lsp-swarm.
+//! real-output proof; it is the milestone that depends on the
+//! `perl-ripr-facts` producer reaching maturity.
 
 #![cfg(feature = "lang-perl")]
 
@@ -39,13 +41,15 @@ fn ripr_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_ripr"))
 }
 
-/// Detect whether a perl-lsp producer binary is available on PATH. Tries both
-/// `perllsp` (the spawn path in `app/check.rs`) and `perl-lsp` (the hyphenated
-/// name in `analysis/language/perl/mod.rs` and SPEC-0064 line 103) — the
-/// canonical binary name is a perl-lsp-swarm question this harness surfaces but
-/// does not resolve. Returns the resolved binary name, or None.
+/// Detect whether a Perl facts exporter binary is available on PATH. Tries
+/// `perl-ripr-facts` first (the canonical producer post perl-lsp-swarm #3294),
+/// then `perllsp`/`perl-lsp` (compatibility wrappers). The assertion is
+/// packet-semantic — the harness does not care which binary produced the
+/// packet, only that a valid `ripr-perl-facts-v1` JSON packet was emitted.
 fn producer_on_path() -> Option<&'static str> {
-    if which("perllsp") {
+    if which("perl-ripr-facts") {
+        Some("perl-ripr-facts")
+    } else if which("perllsp") {
         Some("perllsp")
     } else if which("perl-lsp") {
         Some("perl-lsp")
@@ -139,15 +143,15 @@ fn two_binary_proof_three_outcomes_against_real_perllsp() -> Result<(), String> 
     // skip cleanly (not fail) and name the perl-lsp-swarm Phase B dependency.
     // Returning Ok(()) (rather than `#[ignore]`) follows the `which()` +
     // graceful-degrade precedent in cli/commands.rs and keeps the test in the
-    // default run set, so it runs automatically once perllsp is on PATH.
+    // default run set, so it runs automatically once a Perl facts exporter is on PATH.
     let Some(producer) = producer_on_path() else {
         eprintln!(
-            "SKIP perl_two_binary_harness: no `perllsp`/`perl-lsp` on PATH. \
-             The real two-binary proof depends on perl-lsp-swarm Phase B \
-             (parser-backed Test::More/Test2 fact production). The committed \
-             regression packets under \
-             fixtures/perl_cpan_alpha/expected/regression-packets/ remain the \
-             producer-independent consumer baseline (covered by lib tests)."
+            "SKIP perl_two_binary_harness: no Perl facts exporter on PATH \
+             (`perl-ripr-facts`, `perllsp`, `perl-lsp` all absent). The real \
+             two-binary proof depends on the perl-ripr-facts producer reaching \
+             maturity (post perl-lsp-swarm #3294). The committed regression \
+             packets under fixtures/perl_cpan_alpha/expected/regression-packets/ \
+             remain the producer-independent consumer baseline (covered by lib tests)."
         );
         return Ok(());
     };
