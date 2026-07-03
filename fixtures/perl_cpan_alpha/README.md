@@ -9,7 +9,7 @@ the consumer (`ripr check --perl-facts`) must produce.
 
 ```
 input/
-  Makefile.PL                 CPAN-style module marker (so a real perllsp can index the project)
+  Makefile.PL                 CPAN-style module marker (so a real Perl facts exporter can index the project)
   lib/Pricing.pm              package with calculate_discount (>= 100 boundary) + dynamic_method
   t/pricing.t                 Test::More: ok() (weak) + is() (exact) oracles
   diff.patch                  boundary change: >= 100 -> > 100      (outcomes 1 & 2)
@@ -25,25 +25,27 @@ expected/
     dynamic-limited.json
 ```
 
-## The two-binary proof (real perllsp → ripr)
+## The two-binary proof (real Perl facts exporter → ripr)
 
 The real proof is `tests/perl_two_binary_harness.rs`, which runs:
 
 ```text
-perllsp ripr-facts --schema ripr-perl-facts-v1 --root <input> --base ... --head ... --fact-classes ... --diff <variant> --out <tmp>
+perl-ripr-facts --schema ripr-perl-facts-v1 --root <input> --base ... --head ... --fact-classes ... --diff <variant> --out <tmp>
 ripr check --perl-facts <tmp> --json
 ```
 
 and asserts the three outcomes against REAL producer output. This harness is
-**gated on `perllsp`/`perl-lsp` being on PATH** and skips cleanly (with a
-diagnostic) when absent, because the producer is owned by **perl-lsp-swarm
-(Phase B)**; ripr-swarm does not build or vendor it.
+**gated on a Perl facts exporter being on PATH** and skips cleanly (with a
+diagnostic) when absent, because the producer is owned by the
+`perl-ripr-facts` crate in perl-lsp-swarm (post-#3294); ripr-swarm does not
+build or vendor it. The exporter must be a thin batch CLI over
+parser/workspace/semantic-facts crates — NOT the LSP server.
 
 ## The regression packets (producer-INDEPENDENT baseline)
 
 `expected/regression-packets/*.json` are committed, hand-authored
 `ripr-perl-facts-v1` packets — one per outcome — that mirror what a real
-perllsp run would emit. They are **regression fixtures, NOT producer proof**.
+Perl facts exporter run would emit. They are **regression fixtures, NOT producer proof**.
 They carry:
 
 - real top-level `packet_fingerprint` (recomputed over identity-bearing facts);
@@ -63,19 +65,23 @@ consumer pipeline is intact independent of the producer.
 | 2 | Already-observed | `boundary_change.diff` | exact `is()` aligned to changed sink | `Exposed`, no repair gap (H2 sink alignment) |
 | 3 | Limited | `dynamic_dispatch.diff` | n/a (dynamic dispatch) | `partial` packet + named `dynamic_dispatch` limitation, no repair finding |
 
-## Open producer-side questions (for perl-lsp-swarm Phase B)
+## Architecture note (post perl-lsp-swarm #3294)
 
-1. **Binary name.** ripr-swarm's `app/check.rs` spawn path uses `perllsp`
-   (no hyphen); `analysis/language/perl/mod.rs` and SPEC-0064 line 103 use
-   `perl-lsp` (hyphenated). The harness tries both. perl-lsp-swarm should
-   declare the canonical name.
-2. **CLI arg surface.** SPEC-0064 line 103 specifies
-   `perl-lsp ripr-facts --schema --root --base --head --fact-classes --out`
-   (with `--diff`). The live `invoke_perl_lsp_producer` (app/check.rs) uses a
-   non-spec surface (`--ripr-facts`/`--ripr-schema`/`--ripr-root`/`--ripr-out`)
-   and does not pass `--base`/`--head`/`--diff`. Reconciling
-   `invoke_perl_lsp_producer` to the SPEC is item 4 (D14 managed-producer
-   hardening); the harness uses the SPEC-canonical surface.
+The RIPR fact emitter was relocated from the LSP surface into a dedicated
+`perl-ripr-facts` batch exporter. ripr-swarm now treats the producer as a
+"Perl facts exporter" (not the LSP server). `perllsp`/`perl-lsp` may remain
+as compatibility wrappers only if they delegate to the same batch exporter
+without starting an LSP session. The canonical producer is `perl-ripr-facts`;
+the canonical config is:
+
+```toml
+[perl]
+producer = "perl-ripr-facts"
+executable = "perl-ripr-facts"
+```
+
+RIPR never starts an LSP server, speaks JSON-RPC, calls hover/references/
+completion providers, depends on editor state, or parses Perl itself.
 
 ## Must Not
 

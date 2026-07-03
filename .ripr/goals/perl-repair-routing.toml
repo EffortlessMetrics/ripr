@@ -13,7 +13,9 @@ lane = 2
 # Proposal: docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md (proposed)
 # ADR: docs/adr/0018-perl-lsp-fact-substrate.md (proposed)
 # ADR: docs/adr/0019-language-adapters-reuse-shared-packet-contract.md (proposed)
-# Producer repo: perl-lsp-swarm (published crate: perl-lsp-rs-core)
+# Producer repo: perl-ripr-facts (the Perl facts exporter; perllsp/perl-lsp are
+# compatibility wrappers). Phase B blockers track perl-ripr-facts producer
+# maturity.
 #
 # Public tracker: https://github.com/EffortlessMetrics/ripr-swarm/issues/1379
 #
@@ -35,7 +37,8 @@ lane = 2
 # authored on an unmerged planning branch (PR #1412) and landed after the
 # consumer-side work. Items A1..D15 plus C2/H1/H2/contract-freeze/E1 are now
 # `done`; the bespoke-renderer ADR-0019 blocker (D16) and the two-binary producer
-# proof (Phase B) remain genuinely open. The perl.rs monolith referenced in the
+# proof (blocked on perl-ripr-facts producer maturity) remain genuinely open.
+# The perl.rs monolith referenced in the
 # original plan was split (#1417) into perl/mod.rs + perl/tests.rs; all path
 # references below point at the post-split layout.
 
@@ -110,7 +113,7 @@ commands = [
   "cargo xtask check-pr",
 ]
 
-# --- Phase B: build the real producer in perl-lsp --- OPEN ---
+# --- Phase B: build the real producer (perl-ripr-facts producer maturity) --- OPEN ---
 
 [[work_item]]
 id = "perl-B4/ripr-facts-command"

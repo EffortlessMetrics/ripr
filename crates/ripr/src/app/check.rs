@@ -98,9 +98,10 @@ fn run_check(
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
     // Managed producer mode (Campaign 31 Phase D, #1407): when
-    // [perl] producer = "perllsp", invoke the perl-lsp binary to generate
-    // a fact packet, then consume it automatically. NO silent invocation
-    // unless explicitly configured.
+    // [perl] producer = "perllsp", invoke a Perl facts exporter to generate
+    // a fact packet, then consume it automatically. The canonical producer
+    // is perl-ripr-facts; perllsp/perl-lsp are compatibility wrappers. NO
+    // silent invocation unless explicitly configured.
     let perl_config = config.perl();
     if let Some(producer) = perl_config.producer()
         && producer == "perllsp"
@@ -135,13 +136,15 @@ fn run_check(
     Ok(output_builder::check_output_from_analysis(input, analysis))
 }
 
-/// Build the SPEC-0064-canonical argv for `perllsp ripr-facts` (Campaign 31
-/// item 4). This is the single source of truth for the managed-mode arg
-/// surface. It mirrors `PerlLspFactExportRequest::render_command` exactly; a
+/// Build the SPEC-0064-canonical argv for the Perl facts exporter's
+/// `ripr-facts` invocation (Campaign 31 item 4). This is the single source
+/// of truth for the managed-mode arg surface. It mirrors
+/// `PerlLspFactExportRequest::render_command` exactly; a
 /// `#[cfg(feature = "lang-perl")]` test (`perl_managed_mode_argv_matches_spec`)
 /// pins that the two agree so managed mode and the string builder can never
 /// diverge again (the item-3 audit found a `--ripr-*` vs `ripr-facts --schema
-/// ...` divergence; this fixes it permanently).
+/// ...` divergence; this fixes it permanently). The exporter is canonically
+/// `perl-ripr-facts`; `perllsp`/`perl-lsp` are compatibility wrappers.
 ///
 /// Surface (SPEC-0064 line 103):
 /// ```text
@@ -182,19 +185,19 @@ fn perl_facts_export_argv(
 /// regenerated. Bounds staleness across runs.
 const PERL_FACTS_MAX_AGE_SECS: u64 = 86_400;
 
-/// Invoke the `perllsp` binary to generate a fact packet.
+/// Invoke a Perl facts exporter to generate a fact packet.
 ///
 /// Managed producer mode (Campaign 31 Phase D #1407; hardened in item 4).
 /// Invokes the producer with the SPEC-0064-canonical arg surface, enforcing a
 /// real timeout with process kill, writing atomically, using a cache key that
 /// includes content/diff/schema/producer/config (not root only), and validating
 /// cached-packet freshness before reuse. Returns the final packet path on
-/// success.
+/// success. The canonical producer is `perl-ripr-facts`; `perllsp` and
+/// `perl-lsp` are compatibility wrappers.
 ///
-/// Capability handshake: DEFERRED. Requires a defined perllsp probe surface
-/// (`--version`/`--capabilities`) which is a perl-lsp-swarm question; do not
-/// fabricate a capability taxonomy. Flagged here; lands when perllsp exposes
-/// the probe.
+/// Capability handshake: DEFERRED. Requires a defined exporter probe surface
+/// (`--version`/`--capabilities`); do not fabricate a capability taxonomy.
+/// Flagged here; lands when the exporter exposes the probe.
 fn invoke_perl_lsp_producer(
     perl_config: &crate::config::PerlConfig,
     input: &CheckInput,

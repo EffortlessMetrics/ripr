@@ -251,10 +251,12 @@ impl LanguagesConfig {
 
 /// `[perl]` repository configuration (Campaign 31 Phase D, #1407).
 ///
-/// When `producer` is set to `"perllsp"`, ripr invokes the `perl-lsp`
-/// binary's `ripr-facts` exporter to generate a fact packet, then consumes
-/// it through the production `PerlAdapter`. This is the managed producer
-/// mode — the user does not need to run `perllsp ripr-facts` manually.
+/// When `producer` is set to `"perllsp"`, ripr invokes a Perl facts
+/// exporter to generate a fact packet, then consumes it through the
+/// production `PerlAdapter`. The canonical producer binary is
+/// `perl-ripr-facts`; `perllsp` and `perl-lsp` are compatibility wrappers
+/// for that same exporter. This is the managed producer mode — the user
+/// does not need to run the exporter manually.
 ///
 /// When `producer` is `None` (default), the user must supply `--perl-facts
 /// PATH` explicitly. No silent invocation occurs.
@@ -262,8 +264,9 @@ impl LanguagesConfig {
 pub(crate) struct PerlConfig {
     /// When `"perllsp"`, enables managed producer mode.
     pub(super) producer: Option<String>,
-    /// Override path to the `perllsp` executable. When `None`, uses `perllsp`
-    /// from PATH.
+    /// Override path to the Perl facts exporter executable. The canonical
+    /// binary is `perl-ripr-facts`; `perllsp` and `perl-lsp` are
+    /// compatibility wrappers. When `None`, uses `perllsp` from PATH.
     pub(super) executable: Option<PathBuf>,
     /// Timeout in milliseconds for the producer invocation. Default: 30000.
     pub(super) timeout_ms: u64,
