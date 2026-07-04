@@ -10,3 +10,10 @@ head = "HEAD"
 
 [gate]
 required_check = "ub-review/gate"
+
+# Post actionable findings (severity medium+ or confidence medium-high+) to
+# the PR; suppress pure lane-status boilerplate. Without this, the default
+# `suppress` policy posts nothing, so findings are invisible and a human can
+# never act on them. See ub-review #717 / #724.
+[review_body]
+summary_only_body = "post_substantive"
