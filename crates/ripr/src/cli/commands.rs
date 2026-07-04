@@ -4729,6 +4729,15 @@ pub(super) fn annotations(args: &[String]) -> Result<(), String> {
     crate::app::annotations::run_annotations(args)
 }
 
+/// `ripr pr-evidence` — binary-first PR evidence packet (Campaign 31 item 8c).
+/// Writes the PR diff, runs an in-process RIPR check, and composes the result
+/// into a PR evidence packet. The canonical downstream replacement for
+/// `cargo xtask ripr-pr`. Unlike the xtask, it calls `check_workspace`
+/// directly instead of shelling out to `cargo run -p ripr -- check`.
+pub(super) fn pr_evidence(args: &[String]) -> Result<(), String> {
+    crate::app::pr_evidence::run_pr_evidence(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

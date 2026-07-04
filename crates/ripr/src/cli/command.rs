@@ -31,6 +31,7 @@ pub(super) enum CliCommand {
     Lsp(Vec<String>),
     PrSummary(Vec<String>),
     Annotations(Vec<String>),
+    PrEvidence(Vec<String>),
 }
 
 impl CliCommand {
@@ -67,6 +68,7 @@ impl CliCommand {
             Some("lsp") => Ok(Self::Lsp(command_args)),
             Some("pr-summary") => Ok(Self::PrSummary(command_args)),
             Some("annotations") => Ok(Self::Annotations(command_args)),
+            Some("pr-evidence") => Ok(Self::PrEvidence(command_args)),
             Some(command) => Err(unknown_command_error(command)),
         }
     }
@@ -196,6 +198,7 @@ mod tests {
             (Some("lsp"), CliCommand::Lsp(Vec::new())),
             (Some("pr-summary"), CliCommand::PrSummary(Vec::new())),
             (Some("annotations"), CliCommand::Annotations(Vec::new())),
+            (Some("pr-evidence"), CliCommand::PrEvidence(Vec::new())),
         ] {
             assert_eq!(CliCommand::from_parts(arg, Vec::new()), Ok(expected));
         }

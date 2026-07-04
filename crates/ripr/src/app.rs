@@ -6,6 +6,7 @@ pub(crate) mod annotations;
 mod check;
 mod context;
 mod explain;
+pub(crate) mod pr_evidence;
 pub(crate) mod pr_summary;
 pub(crate) mod receipt;
 mod selector;

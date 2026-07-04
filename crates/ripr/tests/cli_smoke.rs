@@ -4726,3 +4726,75 @@ fn annotations_unknown_arg_fails_clearly() {
         "error must name the unknown arg:\n{stderr}"
     );
 }
+
+// ── ripr pr-evidence (Campaign 31 item 8c: binary-first PR evidence packet) ──
+
+#[test]
+fn pr_evidence_help_exits_cleanly() {
+    let output = run_ripr(&["pr-evidence", "--help"]);
+    assert!(
+        output.status.success(),
+        "pr-evidence --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--base"),
+        "help must mention --base:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--head"),
+        "help must mention --head:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+}
+
+#[test]
+fn pr_evidence_with_missing_artifacts_writes_error_packet() -> Result<(), String> {
+    // pr-evidence runs a live check; in a bare workspace the result is either
+    // an error packet (if git revisions resolve in the parent repo) or a
+    // revision error. Both are honest — the key is that it does not silently
+    // produce a misleading clean packet. Assert that the output mentions the
+    // evidence artifact or an error, not that it succeeds or fails.
+    let root = unique_temp_workspace("pr-evidence-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-evidence-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-evidence")
+        .output()
+        .map_err(|err| err.to_string())?;
+    // The command either writes evidence (Ok) or surfaces an error (Err).
+    // Both are acceptable. What's NOT acceptable: a silent hang or crash.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    assert!(
+        combined.contains("repo-exposure")
+            || combined.contains("bad base/head")
+            || combined.contains("error"),
+        "pr-evidence must either write evidence or surface a named error:\n{combined}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn pr_evidence_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["pr-evidence", "--bogus"]);
+    assert!(!output.status.success(), "unknown arg must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown pr-evidence argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}

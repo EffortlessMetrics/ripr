@@ -40,6 +40,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Lsp(args) => commands::lsp(&args),
         CliCommand::PrSummary(args) => commands::pr_summary(&args),
         CliCommand::Annotations(args) => commands::annotations(&args),
+        CliCommand::PrEvidence(args) => commands::pr_evidence(&args),
     }
 }
 
