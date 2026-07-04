@@ -4791,10 +4791,42 @@ fn pr_evidence_with_missing_artifacts_writes_error_packet() -> Result<(), String
 #[test]
 fn pr_evidence_unknown_arg_fails_clearly() {
     let output = run_ripr(&["pr-evidence", "--bogus"]);
-    assert!(!output.status.success(), "unknown arg must fail");
+    assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("unknown pr-evidence argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+// ── ripr impacted-evidence (item 8e: binary-first impacted evidence) ──
+
+#[test]
+fn impacted_evidence_help_exits_cleanly() {
+    let output = run_ripr(&["impacted-evidence", "--help"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--label"),
+        "help must mention --label:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--labels"),
+        "help must mention --labels:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--pr-evidence"),
+        "help must mention --pr-evidence:\n{stdout}"
+    );
+}
+
+#[test]
+fn impacted_evidence_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["impacted-evidence", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown impacted-evidence argument") || stderr.contains("--bogus"),
         "error must name the unknown arg:\n{stderr}"
     );
 }

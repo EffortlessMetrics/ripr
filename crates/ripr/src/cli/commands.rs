@@ -4738,6 +4738,12 @@ pub(super) fn pr_evidence(args: &[String]) -> Result<(), String> {
     crate::app::pr_evidence::run_pr_evidence(args)
 }
 
+/// `ripr impacted-evidence` — binary-first mutation-routing evidence (item 8e).
+/// Reads PR evidence + labels and emits routing decision JSON + Markdown.
+pub(super) fn impacted_evidence(args: &[String]) -> Result<(), String> {
+    crate::app::impacted_evidence::run_impacted_evidence(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

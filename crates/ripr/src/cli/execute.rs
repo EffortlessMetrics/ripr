@@ -41,6 +41,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::PrSummary(args) => commands::pr_summary(&args),
         CliCommand::Annotations(args) => commands::annotations(&args),
         CliCommand::PrEvidence(args) => commands::pr_evidence(&args),
+        CliCommand::ImpactedEvidence(args) => commands::impacted_evidence(&args),
     }
 }
 
