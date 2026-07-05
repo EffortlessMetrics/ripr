@@ -1,3 +1,4 @@
+mod exception_policy;
 mod input;
 mod model;
 mod presentation;
@@ -103,6 +104,30 @@ pub(crate) fn build_gate_decision_report(
     let recommendation_calibration = read_recommendation_calibration(input, &mut warnings);
     let mutation_calibration = read_mutation_calibration(input, &mut warnings);
     let baseline = read_baseline(input, &mut warnings, &mut config_errors);
+    // #1442: an explicitly requested exception ledger fails closed — a
+    // missing or malformed ledger is a config_error, never a silently
+    // ignored input. Warn-severity violations (past-due review under
+    // `due_review = "warn"`) surface through the shared warnings list.
+    let exception_policy = match input.exception_policy.as_ref() {
+        Some(path) => {
+            let resolved = resolve_root_path(&input.root, path);
+            let display = display_path(path);
+            match exception_policy::load_exception_ledger(&resolved, &display) {
+                Ok(ledger) => {
+                    let today = crate::output::suppressions::current_iso_date();
+                    let report =
+                        exception_policy::evaluate_exception_ledger(&ledger, &today, &display);
+                    warnings.extend(report.warning_details());
+                    Some(report)
+                }
+                Err(error) => {
+                    config_errors.push(error);
+                    None
+                }
+            }
+        }
+        None => None,
+    };
     let candidates = if config_errors.is_empty() {
         if let Some(records) = gap_ledger.as_ref() {
             candidates_from_gap_ledger(records)
@@ -134,7 +159,18 @@ pub(crate) fn build_gate_decision_report(
     decisions.sort_by(|left, right| left.id.cmp(&right.id));
     let summary = summarize_decisions(&decisions);
     let new_unsuppressed = compute_new_unsuppressed(&decisions, &config_errors, input.mode);
-    let status = top_level_status(&summary, &warnings, &config_errors, input.mode).to_string();
+    let exception_blocking = exception_policy
+        .as_ref()
+        .map(|report| report.blocking_count())
+        .unwrap_or(0);
+    let status = top_level_status(
+        &summary,
+        &warnings,
+        &config_errors,
+        input.mode,
+        exception_blocking,
+    )
+    .to_string();
     Ok(GateDecisionReport {
         status,
         mode: input.mode,
@@ -157,6 +193,10 @@ pub(crate) fn build_gate_decision_report(
                 .as_ref()
                 .map(|path| display_path(path)),
             baseline: input.baseline.as_ref().map(|path| display_path(path)),
+            exception_policy: input
+                .exception_policy
+                .as_ref()
+                .map(|path| display_path(path)),
         },
         policy,
         summary,
@@ -164,6 +204,7 @@ pub(crate) fn build_gate_decision_report(
         decisions,
         warnings,
         config_errors,
+        exception_policy,
     })
 }
 
@@ -794,10 +835,11 @@ fn top_level_status(
     warnings: &[String],
     config_errors: &[String],
     mode: GateMode,
+    exception_blocking: usize,
 ) -> &'static str {
     if !config_errors.is_empty() {
         "config_error"
-    } else if summary.blocking > 0 {
+    } else if summary.blocking > 0 || exception_blocking > 0 {
         "blocked"
     } else if summary.acknowledged > 0 {
         "acknowledged"
@@ -1389,6 +1431,187 @@ mod tests {
         Ok(())
     }
 
+    // ── `--exception-policy` ledger integration (#1442) ──
+
+    fn exception_ledger_toml(review_after: &str, expires: &str, due_review: &str) -> String {
+        format!(
+            "schema_version = 1\npolicy = \"quality-gate-exceptions\"\nstatus = \"active\"\ndue_review = \"{due_review}\"\n\n[[exception]]\nid = \"total-burndown\"\nkind = \"temporary_burndown\"\nscope = \"ripr_plus_total\"\nowner = \"proof-lane\"\nreason = \"Pre-existing gaps predate the gate.\"\nfinal_target = \"unresolved total = 0\"\nevidence = \"target/receipts/quality/ripr-plus.json\"\nremoval_criteria = \"final mode requires zero\"\ncreated = \"2026-01-01\"\nreview_after = \"{review_after}\"\nexpires = \"{expires}\"\n"
+        )
+    }
+
+    fn exception_input(dir: &Path, ledger: &str) -> Result<GateEvaluateInput, String> {
+        let guidance = write_temp_json(dir, "comments.json", PR_GUIDANCE_JSON)?;
+        let policy = dir.join("quality-gate-exceptions.toml");
+        fs::write(&policy, ledger).map_err(|err| format!("write ledger failed: {err}"))?;
+        Ok(GateEvaluateInput {
+            root: PathBuf::from("."),
+            repo_exposure: None,
+            pr_guidance: Some(guidance),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: Some(policy),
+        })
+    }
+
+    #[test]
+    fn gate_exception_policy_active_ledger_reports_section_without_blocking() -> Result<(), String>
+    {
+        let dir = temp_dir("gate-exception-active")?;
+        // Far-future dates keep this test independent of the wall clock.
+        let input = exception_input(
+            &dir,
+            &exception_ledger_toml("9999-01-01", "9999-12-31", "fail"),
+        )?;
+
+        let report = build_gate_decision_report(&input)?;
+        let json = render_gate_decision_json(&report)?;
+        let markdown = render_gate_decision_markdown(&report);
+
+        assert_ne!(report.status, "blocked");
+        assert_ne!(report.status, "config_error");
+        let value: Value =
+            serde_json::from_str(&json).map_err(|err| format!("gate JSON should parse: {err}"))?;
+        assert_eq!(value["exception_policy"]["active_count"], 1);
+        assert_eq!(
+            value["exception_policy"]["violations"]
+                .as_array()
+                .map(Vec::len),
+            Some(0)
+        );
+        assert!(value["inputs"]["exception_policy"].as_str().is_some());
+        assert!(markdown.contains("## Exception Policy"));
+        assert!(markdown.contains("total-burndown"));
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_exception_policy_expired_entry_blocks() -> Result<(), String> {
+        let dir = temp_dir("gate-exception-expired")?;
+        let input = exception_input(
+            &dir,
+            &exception_ledger_toml("2000-01-01", "2000-06-01", "fail"),
+        )?;
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "blocked");
+        assert!(gate_decision_should_fail(&report));
+        let json = render_gate_decision_json(&report)?;
+        let value: Value =
+            serde_json::from_str(&json).map_err(|err| format!("gate JSON should parse: {err}"))?;
+        assert!(
+            value["exception_policy"]["violations"]
+                .as_array()
+                .is_some_and(|violations| violations.iter().any(|violation| {
+                    violation["kind"] == "quality_exception_expired"
+                        && violation["blocking"] == true
+                })),
+            "violations: {}",
+            value["exception_policy"]["violations"]
+        );
+        let markdown = render_gate_decision_markdown(&report);
+        assert!(
+            markdown.contains("quality\\_exception\\_expired")
+                || markdown.contains("quality_exception_expired"),
+            "markdown missing expired violation: {markdown}"
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_exception_policy_review_due_warn_surfaces_warning_not_block() -> Result<(), String> {
+        let dir = temp_dir("gate-exception-review-warn")?;
+        // review_after in the past, expires far in the future, due_review=warn.
+        let input = exception_input(
+            &dir,
+            &exception_ledger_toml("2000-01-01", "9999-12-31", "warn"),
+        )?;
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_ne!(report.status, "blocked");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("quality_exception_review_due")),
+            "warnings: {:?}",
+            report.warnings
+        );
+        // Under due_review=fail the same ledger blocks.
+        let input = exception_input(
+            &dir,
+            &exception_ledger_toml("2000-01-01", "9999-12-31", "fail"),
+        )?;
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(report.status, "blocked");
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_exception_policy_missing_or_malformed_ledger_is_config_error() -> Result<(), String> {
+        let dir = temp_dir("gate-exception-config-error")?;
+        let guidance = write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?;
+        let mut input = GateEvaluateInput {
+            root: PathBuf::from("."),
+            repo_exposure: None,
+            pr_guidance: Some(guidance),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::VisibleOnly,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: Some(dir.join("missing-ledger.toml")),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(report.status, "config_error");
+        assert!(gate_decision_should_fail(&report));
+        assert!(
+            report
+                .config_errors
+                .iter()
+                .any(|error| error.contains("failed to read exception policy")),
+            "config_errors: {:?}",
+            report.config_errors
+        );
+
+        let malformed = dir.join("malformed-ledger.toml");
+        fs::write(&malformed, "schema_version = 2\npolicy = \"other\"\n")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        input.exception_policy = Some(malformed);
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(report.status, "config_error");
+
+        // Without the flag, the report and JSON carry no exception fields —
+        // existing gate-decision consumers and goldens see identical output.
+        input.exception_policy = None;
+        let report = build_gate_decision_report(&input)?;
+        assert!(report.exception_policy.is_none());
+        let json = render_gate_decision_json(&report)?;
+        assert!(!json.contains("exception_policy"));
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
     #[test]
     fn gate_config_errors_render_markdown_and_fail_status() -> Result<(), String> {
         let input = GateEvaluateInput {
@@ -1406,6 +1629,7 @@ mod tests {
             baseline: None,
             mode: GateMode::BaselineCheck,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -1533,6 +1757,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -1593,6 +1818,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -1816,6 +2042,7 @@ mod tests {
             baseline: None,
             mode: GateMode::VisibleOnly,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -1857,6 +2084,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -1902,6 +2130,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2307,6 +2536,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2389,6 +2619,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2435,6 +2666,7 @@ mod tests {
             ),
             mode: GateMode::BaselineCheck,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2551,6 +2783,7 @@ mod tests {
             baseline: None,
             mode: GateMode::VisibleOnly,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2615,6 +2848,7 @@ mod tests {
             baseline: None,
             mode: GateMode::VisibleOnly,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2687,6 +2921,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2793,6 +3028,7 @@ mod tests {
             baseline: None,
             mode: GateMode::Acknowledgeable,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         };
 
         let report = build_gate_decision_report(&input)?;
@@ -2920,6 +3156,7 @@ mod tests {
             baseline: None,
             mode,
             acknowledgement_labels: Vec::new(),
+            exception_policy: None,
         }
     }
 
@@ -2955,6 +3192,7 @@ mod tests {
                 baseline: self.baseline.map(PathBuf::from),
                 mode: self.mode,
                 acknowledgement_labels: Vec::new(),
+                exception_policy: None,
             }
         }
     }

@@ -51,6 +51,10 @@ pub(crate) struct GateEvaluateInput {
     pub(crate) baseline: Option<PathBuf>,
     pub(crate) mode: GateMode,
     pub(crate) acknowledgement_labels: Vec<String>,
+    /// Optional `--exception-policy` TOML ledger (#1442). Relative paths
+    /// resolve against `root`. Fail-closed: a missing or malformed ledger is
+    /// a `config_error`.
+    pub(crate) exception_policy: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,6 +69,10 @@ pub(crate) struct GateDecisionReport {
     pub(super) decisions: Vec<GateDecision>,
     pub(super) warnings: Vec<String>,
     pub(super) config_errors: Vec<String>,
+    /// Exception-ledger evaluation (#1442). `Some` only when the caller
+    /// passed `--exception-policy`; absent otherwise so existing
+    /// gate-decision consumers and goldens see identical output.
+    pub(super) exception_policy: Option<super::exception_policy::ExceptionPolicyReport>,
 }
 
 /// Canonical downstream-thresholding receipt field.
@@ -98,6 +106,9 @@ pub(super) struct GateDecisionInputs {
     pub(super) recommendation_calibration: Option<String>,
     pub(super) mutation_calibration: Option<String>,
     pub(super) baseline: Option<String>,
+    /// Present only when `--exception-policy` was supplied (#1442), keeping
+    /// existing gate-decision JSON byte-identical without the flag.
+    pub(super) exception_policy: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

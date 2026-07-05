@@ -422,6 +422,131 @@ fn check_suppression_policy_rejects_unsupported_formats() -> Result<(), String> 
     Ok(())
 }
 
+// ── `gate evaluate --exception-policy` (#1442) ──
+
+const SMOKE_PR_GUIDANCE_JSON: &str = r#"{
+  "schema_version": "0.1",
+  "summary": {"unchanged_tests": true},
+  "comments": [],
+  "summary_only": [],
+  "suppressed": []
+}"#;
+
+fn write_exception_ledger(
+    dir: &std::path::Path,
+    review_after: &str,
+    expires: &str,
+) -> Result<PathBuf, String> {
+    let path = dir.join("quality-gate-exceptions.toml");
+    let ledger = format!(
+        "schema_version = 1\npolicy = \"quality-gate-exceptions\"\nstatus = \"active\"\ndue_review = \"fail\"\n\n[[exception]]\nid = \"total-burndown\"\nkind = \"temporary_burndown\"\nscope = \"ripr_plus_total\"\nowner = \"proof-lane\"\nreason = \"Pre-existing gaps predate the gate.\"\nfinal_target = \"unresolved total = 0\"\nevidence = \"target/receipts/quality/ripr-plus.json\"\nremoval_criteria = \"final mode requires zero\"\ncreated = \"2026-01-01\"\nreview_after = \"{review_after}\"\nexpires = \"{expires}\"\n"
+    );
+    std::fs::write(&path, ledger).map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(path)
+}
+
+#[test]
+fn gate_evaluate_exception_policy_active_ledger_reports_and_passes() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-active");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let ledger = write_exception_ledger(&dir, "9999-01-01", "9999-12-31")?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &ledger.display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["exception_policy"]["active_count"], 1);
+    assert_eq!(
+        value["exception_policy"]["violations"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    assert_ne!(value["status"], "blocked");
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_exception_policy_expired_ledger_blocks_with_nonzero_exit() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-expired");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let ledger = write_exception_ledger(&dir, "2000-01-01", "2000-06-01")?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &ledger.display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_failure(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["status"], "blocked");
+    assert!(
+        value["exception_policy"]["violations"]
+            .as_array()
+            .is_some_and(|violations| violations
+                .iter()
+                .any(|violation| violation["kind"] == "quality_exception_expired")),
+        "decision: {decision}"
+    );
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_exception_policy_missing_ledger_is_config_error() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-missing");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &dir.join("does-not-exist.toml").display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_failure(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    assert!(
+        decision.contains("failed to read exception policy"),
+        "decision: {decision}"
+    );
+    Ok(())
+}
+
 #[test]
 fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
     let root = workspace_root().display().to_string();

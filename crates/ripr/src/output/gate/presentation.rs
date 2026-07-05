@@ -1,3 +1,4 @@
+use super::exception_policy::ExceptionPolicyReport;
 use super::model::{
     CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePolicy,
     GateSummary, NewUnsuppressed,
@@ -7,7 +8,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<String, String> {
-    serde_json::to_string_pretty(&json!({
+    let mut document = json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "status": report.status,
@@ -21,8 +22,44 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
         "warnings": report.warnings,
         "config_errors": report.config_errors,
         "limits_note": LIMITS_NOTE,
-    }))
-    .map_err(|err| format!("failed to render gate decision JSON: {err}"))
+    });
+    // Additive: present only when `--exception-policy` was supplied (#1442),
+    // so existing gate-decision consumers and goldens see identical output.
+    if let Some(exception_policy) = &report.exception_policy
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "exception_policy".to_string(),
+            exception_policy_json(exception_policy),
+        );
+    }
+    serde_json::to_string_pretty(&document)
+        .map_err(|err| format!("failed to render gate decision JSON: {err}"))
+}
+
+fn exception_policy_json(report: &ExceptionPolicyReport) -> Value {
+    json!({
+        "path": report.path,
+        "ledger_status": report.ledger_status,
+        "ledger_owner": report.ledger_owner,
+        "due_review": report.due_review.as_str(),
+        "active_count": report.active.len(),
+        "active": report.active.iter().map(|entry| json!({
+            "id": entry.id,
+            "kind": entry.kind,
+            "scope": entry.scope,
+            "owner": entry.owner,
+            "reason": entry.reason,
+            "review_after": entry.review_after,
+            "expires": entry.expires,
+        })).collect::<Vec<_>>(),
+        "violations": report.violations.iter().map(|violation| json!({
+            "kind": violation.kind,
+            "exception_id": violation.exception_id,
+            "detail": violation.detail,
+            "blocking": violation.blocking,
+        })).collect::<Vec<_>>(),
+    })
 }
 
 pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> String {
@@ -46,6 +83,41 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         "not_applicable",
     );
 
+    if let Some(exception_policy) = &report.exception_policy {
+        out.push_str("## Exception Policy\n\n");
+        out.push_str(&format!(
+            "Ledger: {} (status: {}, due_review: {})\n",
+            md_escape(&exception_policy.path),
+            md_escape(&exception_policy.ledger_status),
+            exception_policy.due_review.as_str()
+        ));
+        out.push_str(&format!(
+            "Active exceptions: {}\n\n",
+            exception_policy.active.len()
+        ));
+        for entry in &exception_policy.active {
+            out.push_str(&format!(
+                "- active `{}` ({}) review_after {} expires {}\n",
+                md_escape(&entry.id),
+                md_escape(&entry.kind),
+                md_escape(&entry.review_after),
+                md_escape(&entry.expires)
+            ));
+        }
+        for violation in &exception_policy.violations {
+            let severity = if violation.blocking {
+                "BLOCKING"
+            } else {
+                "warning"
+            };
+            out.push_str(&format!(
+                "- {severity} {}: {}\n",
+                md_escape(&violation.kind),
+                md_escape(&violation.detail)
+            ));
+        }
+        out.push('\n');
+    }
     if !report.config_errors.is_empty() {
         out.push_str("## Config Errors\n\n");
         for error in &report.config_errors {
@@ -97,6 +169,14 @@ fn inputs_json(inputs: &GateDecisionInputs) -> Value {
         && let Some(object) = value.as_object_mut()
     {
         object.insert("gap_ledger".to_string(), Value::String(gap_ledger.clone()));
+    }
+    if let Some(exception_policy) = &inputs.exception_policy
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "exception_policy".to_string(),
+            Value::String(exception_policy.clone()),
+        );
     }
     value
 }

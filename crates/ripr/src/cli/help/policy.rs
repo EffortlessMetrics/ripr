@@ -53,6 +53,14 @@ Options:
   --recommendation-calibration PATH   Optional recommendation calibration JSON input.
   --mutation-calibration PATH         Optional imported mutation calibration JSON input.
   --baseline PATH                     Explicit baseline for baseline-check or calibrated-gate.
+  --exception-policy PATH             Optional quality-gate-exceptions TOML ledger. Enforces
+                                      per-exception expiry (expired entries block), review-after
+                                      deadlines (block or warn per the ledger's due_review),
+                                      required_active entries (missing ones block), and
+                                      status = "final" ledgers (any active exception blocks).
+                                      Active exceptions and violations are reported in the
+                                      gate-decision JSON and Markdown. A missing or malformed
+                                      ledger is a config_error (fail-closed).
   --mode MODE                         visible-only, acknowledgeable, baseline-check, or calibrated-gate. Defaults to visible-only.
   --acknowledgement-label LABEL       Repeatable acknowledgement label. Defaults to ripr-waive.
   --out PATH                          JSON output path. Defaults to target/ripr/reports/gate-decision.json.

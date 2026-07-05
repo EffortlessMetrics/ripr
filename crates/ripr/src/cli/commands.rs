@@ -1836,6 +1836,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
     let mut recommendation_calibration = None;
     let mut mutation_calibration = None;
     let mut baseline = None;
+    let mut exception_policy = None;
     let mut mode = output::gate::GateMode::VisibleOnly;
     let mut acknowledgement_labels = Vec::new();
     let mut out = PathBuf::from(output::gate::DEFAULT_GATE_OUT);
@@ -1902,6 +1903,10 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
                 i += 1;
                 baseline = Some(non_empty_path_arg(args, i, "--baseline", "gate")?);
             }
+            "--exception-policy" => {
+                i += 1;
+                exception_policy = Some(non_empty_path_arg(args, i, "--exception-policy", "gate")?);
+            }
             "--mode" => {
                 i += 1;
                 mode = output::gate::GateMode::parse(expect_value(args, i, "--mode")?)?;
@@ -1945,6 +1950,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
             baseline,
             mode,
             acknowledgement_labels,
+            exception_policy,
         },
         out,
         out_md,
@@ -5735,6 +5741,7 @@ mod tests {
                     baseline: Some(PathBuf::from("target/ripr/reports/gate-baseline.json")),
                     mode: output::gate::GateMode::CalibratedGate,
                     acknowledgement_labels: vec!["custom-waive".to_string()],
+                    exception_policy: None,
                 },
                 out: PathBuf::from("target/ripr/reports/gate-decision.json"),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
@@ -5782,6 +5789,7 @@ mod tests {
                     baseline: None,
                     mode: output::gate::GateMode::VisibleOnly,
                     acknowledgement_labels: Vec::new(),
+                    exception_policy: None,
                 },
                 out: PathBuf::from(output::gate::DEFAULT_GATE_OUT),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),

@@ -7239,6 +7239,70 @@ regardless of its own blocking/advisory label.
 `basis=null` must NEVER be read as "clean/pass" — the `reason` field is
 the mandatory disclosure.
 
+### `exception_policy` ledger section (top-level additive, #1442)
+
+Emitted only when `ripr gate evaluate` is invoked with
+`--exception-policy PATH`. Absent otherwise, so existing gate-decision
+consumers and goldens see byte-identical output. Does not bump
+`schema_version`. `inputs.exception_policy` carries the supplied path when
+the flag is present.
+
+The ledger is a `quality-gate-exceptions` TOML file: a dated, auditable list
+of named temporary burndown exceptions. Header fields: `schema_version = 1`,
+`policy = "quality-gate-exceptions"`, optional `owner`, `status`
+(default `"active"`), `updated`, and `due_review = "warn" | "fail"`
+(default `"fail"`, fail-closed). An optional `[requirements] required_active`
+list names exception ids that MUST be active. Each `[[exception]]` requires
+`id`, `kind`, `scope`, `owner`, `reason`, `final_target`, `evidence`,
+`removal_criteria`, and `YYYY-MM-DD` `created`, `review_after`, and `expires`
+dates; `issue` is optional metadata. Unknown keys, blank required fields,
+malformed dates, and duplicate ids are load errors.
+
+Enforcement, evaluated against today's UTC date; ripr owns these semantics
+while the consumer owns only the ledger content:
+
+- `expires < today` → `quality_exception_expired` (blocking).
+- otherwise `review_after <= today` → `quality_exception_review_due`
+  (blocking under `due_review = "fail"`; a gate warning under `"warn"`).
+- a `required_active` id with no active exception →
+  `quality_exception_required_missing` (blocking). An expired required
+  exception raises both violations; both stay visible.
+- ledger `status = "final"` → every still-active exception is
+  `quality_exception_final_active` (blocking): final enforcement means zero
+  active exceptions remain.
+
+Any blocking violation makes the top-level gate `status` `"blocked"` (non-zero
+exit). A missing or malformed ledger is a `config_error`, never a silently
+ignored input — the gate must not report `pass` while believing a policy was
+applied.
+
+```json
+"exception_policy": {
+  "path": "policy/quality-gate-exceptions.toml",
+  "ledger_status": "active",
+  "ledger_owner": "EffortlessMetrics",
+  "due_review": "fail",
+  "active_count": 1,
+  "active": [
+    {"id": "ripr-total-burndown", "kind": "temporary_burndown",
+     "scope": "ripr_plus_total", "owner": "proof-lane",
+     "reason": "Existing repo-wide gaps predate the transition gate.",
+     "review_after": "2026-06-28", "expires": "2026-09-30"}
+  ],
+  "violations": [
+    {"kind": "quality_exception_review_due",
+     "exception_id": "ripr-total-burndown",
+     "detail": "exception `ripr-total-burndown` passed its review_after date 2026-06-28 (today 2026-07-05); re-review it and move review_after forward",
+     "blocking": true}
+  ]
+}
+```
+
+The Markdown report renders a matching `## Exception Policy` section with the
+ledger path, status, active entries, and violations (BLOCKING vs warning).
+These are gate policy states, not static exposure claims: violation kinds are
+`quality_exception_*` terms and never rewrite finding classifications.
+
 Markdown should fit in a job summary. It should name the top-level decision,
 mode, counts, blocking or acknowledged seams, repair action, and limits. It
 must not hide acknowledged decisions. If the evaluator returns a blocking exit
