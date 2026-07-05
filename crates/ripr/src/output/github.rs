@@ -18,7 +18,23 @@ pub fn render(output: &CheckOutput) -> String {
 
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
+    // Findings suppressed by an explicit `--suppression-policy` (#1441) are
+    // not annotated: filtering PR-annotation noise on accepted surfaces is
+    // the purpose of the policy. The JSON surface keeps them visible.
+    let suppressed_ids: std::collections::BTreeSet<&str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| entry.finding_id.as_str())
+        })
+        .collect();
     for finding in &output.findings {
+        if suppressed_ids.contains(finding.id.as_str()) {
+            continue;
+        }
         let Some(annotation_level) = config
             .severity()
             .for_exposure(&finding.class)
@@ -250,6 +266,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -324,6 +341,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -388,6 +406,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -554,6 +573,28 @@ mod tests {
         assert!(!rendered.contains("Python repair card"));
     }
 
+    #[test]
+    fn render_skips_policy_suppressed_findings() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = output_with_unknown_finding();
+        let finding_id = output.findings[0].id.clone();
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: vec![SuppressedCheckFinding {
+                finding_id,
+                selector: "src/**".to_string(),
+            }],
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.is_empty(),
+            "policy-suppressed findings must not be annotated: {rendered}"
+        );
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
@@ -610,6 +651,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         }
     }
 
@@ -887,6 +929,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);

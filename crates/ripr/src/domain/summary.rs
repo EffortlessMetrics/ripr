@@ -26,6 +26,23 @@ impl Summary {
             ExposureClass::StaticUnknown => self.static_unknown += 1,
         }
     }
+
+    /// Removes one finding of `class` from its per-class bucket. Used when a
+    /// `--suppression-policy` suppresses a finding (#1441): the per-class
+    /// buckets count unsuppressed findings only, while `findings` stays the
+    /// total rendered count. Saturating so a policy bug can never underflow.
+    pub fn decrement_exposure_class(&mut self, class: &ExposureClass) {
+        let bucket = match class {
+            ExposureClass::Exposed => &mut self.exposed,
+            ExposureClass::WeaklyExposed => &mut self.weakly_exposed,
+            ExposureClass::ReachableUnrevealed => &mut self.reachable_unrevealed,
+            ExposureClass::NoStaticPath => &mut self.no_static_path,
+            ExposureClass::InfectionUnknown => &mut self.infection_unknown,
+            ExposureClass::PropagationUnknown => &mut self.propagation_unknown,
+            ExposureClass::StaticUnknown => &mut self.static_unknown,
+        };
+        *bucket = bucket.saturating_sub(1);
+    }
 }
 
 #[cfg(test)]
@@ -74,6 +91,19 @@ mod tests {
         assert_eq!(summary.infection_unknown, 1);
         assert_eq!(summary.propagation_unknown, 1);
         assert_eq!(summary.static_unknown, 1);
+    }
+
+    #[test]
+    fn decrement_exposure_class_reverses_increment_and_saturates_at_zero() {
+        let mut summary = Summary::default();
+
+        summary.increment_exposure_class(&ExposureClass::WeaklyExposed);
+        summary.decrement_exposure_class(&ExposureClass::WeaklyExposed);
+        assert_eq!(summary.weakly_exposed, 0);
+
+        // Saturating: a policy bug must never underflow a bucket.
+        summary.decrement_exposure_class(&ExposureClass::WeaklyExposed);
+        assert_eq!(summary.weakly_exposed, 0);
     }
 
     #[test]

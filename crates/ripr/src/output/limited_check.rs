@@ -78,6 +78,7 @@ mod tests {
             format: OutputFormat::Json,
             include_unchanged_tests: true,
             perl_facts_path: None,
+            suppression_policy: None,
         }
     }
 

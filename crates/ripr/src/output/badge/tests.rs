@@ -96,6 +96,7 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        suppression: None,
     }
 }
 
@@ -1545,6 +1546,7 @@ fn check_output_with_preview_advisory(
         language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        suppression: None,
     }
 }
 

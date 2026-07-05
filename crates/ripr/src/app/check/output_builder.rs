@@ -18,5 +18,6 @@ pub(super) fn check_output_from_analysis(
         language_runs: analysis.language_runs,
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        suppression: None,
     }
 }

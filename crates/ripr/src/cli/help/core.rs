@@ -107,6 +107,17 @@ Options:
                            instead of seam-native/test-efficiency counts.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
+  --suppression-policy PATH
+                           Apply a suppressions TOML (same schema as
+                           .ripr/suppressions.toml) to the findings-based
+                           formats (human, json, github). exposure_gap
+                           entries select findings by finding_id or by a
+                           path glob (with optional static_class narrowing).
+                           Suppressed findings stay visible in JSON with
+                           suppressed: true; per-class summary counts cover
+                           unsuppressed findings only. Relative PATH
+                           resolves against --root; a missing or malformed
+                           policy fails the run.
 
 Environment variables:
   RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
@@ -126,6 +137,7 @@ Examples:
   ripr check --base HEAD --worktree
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
+  ripr check --base origin/main --json --suppression-policy policy/ripr-suppressions.toml
 "#;
 pub(super) const DIFF_HELP: &str = r#"Analyze the changed surface first and report full-repo context as an explicit bounded state.
 

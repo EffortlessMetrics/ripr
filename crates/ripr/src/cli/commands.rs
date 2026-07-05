@@ -3394,6 +3394,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
             }
+            "--suppression-policy" => {
+                i += 1;
+                input.suppression_policy = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--suppression-policy",
+                )?));
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -3415,6 +3423,23 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     }
     if worktree_explicitly_provided && input.diff_file.is_some() {
         return Err("check --worktree cannot be combined with --diff".to_string());
+    }
+    // #1441: --suppression-policy applies to the findings-based check
+    // surfaces only. SARIF keeps its existing `.ripr/suppressions.toml`
+    // finding_id channel, and badge/repo formats have their own suppression
+    // projections — silently ignoring the flag there would misreport policy
+    // application, so fail closed with a named limitation instead.
+    if input.suppression_policy.is_some()
+        && !matches!(
+            input.format,
+            OutputFormat::Human | OutputFormat::Json | OutputFormat::Github
+        )
+    {
+        return Err(
+            "--suppression-policy applies to the findings-based check formats (human, json, github); \
+             it is not yet supported for SARIF, badge, or repo formats"
+                .to_string(),
+        );
     }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
@@ -3646,6 +3671,7 @@ fn run_diff_check_from_file(
         format: OutputFormat::Json,
         include_unchanged_tests: options.include_unchanged_tests,
         perl_facts_path: None,
+        suppression_policy: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)

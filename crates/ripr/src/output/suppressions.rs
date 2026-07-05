@@ -81,6 +81,20 @@ pub struct SuppressionEntry {
 
 pub const SUPPRESSIONS_PATH: &str = ".ripr/suppressions.toml";
 
+/// The seven conservative static exposure labels, mirrored from
+/// `domain::ExposureClass::as_str`. A parity test
+/// (`exposure_class_labels_match_domain_contract`) pins the mirror so the
+/// two lists cannot drift.
+const EXPOSURE_CLASS_LABELS: [&str; 7] = [
+    "exposed",
+    "weakly_exposed",
+    "reachable_unrevealed",
+    "no_static_path",
+    "infection_unknown",
+    "propagation_unknown",
+    "static_unknown",
+];
+
 /// Pure parser. Returns the parsed entries plus a list of structural
 /// violations. Mirrors the validation style of
 /// `parse_test_intent_manifest` and `parse_static_language_allowlist` in
@@ -351,7 +365,9 @@ fn finalize_suppression(
         }
     };
 
-    // path validation (when present): repo-relative, no backslash, no `*`.
+    // path validation (when present): repo-relative, no backslash. Glob
+    // metacharacters (`*`, `**`, `?`) are allowed: `exposure_gap` entries may
+    // select findings by path glob (#1441).
     let path = match pending.path {
         Some((value, line)) => {
             if value.trim().is_empty() {
@@ -382,19 +398,33 @@ fn finalize_suppression(
 
     let finding_id = non_blank_selector("finding_id", pending.finding_id, violations);
     let test = non_blank_selector("test", pending.test, violations);
+    let static_class = pending.static_class;
 
     if let Some(kind) = kind {
         match kind {
             SuppressionKind::ExposureGap => {
-                if finding_id.is_none() {
+                if finding_id.is_none() && path.is_none() {
                     violations.push(format!(
-                        "{SUPPRESSIONS_PATH}:{block_line} `kind = \"exposure_gap\"` requires `finding_id`"
+                        "{SUPPRESSIONS_PATH}:{block_line} `kind = \"exposure_gap\"` requires `finding_id` or a `path` glob"
                     ));
                     return;
                 }
                 if test.is_some() {
                     violations.push(format!(
                         "{SUPPRESSIONS_PATH}:{block_line} `kind = \"exposure_gap\"` does not accept `test`"
+                    ));
+                    return;
+                }
+                // Path-glob selectors (#1441) may narrow by `static_class`;
+                // the narrowing value must be a real exposure class so a typo
+                // cannot silently suppress nothing.
+                if finding_id.is_none()
+                    && let Some((value, line)) = &static_class
+                    && !EXPOSURE_CLASS_LABELS.contains(&value.as_str())
+                {
+                    violations.push(format!(
+                        "{SUPPRESSIONS_PATH}:{line} `static_class` `{value}` is not a known exposure class; expected one of: {}",
+                        EXPOSURE_CLASS_LABELS.join(", ")
                     ));
                     return;
                 }
@@ -428,7 +458,7 @@ fn finalize_suppression(
                 last_seen,
                 review_by,
                 expected_visibility: pending.expected_visibility.map(|(value, _)| value),
-                static_class: pending.static_class.map(|(value, _)| value),
+                static_class: static_class.map(|(value, _)| value),
                 language: pending.language.map(|(value, _)| value),
                 language_status: pending.language_status.map(|(value, _)| value),
                 block_line,
@@ -675,12 +705,192 @@ pub fn apply_test_efficiency_suppressions(
     app
 }
 
+/// One finding offered to [`apply_check_suppressions`] for policy matching.
+/// `path` must already be root-relative with `/` separators (the caller
+/// strips the analyzed root prefix); `class` is the finding's exposure label.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckSuppressionCandidate {
+    pub finding_id: String,
+    pub path: String,
+    pub class: String,
+}
+
+/// One check finding suppressed by an explicit `--suppression-policy` file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SuppressedCheckFinding {
+    pub finding_id: String,
+    /// The selector that matched: the entry's `finding_id`, or its `path`
+    /// glob for path-selector entries.
+    pub selector: String,
+}
+
+/// Application outcome for `ripr check --suppression-policy PATH` (#1441).
+/// Carried on `CheckOutput.suppression` so every findings-based renderer
+/// projects the same decision. Suppressed findings stay visible in the JSON
+/// `findings[]` array with `suppressed: true`; per-class summary buckets
+/// count unsuppressed findings only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckSuppressionOutcome {
+    /// The policy path exactly as the caller supplied it.
+    pub policy_path: String,
+    /// Suppressed findings in `findings[]` order.
+    pub suppressed: Vec<SuppressedCheckFinding>,
+    /// Expired-entry and unmatched-selector warnings, kept visible so a
+    /// stale policy cannot silently keep output clean.
+    pub warnings: Vec<String>,
+}
+
+/// Applies exposure-gap suppression entries to check findings (#1441).
+///
+/// Matching rules, in entry order (the first matching entry names the
+/// selector for a finding):
+/// - an entry with `finding_id` matches exactly that finding id;
+/// - an entry with only a `path` glob matches every candidate whose
+///   root-relative path matches the glob, narrowed by `static_class` when
+///   the entry declares one.
+///
+/// Expired entries are not applied and surface as warnings, mirroring
+/// [`apply_exposure_suppressions`]. Entries that match nothing surface as
+/// warnings too. `test_efficiency` entries are ignored — they select
+/// test-efficiency report rows, not check findings.
+pub fn apply_check_suppressions(
+    candidates: &[CheckSuppressionCandidate],
+    entries: &[SuppressionEntry],
+    today: &str,
+) -> (std::collections::BTreeMap<String, String>, Vec<String>) {
+    let mut matched: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut warnings = Vec::new();
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.kind == SuppressionKind::ExposureGap)
+    {
+        let Some(selector) = entry.finding_id.clone().or_else(|| entry.path.clone()) else {
+            continue;
+        };
+        if is_expired(entry.expires.as_deref(), today) {
+            warnings.push(format!(
+                "expired {} suppression for `{selector}` (expired on {})",
+                entry.kind.as_str(),
+                entry.expires.as_deref().unwrap_or("unknown")
+            ));
+            continue;
+        }
+        let mut hit = false;
+        for candidate in candidates {
+            let entry_matches = match &entry.finding_id {
+                Some(id) => id == &candidate.finding_id,
+                None => {
+                    entry
+                        .path
+                        .as_deref()
+                        .is_some_and(|glob| path_glob_matches(glob, &candidate.path))
+                        && entry
+                            .static_class
+                            .as_deref()
+                            .map(|class| class == candidate.class)
+                            .unwrap_or(true)
+                }
+            };
+            if entry_matches {
+                hit = true;
+                matched
+                    .entry(candidate.finding_id.clone())
+                    .or_insert_with(|| selector.clone());
+            }
+        }
+        if !hit {
+            warnings.push(format!(
+                "{} suppression for `{selector}` did not match any current finding",
+                entry.kind.as_str()
+            ));
+        }
+    }
+    (matched, warnings)
+}
+
+/// Loads an explicit `--suppression-policy` file for `ripr check` (#1441).
+///
+/// Unlike the implicit `.ripr/suppressions.toml` (missing file → no
+/// suppressions), an explicitly requested policy fails closed: a missing or
+/// malformed file is an `Err`, so the caller can never publish unfiltered
+/// counts believing a policy was applied.
+pub fn load_check_suppression_policy(path: &Path) -> Result<Vec<SuppressionEntry>, String> {
+    let display = path.display().to_string();
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| format!("failed to read suppression policy `{display}`: {err}"))?;
+    let (entries, violations) = parse_suppressions_manifest(&text);
+    if violations.is_empty() {
+        return Ok(entries);
+    }
+    // parse_suppressions_manifest prefixes messages with the default
+    // `.ripr/suppressions.toml` location; rename them to the file that was
+    // actually parsed.
+    let renamed: Vec<String> = violations
+        .iter()
+        .map(|violation| violation.replacen(SUPPRESSIONS_PATH, &display, 1))
+        .collect();
+    Err(format!(
+        "suppression policy `{display}` is invalid:\n{}",
+        renamed.join("\n")
+    ))
+}
+
+/// Path-glob matcher for `path`-selector suppressions (#1441).
+///
+/// Supports `**` (zero or more `/`-separated segments), `*` (any run of
+/// characters within one segment), and `?` (exactly one character within a
+/// segment). Matching is case-sensitive over `/`-separated relative paths;
+/// leading `./` segments are ignored on both sides.
+pub fn path_glob_matches(pattern: &str, path: &str) -> bool {
+    let pattern_segments: Vec<&str> = pattern
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+    let path_segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+    glob_segments_match(&pattern_segments, &path_segments)
+}
+
+fn glob_segments_match(pattern: &[&str], path: &[&str]) -> bool {
+    let Some((head, rest)) = pattern.split_first() else {
+        return path.is_empty();
+    };
+    if *head == "**" {
+        return (0..=path.len()).any(|skip| glob_segments_match(rest, &path[skip..]));
+    }
+    let Some((segment, remaining)) = path.split_first() else {
+        return false;
+    };
+    glob_segment_chars_match(
+        &head.chars().collect::<Vec<_>>(),
+        &segment.chars().collect::<Vec<_>>(),
+    ) && glob_segments_match(rest, remaining)
+}
+
+fn glob_segment_chars_match(pattern: &[char], segment: &[char]) -> bool {
+    match pattern.split_first() {
+        None => segment.is_empty(),
+        Some(('*', rest)) => {
+            (0..=segment.len()).any(|skip| glob_segment_chars_match(rest, &segment[skip..]))
+        }
+        Some(('?', rest)) => segment
+            .split_first()
+            .is_some_and(|(_, remaining)| glob_segment_chars_match(rest, remaining)),
+        Some((expected, rest)) => segment.split_first().is_some_and(|(actual, remaining)| {
+            actual == expected && glob_segment_chars_match(rest, remaining)
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        SUPPRESSIONS_PATH, SuppressionApplication, SuppressionEntry, SuppressionKind,
-        apply_exposure_suppressions, apply_test_efficiency_suppressions, current_iso_date,
-        days_to_civil_date, is_expired, is_iso_date, parse_suppressions_manifest,
+        CheckSuppressionCandidate, SUPPRESSIONS_PATH, SuppressionApplication, SuppressionEntry,
+        SuppressionKind, apply_check_suppressions, apply_exposure_suppressions,
+        apply_test_efficiency_suppressions, current_iso_date, days_to_civil_date, is_expired,
+        is_iso_date, load_check_suppression_policy, parse_suppressions_manifest, path_glob_matches,
     };
 
     #[test]
@@ -1200,5 +1410,247 @@ reason = "second"
         assert!(app.suppressed_findings.is_empty());
         assert!(app.suppressed_tests.is_empty());
         assert!(app.warnings.is_empty());
+    }
+
+    // ── `--suppression-policy` check-application substrate (#1441) ──
+
+    #[test]
+    fn exposure_class_labels_match_domain_contract() {
+        use crate::domain::ExposureClass;
+        let classes = [
+            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::InfectionUnknown,
+            ExposureClass::PropagationUnknown,
+            ExposureClass::StaticUnknown,
+        ];
+        let labels: Vec<&str> = classes.iter().map(|class| class.as_str()).collect();
+        assert_eq!(labels, super::EXPOSURE_CLASS_LABELS);
+    }
+
+    #[test]
+    fn path_glob_matches_supports_star_double_star_and_question() {
+        // `**` spans zero or more segments.
+        assert!(path_glob_matches("docs/**", "docs/status/gen.md"));
+        assert!(path_glob_matches("docs/**", "docs"));
+        assert!(path_glob_matches("**/gen.rs", "a/b/gen.rs"));
+        assert!(path_glob_matches("src/**/tests.rs", "src/tests.rs"));
+        // `*` stays within one segment.
+        assert!(path_glob_matches("src/*.rs", "src/lib.rs"));
+        assert!(!path_glob_matches("src/*.rs", "src/nested/lib.rs"));
+        // `?` matches exactly one character.
+        assert!(path_glob_matches("src/li?.rs", "src/lib.rs"));
+        assert!(!path_glob_matches("src/li?.rs", "src/line.rs"));
+        // Exact patterns match only the exact path.
+        assert!(path_glob_matches("src/lib.rs", "src/lib.rs"));
+        assert!(!path_glob_matches("src/lib.rs", "src/lib.rs.bak"));
+        assert!(!path_glob_matches("src", "src/lib.rs"));
+        // Leading `./` is ignored on both sides.
+        assert!(path_glob_matches("./src/*.rs", "src/lib.rs"));
+        assert!(path_glob_matches("src/*.rs", "./src/lib.rs"));
+    }
+
+    fn candidate(finding_id: &str, path: &str, class: &str) -> CheckSuppressionCandidate {
+        CheckSuppressionCandidate {
+            finding_id: finding_id.to_string(),
+            path: path.to_string(),
+            class: class.to_string(),
+        }
+    }
+
+    fn path_selector_entry(
+        glob: &str,
+        static_class: Option<&str>,
+        expires: Option<&str>,
+    ) -> SuppressionEntry {
+        SuppressionEntry {
+            kind: SuppressionKind::ExposureGap,
+            finding_id: None,
+            test: None,
+            path: Some(glob.to_string()),
+            reason: "generated surface".to_string(),
+            owner: "repo-owner".to_string(),
+            expires: expires.map(str::to_string),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: static_class.map(str::to_string),
+            language: None,
+            language_status: None,
+            block_line: 1,
+        }
+    }
+
+    #[test]
+    fn apply_check_suppressions_matches_path_glob_and_narrows_by_class() {
+        let candidates = vec![
+            candidate("probe:gen_a", "docs/gen/a.rs", "no_static_path"),
+            candidate("probe:gen_b", "docs/gen/b.rs", "weakly_exposed"),
+            candidate("probe:src", "src/lib.rs", "no_static_path"),
+        ];
+        let entries = vec![path_selector_entry(
+            "docs/gen/**",
+            Some("no_static_path"),
+            None,
+        )];
+        let (matched, warnings) = apply_check_suppressions(&candidates, &entries, "2026-05-03");
+
+        assert_eq!(matched.len(), 1);
+        assert_eq!(
+            matched.get("probe:gen_a").map(String::as_str),
+            Some("docs/gen/**")
+        );
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn apply_check_suppressions_matches_finding_id_entries_exactly() {
+        let candidates = vec![candidate("probe:src", "src/lib.rs", "weakly_exposed")];
+        let mut entry = path_selector_entry("unused/**", None, None);
+        entry.finding_id = Some("probe:src".to_string());
+        entry.path = None;
+        let (matched, warnings) = apply_check_suppressions(&candidates, &[entry], "2026-05-03");
+
+        assert_eq!(
+            matched.get("probe:src").map(String::as_str),
+            Some("probe:src")
+        );
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn apply_check_suppressions_first_matching_entry_names_the_selector() {
+        let candidates = vec![candidate("probe:gen", "docs/gen/a.rs", "no_static_path")];
+        let entries = vec![
+            path_selector_entry("docs/**", None, None),
+            path_selector_entry("docs/gen/**", None, None),
+        ];
+        let (matched, warnings) = apply_check_suppressions(&candidates, &entries, "2026-05-03");
+
+        assert_eq!(
+            matched.get("probe:gen").map(String::as_str),
+            Some("docs/**"),
+            "the first matching entry in file order must win"
+        );
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn apply_check_suppressions_warns_on_expired_and_unmatched_entries() {
+        let candidates = vec![candidate("probe:gen", "docs/gen/a.rs", "no_static_path")];
+        let entries = vec![
+            path_selector_entry("docs/gen/**", None, Some("2025-01-01")),
+            path_selector_entry("missing/**", None, None),
+        ];
+        let (matched, warnings) = apply_check_suppressions(&candidates, &entries, "2026-05-03");
+
+        assert!(
+            matched.is_empty(),
+            "expired and unmatched entries must not apply"
+        );
+        assert_eq!(warnings.len(), 2);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("expired") && w.contains("docs/gen/**"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("did not match") && w.contains("missing/**"))
+        );
+    }
+
+    #[test]
+    fn parse_accepts_exposure_gap_path_glob_selector() {
+        let text = r#"
+schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+path = "docs/gen/**"
+static_class = "no_static_path"
+reason = "Generated docs are verified by generation checks."
+owner = "repo-owner"
+"#;
+        let (entries, violations) = parse_suppressions_manifest(text);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path.as_deref(), Some("docs/gen/**"));
+        assert_eq!(entries[0].finding_id, None);
+    }
+
+    #[test]
+    fn parse_rejects_path_selector_with_unknown_static_class() {
+        let text = r#"
+schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+path = "docs/gen/**"
+static_class = "not_a_class"
+reason = "typo'd class must fail loudly"
+owner = "repo-owner"
+"#;
+        let (entries, violations) = parse_suppressions_manifest(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("`static_class` `not_a_class` is not a known exposure class")),
+            "violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn load_check_suppression_policy_fails_closed_on_missing_and_invalid_files()
+    -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-check-suppression-policy-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
+
+        // Missing file → Err naming the path.
+        let missing = dir.join("missing.toml");
+        let err = load_check_suppression_policy(&missing)
+            .err()
+            .ok_or("missing policy file must be an error")?;
+        assert!(err.contains("failed to read suppression policy"));
+
+        // Malformed file → Err naming the actual file, not the default
+        // `.ripr/suppressions.toml` location.
+        let invalid = dir.join("invalid.toml");
+        std::fs::write(
+            &invalid,
+            "schema_version = 1\n[[suppressions]]\nkind = \"exposure_gap\"\n",
+        )
+        .map_err(|e| format!("write: {e}"))?;
+        let err = load_check_suppression_policy(&invalid)
+            .err()
+            .ok_or("invalid policy file must be an error")?;
+        assert!(err.contains("is invalid"));
+        assert!(err.contains("invalid.toml"), "err: {err}");
+        assert!(!err.contains(SUPPRESSIONS_PATH), "err: {err}");
+
+        // Valid file → entries.
+        let valid = dir.join("valid.toml");
+        std::fs::write(
+            &valid,
+            "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"docs/**\"\nreason = \"generated\"\nowner = \"repo-owner\"\n",
+        )
+        .map_err(|e| format!("write: {e}"))?;
+        let entries = load_check_suppression_policy(&valid)?;
+        assert_eq!(entries.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 }

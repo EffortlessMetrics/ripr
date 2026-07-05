@@ -265,6 +265,163 @@ fn check_json_output_has_stable_contract_fields() {
     assert!(stdout.contains(r#""suggested_next_action""#));
 }
 
+// ── `check --suppression-policy` (#1441) ──
+
+fn write_suppression_policy(label: &str, text: &str) -> Result<PathBuf, String> {
+    let dir = unique_temp_workspace(label);
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let path = dir.join("ripr-suppressions.toml");
+    std::fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(path)
+}
+
+#[test]
+fn check_json_suppression_policy_marks_findings_and_adjusts_summary() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-json",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--json",
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("check JSON should parse: {err}\n{stdout}"))?;
+
+    let findings = value["findings"]
+        .as_array()
+        .ok_or("findings must be an array")?;
+    assert!(!findings.is_empty(), "sample diff must produce findings");
+    for finding in findings {
+        assert_eq!(
+            finding["suppressed"], true,
+            "every sample finding lives under the suppressed glob"
+        );
+        assert_eq!(finding["suppressed_by"], "crates/ripr/examples/sample/**");
+    }
+    assert_eq!(
+        value["summary"]["suppressed_by_policy"].as_u64(),
+        Some(findings.len() as u64)
+    );
+    // Per-class buckets count unsuppressed findings only.
+    assert_eq!(value["summary"]["weakly_exposed"].as_u64(), Some(0));
+    // `findings` stays the total rendered count.
+    assert_eq!(
+        value["summary"]["findings"].as_u64(),
+        Some(findings.len() as u64)
+    );
+    assert_eq!(value["suppression_policy"]["path"], policy_arg.as_str());
+    assert_eq!(
+        value["suppression_policy"]["warnings"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    Ok(())
+}
+
+#[test]
+fn check_human_suppression_policy_lists_suppressed_findings_compactly() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-human",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Suppressed by policy"),
+        "human output must disclose policy application: {stdout}"
+    );
+    assert!(stdout.contains("(selector: crates/ripr/examples/sample/**)"));
+    assert!(
+        !stdout.contains("Next step\n"),
+        "suppressed findings must not render detailed blocks: {stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn check_suppression_policy_missing_file_fails_closed() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--json",
+        "--suppression-policy",
+        "does/not/exist.toml",
+    ]);
+    assert_failure(&output);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to read suppression policy"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn check_suppression_policy_rejects_unsupported_formats() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-sarif",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/**\"\nreason = \"unused\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "sarif",
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_failure(&output);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--suppression-policy applies to the findings-based check formats"),
+        "stderr: {stderr}"
+    );
+    Ok(())
+}
+
 #[test]
 fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
     let root = workspace_root().display().to_string();

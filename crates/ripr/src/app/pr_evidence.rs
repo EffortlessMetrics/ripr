@@ -307,6 +307,7 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         format: OutputFormat::Json,
         include_unchanged_tests: true,
         perl_facts_path: None,
+        suppression_policy: None,
     };
     let output = check_workspace(input)?;
     render_check(&output, &OutputFormat::Json)

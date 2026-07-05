@@ -971,6 +971,60 @@ instead of `--base`, when `--worktree` was used to include staged and unstaged
 tracked edits in the analyzed diff, or when `git status --porcelain` cannot be
 run (fail-closed: no fabricated disclosure).
 
+### `suppression_policy` and suppressed findings (top-level additive, #1441)
+
+Emitted only when `ripr check` is invoked with `--suppression-policy PATH`.
+Absent otherwise, so consumers without a policy see byte-identical output.
+Does not bump `schema_version`.
+
+The policy file uses the `.ripr/suppressions.toml` schema. `exposure_gap`
+entries select findings either by exact `finding_id` (the existing selector)
+or by a `path` glob over root-relative finding paths (`**` spans path
+segments, `*` and `?` stay within one segment), optionally narrowed by
+`static_class` (which must then be one of the seven `classification` values).
+Expired entries are not applied; expired and unmatched selectors surface as
+warnings. A missing or malformed policy fails the run (fail-closed): the run
+never silently emits unfiltered counts as if a policy had been applied.
+
+Three surfaces change when the flag is present:
+
+- `summary.suppressed_by_policy` — count of suppressed findings. The
+  per-class `summary` buckets (`exposed` … `static_unknown`) count
+  unsuppressed findings only; buckets plus `suppressed_by_policy` add back
+  up to `summary.findings`, which stays the total rendered count.
+- `findings[].suppressed` / `findings[].suppressed_by` — suppressed findings
+  stay fully rendered (visible, not hidden) and carry `"suppressed": true`
+  plus the selector (`finding_id` or path glob) that matched. The first
+  matching entry in policy-file order names the selector.
+- top-level `suppression_policy` object — `path` (as supplied), `suppressed`
+  (count), and `warnings` (expired/unmatched selector strings).
+
+Example:
+
+```json
+"summary": {"findings": 2, "no_static_path": 1, "suppressed_by_policy": 1},
+"findings": [
+  {"id": "probe:docs_gen_a", "suppressed": true, "suppressed_by": "docs/gen/**", ...},
+  {"id": "probe:src_lib", ...}
+],
+"suppression_policy": {
+  "path": "policy/ripr-suppressions.toml",
+  "suppressed": 1,
+  "warnings": []
+}
+```
+
+Scope: the flag applies to the findings-based check formats (`human`,
+`json`, `github`). Human output lists suppressed findings as compact
+one-liners instead of detailed blocks; GitHub-format output skips
+annotations for suppressed findings. SARIF keeps its existing
+`.ripr/suppressions.toml` `finding_id` suppression channel, and badge/repo
+formats keep their own suppression projections — `ripr check` rejects the
+flag for those formats instead of silently ignoring it. Date-expiry
+enforcement beyond `expires` (review-after deadlines, required-active
+ledgers) belongs to the gate exception policy (#1442), not check
+suppression.
+
 ## Enums
 
 `classification` values:

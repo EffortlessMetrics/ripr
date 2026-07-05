@@ -59,14 +59,47 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     out.push_str(",\n");
     out.push_str("  \"findings\": [\n");
     let canonical_gap_counts = canonical_gap_counts(&output.findings);
+    let suppressed_selectors: BTreeMap<&str, &str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| (entry.finding_id.as_str(), entry.selector.as_str()))
+        })
+        .collect();
     for (idx, finding) in output.findings.iter().enumerate() {
-        finding_json_with_config_and_counts(&mut out, finding, 2, config, &canonical_gap_counts);
+        finding_json_with_config_and_counts(
+            &mut out,
+            finding,
+            2,
+            config,
+            &canonical_gap_counts,
+            suppressed_selectors.get(finding.id.as_str()).copied(),
+        );
         if idx + 1 != output.findings.len() {
             out.push(',');
         }
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when the caller passed
+    // `--suppression-policy` (#1441). Absent otherwise, so existing goldens
+    // and consumers without a policy see identical output.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(",\n  \"suppression_policy\": {\n");
+        field(&mut out, 2, "path", &suppression.policy_path, true);
+        number_field(
+            &mut out,
+            2,
+            "suppressed",
+            suppression.suppressed.len(),
+            true,
+        );
+        array_field(&mut out, 2, "warnings", &suppression.warnings, false);
+        out.push_str("  }");
+    }
     // Additive advisory field — emitted only when at least one enabled language
     // did not complete successfully (non-abort contract, Campaign 31 PR 10,
     // #1403). Absent when every enabled language ran to completion (the common
@@ -165,7 +198,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 fn summary_json(out: &mut String, output: &CheckOutput) {
     let s = &output.summary;
     out.push_str(&format!(
-        "{{\"changed_rust_files\":{},\"probes\":{},\"findings\":{},\"exposed\":{},\"weakly_exposed\":{},\"reachable_unrevealed\":{},\"no_static_path\":{},\"infection_unknown\":{},\"propagation_unknown\":{},\"static_unknown\":{}}}",
+        "{{\"changed_rust_files\":{},\"probes\":{},\"findings\":{},\"exposed\":{},\"weakly_exposed\":{},\"reachable_unrevealed\":{},\"no_static_path\":{},\"infection_unknown\":{},\"propagation_unknown\":{},\"static_unknown\":{}",
         s.changed_rust_files,
         s.probes,
         s.findings,
@@ -177,6 +210,16 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
         s.propagation_unknown,
         s.static_unknown
     ));
+    // Additive: present only when a suppression policy was applied (#1441).
+    // The per-class buckets above count unsuppressed findings only; buckets
+    // plus `suppressed_by_policy` add back up to `findings`.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(&format!(
+            ",\"suppressed_by_policy\":{}",
+            suppression.suppressed.len()
+        ));
+    }
+    out.push('}');
 }
 
 #[cfg(test)]
@@ -187,6 +230,7 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
         indent,
         &RiprConfig::default(),
         &BTreeMap::new(),
+        None,
     );
 }
 
@@ -196,10 +240,21 @@ fn finding_json_with_config_and_counts(
     indent: usize,
     config: &RiprConfig,
     canonical_gap_counts: &BTreeMap<&str, usize>,
+    suppressed_selector: Option<&str>,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "id", &finding.id, true);
+    // Additive: present only on findings suppressed by an explicit
+    // `--suppression-policy` (#1441). The finding stays fully rendered so
+    // suppression is visible, not hidden.
+    if let Some(selector) = suppressed_selector {
+        out.push_str(&format!(
+            "{}\"suppressed\": true,\n",
+            "  ".repeat(indent + 1)
+        ));
+        field(out, indent + 1, "suppressed_by", selector, true);
+    }
     if let Some(gap) = &finding.canonical_gap {
         field(out, indent + 1, "canonical_gap_id", &gap.id, true);
         number_field(

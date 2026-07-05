@@ -27,6 +27,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             + output.summary.propagation_unknown
     ));
 
+    render_suppression_policy_block(&mut out, output);
+
     if output.findings.is_empty() {
         out.push_str("No diff-derived static exposure probes found.\n");
         // RIPR-SPEC-0083: disclose when no analysis scope was provided.
@@ -55,7 +57,20 @@ or analyze a committed branch with `ripr check --base origin/main`.\n",
         return out;
     }
 
+    let suppressed_ids: BTreeSet<&str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| entry.finding_id.as_str())
+        })
+        .collect();
     for finding in &output.findings {
+        if suppressed_ids.contains(finding.id.as_str()) {
+            continue;
+        }
         out.push_str(&render_finding_with_config(finding, config));
         out.push('\n');
     }
@@ -73,6 +88,40 @@ your working tree.\n",
     render_preview_language_advisories(&mut out, output);
     render_language_runs(&mut out, output);
     out
+}
+
+/// Emit the `--suppression-policy` application block (#1441): which policy
+/// ran, which findings it suppressed (compact one-liners — suppression stays
+/// visible, not hidden), and any expired/unmatched policy warnings. Emits
+/// nothing when no policy was supplied, so default output is unchanged.
+fn render_suppression_policy_block(out: &mut String, output: &CheckOutput) {
+    let Some(suppression) = &output.suppression else {
+        return;
+    };
+    out.push_str(&format!(
+        "Suppressed by policy ({}): {} finding(s)\n",
+        suppression.policy_path,
+        suppression.suppressed.len()
+    ));
+    for entry in &suppression.suppressed {
+        if let Some(finding) = output
+            .findings
+            .iter()
+            .find(|finding| finding.id == entry.finding_id)
+        {
+            out.push_str(&format!(
+                "  - {}:{} {} (selector: {})\n",
+                finding.probe.location.file.display(),
+                finding.probe.location.line,
+                finding.class.as_str(),
+                entry.selector
+            ));
+        }
+    }
+    for warning in &suppression.warnings {
+        out.push_str(&format!("  policy warning: {warning}\n"));
+    }
+    out.push('\n');
 }
 
 /// Emit an advisory note when every finding is no-path or unknown (zero
@@ -253,6 +302,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -262,6 +312,52 @@ mod tests {
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
+    }
+
+    #[test]
+    fn render_lists_policy_suppressed_findings_compactly_with_warnings() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let location = finding.probe.location.file.display().to_string();
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: Some(CheckSuppressionOutcome {
+                policy_path: "policy/ripr-suppressions.toml".to_string(),
+                suppressed: vec![SuppressedCheckFinding {
+                    finding_id,
+                    selector: "src/**".to_string(),
+                }],
+                warnings: vec![
+                    "exposure_gap suppression for `missing/**` did not match any current finding"
+                        .to_string(),
+                ],
+            }),
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("Suppressed by policy (policy/ripr-suppressions.toml): 1 finding(s)")
+        );
+        assert!(rendered.contains("(selector: src/**)"));
+        assert!(rendered.contains("policy warning: exposure_gap suppression for `missing/**`"));
+        // The suppressed finding must not also render as a detailed block.
+        assert!(!rendered.contains(&format!("WARNING {location}:7")));
     }
 
     #[test]
@@ -866,6 +962,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -903,6 +1000,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -931,6 +1029,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -965,6 +1064,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -997,6 +1097,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1051,6 +1152,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1121,6 +1223,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1166,6 +1269,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1198,6 +1302,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1231,6 +1336,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: true,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1268,6 +1374,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1313,6 +1420,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1357,6 +1465,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1394,6 +1503,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1426,6 +1536,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1455,6 +1566,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1481,6 +1593,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1512,6 +1625,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -1542,6 +1656,7 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);

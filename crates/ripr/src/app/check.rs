@@ -145,7 +145,70 @@ fn run_check(
         }
     };
 
-    Ok(output_builder::check_output_from_analysis(input, analysis))
+    let suppression_policy = input.suppression_policy.clone();
+    let mut output = output_builder::check_output_from_analysis(input, analysis);
+    if let Some(policy) = suppression_policy {
+        apply_suppression_policy(&mut output, &policy)?;
+    }
+    Ok(output)
+}
+
+/// Applies an explicit `--suppression-policy` file to check findings (#1441).
+///
+/// Matching runs against root-relative finding paths; the policy path itself
+/// resolves against `output.root` when relative. Suppressed findings stay in
+/// `output.findings` (renderers mark them), while the per-class `summary`
+/// buckets are decremented so machine consumers can gate on unsuppressed
+/// counts directly. Fails closed: a missing or malformed policy is an `Err`.
+fn apply_suppression_policy(output: &mut CheckOutput, policy: &Path) -> Result<(), String> {
+    use crate::output::suppressions as sup;
+
+    let resolved = if policy.is_absolute() {
+        policy.to_path_buf()
+    } else {
+        output.root.join(policy)
+    };
+    let entries = sup::load_check_suppression_policy(&resolved)?;
+    let today = sup::current_iso_date();
+    let candidates: Vec<sup::CheckSuppressionCandidate> = output
+        .findings
+        .iter()
+        .map(|finding| sup::CheckSuppressionCandidate {
+            finding_id: finding.id.clone(),
+            path: root_relative_finding_path(&output.root, &finding.probe.location.file),
+            class: finding.class.as_str().to_string(),
+        })
+        .collect();
+    let (matched, warnings) = sup::apply_check_suppressions(&candidates, &entries, &today);
+
+    let mut suppressed = Vec::new();
+    for finding in &output.findings {
+        if let Some(selector) = matched.get(&finding.id) {
+            suppressed.push(sup::SuppressedCheckFinding {
+                finding_id: finding.id.clone(),
+                selector: selector.clone(),
+            });
+            output.summary.decrement_exposure_class(&finding.class);
+        }
+    }
+    output.suppression = Some(sup::CheckSuppressionOutcome {
+        policy_path: policy.display().to_string(),
+        suppressed,
+        warnings,
+    });
+    Ok(())
+}
+
+/// Root-relative `/`-separated finding path for suppression matching.
+/// Finding locations are emitted root-joined (e.g. `./src/lib.rs` for
+/// `--root .`); policy globs are written root-relative (`src/**`).
+fn root_relative_finding_path(root: &Path, file: &Path) -> String {
+    let relative = file.strip_prefix(root).unwrap_or(file);
+    let display = relative.display().to_string();
+    display
+        .trim_start_matches("./")
+        .replace('\\', "/")
+        .to_string()
 }
 
 /// Build the SPEC-0064-canonical argv for the Perl facts exporter's
@@ -506,6 +569,126 @@ mod tests {
         assert_eq!(output.root, sample_root());
         assert_eq!(output.summary, Summary::default());
         assert!(output.findings.is_empty());
+    }
+
+    // ── `--suppression-policy` application tests (#1441) ──
+
+    fn write_temp_policy(name: &str, text: &str) -> Result<PathBuf, String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-check-suppression-{}-{name}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
+        let path = dir.join("policy.toml");
+        std::fs::write(&path, text).map_err(|e| format!("write: {e}"))?;
+        Ok(path)
+    }
+
+    #[test]
+    fn check_workspace_applies_suppression_policy_by_path_glob() -> Result<(), String> {
+        // The sample diff's headers are repo-relative (`crates/ripr/...`), so
+        // the root-relative candidate paths keep that prefix; the glob mirrors
+        // what a consumer would write for this diff shape.
+        let policy = write_temp_policy(
+            "glob",
+            "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/**/src/**\"\nreason = \"sample surface accepted for this run\"\nowner = \"repo-owner\"\n",
+        )?;
+        let mut input = sample_diff_input();
+        input.suppression_policy = Some(policy);
+
+        let output = check_workspace(input)?;
+
+        let suppression = output
+            .suppression
+            .as_ref()
+            .ok_or("suppression outcome must be recorded when a policy is supplied")?;
+        if output.findings.is_empty() {
+            return Err("sample diff must produce findings".to_string());
+        }
+        // Every sample finding lives under src/, so the glob suppresses all
+        // of them and the per-class buckets drain to zero while `findings`
+        // stays the total rendered count.
+        assert_eq!(suppression.suppressed.len(), output.findings.len());
+        assert_eq!(output.summary.findings, output.findings.len());
+        let bucket_total = output.summary.exposed
+            + output.summary.weakly_exposed
+            + output.summary.reachable_unrevealed
+            + output.summary.no_static_path
+            + output.summary.infection_unknown
+            + output.summary.propagation_unknown
+            + output.summary.static_unknown;
+        assert_eq!(bucket_total, 0);
+        assert!(
+            suppression.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            suppression.warnings
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_workspace_records_unmatched_policy_entries_as_warnings() -> Result<(), String> {
+        let policy = write_temp_policy(
+            "unmatched",
+            "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"nonexistent/**\"\nreason = \"selector that matches nothing\"\nowner = \"repo-owner\"\n",
+        )?;
+        let mut input = sample_diff_input();
+        input.suppression_policy = Some(policy);
+
+        let output = check_workspace(input)?;
+
+        let suppression = output
+            .suppression
+            .as_ref()
+            .ok_or("suppression outcome must be recorded when a policy is supplied")?;
+        assert!(suppression.suppressed.is_empty());
+        assert!(
+            suppression
+                .warnings
+                .iter()
+                .any(|w| w.contains("did not match")),
+            "warnings: {:?}",
+            suppression.warnings
+        );
+        // Nothing suppressed → summary buckets unchanged.
+        assert_eq!(output.summary.findings, output.findings.len());
+        Ok(())
+    }
+
+    #[test]
+    fn check_workspace_fails_closed_on_missing_suppression_policy() -> Result<(), String> {
+        let mut input = sample_diff_input();
+        input.suppression_policy = Some(PathBuf::from("does/not/exist.toml"));
+
+        match check_workspace(input) {
+            Err(reason) => {
+                assert!(
+                    reason.contains("failed to read suppression policy"),
+                    "unexpected error: {reason}"
+                );
+                Ok(())
+            }
+            Ok(_) => Err("a missing explicit policy must fail the run".to_string()),
+        }
+    }
+
+    #[test]
+    fn root_relative_finding_path_strips_root_and_dot_prefixes() {
+        assert_eq!(
+            root_relative_finding_path(Path::new("."), Path::new("./src/lib.rs")),
+            "src/lib.rs"
+        );
+        assert_eq!(
+            root_relative_finding_path(
+                Path::new("fixtures/boundary_gap/input"),
+                Path::new("fixtures/boundary_gap/input/src/lib.rs")
+            ),
+            "src/lib.rs"
+        );
+        assert_eq!(
+            root_relative_finding_path(Path::new("/abs/root"), Path::new("/abs/root/src/lib.rs")),
+            "src/lib.rs"
+        );
     }
 
     // ── Managed producer hardening tests (Campaign 31 item 4) ──
