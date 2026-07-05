@@ -10,6 +10,7 @@ pub(crate) mod impacted_evidence;
 pub(crate) mod pr_evidence;
 pub(crate) mod pr_summary;
 pub(crate) mod receipt;
+pub(crate) mod ripr_plus;
 mod selector;
 
 pub use crate::output::format::OutputFormat;

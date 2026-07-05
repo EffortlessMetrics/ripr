@@ -18,6 +18,7 @@ crates/ripr/tests/cli_smoke.rs|Command::new|12|cli-tests|Smoke tests run the bui
 crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
 crates/ripr/src/app/pr_evidence.rs|Command::new|1|pr-evidence|Campaign 31 item 8d: pr-evidence runs git commands (verify_revision, changed_files, write_diff) via Command::new("git"). No subprocess to cargo; check_workspace is called directly.
 crates/ripr/src/app/pr_evidence.rs|use std::process::Command|1|pr-evidence|pr-evidence imports Command for git invocations only.
+crates/ripr/src/app/ripr_plus.rs|Command::new|1|ripr-plus|Campaign 31 item 8f: ripr plus runs `git rev-parse HEAD` to stamp the receipt with the current commit. No subprocess to cargo.
 crates/ripr/tests/perl_two_binary_harness.rs|Command::new|3|perl-two-binary-harness|Campaign 31 item 3: the perllsp-to-ripr two-binary proof harness spawns the external perllsp producer (run_producer), the worktree-absolute ripr binary under test (run_ripr), and the which()/where lookup (which). Producer is opt-in via PATH; the harness skips cleanly when perllsp is absent.
 crates/ripr/tests/perl_two_binary_harness.rs|use std::process::Command|1|perl-two-binary-harness|The two-binary harness imports Command for the perllsp, ripr, and which/where spawns.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.

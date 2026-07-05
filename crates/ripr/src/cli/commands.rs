@@ -4744,6 +4744,15 @@ pub(super) fn impacted_evidence(args: &[String]) -> Result<(), String> {
     crate::app::impacted_evidence::run_impacted_evidence(args)
 }
 
+/// `ripr plus` — binary-first RIPR+ repo receipt (composition-only).
+/// Composes the repo-wide RIPR+ quality-gate receipt from a pre-computed
+/// `repo-exposure-summary-json` or `--gap-ledger` artifact. The canonical
+/// downstream replacement for `cargo xtask ripr-plus`. Unlike the xtask, it
+/// is artifact-composition-only and does not run an in-process full-repo scan.
+pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
+    crate::app::ripr_plus::run_ripr_plus(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

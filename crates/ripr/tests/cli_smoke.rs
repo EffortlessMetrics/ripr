@@ -4830,3 +4830,35 @@ fn impacted_evidence_unknown_arg_fails_clearly() {
         "error must name the unknown arg:\n{stderr}"
     );
 }
+
+// ── ripr plus (binary-first RIPR+ repo receipt, composition-only) ──
+
+#[test]
+fn plus_help_exits_cleanly() {
+    let output = run_ripr(&["plus", "--help"]);
+    assert!(
+        output.status.success(),
+        "plus --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--repo-exposure-summary"),
+        "help must mention --repo-exposure-summary:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--gap-ledger"),
+        "help must mention --gap-ledger:\n{stdout}"
+    );
+}
+
+#[test]
+fn plus_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["plus", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown plus argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
