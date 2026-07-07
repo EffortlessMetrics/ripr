@@ -122,6 +122,12 @@ now includes:
   non-actionable, and the projection does not create repair-packet, gate, badge,
   baseline, RIPR Zero, runtime, generated-test, provider, or support-tier
   authority.
+- complete `typescript_repair_packet` findings can now be materialized from
+  check-output JSON into PR-local preview `GapRecord` packets and before/after
+  `ripr outcome` receipts, pinned by
+  `fixtures/first_successful_pr/typescript-preview-gap`, while keeping
+  TypeScript preview advisory-only and ineligible for gate, badge, baseline,
+  RIPR Zero, or support-tier authority.
 
 These are usefulness and precision improvements only. They do not make
 TypeScript/JavaScript repair-packet, gate, badge, baseline, or RIPR Zero

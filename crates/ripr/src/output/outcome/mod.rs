@@ -247,6 +247,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap_id"],
             &["canonical_gap", "id"],
             &["python_repair_card", "canonical_gap_id"],
+            &["typescript_repair_packet", "canonical_gap_id"],
         ],
     )?;
     let canonical_gap = finding
@@ -258,6 +259,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap", "behavior_kind"],
             &["probe", "family"],
             &["python_repair_card", "source"],
+            &["typescript_repair_packet", "repair_kind"],
         ],
     )
     .unwrap_or("unknown");
@@ -267,6 +269,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap", "file"],
             &["probe", "file"],
             &["python_repair_card", "suggested_location", "source_file"],
+            &["typescript_repair_packet", "file"],
         ],
     )
     .map(normalize_report_path)
@@ -1299,6 +1302,131 @@ mod tests {
     }
 
     #[test]
+    fn targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids()
+    -> Result<(), String> {
+        let before = r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "weakly_exposed",
+      "probe": {"family": "predicate", "file": "src/discount.ts", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "unknown", "confidence": "low", "summary": "preview infection unknown"},
+        "propagate": {"state": "unknown", "confidence": "low", "summary": "preview propagation unknown"},
+        "observe": {"state": "weak", "confidence": "low", "summary": "relational check only"},
+        "discriminate": {"state": "weak", "confidence": "low", "summary": "boundary not asserted"}
+      },
+      "missing_discriminators": [
+        {"value": "amount == threshold", "reason": "not observed"}
+      ],
+      "related_tests": [
+        {"name": "applyDiscount applies discount when amount meets threshold", "file": "tests/discount.test.ts", "line": 3, "oracle_strength": "weak", "oracle_kind": "relational_check"}
+      ],
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+        let after = r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "exposed",
+      "probe": {"family": "predicate", "file": "src/discount.ts", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "unknown", "confidence": "low", "summary": "preview infection unknown"},
+        "propagate": {"state": "unknown", "confidence": "low", "summary": "preview propagation unknown"},
+        "observe": {"state": "yes", "confidence": "low", "summary": "exact assertion"},
+        "discriminate": {"state": "yes", "confidence": "low", "summary": "boundary asserted"}
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {"name": "applyDiscount applies discount at threshold", "file": "tests/discount.test.ts", "line": 3, "oracle_strength": "strong", "oracle_kind": "exact_value", "oracle": "expect(result).toBe(50)"}
+      ],
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount at threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+
+        let report = targeted_test_outcome_report_from_json(
+            before,
+            after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+
+        assert_eq!(report.moved.len(), 1);
+        let movement = &report.moved[0];
+        assert_eq!(
+            movement.seam_id,
+            "gap:typescript:typescript_preview:2396aec1"
+        );
+        assert_eq!(movement.seam_kind, "predicate");
+        assert_eq!(movement.file, "src/discount.ts");
+        assert_eq!(movement.before, "weakly_gripped");
+        assert_eq!(movement.after, "strongly_gripped");
+        assert_eq!(movement.direction, "improved");
+        assert_eq!(movement.gap_movement, "closed");
+        assert_eq!(movement.evidence_source, "check_output_finding");
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_typescript_preview_fixture_matches_expected_receipts()
+    -> Result<(), String> {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
+            before: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+            ),
+            after: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json"
+            ),
+            before_path: "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json",
+            expected_gap_movement: "closed",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json"
+            ),
+            expected_md: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md"
+            ),
+        })?;
+        Ok(())
+    }
+
+    #[test]
     fn targeted_test_outcome_python_preview_fixture_matches_expected_receipts() -> Result<(), String>
     {
         let weak = include_str!(
@@ -1310,7 +1438,7 @@ mod tests {
         let no_path = include_str!(
             "../../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json"
         );
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: strong,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1325,7 +1453,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1340,7 +1468,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: strong,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
@@ -1355,7 +1483,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: no_path,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
@@ -1370,7 +1498,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: no_path,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1390,7 +1518,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_return_value_fixture_matches_expected_receipts()
     -> Result<(), String> {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json"
             ),
@@ -1414,7 +1542,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_exception_fixture_matches_expected_receipts()
     -> Result<(), String> {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json"
             ),
@@ -1435,7 +1563,7 @@ mod tests {
         Ok(())
     }
 
-    struct PythonPreviewOutcomeFixture<'a> {
+    struct PreviewOutcomeFixture<'a> {
         before: &'a str,
         after: &'a str,
         before_path: &'a str,
@@ -1446,9 +1574,7 @@ mod tests {
         expected_md: &'a str,
     }
 
-    fn assert_python_preview_outcome_fixture(
-        fixture: PythonPreviewOutcomeFixture<'_>,
-    ) -> Result<(), String> {
+    fn assert_preview_outcome_fixture(fixture: PreviewOutcomeFixture<'_>) -> Result<(), String> {
         let report = targeted_test_outcome_report_from_json(
             fixture.before,
             fixture.after,
@@ -1476,7 +1602,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_field_fixture_matches_expected_receipts() -> Result<(), String>
     {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json"
             ),
@@ -1500,7 +1626,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_output_fixture_matches_expected_receipts() -> Result<(), String>
     {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json"
             ),

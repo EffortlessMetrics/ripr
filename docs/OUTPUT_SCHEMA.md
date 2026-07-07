@@ -976,12 +976,13 @@ JSON fields:
   forbidden files, receipt argv, PR, CI, LSP, swarm routing, badge authority,
   gate authority, or RIPR Zero authority in this slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
-  Python `GapRecord` entries from findings that carry `python_repair_card`.
-  Those records are advisory preview inputs for `ripr agent packet
-  --gap-ledger ... --gap-id ... --json`; they preserve the canonical Python gap
-  ID, source anchor, suggested test location, verify command, stop conditions,
-  and preview authority boundary without rerunning analysis or claiming
-  before/after closure.
+  Python and TypeScript `GapRecord` entries from findings that carry
+  `python_repair_card` or `typescript_repair_packet`. Those records are
+  advisory preview inputs for `ripr agent packet --gap-ledger ... --gap-id ...
+  --json`; they preserve the canonical preview-language gap ID, source anchor,
+  suggested test location, verify command, stop conditions, and preview
+  authority boundary without rerunning analysis or claiming before/after
+  closure.
 - `canonical_gap_id` is an additive optional stable identity for a
   language-qualified behavioral gap when the producer can name one without
   relying on line numbers alone. Python preview values use
@@ -5673,8 +5674,8 @@ The report is an advisory receipt for the targeted-test loop. It does not run
 analysis, mutation testing, SARIF policy, or badge generation; it only compares
 the two supplied static artifacts. Repo-exposure seams are matched by
 `seam_id`; check-output findings are matched by `canonical_gap_id`, which lets
-Python preview repair cards produce before/after receipts without a Python-only
-receipt command.
+Python repair cards and TypeScript repair packets produce before/after receipts
+without language-specific receipt commands.
 
 JSON shape:
 
@@ -5810,8 +5811,8 @@ JSON shape:
 }
 ```
 
-For check-output snapshots, `seam_id` is the canonical gap ID. A Python preview
-gap that moves from `weakly_exposed` to `exposed` is rendered as
+For check-output snapshots, `seam_id` is the canonical gap ID. A Python or
+TypeScript preview gap that moves from `weakly_exposed` to `exposed` is rendered as
 `weakly_gripped -> strongly_gripped` with `gap_movement = "closed"`. This is
 still static/advisory evidence: verify success and a closed gap movement are
 receipt signals, not runtime mutation proof or correctness proof.
@@ -5832,6 +5833,12 @@ receipts at
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json`,
 and
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md`.
+The TypeScript preview packet receipt path is pinned by
+`fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json`,
+`fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json`,
+`fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json`,
+and
+`fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md`.
 The non-boundary return-value receipt path is pinned by
 `fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json`,
 `fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json`,
@@ -13708,14 +13715,16 @@ agent packets when the evidence record already supplies a repair route and
 verification command.
 
 `ripr reports gap-ledger --check-output <path>` derives PR-local records from
-an existing check JSON `finding_alignment.items[]` section and actionable
-Python `findings[].python_repair_card` objects. Supported visible output text
+an existing check JSON `finding_alignment.items[]` section, actionable Python
+`findings[].python_repair_card` objects, and complete TypeScript
+`findings[].typescript_repair_packet` objects. Supported visible output text
 without a checked observer becomes `MissingOutputContract` with
 `repair_route.route_kind = "AddOutputGolden"` and
 `verification_commands = ["cargo xtask goldens check"]`. Actionable Python
-repair cards become preview-language records with bounded test edit surfaces,
-verify commands, and a synthesized `ripr outcome` command that compares the
-supplied before check JSON with `target/ripr/reports/after-check.json`.
+repair cards and complete TypeScript repair packets become preview-language
+records with bounded test edit surfaces, verify commands, and a synthesized
+`ripr outcome` command that compares the supplied before check JSON with
+`target/ripr/reports/after-check.json`.
 Python static-limit findings with `static_limit_kind` become report-only
 `StaticLimitation` records with `repairability = "analyzer_limitation"` and no
 agent-packet projection. Visibility-unknown presentation text and Python static
