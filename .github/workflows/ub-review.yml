@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: ub-review
-        uses: EffortlessMetrics/ub-review@598c0bafc0b47520edf89aca57c909966d0811b0
+        uses: EffortlessMetrics/ub-review@d4461d40efbbb6ce7825cc574df628e929f0ee89
         with:
           # review-mode hides the internal mode/fail-on-gate/review_forward
           # knobs. advisory = comment only; gate = recommended CI gate;
