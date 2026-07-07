@@ -2,7 +2,7 @@
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:cpan-alpha:dynamic-limited",
   "packet_status": "partial",
-  "packet_fingerprint": "sha256:c6e975492fc3f99ec721adbce5f17f22c2cac12fdce632c9e20e34eff0725ca2",
+  "packet_fingerprint": "sha256:7d3f9de2ed49d24a3b71beb43adf0f0ac3b9c48724aa9d3a3065a5e2b9cdae95",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-regression-fixture",

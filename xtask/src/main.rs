@@ -8296,9 +8296,13 @@ fn validate_perl_lsp_facts_exporter_fixture_case(
     case_id: &str,
     violations: &mut Vec<String>,
 ) -> Result<(), String> {
-    if json_string_field(case, "exporter").as_deref() != Some("perl-lsp") {
+    let exporter = json_string_field(case, "exporter");
+    if !matches!(
+        exporter.as_deref(),
+        Some("perl-ripr-facts" | "perllsp" | "perl-lsp")
+    ) {
         violations.push(format!(
-            "perl-lsp facts exporter case {case_id} exporter must be perl-lsp"
+            "perl-lsp facts exporter case {case_id} exporter must be perl-ripr-facts, perllsp, or perl-lsp"
         ));
     }
     if json_string_field(case, "packet_schema").as_deref() != Some("ripr-perl-facts-v1") {
@@ -8365,14 +8369,15 @@ fn validate_perl_lsp_facts_exporter_fixture_case(
             "perl-lsp facts exporter case {case_id} packet schema_version must be ripr-perl-facts-v1"
         ));
     }
-    if packet
-        .get("producer")
-        .and_then(|producer| json_string_field(producer, "name"))
-        .as_deref()
-        != Some("perl-lsp")
-    {
+    if !matches!(
+        packet
+            .get("producer")
+            .and_then(|producer| json_string_field(producer, "name"))
+            .as_deref(),
+        Some("perl-ripr-facts" | "perllsp" | "perl-lsp")
+    ) {
         violations.push(format!(
-            "perl-lsp facts exporter case {case_id} packet producer.name must be perl-lsp"
+            "perl-lsp facts exporter case {case_id} packet producer.name must be perl-ripr-facts, perllsp, or perl-lsp"
         ));
     }
     if packet.get("canonical_gap_id").is_some() || packet.get("gap_state").is_some() {
@@ -81358,6 +81363,57 @@ TypeScript repair packet (advisory)
     }
 
     #[test]
+    fn perl_lsp_facts_exporter_fixture_accepts_supported_producers() -> Result<(), String> {
+        with_temp_cwd("perl-lsp-facts-exporter-producer-names", |root| {
+            for producer in ["perl-ripr-facts", "perllsp", "perl-lsp"] {
+                let packet = root.join(format!("{producer}.json"));
+                let packet_json = serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_version": "ripr-perl-facts-v1",
+                    "producer": {"name": producer},
+                    "files": [{"path": "lib/App.pm"}]
+                }))
+                .map_err(|err| err.to_string())?;
+                write(&packet, &packet_json);
+
+                let corpus = root.join(format!("{producer}-corpus.json"));
+                let corpus_json = serde_json::to_string_pretty(&serde_json::json!({
+                    "kind": "perl_lsp_facts_exporter_corpus",
+                    "schema_version": "0.1",
+                    "spec": "RIPR-SPEC-0064",
+                    "cases": [
+                        {
+                            "id": producer,
+                            "exporter": producer,
+                            "packet_schema": "ripr-perl-facts-v1",
+                            "authority_boundary": "preview_advisory_only",
+                            "must_not_claim": [
+                                "ripr_check_executes_perl_lsp",
+                                "canonical_gap_id_emitted_by_perl_lsp",
+                                "gap_state_emitted_by_perl_lsp",
+                                "repair_packet_ready",
+                                "default_gate_authority",
+                                "public_badge_contribution",
+                                "support_tier_promotion"
+                            ],
+                            "expected_packet": packet
+                        }
+                    ]
+                }))
+                .map_err(|err| err.to_string())?;
+                write(&corpus, &corpus_json);
+
+                let mut violations = Vec::new();
+                super::validate_perl_lsp_facts_exporter_fixture_corpus_at(
+                    &corpus,
+                    &mut violations,
+                )?;
+                assert_eq!(violations, Vec::<String>::new());
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
     fn perl_lsp_facts_exporter_fixture_guard_reports_missing_root_files() -> Result<(), String> {
         with_temp_cwd("perl-lsp-facts-exporter-missing-root", |_| {
             let mut violations = Vec::new();
@@ -81494,7 +81550,7 @@ TypeScript repair packet (advisory)
         assert!(report.contains("kind must be perl_lsp_facts_exporter_corpus"));
         assert!(report.contains("schema_version must be 0.1"));
         assert!(report.contains("spec must be RIPR-SPEC-0064"));
-        assert!(report.contains("exporter must be perl-lsp"));
+        assert!(report.contains("exporter must be perl-ripr-facts, perllsp, or perl-lsp"));
         assert!(report.contains("packet_schema must be ripr-perl-facts-v1"));
         assert!(report.contains("authority_boundary must be preview_advisory_only"));
         assert!(report.contains("must_not_claim is missing ripr_check_executes_perl_lsp"));
@@ -81502,7 +81558,9 @@ TypeScript repair packet (advisory)
         assert!(report.contains("missing packet"));
         assert!(report.contains("perl-lsp facts exporter case bad-packet is duplicated"));
         assert!(report.contains("packet schema_version must be ripr-perl-facts-v1"));
-        assert!(report.contains("packet producer.name must be perl-lsp"));
+        assert!(
+            report.contains("packet producer.name must be perl-ripr-facts, perllsp, or perl-lsp")
+        );
         assert!(report.contains("packet must not emit RIPR-derived gap state"));
         assert!(report.contains("file fact is missing path"));
         assert!(report.contains("must be repo-relative"));

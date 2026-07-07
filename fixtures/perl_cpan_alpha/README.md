@@ -30,7 +30,7 @@ expected/
 The real proof is `tests/perl_two_binary_harness.rs`, which runs:
 
 ```text
-perl-ripr-facts --schema ripr-perl-facts-v1 --root <input> --base ... --head ... --fact-classes ... --diff <variant> --out <tmp>
+perl-ripr-facts ripr-facts --schema ripr-perl-facts-v1 --root <input> --base ... --head ... --fact-classes ... --diff <variant> --out <tmp>
 ripr check --perl-facts <tmp> --json
 ```
 

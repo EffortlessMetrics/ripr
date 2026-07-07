@@ -2,7 +2,7 @@
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:cpan-alpha:already-observed-exact-is",
   "packet_status": "complete",
-  "packet_fingerprint": "sha256:91d84eb74f051892d3cc75dd20ec42ab3bd6f9ef3311016d9def1955bfca5d4d",
+  "packet_fingerprint": "sha256:8c93eb841845b47315f38d393ace20ce845ccf66da00be7ba13d191ee55f9a96",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-regression-fixture",

@@ -4724,6 +4724,7 @@ spec = "docs/specs/RIPR-SPEC-0064-perl-fact-packet-contract.md"
 tests = [
   "crates/ripr/src/analysis/language/perl/tests.rs::tests::perl_fact_packet_adapter_consumes_exact_return_fixture",
   "crates/ripr/src/analysis/language/perl/tests.rs::tests::perllsp_exporter_fixture_is_consumed_without_actionable_gap_state",
+  "crates/ripr/src/analysis/language/perl/tests.rs::tests::ingestion_accepts_canonical_and_compat_perl_fact_exporters",
   "crates/ripr/src/analysis/language/perl/tests.rs::tests::perl_fact_packet_adapter_preserves_source_test_and_oracle_taxonomy",
   "crates/ripr/src/analysis/language/perl/tests.rs::tests::perl_related_test_linking_classifies_reachability_and_revealability",
   "crates/ripr/src/analysis/language/perl/tests.rs::tests::perl_strict_actionability_requires_all_packet_and_context_fields",
@@ -4741,6 +4742,8 @@ tests = [
   "crates/ripr/src/output/sarif.rs::tests::sarif_projects_perl_preview_card_properties",
   "crates/ripr/src/output/github.rs::tests::render_includes_perl_preview_card_guidance",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_perl_preview_card_becomes_markdown_advisory_gap_record",
+  "xtask/src/main.rs::tests::perl_lsp_facts_exporter_fixture_accepts_supported_producers",
+  "crates/ripr/tests/perl_two_binary_harness.rs::two_binary_proof_three_outcomes_against_real_perllsp",
 ]
 fixtures = [
   "fixtures/perl_lsp_facts_exporter",

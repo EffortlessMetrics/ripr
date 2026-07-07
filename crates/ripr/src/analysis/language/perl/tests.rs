@@ -67,7 +67,7 @@ fn consume(packet_text: &str) -> Result<PerlFactPacket, String> {
     PerlAdapter.consume_fact_packet(packet_text, &packet_test_options())
 }
 
-fn blocking_boundary_kind_cases() -> [(BoundaryKind, &'static str); 14] {
+fn blocking_boundary_kind_cases() -> [(BoundaryKind, &'static str); 15] {
     [
         (BoundaryKind::DynamicDispatch, "dynamic_dispatch"),
         (
@@ -88,7 +88,29 @@ fn blocking_boundary_kind_cases() -> [(BoundaryKind, &'static str); 14] {
         (BoundaryKind::MissingTestRunner, "missing_test_runner"),
         (BoundaryKind::MissingDiffOwner, "missing_diff_owner"),
         (BoundaryKind::PacketIncomplete, "packet_incomplete"),
+        (BoundaryKind::PartialEmitter, "partial_emitter"),
         (BoundaryKind::Unknown, "unknown"),
+    ]
+}
+
+fn blocking_limitation_kind_labels() -> [&'static str; 16] {
+    [
+        "dynamic_dispatch",
+        "module_resolution_unknown",
+        "generated_symbol",
+        "role_composition",
+        "monkeypatch_or_symbol_patch",
+        "eval_or_string_code",
+        "symbol_table_mutation",
+        "framework_indirection",
+        "unknown_helper",
+        "unsupported_syntax",
+        "missing_test_runner",
+        "missing_diff_owner",
+        "narrowed_representation",
+        "packet_incomplete",
+        "partial_emitter",
+        "unknown",
     ]
 }
 
@@ -258,7 +280,7 @@ fn perl_fact_packet_adapter_parses_partial_dynamic_boundary_limitation() -> Resu
         BoundaryKind::DynamicDispatch
     );
     assert_eq!(packet.limitations.len(), 1);
-    assert_eq!(packet.limitations[0].kind, BoundaryKind::DynamicDispatch);
+    assert_eq!(packet.limitations[0].kind, "dynamic_dispatch");
     assert!(
         packet
             .verify_command_for_test("test:t/app.t:test_dynamic_discount")
@@ -319,6 +341,20 @@ fn perllsp_exporter_fixture_is_consumed_without_actionable_gap_state() -> Result
         value.get("gap_state").is_none(),
         "perl-lsp packets must not emit RIPR-derived actionability"
     );
+
+    Ok(())
+}
+
+#[test]
+fn ingestion_accepts_canonical_and_compat_perl_fact_exporters() -> Result<(), String> {
+    for producer in ["perl-ripr-facts", "perllsp", "perl-lsp"] {
+        let packet = EXACT_RETURN_PACKET.replace(
+            "\"name\": \"perl-lsp\"",
+            &format!("\"name\": \"{producer}\""),
+        );
+        let consumed = consume(&bless_fingerprint(&packet))?;
+        assert_eq!(consumed.producer.name, producer);
+    }
 
     Ok(())
 }
@@ -479,6 +515,17 @@ fn perl_related_test_linking_classifies_reachability_and_revealability() -> Resu
         packet.classify_change_from_related_tests("change:lib/My/App.pm:25:field"),
         ExposureClass::NoStaticPath,
         "unlinked Perl oracles must not imply related-test reachability"
+    );
+
+    let partial_text = fixture.replace(
+        r#""packet_status": "complete""#,
+        r#""packet_status": "partial""#,
+    );
+    let partial_packet = consume(&bless_fingerprint(&partial_text))?;
+    assert_eq!(
+        partial_packet.classify_change_from_related_tests("change:lib/My/App.pm:8:return"),
+        ExposureClass::WeaklyExposed,
+        "partial alpha packets with valid relation evidence still support draft exposure classification"
     );
 
     let stale_owner_text = fixture.replace(
@@ -1309,6 +1356,30 @@ fn perl_strict_actionability_fails_closed_for_missing_or_weak_fields() -> Result
         Err(PerlActionabilityBlocker::DynamicBoundary)
     );
 
+    let mut unrelated_owner_boundary = packet.clone();
+    unrelated_owner_boundary
+        .dynamic_boundaries
+        .push(DynamicBoundaryFact {
+            boundary_id: "boundary:lib/My/App.pm:helper:dynamic".to_string(),
+            kind: BoundaryKind::DynamicDispatch,
+            file_id: "file:lib/My/App.pm".to_string(),
+            owner_id: Some("perl:lib/My/App.pm::My::App::dynamic_method".to_string()),
+            range: RangeFact {
+                start_line: 20,
+                start_column: 5,
+                end_line: 20,
+                end_column: 14,
+            },
+            confidence: Confidence::Medium,
+            provenance_refs: vec!["prov:dynamic-boundary:helper".to_string()],
+        });
+    assert_eq!(
+        unrelated_owner_boundary
+            .strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+        packet.strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+        "owner-scoped dynamic boundaries in the same file must not block unrelated owners"
+    );
+
     let mut test_file_boundary = packet.clone();
     test_file_boundary
         .dynamic_boundaries
@@ -1335,7 +1406,7 @@ fn perl_strict_actionability_fails_closed_for_missing_or_weak_fields() -> Result
     let mut relevant_limitation = packet.clone();
     relevant_limitation.limitations.push(LimitationFact {
         limitation_id: "limitation:framework-indirection:return".to_string(),
-        kind: BoundaryKind::FrameworkIndirection,
+        kind: "framework_indirection".to_string(),
         message: "dynamic framework indirection touches selected oracle".to_string(),
         evidence_refs: vec!["oracle:t/app.t:7:is".to_string()],
     });
@@ -1450,11 +1521,11 @@ fn perl_blocking_limitation_kinds_fail_closed_before_repair_packets() -> Result<
     );
     let context = complete_perl_actionability_context();
 
-    for (kind, label) in blocking_boundary_kind_cases() {
+    for label in blocking_limitation_kind_labels() {
         let mut packet = consume(fixture)?;
         packet.limitations = vec![LimitationFact {
             limitation_id: format!("limitation:{label}:discount"),
-            kind,
+            kind: label.to_string(),
             message: format!("{label} blocks strict Perl actionability"),
             evidence_refs: vec!["change:lib/My/App.pm:8:return".to_string()],
         }];
@@ -1481,6 +1552,39 @@ fn perl_blocking_limitation_kinds_fail_closed_before_repair_packets() -> Result<
             "{label} limitation must not emit an agent packet"
         );
     }
+
+    Ok(())
+}
+
+#[test]
+fn perl_blocking_limitations_match_relevant_provenance_refs() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let context = complete_perl_actionability_context();
+    let mut packet = consume(fixture)?;
+    packet.limitations = vec![LimitationFact {
+        limitation_id: "limitation:narrowed:discount".to_string(),
+        kind: "narrowed_representation".to_string(),
+        message: "producer narrowed the changed representation".to_string(),
+        evidence_refs: vec!["prov:diff:return".to_string()],
+    }];
+
+    assert_eq!(
+        packet.strict_actionability_for_change("change:lib/My/App.pm:8:return", &context),
+        Err(PerlActionabilityBlocker::DynamicBoundary),
+        "a limitation tied through provenance refs must fail closed"
+    );
+    assert_eq!(
+        packet.repair_card_for_change("change:lib/My/App.pm:8:return", &context),
+        Err(PerlActionabilityBlocker::DynamicBoundary),
+        "a provenance-scoped limitation must not emit a repair card"
+    );
+    assert_eq!(
+        packet.agent_packet_for_change("change:lib/My/App.pm:8:return", &context),
+        Err(PerlActionabilityBlocker::DynamicBoundary),
+        "a provenance-scoped limitation must not emit an agent packet"
+    );
 
     Ok(())
 }
@@ -2063,6 +2167,24 @@ fn ingestion_rejects_dangling_relation_change_id() {
 }
 
 #[test]
+fn ingestion_accepts_unresolved_relation_change_id_sentinel() {
+    // `change:unresolved` is the producer's explicit unbound-relation sentinel.
+    // It is not a dangling change reference and must remain valid for relation-
+    // only evidence packets.
+    let needle = "\"change_id\": \"change:lib/My/App.pm:15:return\"";
+    let count = EXACT_RETURN_PACKET.matches(needle).count();
+    let packet =
+        EXACT_RETURN_PACKET.replacen(needle, "\"change_id\": \"change:unresolved\"", count);
+    let packet = packet.replacen("\"change_id\": \"change:unresolved\"", needle, count - 1);
+    let result = consume(&bless_fingerprint(&packet));
+    assert!(
+        result.is_ok(),
+        "`change:unresolved` must be accepted as intentional unbound relation evidence: {:?}",
+        result.err()
+    );
+}
+
+#[test]
 fn ingestion_accepts_well_formed_reference_packet() {
     let adapter = PerlAdapter;
     let result = consume(EXACT_RETURN_PACKET);
@@ -2086,7 +2208,7 @@ fn ingestion_rejects_mismatched_packet_fingerprint() {
     // the load-bearing tamper/stale detection: a packet whose declared
     // fingerprint disagrees with its content must be rejected.
     let packet = EXACT_RETURN_PACKET.replace(
-        "\"packet_fingerprint\": \"sha256:dfbaf34aa66d58456a4640e909ca6f0f2b183aa1354543079724ad18735979cb\"",
+        "\"packet_fingerprint\": \"sha256:d23dde44154c2ee8eddf3eae1dd87d585371396ac04608c651b30289a89e74f3\"",
         "\"packet_fingerprint\": \"sha256:0000000000000000000000000000000000000000000000000000000000000000\"",
     );
     let result = consume(&packet);
@@ -2252,7 +2374,7 @@ fn render_command_matches_spec_canonical_surface() -> Result<(), String> {
     let command = request.render_command();
     assert_eq!(
         command.program, "perl-lsp",
-        "the producer program name is `perl-lsp` (SPEC-0064); note managed mode spawns `perllsp` — see fixtures/perl_cpan_alpha/README.md"
+        "the compatibility wrapper program name remains `perl-lsp`; canonical producer identity is `perl-ripr-facts`"
     );
     assert_eq!(
         command.argv,
@@ -2391,6 +2513,18 @@ fn cpan_alpha_dynamic_limited_regression_packet_yields_named_limitation() -> Res
         "a dynamic-limited packet must carry a named limitation"
     );
     let findings = packet_to_findings(&packet);
+    let limited = findings
+        .iter()
+        .find(|finding| finding.class == ExposureClass::StaticUnknown)
+        .ok_or_else(|| {
+            "dynamic-limited packet must classify the changed owner as static_unknown with a named dynamic limit"
+                .to_string()
+        })?;
+    assert_eq!(
+        limited.static_limit_kind,
+        Some(crate::domain::StaticLimitKind::DynamicDispatch),
+        "dynamic-limited finding must carry the dynamic_dispatch static limit"
+    );
     assert!(
         findings
             .iter()
@@ -2921,6 +3055,103 @@ fn h1_ownerless_file_boundary_still_blocks() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn h1_dynamic_dispatch_limitation_blocks_related_finding_classification() -> Result<(), String> {
+    let mut packet = consume(EXACT_RETURN_PACKET)?;
+    packet.limitations = vec![LimitationFact {
+        limitation_id: "limitation:dynamic-dispatch:relation".to_string(),
+        kind: "dynamic_dispatch".to_string(),
+        message: "producer could not bind the related call through dynamic dispatch".to_string(),
+        evidence_refs: vec!["relation:change:discount-return:test:threshold".to_string()],
+    }];
+
+    let findings = packet_to_findings(&packet);
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert!(
+        !finding.related_tests.is_empty(),
+        "fixture must keep related evidence so this covers the related-evidence limitation branch"
+    );
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "a dynamic_dispatch limitation tied to related evidence must block strict finding classification"
+    );
+    Ok(())
+}
+
+#[test]
+fn h1_dynamic_dispatch_limitation_suppresses_concrete_repair_gap() -> Result<(), String> {
+    let text = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\"",
+        "\"changed_text_digest\": \"discriminator:$amount == $threshold\"",
+    );
+    let mut packet = consume(&bless_fingerprint(&text))?;
+    packet.limitations = vec![LimitationFact {
+        limitation_id: "limitation:dynamic-dispatch:relation".to_string(),
+        kind: "dynamic_dispatch".to_string(),
+        message: "producer could not bind the related call through dynamic dispatch".to_string(),
+        evidence_refs: vec!["relation:change:discount-return:test:threshold".to_string()],
+    }];
+
+    let findings = packet_to_findings(&packet);
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "a dynamic_dispatch limitation tied to related evidence must stay fail-closed"
+    );
+    assert!(
+        finding.canonical_gap.is_none(),
+        "static-limited Perl findings must not attach repair gap identities"
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_test_location")),
+        "static-limited Perl findings must not suggest a repair test location"
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|e| e.starts_with("perl_suggested_assertion")),
+        "static-limited Perl findings must not suggest a repair assertion"
+    );
+    Ok(())
+}
+
+#[test]
+fn h1_dynamic_dispatch_limitation_blocks_no_static_path_classification() -> Result<(), String> {
+    let mut packet = consume(EXACT_RETURN_PACKET)?;
+    packet.relations.clear();
+    packet.limitations = vec![LimitationFact {
+        limitation_id: "limitation:dynamic-dispatch:change".to_string(),
+        kind: "dynamic_dispatch".to_string(),
+        message: "producer could not bind the changed call through dynamic dispatch".to_string(),
+        evidence_refs: vec!["change:lib/My/App.pm:15:return".to_string()],
+    }];
+
+    let findings = packet_to_findings(&packet);
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    assert!(
+        finding.related_tests.is_empty(),
+        "fixture mutation must remove relation evidence so this covers the change-only limitation branch"
+    );
+    assert_eq!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown,
+        "a change-scoped dynamic_dispatch limitation must outrank no_static_path"
+    );
+    Ok(())
+}
+
 /// A change whose `changed_text_digest` is NOT a `discriminator:`-prefixed
 /// concrete discriminator must NOT carry a canonical repair gap. EXACT_RETURN_PACKET
 /// uses `"sha256:return"` (generic), so it must yield `canonical_gap: None`.
@@ -3057,7 +3288,7 @@ const EXACT_RETURN_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",
   "packet_status": "complete",
-  "packet_fingerprint": "sha256:dfbaf34aa66d58456a4640e909ca6f0f2b183aa1354543079724ad18735979cb",
+  "packet_fingerprint": "sha256:d23dde44154c2ee8eddf3eae1dd87d585371396ac04608c651b30289a89e74f3",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",
@@ -3231,7 +3462,7 @@ const PARTIAL_DYNAMIC_BOUNDARY_PACKET: &str = r#"{
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:dynamic-boundary",
   "packet_status": "partial",
-  "packet_fingerprint": "sha256:d761c7861709a68164989286f6f302787f3c5707821e1f138731c3bc6234ce69",
+  "packet_fingerprint": "sha256:5004da4fad36c03cead176f176fc27f10f7d2ca62d4eefba0dc5b836a3bf64a0",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",

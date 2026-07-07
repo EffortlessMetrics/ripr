@@ -2,7 +2,7 @@
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:source-test-oracle-taxonomy",
   "packet_status": "complete",
-  "packet_fingerprint": "sha256:549ea6d0bf7efa633cb911cd3547853c6e696166e539edd8b359581ee63b8ab1",
+  "packet_fingerprint": "sha256:cc39cee74d4efed46a4e2539a1b2e50cb7773c0c58ac77f1e6b047ae8f3bbddc",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",

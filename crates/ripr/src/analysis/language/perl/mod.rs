@@ -1,9 +1,10 @@
 //! Fixture-only Perl fact packet adapter.
 //!
 //! This module is test-scoped for the first Perl implementation slice. It
-//! consumes canned `ripr-perl-facts-v1` packets without launching `perl-lsp`,
-//! a Perl runtime, or an LSP protocol session. Production routing lands only
-//! after the fact packet and strict actionability slices are fixture-backed.
+//! consumes canned `ripr-perl-facts-v1` packets without launching a Perl facts
+//! exporter, a Perl runtime, or an LSP protocol session. Production routing
+//! lands only after the fact packet and strict actionability slices are
+//! fixture-backed.
 
 use crate::analysis::AnalysisOptions;
 use crate::analysis::diff::ChangedFile;
@@ -18,8 +19,17 @@ use std::path::Path;
 /// The `ripr-perl-facts-v1` packet schema. Re-uses the canonical declaration
 /// from `app` (Campaign 31 item 5) so the schema version has one source of
 /// truth. References here use `crate::app::PERL_FACT_PACKET_SCHEMA`.
+const PERL_RIPR_FACT_EXPORTER: &str = "perl-ripr-facts";
 const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
 const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
+const UNRESOLVED_RELATION_CHANGE_ID: &str = "change:unresolved";
+
+fn is_supported_perl_fact_exporter(name: &str) -> bool {
+    matches!(
+        name,
+        PERL_RIPR_FACT_EXPORTER | "perllsp" | PERL_LSP_FACT_EXPORTER
+    )
+}
 
 /// Validate that an ID is a stable, host-free token
 /// (RIPR-SPEC-0064: no host paths, usernames, temp paths, env vars, or
@@ -103,12 +113,16 @@ fn hex_sha256(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    hex_bytes(&digest)
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Perl fact-packet adapter.
 ///
-/// Reads a `ripr-perl-facts-v1` packet (produced by `perl-lsp ripr-facts`)
+/// Reads a `ripr-perl-facts-v1` packet (produced by `perl-ripr-facts ripr-facts`)
 /// and converts it into ripr domain `Finding`s. The adapter does NOT parse
 /// Perl source — it trusts the packet's facts after the ingestion boundary
 /// validates them.
@@ -286,10 +300,12 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // owner-only.
         let has_boundary = if related_evidence.is_empty() {
             packet.has_blocking_dynamic_boundary(change, None)
+                || packet.has_blocking_dynamic_dispatch_limitation_for_change(change)
         } else {
-            related_evidence
-                .iter()
-                .any(|ev| packet.has_blocking_dynamic_boundary(change, Some(ev)))
+            related_evidence.iter().any(|ev| {
+                packet.has_blocking_dynamic_boundary(change, Some(ev))
+                    || packet.has_blocking_dynamic_dispatch_limitation(change, ev)
+            })
         };
 
         // Build the projected RelatedTests from the packet evidence. The test
@@ -400,11 +416,12 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             .unwrap_or_else(|| change.behavior_hint.default_assertion_shape().to_string());
 
         // Canonical gap: only when a concrete discriminator exists, the packet
-        // can form a stable identity, AND the change is NOT already observed.
-        // An already-observed change needs no repair gap. Otherwise None
-        // (informational Finding, no repair identity).
+        // can form a stable identity, the change is NOT already observed, and
+        // no dynamic boundary/limitation blocks static actionability. Static
+        // limits stay fail-closed: they may explain why classification is
+        // unknown, but they must not produce repair-shaped gap identities.
         let canonical_gap: Option<FindingCanonicalGap> =
-            if has_concrete_discriminator && !is_already_observed {
+            if has_concrete_discriminator && !is_already_observed && !has_boundary {
                 packet
                     .canonical_gap_identity_for_change_with_assertion_shape(
                         &change.change_id,
@@ -449,6 +466,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                 aligned.test_name, aligned.observed_sink, aligned.oracle_shape
             ));
         } else if !is_already_observed
+            && !has_boundary
             && has_concrete_discriminator
             && let Some(first) = related.first()
         {
@@ -631,9 +649,7 @@ impl PerlLspFactExportRequest {
         let out = stable_repo_path_arg(out.into(), "out")?;
         let requested_fact_classes = canonical_fact_classes(requested_fact_classes);
         if requested_fact_classes.is_empty() {
-            return Err(
-                "perl-lsp fact export request requires at least one fact class".to_string(),
-            );
+            return Err("Perl fact export request requires at least one fact class".to_string());
         }
 
         Ok(Self {
@@ -775,10 +791,11 @@ impl PerlFactPacket {
             );
         }
 
-        // 2. Producer identity: must be perl-lsp.
-        if self.producer.name != PERL_LSP_FACT_EXPORTER {
+        // 2. Producer identity: accept the canonical batch exporter and the
+        //    compatibility wrappers that delegate to it.
+        if !is_supported_perl_fact_exporter(&self.producer.name) {
             return Err(format!(
-                "ingestion: producer name `{}` does not match expected `{PERL_LSP_FACT_EXPORTER}`",
+                "ingestion: producer name `{}` does not match expected `{PERL_RIPR_FACT_EXPORTER}`, `perllsp`, or `{PERL_LSP_FACT_EXPORTER}`",
                 self.producer.name
             ));
         }
@@ -890,7 +907,9 @@ impl PerlFactPacket {
         let oracle_ids: BTreeSet<&str> =
             self.oracles.iter().map(|o| o.oracle_id.as_str()).collect();
         for relation in &self.relations {
-            if !change_ids.contains(relation.change_id.as_str()) {
+            if relation.change_id != UNRESOLVED_RELATION_CHANGE_ID
+                && !change_ids.contains(relation.change_id.as_str())
+            {
                 return Err(format!(
                     "ingestion: relation `{}` references unknown change_id `{}`",
                     relation.relation_id, relation.change_id
@@ -1181,7 +1200,8 @@ impl PerlFactPacket {
             hasher.update(b"\0");
         }
 
-        format!("sha256:{}", hex_sha256(&hasher.finalize()))
+        let digest = hasher.finalize();
+        format!("sha256:{}", hex_bytes(&digest))
     }
 
     fn file(&self, file_id: &str) -> Option<&FileFact> {
@@ -1269,7 +1289,7 @@ impl PerlFactPacket {
     }
 
     fn related_test_evidence_for_change(&self, change_id: &str) -> Vec<PerlRelatedTestEvidence> {
-        if self.packet_status != PacketStatus::Complete {
+        if self.packet_status == PacketStatus::Unavailable {
             return Vec::new();
         }
         let Some(change) = self.change(change_id) else {
@@ -1285,7 +1305,7 @@ impl PerlFactPacket {
     }
 
     fn classify_change_from_related_tests(&self, change_id: &str) -> ExposureClass {
-        if self.packet_status != PacketStatus::Complete || self.change(change_id).is_none() {
+        if self.packet_status == PacketStatus::Unavailable || self.change(change_id).is_none() {
             return ExposureClass::StaticUnknown;
         }
 
@@ -1719,9 +1739,12 @@ impl PerlFactPacket {
                 .map(|test| test.file_id.as_str())
         });
         self.dynamic_boundaries.iter().any(|boundary| {
-            boundary.owner_id.as_deref() == Some(change.owner_id.as_str())
-                || boundary.file_id == change.file_id
-                || test_file_id == Some(boundary.file_id.as_str())
+            if let Some(owner_id) = boundary.owner_id.as_deref() {
+                owner_id == change.owner_id
+            } else {
+                boundary.file_id == change.file_id
+                    || test_file_id == Some(boundary.file_id.as_str())
+            }
         })
     }
 
@@ -1732,13 +1755,60 @@ impl PerlFactPacket {
     ) -> bool {
         let relevant_refs = self.actionability_evidence_ids(change, evidence);
         self.limitations.iter().any(|limitation| {
-            limitation.kind.blocks_strict_actionability()
+            limitation_kind_blocks_strict_actionability(&limitation.kind)
                 && (limitation.evidence_refs.is_empty()
                     || limitation
                         .evidence_refs
                         .iter()
                         .any(|evidence_ref| relevant_refs.contains(evidence_ref)))
         })
+    }
+
+    fn has_blocking_dynamic_dispatch_limitation(
+        &self,
+        change: &ChangeFact,
+        evidence: &PerlRelatedTestEvidence,
+    ) -> bool {
+        let relevant_refs = self.actionability_evidence_ids(change, evidence);
+        self.limitations.iter().any(|limitation| {
+            limitation.kind == "dynamic_dispatch"
+                && (limitation.evidence_refs.is_empty()
+                    || limitation
+                        .evidence_refs
+                        .iter()
+                        .any(|evidence_ref| relevant_refs.contains(evidence_ref)))
+        })
+    }
+
+    fn has_blocking_dynamic_dispatch_limitation_for_change(&self, change: &ChangeFact) -> bool {
+        let relevant_refs = self.change_evidence_ids(change);
+        self.limitations.iter().any(|limitation| {
+            limitation.kind == "dynamic_dispatch"
+                && (limitation.evidence_refs.is_empty()
+                    || limitation
+                        .evidence_refs
+                        .iter()
+                        .any(|evidence_ref| relevant_refs.contains(evidence_ref)))
+        })
+    }
+
+    fn change_evidence_ids(&self, change: &ChangeFact) -> BTreeSet<String> {
+        let mut ids = BTreeSet::from([
+            change.change_id.clone(),
+            change.file_id.clone(),
+            change.owner_id.clone(),
+        ]);
+        ids.extend(change.provenance_refs.iter().cloned());
+        if let Some(source_file) = self.file(&change.file_id) {
+            ids.extend(source_file.provenance_refs.iter().cloned());
+        }
+        if let Some(owner) = self.owner(&change.owner_id) {
+            ids.extend(owner.provenance_refs.iter().cloned());
+            if let Some(owner_file) = self.file(&owner.file_id) {
+                ids.extend(owner_file.provenance_refs.iter().cloned());
+            }
+        }
+        ids
     }
 
     fn actionability_evidence_ids(
@@ -1751,16 +1821,46 @@ impl PerlFactPacket {
             change.file_id.clone(),
             change.owner_id.clone(),
             evidence.relation_id.clone(),
+            evidence.change_id.clone(),
+            evidence.owner_id.clone(),
             evidence.test_id.clone(),
         ]);
+        ids.extend(evidence.evidence_refs.iter().cloned());
+        ids.extend(change.provenance_refs.iter().cloned());
+        if let Some(source_file) = self.file(&change.file_id) {
+            ids.extend(source_file.provenance_refs.iter().cloned());
+        }
+        if let Some(owner) = self.owner(&change.owner_id) {
+            ids.extend(owner.provenance_refs.iter().cloned());
+            if let Some(owner_file) = self.file(&owner.file_id) {
+                ids.extend(owner_file.provenance_refs.iter().cloned());
+            }
+        }
+        if let Some(relation) = self.relation(&evidence.relation_id) {
+            ids.extend(relation.provenance_refs.iter().cloned());
+        }
         if let Some(test) = self.test(&evidence.test_id) {
             ids.insert(test.file_id.clone());
+            ids.extend(test.provenance_refs.iter().cloned());
+            if let Some(test_file) = self.file(&test.file_id) {
+                ids.extend(test_file.provenance_refs.iter().cloned());
+            }
         }
         if let Some(oracle_id) = evidence.oracle_id.as_ref() {
             ids.insert(oracle_id.clone());
+            if let Some(oracle) = self.oracle(oracle_id) {
+                ids.extend(oracle.provenance_refs.iter().cloned());
+            }
         }
         if let Some(verify_command_id) = evidence.verify_command_id.as_ref() {
             ids.insert(verify_command_id.clone());
+            if let Some(verify_command) = self
+                .verify_commands
+                .iter()
+                .find(|command| command.command_id == *verify_command_id)
+            {
+                ids.extend(verify_command.provenance_refs.iter().cloned());
+            }
         }
         ids
     }
@@ -2740,7 +2840,7 @@ struct DynamicBoundaryFact {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 struct LimitationFact {
     limitation_id: String,
-    kind: BoundaryKind,
+    kind: String,
     message: String,
     evidence_refs: Vec<String>,
 }
@@ -2761,29 +2861,30 @@ enum BoundaryKind {
     MissingTestRunner,
     MissingDiffOwner,
     PacketIncomplete,
+    PartialEmitter,
     Unknown,
 }
 
-impl BoundaryKind {
-    fn blocks_strict_actionability(self) -> bool {
-        matches!(
-            self,
-            Self::DynamicDispatch
-                | Self::ModuleResolutionUnknown
-                | Self::GeneratedSymbol
-                | Self::RoleComposition
-                | Self::MonkeypatchOrSymbolPatch
-                | Self::EvalOrStringCode
-                | Self::SymbolTableMutation
-                | Self::FrameworkIndirection
-                | Self::UnknownHelper
-                | Self::UnsupportedSyntax
-                | Self::MissingTestRunner
-                | Self::MissingDiffOwner
-                | Self::PacketIncomplete
-                | Self::Unknown
-        )
-    }
+fn limitation_kind_blocks_strict_actionability(kind: &str) -> bool {
+    matches!(
+        kind,
+        "dynamic_dispatch"
+            | "module_resolution_unknown"
+            | "generated_symbol"
+            | "role_composition"
+            | "monkeypatch_or_symbol_patch"
+            | "eval_or_string_code"
+            | "symbol_table_mutation"
+            | "framework_indirection"
+            | "unknown_helper"
+            | "unsupported_syntax"
+            | "missing_test_runner"
+            | "missing_diff_owner"
+            | "narrowed_representation"
+            | "packet_incomplete"
+            | "partial_emitter"
+            | "unknown"
+    )
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -2822,7 +2923,7 @@ struct ProvenanceFact {
     provenance_id: String,
     source: ProvenanceSource,
     file_id: Option<String>,
-    range: Option<RangeFact>,
+    range: Option<serde_json::Value>,
     confidence: Confidence,
 }
 
@@ -3180,9 +3281,7 @@ fn fact_classes_arg(fact_classes: &[PerlFactClass]) -> String {
 
 fn stable_repo_path_arg(path: String, field: &str) -> Result<String, String> {
     if path.is_empty() {
-        return Err(format!(
-            "perl-lsp fact export `{field}` path must not be empty"
-        ));
+        return Err(format!("Perl fact export `{field}` path must not be empty"));
     }
     if path.contains('\\')
         || path.starts_with('/')
@@ -3190,7 +3289,7 @@ fn stable_repo_path_arg(path: String, field: &str) -> Result<String, String> {
         || path.split('/').any(|component| component == "..")
     {
         return Err(format!(
-            "perl-lsp fact export `{field}` path must be repo-relative and use `/` separators"
+            "Perl fact export `{field}` path must be repo-relative and use `/` separators"
         ));
     }
     Ok(path)
