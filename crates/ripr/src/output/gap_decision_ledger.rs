@@ -2150,6 +2150,13 @@ mod tests {
             .to_string()
     }
 
+    fn typescript_preview_gap_before_check_output() -> String {
+        include_str!(
+            "../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+        )
+        .to_string()
+    }
+
     fn minimal_record() -> Value {
         serde_json::json!({
             "gap_id": "gap:minimal",
@@ -3144,6 +3151,71 @@ mod tests {
         assert!(
             packet.contains("\"receipt_status\": \"available\""),
             "expected packet receipt availability in {packet}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_typescript_fixture_synthesizes_receipt_write_for_packet() -> Result<(), String>
+    {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path:
+                "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+                    .to_string(),
+            records_json: Ok(typescript_preview_gap_before_check_output()),
+        });
+        assert!(
+            report.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            report.warnings
+        );
+        assert_eq!(report.records.len(), 1);
+
+        let record = &report.records[0];
+        assert_eq!(
+            record.canonical_gap_id,
+            "gap:typescript:typescript_preview:2396aec1"
+        );
+        assert_eq!(record.language, "typescript");
+        assert_eq!(record.language_status, "preview");
+        assert_eq!(record.repairability, "repairable");
+        assert!(projection_eligible(record, "agent_packet"));
+        assert!(!projection_eligible(record, "gate_candidate"));
+        assert_eq!(
+            record.verification_commands,
+            vec!["jest tests/discount.test.ts".to_string()]
+        );
+        let route = record
+            .repair_route
+            .as_ref()
+            .ok_or("expected TypeScript fixture repair route")?;
+        assert_eq!(route.route_kind, "AddBoundaryAssertion");
+        assert_eq!(route.target_file.as_deref(), Some("tests/discount.test.ts"));
+        assert_eq!(
+            route.related_test.as_deref(),
+            Some(
+                "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold"
+            )
+        );
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("src/discount.ts")
+        );
+
+        let receipt_cmd = record.receipt_command.as_deref().unwrap_or("");
+        assert!(
+            receipt_cmd.starts_with("ripr receipt write --gap "),
+            "TypeScript fixture without packet receipt_command must synthesize canonical receipt write, got: {receipt_cmd}"
+        );
+        assert!(
+            !receipt_cmd.contains("ripr outcome"),
+            "gap-ledger receipt command must not reuse outcome receipt syntax, got: {receipt_cmd}"
         );
         Ok(())
     }

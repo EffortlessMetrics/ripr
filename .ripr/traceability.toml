@@ -5415,6 +5415,7 @@ tests = [
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::receipt_command_is_ripr_outcome_shape",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::must_not_change_includes_preview_clause_via_shared_function",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_repair_packet_becomes_agent_packet_gap_record",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_fixture_synthesizes_receipt_write_for_packet",
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids",
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_typescript_preview_fixture_matches_expected_receipts"
 ]
