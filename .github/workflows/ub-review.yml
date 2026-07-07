@@ -26,7 +26,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Cache the ub-review source build so subsequent runs skip the ~12 min
+      # cargo recompile. Keyed on the action SHA so a new pin invalidates.
+      # Cuts repeat runs from ~14 min to ~2-3 min (ub-review #728).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target/ub-review-build"
+          key: ub-review-d4461d40efbbb6ce7825cc574df628e929f0ee89
+
       - name: ub-review
+        env:
+          CARGO_TARGET_DIR: target/ub-review-build
         uses: EffortlessMetrics/ub-review@d4461d40efbbb6ce7825cc574df628e929f0ee89
         with:
           # review-mode hides the internal mode/fail-on-gate/review_forward
