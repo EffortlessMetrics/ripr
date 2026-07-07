@@ -5453,6 +5453,8 @@ name = "TypeScript repair-packet surface projection"
 spec = "docs/specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md"
 tests = [
   # Human surface — field-note and named limitation
+  "crates/ripr/src/app/explain.rs::tests::explain_finding_renders_typescript_actionable_packet_field_note",
+  "crates/ripr/src/app/explain.rs::tests::explain_finding_renders_typescript_blocked_packet_limitation",
   "crates/ripr/src/output/human/sections.rs::tests::typescript_repair_packet_field_note_renders_for_actionable_finding",
   "crates/ripr/src/output/human/sections.rs::tests::typescript_repair_packet_field_note_renders_limitation_for_blocked_finding",
   # JSON surface — typescript_repair_packet field
@@ -5473,6 +5475,7 @@ fixtures = [
   "fixtures/ts_already_observed"
 ]
 code = [
+  "crates/ripr/src/app/explain.rs",
   "crates/ripr/src/output/human/sections.rs",
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/preview_actionability.rs",
