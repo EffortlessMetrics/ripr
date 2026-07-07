@@ -36,8 +36,9 @@ lane = 2
 # Reconciliation (2026-06-27): this tracker and the Campaign 31 plan doc were
 # authored on an unmerged planning branch (PR #1412) and landed after the
 # consumer-side work. Items A1..D15 plus C2/H1/H2/contract-freeze/E1 are now
-# `done`; the bespoke-renderer ADR-0019 blocker (D16) and the two-binary producer
-# proof (blocked on perl-ripr-facts producer maturity) remain genuinely open.
+# `done`; the fixture-scoped real producer two-binary proof landed in #1491.
+# The remaining blockers are real-repo eval receipts/metrics and the
+# bespoke-renderer ADR-0019 shared-renderer decommissioning (D16).
 # The perl.rs monolith referenced in the
 # original plan was split (#1417) into perl/mod.rs + perl/tests.rs; all path
 # references below point at the post-split layout.
@@ -321,13 +322,43 @@ status = "blocked"
 stackable = false
 branch = "perl-D16-public-projection"
 blocked_by = ["perl-D14/managed-producer-mode", "perl-C12/discriminator-relation-gating"]
-blocked_reason = "needs validated GapRecords AND the two-binary proof (Phase B); ADR-0019 bespoke-renderer decommissioning is a confirmed-open blocker (perl_preview_card.rs is still wired into production output on main)."
+blocked_reason = "fixture-scoped two-binary proof landed in #1491, but public projection still needs real-repo eval evidence/receipts and ADR-0019 shared-renderer decommissioning; perl_preview_card.rs is still wired into production output on main."
 acceptance = "Phase D PR 16 (ripr-swarm, OPEN). AFTER the real two-binary proof, project validated Perl GapRecords as PUBLIC repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger using the SHARED renderers — NOT bespoke Perl renderers (ADR 0019). repair_packet_ready flips to true ONLY via validate_agent_gap_record_packet. Gates/badges/baseline/RIPR Zero authority stay false. ADR-0019 DECOMMISSIONING (CONFIRMED-OPEN BLOCKER as of 2026-06-27): this PR MUST remove or formally scope-down gap_record_from_perl_preview_finding (gap_decision_ledger.rs:756, read at :424) and the bespoke perl_preview_card renderer (perl_preview_card.rs, called from github.rs:99 + human/sections.rs:143) — both still wired into production output on main. Either (a) delete them once shared renderers cover Perl, re-blessing the test at gap_decision_ledger.rs:2824; or (b) pin the old path to markdown_advisory-only and add a regression test proving it can never reach repair_packet_ready=true. Option (a) preferred. Also adds the Perl must_not_emit_repair_packet case to fixtures/evidence-promotion-honesty-corpus/corpus.json."
 commands = [
   "cargo test -p ripr --features lang-perl",
   "cargo xtask check-output-contracts",
   "cargo xtask goldens check",
   "cargo xtask check-evidence-promotion-honesty",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "dogfood/perl-real-repo-evals-v1"
+status = "done"
+stackable = false
+branch = "perl-real-repo-evals-followup"
+acceptance = "Add the first checked `fixtures/perl-real-repo-evals` corpus for the merged #1491 producer-dependent CPAN alpha launchpoints. The corpus records actionable, already-observed, and dynamic-dispatch limited expected outcomes, cites the two-binary harness proof, and keeps public repair packets, agent packets, five-repo metrics, and support-tier promotion explicitly out of scope. This is a stepping-stone corpus only; it does not satisfy the >=5 real Perl repo receipts or D16/D18 promotion gates."
+commands = [
+  "cargo test -p xtask perl_real_repo_eval -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "dogfood/perl-real-repo-evals-v2"
+status = "blocked"
+stackable = false
+branch = "perl-real-repo-evals-v2"
+blocked_reason = "requires human-reviewed runs over at least five materially different Perl repos with the real perl-ripr-facts exporter, focused verify commands, before/after receipts, and precision/false-actionable judgments."
+acceptance = "Expand `fixtures/perl-real-repo-evals` from fixture-scoped launchpoints into the real-world PR 18 evidence set: >=5 materially different Perl repos, >=20 human-reviewed candidate routes, top-1 repair-card precision >=80%, verify-command validity >=90%, false-actionable rate <=5%, zero severe false-actionables, and >=5 before/after receipts with >=3 improved/resolved. This remains advisory until D16/D17 shared public projection and packet authority are complete."
+commands = [
+  "cargo test -p xtask perl_real_repo_eval -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask dogfood",
+  "cargo xtask metrics",
+  "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]
 

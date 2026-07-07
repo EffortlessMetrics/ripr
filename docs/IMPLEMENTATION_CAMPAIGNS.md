@@ -5299,10 +5299,10 @@ proving all three outcomes:
 - **Limited** — `my $method = $config->{method}; $obj->$method();` — relation
   visible but dynamic dispatch yields a named limitation and no packet.
 
-The fixture landed (#1433); the **two-binary proof** (real `perllsp ripr-facts`
-output consumed end-to-end) is the still-open milestone that turns the consumer
-from scaffold into a working preview. Committed expected packets are regression
-fixtures, not proof.
+The fixture landed (#1433); the fixture-scoped **two-binary proof** (real
+`perl-ripr-facts` compatible output consumed end-to-end) landed in #1491 and
+turns the consumer from scaffold into a working preview. Committed expected
+packets remain regression fixtures, not producer proof.
 
 ### Release gates (usable alpha)
 
@@ -5318,9 +5318,9 @@ Contract & safety (**mechanically enforced**):
   cross-language corpus).
 - `lang-perl` feature-gated code path exercised in CI (PR 11 matrix job).
 
-Real-world evidence (**human-judgment, recorded in PR 18** — there is no
-`perl-real-repo-evals` corpus analogous to `python-real-repo-evals`; adding one
-is a post-alpha follow-up):
+Real-world evidence (**human-judgment, recorded in PR 18**; the checked
+`perl-real-repo-evals` corpus starts as producer-dependent launchpoints and
+does not by itself satisfy alpha promotion):
 - ≥5 materially different Perl repositories; ≥20 human-reviewed candidate routes.
 - top-1 repair-card precision ≥ 80%; verify-command validity ≥ 90%;
   false-actionable rate ≤ 5%; zero severe false-actionables permitting

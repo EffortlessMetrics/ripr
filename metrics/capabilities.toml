@@ -1710,15 +1710,16 @@ evidence = [
   "Doctor Perl preview (Campaign 31 item 5): ripr doctor reports producer configured/found/version/schema, Perl markers, t/ and t2/ roots, Test::More/Test2/V1/V0/Suite frameworks, prove/yath/carton/dzil runners, and an exact next command (#1457).",
   "Bespoke perl_preview_card path formally scoped to advisory-only (Campaign 31 item 6): every authority-ready flag hard-pinned false by advisory_only_readiness(); mechanical invariant test guards against a future flip; ADR-0019 decommissioning deferred to the post-producer-proof PR (#1458).",
   "Architecture corrected: perl-lsp-swarm #3294 moved RIPR fact production into a dedicated perl-ripr-facts batch exporter over parser/workspace/semantic-facts crates. ripr-swarm terminology/config/doctor/harness align to treat the producer as a 'Perl facts exporter' (not the LSP server); perllsp/perl-lsp are compatibility wrappers only (#1461). RIPR never starts an LSP server, speaks JSON-RPC, or calls editor providers.",
-  "Producer data-plane proof is fixture-scoped, not alpha-ready: the real two-binary harness passes for the perl_cpan_alpha three-outcome fixture with a local perl-ripr-facts exporter, but no >= 5 real Perl repo corpus, top-1 precision/verify-validity receipts, or before/after repair receipts exist yet.",
-  "Promotion to usable alpha requires: (1) the real two-binary proof (perl-ripr-facts -> ripr) producing actionable / already-observed / limited outcomes against >= 5 real Perl repos; (2) top-1 repair-card precision >= 80%, verify-command validity >= 90%, false-actionable rate <= 5%; (3) >= 5 before/after receipts with >= 3 improved/resolved; (4) a perl-real-repo-evals dogfood corpus mirroring python-real-repo-evals; (5) decommissioning of the bespoke perl_preview_card in favor of the shared validator path. Until then gates/badges/RIPR Zero/stable Perl claims stay false."
+  "Producer data-plane proof is fixture-scoped, not alpha-ready: the real two-binary harness passes for the perl_cpan_alpha three-outcome fixture with a local perl-ripr-facts exporter, and fixtures/perl-real-repo-evals records the checked actionable / already-observed / limited launchpoints. No >= 5 real Perl repo receipt set, top-1 precision/verify-validity receipts, or before/after repair receipt threshold exists yet.",
+  "Promotion to usable alpha requires: (1) the real two-binary proof (perl-ripr-facts -> ripr) producing actionable / already-observed / limited outcomes against >= 5 real Perl repos; (2) top-1 repair-card precision >= 80%, verify-command validity >= 90%, false-actionable rate <= 5%; (3) >= 5 before/after receipts with >= 3 improved/resolved; (4) expanding the perl-real-repo-evals dogfood corpus from fixture launchpoints into real-repo receipts mirroring python-real-repo-evals; (5) decommissioning of the bespoke perl_preview_card in favor of the shared validator path. Until then gates/badges/RIPR Zero/stable Perl claims stay false."
 ]
 fixtures = [
   "fixtures/perl_cpan_alpha",
-  "fixtures/perl_lsp_facts_exporter"
+  "fixtures/perl_lsp_facts_exporter",
+  "fixtures/perl-real-repo-evals"
 ]
-next = "dogfood/perl-real-repo-evals-v1"
-metric = "language_adapter_perl_facts_packet_v1, language_adapter_perl_gap_record_projection, language_adapter_perl_doctor_preview, language_adapter_perl_bespoke_card_advisory_only_invariant"
+next = "dogfood/perl-real-repo-evals-v2"
+metric = "language_adapter_perl_facts_packet_v1, language_adapter_perl_gap_record_projection, language_adapter_perl_doctor_preview, language_adapter_perl_bespoke_card_advisory_only_invariant, language_adapter_perl_real_repo_eval_launchpoints"
 
 [[capability]]
 id = "typescript_preview_static_facts"

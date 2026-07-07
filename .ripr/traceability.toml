@@ -4743,10 +4743,12 @@ tests = [
   "crates/ripr/src/output/github.rs::tests::render_includes_perl_preview_card_guidance",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_perl_preview_card_becomes_markdown_advisory_gap_record",
   "xtask/src/main.rs::tests::perl_lsp_facts_exporter_fixture_accepts_supported_producers",
+  "xtask/src/main.rs::tests::perl_real_repo_eval_fixture_corpus_is_valid",
   "crates/ripr/tests/perl_two_binary_harness.rs::two_binary_proof_three_outcomes_against_real_perllsp",
 ]
 fixtures = [
   "fixtures/perl_lsp_facts_exporter",
+  "fixtures/perl-real-repo-evals",
 ]
 code = [
   "crates/ripr/src/analysis/language/perl/mod.rs",
@@ -4762,6 +4764,7 @@ outputs = [
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/adr/0018-perl-lsp-fact-substrate.md",
   "policy/doc-artifacts.toml",
   ".ripr/traceability.toml",
@@ -4769,6 +4772,7 @@ outputs = [
 metrics = [
   "perl_fact_packet_contract_preview_advisory",
   "perl_fact_packet_public_repair_packet_exclusions",
+  "language_adapter_perl_real_repo_eval_launchpoints",
 ]
 
 [[behavior]]
