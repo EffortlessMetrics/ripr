@@ -8830,6 +8830,11 @@ const TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES: &[(&str, &str)] 
         "candidate_future_support",
     ),
     ("module_initializer_ambiguity", "candidate_future_support"),
+    (
+        "oracle_helper_gated_named_limitation",
+        "candidate_future_support",
+    ),
+    ("table_case_named_limitation", "candidate_future_support"),
     ("mocked_module_limit", "named_static_limitation"),
     ("decorator_indirection_limit", "named_static_limitation"),
     ("dynamic_dispatch_limit", "named_static_limitation"),
@@ -88074,7 +88079,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Full top-3 capture cases: 1 / 1 evals"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
         assert!(markdown.contains("TypeScript False-Actionable Audit"));
-        assert!(markdown.contains("False actionable: 0 / 12 checked rows"));
+        assert!(markdown.contains("False actionable: 0 / 14 checked rows"));
         assert!(markdown.contains("Bun UB Cross-Language Witness Receipts"));
         assert!(markdown.contains("bun_blob_31648_known_good"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
@@ -88454,7 +88459,7 @@ fn exact_owner_call_has_external_expected_value() {
             typescript_false_actionable_summary
                 .get("cases")
                 .and_then(Value::as_u64),
-            Some(12)
+            Some(14)
         );
         assert_eq!(
             typescript_false_actionable_summary
@@ -88468,7 +88473,7 @@ fn exact_owner_call_has_external_expected_value() {
                 .get("false_actionable_rate")
                 .and_then(|value| value.get("checked"))
                 .and_then(Value::as_u64),
-            Some(12)
+            Some(14)
         );
         assert_eq!(
             typescript_false_actionable_summary
@@ -88481,7 +88486,7 @@ fn exact_owner_call_has_external_expected_value() {
             .get("cases")
             .and_then(Value::as_array)
             .ok_or_else(|| "typescript_false_actionable_audit cases missing".to_string())?;
-        assert_eq!(typescript_false_actionable_cases.len(), 12);
+        assert_eq!(typescript_false_actionable_cases.len(), 14);
         assert!(
             typescript_false_actionable_cases.iter().all(|case| {
                 case.get("false_actionable").and_then(Value::as_bool) == Some(false)
@@ -93135,8 +93140,8 @@ fn exact_owner_call_has_external_expected_value() {
             let cases = super::typescript_preview_false_actionable_audit_cases();
             let summary = super::dogfood_typescript_false_actionable_audit_summary(&cases);
             assert_eq!(summary.gate_status, "pass");
-            assert_eq!(summary.cases, 12);
-            assert_eq!(summary.must_remain_non_actionable, 12);
+            assert_eq!(summary.cases, 14);
+            assert_eq!(summary.must_remain_non_actionable, 14);
             assert_eq!(summary.false_actionable, 0);
             assert_eq!(summary.repair_packet_ready_true, 0);
 

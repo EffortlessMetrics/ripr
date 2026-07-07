@@ -161,6 +161,8 @@ must not become actionable packets without stricter proof. It pins:
 - heuristic related-test links and owner-name-only test titles;
 - method receiver and static class-method repair-packet gaps, remaining
   receiver ambiguity, and module-initializer missing target shape;
+- helper-gated oracle and table-case named limitations that look
+  repair-shaped but still lack helper semantics or row binding;
 - mocked module, decorator-indirection, and dynamic-dispatch static limits.
 
 Each row points at an existing checked TypeScript-family fixture finding,

@@ -673,6 +673,16 @@ The evidence-first fields are additive in schema `0.2`:
       `has_dynamic_matcher_arg = true` when the argument is not a resolvable
       literal. The limitation explains that the expected discriminator value
       cannot be statically resolved.
+    - `typescript_table_case_unresolved` — fired when an oracle-eligible
+      `test.each(...)` / `it.each(...)` table case uses a row-derived dynamic
+      matcher argument. The real producer uses table-call test extraction plus
+      `has_dynamic_matcher_arg = true`; the limitation explains that syntax-only
+      preview evidence cannot bind the row to a concrete expected value.
+    - `typescript_oracle_helper_gated` — fired when an oracle-eligible related
+      test calls an assertion-shaped helper around the changed owner call but no
+      direct supported assertion is extracted. The limitation explains that the
+      adapter cannot inspect the helper body or prove its oracle semantics from
+      the call site.
     - `typescript_target_unresolved` — fired (RIPR-SPEC-0085 §PR6) when a test
       in a different package references the owner by call name but is excluded by
       the package-local ownership filter. The real producer is
@@ -680,8 +690,6 @@ The evidence-first fields are additive in schema `0.2`:
       confirms the cross-package exclusion by comparing candidates with vs.
       without the package-local filter. Only emitted when `workspace_root` is
       `Some` (i.e. in production, not in unit tests without a workspace root).
-    Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
-    `typescript_oracle_helper_gated`.
   - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
     `file:line` of the real AST evidence that triggered the named limitation.
   - `typescript_limitation_why: <name> — <why>` — additive; human-readable

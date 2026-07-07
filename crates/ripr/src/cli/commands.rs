@@ -5485,7 +5485,7 @@ mod tests {
             .map_err(|err| format!("parse TypeScript false-actionable JSON: {err}"))?;
         assert_eq!(value["kind"], "typescript_false_actionable_audit");
         assert_eq!(value["status"], "advisory");
-        assert_eq!(value["summary"]["cases_total"], 12);
+        assert_eq!(value["summary"]["cases_total"], 14);
         assert_eq!(value["summary"]["false_actionable_total"], 0);
         assert_eq!(value["summary"]["false_actionable_rate"], 0.0);
         assert_eq!(value["summary"]["preview_boundary_violation_total"], 0);
@@ -5496,7 +5496,7 @@ mod tests {
         let markdown = std::fs::read_to_string(&out_md)
             .map_err(|err| format!("read TypeScript false-actionable Markdown: {err}"))?;
         assert!(markdown.contains("# RIPR TypeScript False-Actionable Audit"));
-        assert!(markdown.contains("False actionable: `0` / `12` (`0.000`)"));
+        assert!(markdown.contains("False actionable: `0` / `14` (`0.000`)"));
         assert!(
             markdown.contains("Gate-decision and badge artifacts keep their existing authority")
         );
