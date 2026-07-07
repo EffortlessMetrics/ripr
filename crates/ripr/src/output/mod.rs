@@ -52,6 +52,8 @@ pub(crate) mod suppression_health;
 pub(crate) mod suppressions;
 pub(crate) mod swarm_ingest;
 pub(crate) mod test_oracle_assistant_proof;
+pub(crate) mod typescript_false_actionable;
+pub(crate) mod typescript_limitations;
 pub(crate) mod typescript_packet_projection;
 pub(crate) mod typescript_preview_card;
 pub(crate) mod value_path;

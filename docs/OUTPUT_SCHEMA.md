@@ -688,6 +688,168 @@ The evidence-first fields are additive in schema `0.2`:
     reason why the finding is not actionable for this limitation.
   - `typescript_limitation_repair_route: <name> → <route>` — additive; pointer
     to the analyzer backlog slice that would resolve this limitation.
+
+#### TypeScript Limitation Leaderboard Report
+
+`ripr reports ts-limitations --check-output <check.json>` writes advisory JSON
+and Markdown reports to:
+
+```text
+target/ripr/reports/typescript-limitations.json
+target/ripr/reports/typescript-limitations.md
+```
+
+The command reads an existing `ripr check --json` artifact. It does not rerun
+analysis, execute TypeScript tests, edit source, generate tests, call providers,
+run mutation testing, publish comments, change gates, or contribute badge
+authority.
+
+JSON fields:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "typescript_limitation_leaderboard",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1720000000000",
+  "inputs": {
+    "check_output": "target/ripr/reports/check.json"
+  },
+  "summary": {
+    "findings_total": 4,
+    "typescript_family_findings_total": 4,
+    "limitations_total": 12,
+    "distinct_limitations_total": 6,
+    "top_limitation_kind": "typescript_package_root_unresolved"
+  },
+  "limitations": [
+    {
+      "kind": "typescript_package_root_unresolved",
+      "count": 4,
+      "sources": ["typescript_package_limitation"],
+      "samples": [
+        {
+          "finding_id": "probe:src_dispatch.ts:typescript_preview:dd0f8848",
+          "language": "typescript",
+          "file": "src/dispatch.ts",
+          "line": 2
+        }
+      ]
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory TypeScript-family preview limitation counts only.",
+    "Counts come from explicit check JSON evidence; this report does not rerun analysis.",
+    "This report does not execute TypeScript tests, edit source, generate tests, call providers, change gates, or contribute badge authority."
+  ]
+}
+```
+
+- `status` is `advisory` when the supplied check output parsed, even when no
+  TypeScript-family limitation signals were found. It is `blocked` when the
+  artifact is missing, unreadable, malformed, or lacks a `findings` array.
+- `limitations[].kind` is counted once per finding per kind. Duplicate evidence
+  lines in the same finding do not inflate counts.
+- `sources[]` names where the limitation signal came from:
+  `typescript_limitation`, `typescript_package_limitation`, or
+  `static_limit_kind`. Static `missing_import_graph` and `mocked_module`
+  findings are normalized to the corresponding TypeScript named limitation
+  (`typescript_import_graph_unresolved` or `typescript_mock_only_observer`) so
+  the leaderboard groups equivalent signals together.
+  Other TypeScript-family `static_limit_kind` values keep their existing
+  static-limit vocabulary.
+  This normalization is for report grouping only and does not change check JSON.
+  It is not a support-tier, gate, badge, baseline, or RIPR Zero claim.
+  Samples are bounded to three findings per limitation kind and are examples,
+  not exhaustive proof.
+
+#### TypeScript False-Actionable Audit Report
+
+`ripr reports ts-false-actionable --corpus
+fixtures/typescript-preview-false-actionable-audit/corpus.json` writes
+advisory JSON and Markdown reports to:
+
+```text
+target/ripr/reports/typescript-false-actionable-audit.json
+target/ripr/reports/typescript-false-actionable-audit.md
+```
+
+The command reads an existing TypeScript-family preview audit corpus. It does
+not rerun analysis, execute TypeScript tests, edit source, generate tests, call
+providers, run mutation testing, publish comments, change gates, contribute
+badge/baseline/RIPR Zero authority, or promote support tiers.
+
+JSON fields:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "typescript_false_actionable_audit",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1720000000000",
+  "inputs": {
+    "corpus": "fixtures/typescript-preview-false-actionable-audit/corpus.json"
+  },
+  "summary": {
+    "cases_total": 12,
+    "must_remain_non_actionable_total": 12,
+    "repair_packet_ready_true_total": 0,
+    "actionable_gap_state_total": 0,
+    "complete_packet_category_total": 0,
+    "false_actionable_total": 0,
+    "false_actionable_denominator": 12,
+    "false_actionable_rate": 0.0,
+    "preview_boundary_violation_total": 0
+  },
+  "disposition_counts": [
+    { "value": "candidate_future_support", "count": 5 }
+  ],
+  "risk_class_counts": [
+    { "value": "mock interaction payload gap", "count": 1 }
+  ],
+  "cases": [
+    {
+      "id": "mock_interaction_without_payload_proof",
+      "language": "typescript",
+      "risk_class": "mock interaction payload gap",
+      "evidence_kind": "mock_interaction",
+      "disposition": "candidate_future_support",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
+      "repair_packet_ready": false,
+      "must_remain_non_actionable": true,
+      "authority_boundary": "preview_advisory_only",
+      "false_actionable": false,
+      "source_fixture": "fixtures/typescript_jest_vitest_assertion_facts",
+      "source_finding_id": "probe:src_checkout.ts:typescript_preview:mock"
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory TypeScript-family preview audit metric only.",
+    "The false-actionable rate is computed from explicit audit corpus rows; this report does not rerun analysis or execute TypeScript tests.",
+    "This report does not edit source, generate tests, call providers, run mutation testing, change gates, contribute badge authority, or promote support tiers."
+  ]
+}
+```
+
+- `status` is `advisory` when the supplied corpus parsed. It is `blocked` when
+  the artifact is missing, unreadable, malformed, or not the expected
+  `typescript_preview_false_actionable_audit_corpus` shape.
+- `summary.false_actionable_total` counts audit rows marked
+  `must_remain_non_actionable` that also set `repair_packet_ready = true`,
+  `gap_state = "actionable"`, or
+  `actionability_category = "complete_repair_packet"`.
+- `summary.false_actionable_denominator` is the number of
+  `must_remain_non_actionable` rows, not all TypeScript findings.
+- The report is an audit over explicit preview rows. It is not evidence that
+  TypeScript support is usable alpha, gate eligible, badge eligible, baseline
+  eligible, RIPR Zero eligible, or runtime adequate.
 - Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5). ADDITIVE: do not change
   `oracle_kind`, `oracle_strength`, `static_limit_kind`, or `repair_packet_ready`.
   Emitted from the strongest oracle-eligible assertion across all oracle-eligible
@@ -2126,22 +2288,42 @@ Field contract:
   truncated the inventory. Consumers must read `run_status` before
   treating counts as complete-repo totals. Added as an additive field
   within schema version `0.3` per RIPR-SPEC-0074.
-- `limitations[]` — present only when `run_status` is
-  `"seam_limit_applied"`. Each entry carries:
-  - `category` — `"repo_seam_limit_applied"`.
-  - `seams_analyzed` — number of seams that were classified.
-  - `seams_total` — total seams before truncation.
-  - `limit_source` — `"default"` when the cap came from the built-in
-    default (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`);
-    `"configured"` when `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly
-    set in the environment. Added as an additive field within schema
-    version `0.3` per RIPR-SPEC-0074 Slice B.
-  - `control` — the env var that triggered the limit:
-    `"RIPR_REPO_EXPOSURE_SEAM_LIMIT"`.
-  - `repair_route` — human-readable instructions. When `limit_source`
-    is `"default"`: set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` to analyze
-    all seams. When `limit_source` is `"configured"`: remove or raise
-    the env var.
+- `limitations[]` — present when repo exposure has a named run limitation or
+  guidance disclosure. Consumers must branch on `category`.
+  - `category: "repo_seam_limit_applied"` appears when `run_status` is
+    `"seam_limit_applied"`. It carries `seams_analyzed`, `seams_total`,
+    `limit_source`, `control`, and `repair_route`. `limit_source` is
+    `"default"` when the cap came from the built-in default
+    (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`) and `"configured"` when
+    `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly set in the environment.
+  - `category: "typescript_diff_first"` appears when a TS/JS-predominant
+    workspace has TS/JS files, no Rust files, and zero classified seams.
+    `run_status` remains `"complete"` because the Rust repo-exposure scan
+    completed. It carries `ts_file_count`, `repair_route`, and the optional
+    nested `typescript_readiness` object.
+  - `typescript_readiness.source` is
+    `"repo_exposure_typescript_readiness.v1"`.
+  - `typescript_readiness.authority_boundary` is
+    `"preview_advisory_only"`.
+  - `typescript_readiness.analysis_model` is `"diff_first"`.
+  - `typescript_readiness.source_file_count` is the count of TS/JS files not
+    detected as tests.
+  - `typescript_readiness.test_file_count` is the count of detected TS/JS test
+    files.
+  - `typescript_readiness.package_root_count` is the count of distinct package
+    roots resolved from detected TS/JS files.
+  - `typescript_readiness.package_confidence` is `none`, `low`, `medium`, or
+    `high`; it is the highest package discovery confidence across detected
+    TS/JS files.
+  - `typescript_readiness.runner_status` is `no_tests_detected`, `resolved`,
+    `partial`, or `unresolved`.
+  - `typescript_readiness.verify_command_count` is the number of detected test
+    files with a concrete verify command.
+  - `typescript_readiness.top_blocker` is the top missing readiness signal, or
+    `null`.
+  - `typescript_readiness.non_claims[]` states that the card does not emit
+    full-repo TypeScript seams, run TypeScript tests, or create gate/badge
+    authority.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
   zero so consumers can plot stable bar charts.
@@ -12740,6 +12922,8 @@ fixtures/finding-alignment-dogfood/corpus.json
 fixtures/surface-projection-alignment/corpus.json
 fixtures/real-repair-attempts/corpus.json
 fixtures/python-real-repo-evals/corpus.json
+fixtures/typescript-preview-repair-loop/corpus.json
+fixtures/typescript-preview-false-actionable-audit/corpus.json
 fixtures/user-surface-projection-alignment/corpus.json
 fixtures/bun-ub-cross-language-dogfood/corpus.json
 ```
@@ -12795,6 +12979,18 @@ validity, concrete-discriminator and test-location coverage,
 false-actionable and crash rates, receipt closure rate, and unsupported
 limitation distribution. Eval cases with fewer than three ranked repair-card
 findings must include an explicit limit reason.
+The checked TypeScript-family preview repair-loop receipts are read from
+`fixtures/typescript-preview-repair-loop/` and preserve advisory preview
+boundaries for useful TypeScript/JavaScript routes, weak-oracle downgrades,
+static limitations, skipped incomplete-packet cases, and packet-ready counts.
+The checked TypeScript false-actionable audit rows are read from
+`fixtures/typescript-preview-false-actionable-audit/`; dogfood projects
+`typescript_false_actionable_audit.summary.false_actionable_rate` from rows
+that must remain non-actionable and also reports packet-ready, actionable
+gap-state, complete-packet category, and preview-boundary violation rates. This
+section is advisory and does not create repair packets, gates, badge inputs,
+baselines, RIPR Zero input, generated tests, source edits, provider calls,
+mutation testing, or support-tier promotion.
 The checked Bun UB cross-language witness receipts are read from
 `fixtures/bun-ub-cross-language-dogfood/` and record the calibrated
 #31648-shaped known-good, stripped-resizable, maxByteLength mention-only,

@@ -41,6 +41,10 @@ pub(crate) use router::route;
 pub(crate) use rust::RustAdapter;
 #[cfg(feature = "lang-typescript")]
 pub(crate) use typescript::TypeScriptAdapter;
+#[cfg(feature = "lang-typescript")]
+pub(crate) use typescript::{
+    TsPackageConfidence, is_test_file, resolve_package_discovery, verify_command_for_discovery,
+};
 
 #[cfg(test)]
 mod tests {

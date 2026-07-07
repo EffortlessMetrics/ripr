@@ -175,7 +175,12 @@ fn detect_ts_full_repo_guidance(
         return None;
     }
 
-    Some(TsFullRepoGuidance { ts_file_count })
+    let readiness = analysis::workspace_typescript_repo_readiness(root)?;
+
+    Some(TsFullRepoGuidance {
+        ts_file_count,
+        readiness,
+    })
 }
 
 fn load_suppressions(

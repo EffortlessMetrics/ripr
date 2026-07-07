@@ -9,6 +9,7 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
 use crate::analysis::SeamLimitSource;
+use crate::analysis::TypeScriptRepoReadiness;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
@@ -31,8 +32,11 @@ use std::path::Path;
 /// TS seams or exposes TS findings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TsFullRepoGuidance {
-    /// Number of TypeScript/JavaScript source files detected in the workspace.
+    /// Number of TypeScript/JavaScript files detected in the workspace.
     pub(crate) ts_file_count: usize,
+    /// Root-level readiness facts derived from the same TypeScript preview
+    /// package/test discovery producers that diff-mode findings use.
+    pub(crate) readiness: TypeScriptRepoReadiness,
 }
 
 impl TsFullRepoGuidance {
@@ -150,6 +154,59 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
                 TsFullRepoGuidance::CATEGORY
             )?;
             writeln!(out, "      \"ts_file_count\": {},", guidance.ts_file_count)?;
+            writeln!(out, "      \"typescript_readiness\": {{")?;
+            writeln!(
+                out,
+                "        \"source\": \"repo_exposure_typescript_readiness.v1\","
+            )?;
+            writeln!(
+                out,
+                "        \"authority_boundary\": \"preview_advisory_only\","
+            )?;
+            writeln!(out, "        \"analysis_model\": \"diff_first\",")?;
+            writeln!(
+                out,
+                "        \"source_file_count\": {},",
+                guidance.readiness.source_file_count
+            )?;
+            writeln!(
+                out,
+                "        \"test_file_count\": {},",
+                guidance.readiness.test_file_count
+            )?;
+            writeln!(
+                out,
+                "        \"package_root_count\": {},",
+                guidance.readiness.package_root_count
+            )?;
+            writeln!(
+                out,
+                "        \"package_confidence\": \"{}\",",
+                json_escape(&guidance.readiness.package_confidence)
+            )?;
+            writeln!(
+                out,
+                "        \"runner_status\": \"{}\",",
+                json_escape(&guidance.readiness.runner_status)
+            )?;
+            writeln!(
+                out,
+                "        \"verify_command_count\": {},",
+                guidance.readiness.verify_command_count
+            )?;
+            match guidance.readiness.top_blocker.as_ref() {
+                Some(blocker) => writeln!(
+                    out,
+                    "        \"top_blocker\": \"{}\",",
+                    json_escape(blocker)
+                )?,
+                None => writeln!(out, "        \"top_blocker\": null,")?,
+            }
+            writeln!(
+                out,
+                "        \"non_claims\": [\"no full-repo TypeScript seam model\", \"no runtime TypeScript execution\", \"no gate or badge authority\"]"
+            )?;
+            writeln!(out, "      }},")?;
             writeln!(
                 out,
                 "      \"repair_route\": \"{}\"",
@@ -580,6 +637,7 @@ pub(crate) fn render_repo_exposure_md(
             ));
             out.push_str(TsFullRepoGuidance::REPAIR_ROUTE);
             out.push('\n');
+            push_typescript_readiness_md(&mut out, &guidance.readiness);
         }
     }
 
@@ -695,6 +753,49 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     out.push('\n');
 }
 
+fn push_typescript_readiness_md(out: &mut String, readiness: &TypeScriptRepoReadiness) {
+    out.push_str("\nTypeScript readiness (preview, advisory)\n\n");
+    out.push_str("| Signal | Value |\n| --- | --- |\n");
+    out.push_str(&format!(
+        "| source files | {} |\n",
+        readiness.source_file_count
+    ));
+    out.push_str(&format!("| test files | {} |\n", readiness.test_file_count));
+    out.push_str(&format!(
+        "| package roots | {} |\n",
+        readiness.package_root_count
+    ));
+    out.push_str(&format!(
+        "| package confidence | {} |\n",
+        md_escape_table_cell(&readiness.package_confidence)
+    ));
+    out.push_str(&format!(
+        "| runner status | {} |\n",
+        md_escape_table_cell(&readiness.runner_status)
+    ));
+    out.push_str(&format!(
+        "| verify commands | {} |\n",
+        readiness.verify_command_count
+    ));
+    out.push_str(&format!(
+        "| top blocker | {} |\n",
+        readiness
+            .top_blocker
+            .as_deref()
+            .map(md_escape_table_cell)
+            .unwrap_or_else(|| "none".to_string())
+    ));
+    out.push_str(
+        "\nThis card is root-level readiness for diff-first TypeScript preview. \
+         It does not emit full-repo TypeScript seams, run TypeScript tests, or \
+         create gate or badge authority.\n",
+    );
+}
+
+fn md_escape_table_cell(text: &str) -> String {
+    text.replace('|', "\\|").replace('\n', " ")
+}
+
 /// Escape values that get wrapped in inline-code spans. Inside
 /// backticks every character is literal except the closing backtick
 /// and the table-cell pipe, so we only swap those plus newlines.
@@ -791,6 +892,21 @@ mod tests {
             42,
             SeamGripClass::WeaklyGripped,
         )
+    }
+
+    fn ts_guidance(ts_file_count: usize) -> TsFullRepoGuidance {
+        TsFullRepoGuidance {
+            ts_file_count,
+            readiness: TypeScriptRepoReadiness {
+                source_file_count: ts_file_count.saturating_sub(1),
+                test_file_count: 1,
+                package_root_count: 1,
+                package_confidence: "high".to_string(),
+                runner_status: "resolved".to_string(),
+                verify_command_count: 1,
+                top_blocker: None,
+            },
+        }
     }
 
     fn classified_at(file: &str, owner: &str, line: usize, class: SeamGripClass) -> ClassifiedSeam {
@@ -913,7 +1029,7 @@ mod tests {
 
     #[test]
     fn json_emits_ts_guidance_limitations_when_ts_workspace_and_empty_seams() {
-        let guidance = TsFullRepoGuidance { ts_file_count: 3 };
+        let guidance = ts_guidance(3);
         let json = render_repo_exposure_json(&[], None, Some(&guidance));
         assert!(
             json.contains("\"limitations\""),
@@ -926,6 +1042,30 @@ mod tests {
         assert!(
             json.contains("\"ts_file_count\": 3"),
             "ts_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"typescript_readiness\""),
+            "typescript_readiness missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"source_file_count\": 2"),
+            "source_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"test_file_count\": 1"),
+            "test_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"package_confidence\": \"high\""),
+            "package_confidence missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"runner_status\": \"resolved\""),
+            "runner_status missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"top_blocker\": null"),
+            "top_blocker null missing in:\n{json}"
         );
         assert!(
             json.contains("ripr check --base origin/main"),
@@ -948,7 +1088,7 @@ mod tests {
             total: 5,
             source: SeamLimitSource::Default,
         };
-        let guidance = TsFullRepoGuidance { ts_file_count: 2 };
+        let guidance = ts_guidance(2);
         let json = render_repo_exposure_json(&[], Some(&info), Some(&guidance));
         assert!(
             json.contains("\"category\": \"repo_seam_limit_applied\""),
@@ -1117,7 +1257,7 @@ mod tests {
 
     #[test]
     fn markdown_emits_ts_guidance_section_when_ts_workspace_and_empty_seams() {
-        let guidance = TsFullRepoGuidance { ts_file_count: 5 };
+        let guidance = ts_guidance(5);
         let md = render_repo_exposure_md(&[], None, Some(&guidance));
         assert!(
             md.contains("typescript_diff_first"),
@@ -1130,6 +1270,22 @@ mod tests {
         assert!(
             md.contains("ts_file_count: 5"),
             "ts_file_count missing in:\n{md}"
+        );
+        assert!(
+            md.contains("TypeScript readiness (preview, advisory)"),
+            "readiness card missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| source files | 4 |"),
+            "source file count missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| package confidence | high |"),
+            "package confidence missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| runner status | resolved |"),
+            "runner status missing in:\n{md}"
         );
         // Must also contain the empty seams message
         assert!(

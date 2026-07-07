@@ -4,6 +4,8 @@ Usage:
   ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
+  ripr reports ts-limitations --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
+  ripr reports ts-false-actionable --corpus PATH [--root PATH] [--out PATH] [--out-md PATH]
 
 Index options:
   --root PATH           Workspace root label. Defaults to current directory.
@@ -25,6 +27,18 @@ Gap ledger options:
   --out PATH            JSON output path. Defaults to target/ripr/reports/gap-decision-ledger.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/gap-decision-ledger.md.
 
+TypeScript limitation options:
+  --check-output PATH   Existing `ripr check --json` output to aggregate.
+  --root PATH           Workspace root label. Defaults to current directory.
+  --out PATH            JSON output path. Defaults to target/ripr/reports/typescript-limitations.json.
+  --out-md PATH         Markdown output path. Defaults to target/ripr/reports/typescript-limitations.md.
+
+TypeScript false-actionable audit options:
+  --corpus PATH         Existing TypeScript preview false-actionable audit corpus JSON.
+  --root PATH           Workspace root label. Defaults to current directory.
+  --out PATH            JSON output path. Defaults to target/ripr/reports/typescript-false-actionable-audit.json.
+  --out-md PATH         Markdown output path. Defaults to target/ripr/reports/typescript-false-actionable-audit.md.
+
 The report-packet index is a read-only advisory map over explicit existing
 RIPR artifacts. It groups reports by reviewer use, names the start-here
 artifact, preserves gate-decision as the configured pass/fail authority,
@@ -39,6 +53,19 @@ summarizes projection eligibility, preserves gate-decision as the configured
 pass/fail authority, and does not rerun hidden analysis, publish comments,
 edit source, generate tests, call providers, run mutation testing, or change
 default CI blocking.
+
+The TypeScript limitation leaderboard is a read-only advisory renderer over
+explicit check JSON. It aggregates TypeScript-family preview limitation evidence
+by kind so operators can see the next analyzer backlog pressure. It does not
+rerun analysis, execute TypeScript tests, edit source, generate tests, call
+providers, run mutation testing, publish comments, change gates, or contribute
+badge authority.
+
+The TypeScript false-actionable audit report is a read-only advisory renderer
+over explicit TypeScript-family preview audit corpus rows. It reports the
+bounded false-actionable rate for rows that must remain non-actionable and does
+not rerun analysis, execute TypeScript tests, edit source, generate tests, call
+providers, run mutation testing, change gates, or contribute badge authority.
 "#;
 pub(super) const COVERAGE_GRIP_HELP: &str = r#"Report whether line coverage and behavior evidence moved together.
 

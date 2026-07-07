@@ -227,6 +227,20 @@ pub(crate) struct GapDecisionLedgerOptions {
     pub(crate) out_md: PathBuf,
 }
 #[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptLimitationsOptions {
+    pub(crate) root: String,
+    pub(crate) check_output: PathBuf,
+    pub(crate) out: PathBuf,
+    pub(crate) out_md: PathBuf,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptFalseActionableOptions {
+    pub(crate) root: String,
+    pub(crate) corpus: PathBuf,
+    pub(crate) out: PathBuf,
+    pub(crate) out_md: PathBuf,
+}
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum GapDecisionLedgerSource {
     Records(PathBuf),
     RepoExposure(PathBuf),

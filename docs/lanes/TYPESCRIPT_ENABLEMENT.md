@@ -111,6 +111,17 @@ now includes:
   JSON, GitHub annotation, and SARIF surfaces;
 - dogfood receipts and route-quality rows for TypeScript and JavaScript preview
   evidence without promotion beyond preview.
+- advisory `ripr reports ts-limitations --check-output <check.json>` JSON and
+  Markdown reports that aggregate existing TypeScript-family limitation evidence
+  by kind without rerunning analysis, executing tests, or changing gate/badge
+  authority.
+- advisory TypeScript false-actionable audit projection through
+  `cargo xtask dogfood` and
+  `ripr reports ts-false-actionable --corpus fixtures/typescript-preview-false-actionable-audit/corpus.json`;
+  the current audit denominator is the checked rows that must remain
+  non-actionable, and the projection does not create repair-packet, gate, badge,
+  baseline, RIPR Zero, runtime, generated-test, provider, or support-tier
+  authority.
 
 These are usefulness and precision improvements only. They do not make
 TypeScript/JavaScript repair-packet, gate, badge, baseline, or RIPR Zero
@@ -149,6 +160,9 @@ Each row points at an existing checked TypeScript-family fixture finding,
 records the current disposition, preserves `repair_packet_ready = false`, and
 names the future support route required before any repair-card or promotion
 claim can be considered.
+`cargo xtask dogfood` projects the same packet as
+`typescript_false_actionable_audit`, including `false_actionable_rate` and the
+packet-ready/actionable/complete-packet/preview-boundary violation rates.
 
 ## Validation
 

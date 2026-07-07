@@ -5300,7 +5300,20 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs::extract_imports_recognizes_commonjs_destructured_require",
   "crates/ripr/src/analysis/language/typescript/tests.rs::extract_imports_recognizes_re_export_form",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_target_unresolved_emitted_for_cross_package_reference",
-  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_target_unresolved_not_emitted_for_same_package"
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_target_unresolved_not_emitted_for_same_package",
+  "crates/ripr/src/output/typescript_limitations.rs::tests::typescript_limitation_leaderboard_counts_unique_kinds_per_finding",
+  "crates/ripr/src/output/typescript_limitations.rs::tests::typescript_limitation_leaderboard_renders_json_and_markdown",
+  "crates/ripr/src/output/typescript_limitations.rs::tests::typescript_limitation_leaderboard_blocks_on_malformed_check_output",
+  "crates/ripr/src/cli/commands.rs::tests::reports_ts_limitations_requires_check_output_input",
+  "crates/ripr/src/cli/commands.rs::tests::reports_ts_limitations_writes_json_and_markdown_reports",
+  "crates/ripr/src/output/typescript_false_actionable.rs::tests::false_actionable_audit_reports_zero_rate_for_safe_corpus",
+  "crates/ripr/src/output/typescript_false_actionable.rs::tests::false_actionable_audit_counts_packet_ready_and_complete_category",
+  "crates/ripr/src/output/typescript_false_actionable.rs::tests::false_actionable_audit_renders_json_and_markdown",
+  "crates/ripr/src/output/typescript_false_actionable.rs::tests::false_actionable_audit_blocks_on_malformed_corpus",
+  "crates/ripr/src/cli/commands.rs::tests::reports_ts_false_actionable_requires_corpus_input",
+  "crates/ripr/src/cli/commands.rs::tests::reports_ts_false_actionable_writes_json_and_markdown_reports",
+  "xtask/src/main.rs::tests::typescript_preview_false_actionable_audit_cases_are_checked",
+  "xtask/src/main.rs::tests::dogfood_typescript_false_actionable_audit_summary_flags_packet_ready_rows"
 ]
 fixtures = [
   "fixtures/ts_pkg_discovery_single_package",
@@ -5315,7 +5328,8 @@ fixtures = [
   "fixtures/typescript_dynamic_assertion_unresolved",
   # PR6: ownership hardening — package-local and CommonJS require
   "fixtures/typescript_monorepo_package_local",
-  "fixtures/typescript_commonjs_require"
+  "fixtures/typescript_commonjs_require",
+  "fixtures/typescript-preview-false-actionable-audit"
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript/package.rs",
@@ -5325,15 +5339,24 @@ code = [
   "crates/ripr/src/analysis/language/typescript/types.rs",
   "crates/ripr/src/analysis/language/typescript/mod.rs",
   "crates/ripr/src/output/typescript_preview_card.rs",
+  "crates/ripr/src/output/typescript_limitations.rs",
+  "crates/ripr/src/output/typescript_false_actionable.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/commands_options.rs",
+  "crates/ripr/src/cli/help/reports.rs",
   "crates/ripr/src/analysis/language/typescript/related_tests.rs",
-  "crates/ripr/src/analysis/language/typescript/owners.rs"
+  "crates/ripr/src/analysis/language/typescript/owners.rs",
+  "xtask/src/main.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0085-typescript-evidence-adapter-contract.md",
-  "docs/OUTPUT_SCHEMA.md"
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md"
 ]
 metrics = [
-  "typescript_evidence_adapter_contract_status_proposed"
+  "typescript_evidence_adapter_contract_status_proposed",
+  "typescript_limitation_leaderboard_reports",
+  "language_adapter_typescript_false_actionable_audit"
 ]
 
 [[behavior]]
@@ -5458,6 +5481,8 @@ fixtures = [
   "fixtures/ts_full_repo_guidance"
 ]
 code = [
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/render.rs",
   "crates/ripr/src/cli/commands.rs",
@@ -5465,11 +5490,15 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0089-ts-full-repo-guidance.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "fixtures/ts_full_repo_guidance/SPEC.md",
   "fixtures/ts_full_repo_guidance/expected/repo-exposure.json",
   "fixtures/ts_full_repo_guidance/expected/repo-exposure.md"
 ]
 metrics = [
-  "ts_full_repo_guidance_disclosure_named"
+  "ts_full_repo_guidance_disclosure_named",
+  "typescript_repo_readiness_card_emitted"
 ]
 
 [[behavior]]

@@ -1173,6 +1173,19 @@ struct DogfoodPythonRepairRoutingQualitySummary {
     gate_reason: String,
 }
 
+#[derive(Debug, Default)]
+struct DogfoodTypescriptFalseActionableAuditSummary {
+    cases: usize,
+    must_remain_non_actionable: usize,
+    repair_packet_ready_true: usize,
+    actionable_gap_state: usize,
+    complete_packet_category: usize,
+    preview_boundary_violations: usize,
+    false_actionable: usize,
+    gate_status: String,
+    gate_reason: String,
+}
+
 #[derive(Debug)]
 struct DogfoodTypescriptPreviewRepairLoopScenario {
     name: String,
@@ -51400,6 +51413,56 @@ fn dogfood_python_repair_routing_quality_summary(
     summary
 }
 
+fn dogfood_typescript_false_actionable_audit_summary(
+    cases: &[TypeScriptPreviewFalseActionableAuditCase],
+) -> DogfoodTypescriptFalseActionableAuditSummary {
+    let mut summary = DogfoodTypescriptFalseActionableAuditSummary {
+        cases: cases.len(),
+        ..DogfoodTypescriptFalseActionableAuditSummary::default()
+    };
+
+    for case in cases {
+        if case.must_remain_non_actionable {
+            summary.must_remain_non_actionable += 1;
+        }
+        if case.repair_packet_ready {
+            summary.repair_packet_ready_true += 1;
+        }
+        if case.gap_state == "actionable" {
+            summary.actionable_gap_state += 1;
+        }
+        if case.actionability_category == "complete_repair_packet" {
+            summary.complete_packet_category += 1;
+        }
+        if case.authority_boundary != "preview_advisory_only" {
+            summary.preview_boundary_violations += 1;
+        }
+        if case.must_remain_non_actionable
+            && (case.repair_packet_ready
+                || case.gap_state == "actionable"
+                || case.actionability_category == "complete_repair_packet")
+        {
+            summary.false_actionable += 1;
+        }
+    }
+
+    if summary.cases == 0
+        || summary.must_remain_non_actionable != summary.cases
+        || summary.false_actionable > 0
+        || summary.preview_boundary_violations > 0
+    {
+        summary.gate_status = "review".to_string();
+        summary.gate_reason =
+            "TypeScript preview false-actionable audit is incomplete or noisy".to_string();
+    } else {
+        summary.gate_status = "pass".to_string();
+        summary.gate_reason =
+            "All checked TypeScript-family preview audit rows remain non-actionable".to_string();
+    }
+
+    summary
+}
+
 fn dogfood_python_eval_top_1_actionable_usable(run: &DogfoodPythonRealRepoEvalRun) -> bool {
     run.repair_card_present
         && run.usability == "usable"
@@ -57980,6 +58043,11 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let python_no_action_eval_runs = inputs.python_no_action_eval_runs;
     let python_repair_quality =
         dogfood_python_repair_routing_quality_summary(python_real_repo_eval_runs);
+    let typescript_false_actionable_audit = dogfood_typescript_false_actionable_audit_summary(
+        &typescript_preview_false_actionable_audit_cases_at(&repo_rooted_fixture_path(
+            TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS,
+        )),
+    );
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let bun_ub_cross_language_runs = inputs.bun_ub_cross_language_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
@@ -58028,6 +58096,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
             .iter()
             .any(|run| !run.errors.is_empty())
         || python_repair_quality.gate_status != "pass"
+        || typescript_false_actionable_audit.gate_status != "pass"
         || typescript_preview_repair_loop_runs
             .iter()
             .any(|run| !run.errors.is_empty())
@@ -58777,6 +58846,56 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
             ));
         }
     }
+    let typescript_false_actionable_cases = typescript_preview_false_actionable_audit_cases_at(
+        &repo_rooted_fixture_path(TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS),
+    );
+    let typescript_false_actionable_audit =
+        dogfood_typescript_false_actionable_audit_summary(&typescript_false_actionable_cases);
+    body.push_str("## TypeScript False-Actionable Audit\n\n");
+    body.push_str("This advisory audit is computed from the checked TypeScript-family preview false-actionable corpus. It measures whether rows that must remain non-actionable have accidentally become repair-packet-ready, actionable, or complete-packet-shaped. It does not rerun analysis, execute TypeScript tests, edit source, generate tests, call providers, run mutation testing, change gates, contribute badge/baseline/RIPR Zero authority, or promote support tiers.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Preview authority: advisory\n");
+    body.push_str(&format!(
+        "- Audit input: `{}`\n",
+        TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS
+    ));
+    body.push_str(&format!(
+        "- Quality gate: `{}` - {}\n",
+        markdown_cell(&typescript_false_actionable_audit.gate_status),
+        markdown_cell(&typescript_false_actionable_audit.gate_reason)
+    ));
+    body.push_str(&format!(
+        "- False actionable: {} / {} checked rows\n",
+        typescript_false_actionable_audit.false_actionable,
+        typescript_false_actionable_audit.must_remain_non_actionable
+    ));
+    body.push_str(&format!(
+        "- Repair-packet-ready violations: {}; actionable gap-state violations: {}; complete-packet category violations: {}; preview-boundary violations: {}\n\n",
+        typescript_false_actionable_audit.repair_packet_ready_true,
+        typescript_false_actionable_audit.actionable_gap_state,
+        typescript_false_actionable_audit.complete_packet_category,
+        typescript_false_actionable_audit.preview_boundary_violations
+    ));
+    body.push_str(
+        "| Case | Language | Disposition | Gap state | Actionability | False actionable |\n",
+    );
+    body.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for case in &typescript_false_actionable_cases {
+        let false_actionable = case.must_remain_non_actionable
+            && (case.repair_packet_ready
+                || case.gap_state == "actionable"
+                || case.actionability_category == "complete_repair_packet");
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | {} |\n",
+            markdown_cell(&case.name),
+            markdown_cell(&case.language),
+            markdown_cell(&case.disposition),
+            markdown_cell(&case.gap_state),
+            markdown_cell(&case.actionability_category),
+            if false_actionable { "yes" } else { "no" }
+        ));
+    }
+    body.push('\n');
     let bun_ub_dogfood_total = bun_ub_cross_language_runs.len();
     let bun_ub_dogfood_discriminated = bun_ub_cross_language_runs
         .iter()
@@ -60200,6 +60319,11 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         dogfood_python_static_limit_eval_distribution(python_static_limit_eval_runs);
     let python_no_action_distribution =
         dogfood_python_no_action_eval_distribution(python_no_action_eval_runs);
+    let typescript_false_actionable_cases = typescript_preview_false_actionable_audit_cases_at(
+        &repo_rooted_fixture_path(TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS),
+    );
+    let typescript_false_actionable_audit =
+        dogfood_typescript_false_actionable_audit_summary(&typescript_false_actionable_cases);
     let typescript_preview_repair_loop_runs = inputs.typescript_preview_repair_loop_runs;
     let bun_ub_cross_language_runs = inputs.bun_ub_cross_language_runs;
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
@@ -60919,6 +61043,145 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
         body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"typescript_false_actionable_audit\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"preview_authority\": \"advisory\",\n");
+    body.push_str(&format!(
+        "    \"input\": \"{}\",\n",
+        json_escape(TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_CORPUS)
+    ));
+    body.push_str(&format!(
+        "    \"quality_gate\": {{ \"status\": \"{}\", \"reason\": \"{}\" }},\n",
+        json_escape(&typescript_false_actionable_audit.gate_status),
+        json_escape(&typescript_false_actionable_audit.gate_reason)
+    ));
+    body.push_str("    \"summary\": {\n");
+    body.push_str(&format!(
+        "      \"cases\": {},\n",
+        typescript_false_actionable_audit.cases
+    ));
+    body.push_str(&format!(
+        "      \"must_remain_non_actionable\": {},\n",
+        typescript_false_actionable_audit.must_remain_non_actionable
+    ));
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "false_actionable_rate",
+        typescript_false_actionable_audit.false_actionable,
+        typescript_false_actionable_audit.must_remain_non_actionable,
+        false,
+        "audit row that must remain non-actionable became packet-ready, actionable, or complete-packet-shaped",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "repair_packet_ready_violation_rate",
+        typescript_false_actionable_audit.repair_packet_ready_true,
+        typescript_false_actionable_audit.cases,
+        false,
+        "preview audit row reported repair_packet_ready=true",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "actionable_gap_state_violation_rate",
+        typescript_false_actionable_audit.actionable_gap_state,
+        typescript_false_actionable_audit.cases,
+        false,
+        "preview audit row reported gap_state=actionable",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "complete_packet_category_violation_rate",
+        typescript_false_actionable_audit.complete_packet_category,
+        typescript_false_actionable_audit.cases,
+        false,
+        "preview audit row reported actionability_category=complete_repair_packet",
+    );
+    dogfood_push_python_quality_ratio_json(
+        &mut body,
+        "preview_boundary_violation_rate",
+        typescript_false_actionable_audit.preview_boundary_violations,
+        typescript_false_actionable_audit.cases,
+        false,
+        "preview audit row did not keep authority_boundary=preview_advisory_only",
+    );
+    body.push_str(
+        "      \"limits\": [\"advisory TypeScript-family preview audit only\", \"does not rerun analysis or execute TypeScript tests\", \"does not create repair packets, gates, badge inputs, baselines, RIPR Zero input, generated tests, source edits, provider calls, mutation testing, or support-tier promotion\"]\n",
+    );
+    body.push_str("    },\n    \"cases\": [\n");
+    for (index, case) in typescript_false_actionable_cases.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        let false_actionable = case.must_remain_non_actionable
+            && (case.repair_packet_ready
+                || case.gap_state == "actionable"
+                || case.actionability_category == "complete_repair_packet");
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&case.name)
+        ));
+        body.push_str(&format!(
+            "        \"source_fixture\": \"{}\",\n",
+            json_escape(&case.source_fixture)
+        ));
+        body.push_str(&format!(
+            "        \"source_finding_id\": \"{}\",\n",
+            json_escape(&case.source_finding_id)
+        ));
+        body.push_str(&format!(
+            "        \"language\": \"{}\",\n",
+            json_escape(&case.language)
+        ));
+        body.push_str(&format!(
+            "        \"risk_class\": \"{}\",\n",
+            json_escape(&case.risk_class)
+        ));
+        body.push_str(&format!(
+            "        \"disposition\": \"{}\",\n",
+            json_escape(&case.disposition)
+        ));
+        body.push_str(&format!(
+            "        \"gap_state\": \"{}\",\n",
+            json_escape(&case.gap_state)
+        ));
+        body.push_str(&format!(
+            "        \"actionability_category\": \"{}\",\n",
+            json_escape(&case.actionability_category)
+        ));
+        body.push_str(&format!(
+            "        \"static_limit_kind\": {},\n",
+            json_optional_string(case.static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"repair_packet_ready\": {},\n",
+            case.repair_packet_ready
+        ));
+        body.push_str(&format!(
+            "        \"must_remain_non_actionable\": {},\n",
+            case.must_remain_non_actionable
+        ));
+        body.push_str(&format!(
+            "        \"authority_boundary\": \"{}\",\n",
+            json_escape(&case.authority_boundary)
+        ));
+        body.push_str(&format!(
+            "        \"false_actionable\": {},\n",
+            false_actionable
+        ));
+        body.push_str(&format!(
+            "        \"repair_route\": \"{}\",\n",
+            json_escape(&case.repair_route)
+        ));
+        body.push_str("        \"non_claims\": [");
+        write_json_string_array(&mut body, &case.non_claims);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\"\n",
+            json_escape(&case.reason)
+        ));
+        body.push_str("      }");
     }
     body.push_str("\n    ]\n  },\n  \"bun_ub_cross_language_witnesses\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
@@ -87672,6 +87935,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Top-3 actionable precision: 3 / 3 ranked findings"));
         assert!(markdown.contains("Full top-3 capture cases: 1 / 1 evals"));
         assert!(markdown.contains("TypeScript Preview Repair-Loop Receipts"));
+        assert!(markdown.contains("TypeScript False-Actionable Audit"));
+        assert!(markdown.contains("False actionable: 0 / 12 checked rows"));
         assert!(markdown.contains("Bun UB Cross-Language Witness Receipts"));
         assert!(markdown.contains("bun_blob_31648_known_good"));
         assert!(markdown.contains("User Surface Projection Alignment Receipts"));
@@ -87705,6 +87970,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"agent_packet_present\": false"));
         assert!(json.contains("\"gap_movement\": \"no_receipt\""));
         assert!(json.contains("\"typescript_preview_repair_loop\""));
+        assert!(json.contains("\"typescript_false_actionable_audit\""));
         assert!(json.contains("\"bun_ub_cross_language_witnesses\""));
         assert!(json.contains("\"repair_route_quality_metrics_improved\""));
         assert!(json.contains("\"tiny_controlled_pytest_boundary_receipt\""));
@@ -88035,6 +88301,53 @@ fn exact_owner_call_has_external_expected_value() {
                 .get("outcome")
                 .and_then(Value::as_str),
             Some("proof_improved")
+        );
+        let typescript_false_actionable_audit = value
+            .get("typescript_false_actionable_audit")
+            .ok_or_else(|| "typescript_false_actionable_audit section missing".to_string())?;
+        assert_eq!(
+            typescript_false_actionable_audit["quality_gate"]["status"],
+            serde_json::Value::from("pass")
+        );
+        let typescript_false_actionable_summary = typescript_false_actionable_audit
+            .get("summary")
+            .ok_or_else(|| "typescript_false_actionable_audit summary missing".to_string())?;
+        assert_eq!(
+            typescript_false_actionable_summary
+                .get("cases")
+                .and_then(Value::as_u64),
+            Some(12)
+        );
+        assert_eq!(
+            typescript_false_actionable_summary
+                .get("false_actionable_rate")
+                .and_then(|value| value.get("count"))
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            typescript_false_actionable_summary
+                .get("false_actionable_rate")
+                .and_then(|value| value.get("checked"))
+                .and_then(Value::as_u64),
+            Some(12)
+        );
+        assert_eq!(
+            typescript_false_actionable_summary
+                .get("repair_packet_ready_violation_rate")
+                .and_then(|value| value.get("count"))
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        let typescript_false_actionable_cases = typescript_false_actionable_audit
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "typescript_false_actionable_audit cases missing".to_string())?;
+        assert_eq!(typescript_false_actionable_cases.len(), 12);
+        assert!(
+            typescript_false_actionable_cases.iter().all(|case| {
+                case.get("false_actionable").and_then(Value::as_bool) == Some(false)
+            })
         );
         let bun_ub_cross_language = value
             .get("bun_ub_cross_language_witnesses")
@@ -92673,6 +92986,29 @@ fn exact_owner_call_has_external_expected_value() {
                 );
             }
 
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_typescript_false_actionable_audit_summary_flags_packet_ready_rows()
+    -> Result<(), String> {
+        with_repo_cwd(|| {
+            let cases = super::typescript_preview_false_actionable_audit_cases();
+            let summary = super::dogfood_typescript_false_actionable_audit_summary(&cases);
+            assert_eq!(summary.gate_status, "pass");
+            assert_eq!(summary.cases, 12);
+            assert_eq!(summary.must_remain_non_actionable, 12);
+            assert_eq!(summary.false_actionable, 0);
+            assert_eq!(summary.repair_packet_ready_true, 0);
+
+            let mut noisy_cases = cases;
+            noisy_cases[0].repair_packet_ready = true;
+            let noisy_summary =
+                super::dogfood_typescript_false_actionable_audit_summary(&noisy_cases);
+            assert_eq!(noisy_summary.gate_status, "review");
+            assert_eq!(noisy_summary.false_actionable, 1);
+            assert_eq!(noisy_summary.repair_packet_ready_true, 1);
             Ok(())
         })
     }
