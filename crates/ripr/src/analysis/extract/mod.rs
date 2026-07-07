@@ -16,7 +16,7 @@ pub(crate) use oracles::{
 pub(crate) use probe_shapes::{
     PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT,
+    PROBE_SHAPE_SIDE_EFFECT, is_known_probe_shape,
 };
 pub(crate) use returns::extract_return_facts;
 pub(crate) use text::extract_identifier_tokens;
