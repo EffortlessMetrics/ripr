@@ -643,6 +643,7 @@ fn gap_record_comment_json(
             "recommended_file": repair_route.target_file.as_deref().or(repair_route.related_test.as_deref()),
             "recommended_name": repair_route.related_test.as_deref(),
             "near_test": repair_route.related_test.as_deref(),
+            "related_test": gap_record_related_test(repair_route),
         },
         "repair_card": {
             "gap_kind": record.kind.as_str(),
@@ -692,6 +693,23 @@ fn gap_record_id(record: &GapRecord) -> String {
 
 fn non_empty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
+}
+
+/// Project the structured related-test object `{name, file, line}` from a
+/// gap-ledger repair route per RIPR-SPEC-0068. The gap-ledger artifact carries
+/// the related test as a single `related_test` string plus optional
+/// `target_file` / `target_line`; this projects them into the structured
+/// object, or `null` when no related test name resolves. The gap-ledger path
+/// may carry a name-only object when the source route has no resolved location.
+fn gap_record_related_test(route: &GapRepairRoute) -> Value {
+    match route.related_test.as_deref() {
+        Some(name) => json!({
+            "name": name,
+            "file": route.target_file.as_deref(),
+            "line": route.target_line,
+        }),
+        None => Value::Null,
+    }
 }
 
 fn repair_text(route: &GapRepairRoute) -> String {
@@ -819,6 +837,19 @@ fn review_recommendation_json(
         })
     };
 
+    // Structured related-test object {name, file, line} per RIPR-SPEC-0068:
+    // the navigational location of the nearest strong related test, or null
+    // when no strong related test resolves.
+    let related_test = nearest
+        .map(|test| {
+            json!({
+                "name": test.test_name,
+                "file": display_path(&test.file),
+                "line": test.line,
+            })
+        })
+        .unwrap_or(Value::Null);
+
     let mut recommendation = json!({
         "id": format!("ripr-review-{seam_id}"),
         "seam_id": seam_id,
@@ -844,6 +875,7 @@ fn review_recommendation_json(
             "recommended_file": recommended.file.as_str(),
             "recommended_name": recommended.name.as_str(),
             "near_test": nearest.map(|test| test.test_name.clone()),
+            "related_test": related_test,
         },
         "llm_guidance": llm_guidance,
     });
@@ -2255,6 +2287,74 @@ mod tests {
     }
 
     #[test]
+    fn gap_record_related_test_projects_object_or_null() {
+        // Some related test with a resolved file/line -> full navigational object.
+        let full = crate::output::gap_decision_ledger::GapRepairRoute {
+            route_kind: "AddValueAssertion".to_string(),
+            target_file: Some("tests/pricing.rs".to_string()),
+            target_line: Some(18),
+            related_test: Some("tests/pricing.rs::discount_boundary".to_string()),
+            assertion_shape: None,
+            missing_discriminator: None,
+            changed_behavior: None,
+            stop_conditions: Vec::new(),
+        };
+        let value = gap_record_related_test(&full);
+        assert_eq!(value["name"], "tests/pricing.rs::discount_boundary");
+        assert_eq!(value["file"], "tests/pricing.rs");
+        assert_eq!(value["line"], 18);
+
+        // Some related test without a resolved file/line -> null file/line, not omitted.
+        let name_only = crate::output::gap_decision_ledger::GapRepairRoute {
+            target_file: None,
+            target_line: None,
+            related_test: Some("discount_boundary".to_string()),
+            ..full.clone()
+        };
+        let value = gap_record_related_test(&name_only);
+        assert_eq!(value["name"], "discount_boundary");
+        assert!(value["file"].is_null());
+        assert!(value["line"].is_null());
+
+        // No related test -> explicit null, never a partial object.
+        let none = crate::output::gap_decision_ledger::GapRepairRoute {
+            related_test: None,
+            ..full
+        };
+        assert!(gap_record_related_test(&none).is_null());
+    }
+
+    #[test]
+    fn working_set_card_emits_null_related_test_without_strong_test() -> Result<(), String> {
+        // When no strong related test resolves, the structured related_test
+        // object is an explicit null rather than an object with no test name.
+        let mut seam = classified(88);
+        seam.evidence.related_tests.clear();
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_card = false;
+        for card in all_cards(&value) {
+            let Some(suggested_test) = card.get("suggested_test") else {
+                continue;
+            };
+            let related_test = suggested_test
+                .get("related_test")
+                .ok_or_else(|| format!("card suggested_test missing related_test key: {card:?}"))?;
+            assert!(
+                related_test.is_null(),
+                "card without a strong related test must carry null related_test: {related_test:?}"
+            );
+            saw_card = true;
+        }
+        assert!(saw_card, "expected at least one rendered card");
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_pr_guidance_fixtures_pin_required_cases() -> Result<(), String> {
         let exact_seams = [classified(88)];
         let exact = AgentBriefResolvedWorkingSet::base(
@@ -2794,6 +2894,55 @@ mod tests {
                 );
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_card_carries_structured_related_test() -> Result<(), String> {
+        // RIPR-SPEC-0068: every review card projects a structured related-test
+        // object {name, file, line} on suggested_test. When a strong related
+        // test resolves the object is navigational (non-empty string name,
+        // non-empty string file, integer line); otherwise it is an explicit
+        // null.
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_navigational = false;
+        for card in all_cards(&value) {
+            let Some(suggested_test) = card.get("suggested_test") else {
+                continue;
+            };
+            let related_test = suggested_test
+                .get("related_test")
+                .ok_or_else(|| format!("card suggested_test missing related_test key: {card:?}"))?;
+            if related_test.is_null() {
+                continue;
+            }
+            let name = related_test.get("name").and_then(Value::as_str);
+            let file = related_test.get("file").and_then(Value::as_str);
+            let line = related_test.get("line").and_then(Value::as_u64);
+            assert!(
+                name.is_some_and(|name| !name.is_empty()),
+                "related_test must carry a non-empty string name: {related_test:?}"
+            );
+            assert!(
+                file.is_some_and(|file| !file.is_empty()),
+                "related_test must carry a non-empty string file: {related_test:?}"
+            );
+            assert!(
+                line.is_some(),
+                "related_test must carry an integer line: {related_test:?}"
+            );
+            saw_navigational = true;
+        }
+        assert!(
+            saw_navigational,
+            "classified(88) carries a strong related test; at least one card must \
+             project a navigational related_test object"
+        );
         Ok(())
     }
 }

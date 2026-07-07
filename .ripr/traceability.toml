@@ -4829,6 +4829,9 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_actionable_card_carries_verify_and_receipt_commands",
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_every_card_carries_gap_state",
   "crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary",
+  "crates/ripr/src/output/review_comments.rs::tests::spec0068_card_carries_structured_related_test",
+  "crates/ripr/src/output/review_comments.rs::tests::gap_record_related_test_projects_object_or_null",
+  "crates/ripr/src/output/review_comments.rs::tests::working_set_card_emits_null_related_test_without_strong_test",
   "crates/ripr/src/output/review_comments.rs::tests::review_comments_gap_ledger_renders_only_eligible_repair_cards",
   "crates/ripr/src/cli/commands.rs::tests::review_comments_gap_ledger_writes_repair_cards_without_loading_diff",
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::tests::inline_comment_publish_plan_uses_spec0068_inline_cap_token"

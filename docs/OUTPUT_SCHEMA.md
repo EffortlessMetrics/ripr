@@ -6115,7 +6115,12 @@ JSON shape:
         "assertion_kind": "exact_value",
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary",
-        "near_test": "applies_discount_above_threshold"
+        "near_test": "applies_discount_above_threshold",
+        "related_test": {
+          "name": "applies_discount_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": 18
+        }
       },
       "llm_guidance": {
         "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
@@ -6201,6 +6206,13 @@ Field contract:
 - `comments[].suggested_test` - bounded test intent, candidate values,
   assertion shape, recommended test file, and related test to imitate when
   available.
+- `comments[].suggested_test.related_test` - structured navigational object
+  `{name, file, line}` for the nearest strong related test (RIPR-SPEC-0068),
+  or `null` when no strong related test resolves. The flat `recommended_file`,
+  `recommended_name`, and `near_test` strings are retained alongside it; this
+  object adds a directly navigable `file:line` when the related-test location
+  is resolved. On the gap-ledger card path `file` and `line` may be `null`
+  when the supplied repair route names only the related test.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
 - `comments[].repair_card` - optional GapRecord-backed repair card. When

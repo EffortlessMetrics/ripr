@@ -68,7 +68,12 @@
         "intent": "Add one focused discriminator test.",
         "near_test": "above_threshold_gets_discount",
         "recommended_file": "tests/pricing.rs",
-        "recommended_name": "discounted_total_boundary_discriminator"
+        "recommended_name": "discounted_total_boundary_discriminator",
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        }
       }
     }
   ],

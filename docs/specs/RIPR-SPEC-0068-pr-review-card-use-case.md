@@ -326,7 +326,8 @@ source_location contract is fully enforced now.
 - `crates/ripr/src/output/pr_inline_comment_publish_plan.rs` — publish plan.
 - `schemas/ripr/review-comments.schema.json` — schema updated to allow
   `gap_state`, `receipt_command`, `non_claims`, `why_not_actionable`,
-  `canonical_gap_id` on recommendation cards and the
+  `canonical_gap_id` on recommendation cards, the structured
+  `suggested_test.related_test` object, and the
   `gap_ledger_artifact` / `artifact_scope` analysis-scope tokens.
 - `docs/OUTPUT_SCHEMA.md` — card fields documented.
 - `.ripr/traceability.toml` — SPEC-0068 mapped to the five reject-list tests.
@@ -350,10 +351,27 @@ source_location contract is fully enforced now.
 - Five reject-list unit tests (SPEC-0068 prefix).
 - Golden fixtures re-blessed for all pr-guidance cases.
 
+### Shipped (related-test object follow-up)
+
+- Structured related-test object `{name, file, line}` on `suggested_test`
+  for both card paths: the working-set card projects the nearest strong
+  related test (`nearest_strong_test_to_imitate`) via `display_path`; the
+  gap-ledger card projects `GapRepairRoute.{related_test, target_file,
+  target_line}` through `gap_record_related_test`. The field is always present:
+  the working-set card emits a fully navigable object or `null`, while the
+  gap-ledger card may emit a name-only object with `file` / `line` set to
+  `null` when its source route does not carry a resolved location. The flat
+  `recommended_file` / `recommended_name` / `near_test` strings are retained
+  alongside it.
+- `related_test` registered in `schemas/ripr/review-comments.schema.json`
+  (object-or-null with required `name`; `file` / `line` nullable for the
+  gap-ledger path) and documented in `docs/OUTPUT_SCHEMA.md`.
+- Output-contract test `spec0068_card_carries_structured_related_test` pins
+  the navigational object shape against rendered cards.
+
 ### Deferred (linked plan slice)
 
 - `canonical_gap_id` on working-set cards (gap-ledger path already has it).
-- Structured related-test object `{name, file, line}`.
 - Card-level `oracle_kind` / `oracle_strength`.
 
 ## Metrics
