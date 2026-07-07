@@ -7,6 +7,7 @@
 //!
 //! - `typescript_table_case_unresolved` — deferred to PR 5 (oracle-hardening detection)
 //! - `typescript_dynamic_assertion_unresolved` — deferred to PR 5
+//! - `typescript_oracle_helper_gated` — LANDED in helper-gated oracle disclosure
 //! - `typescript_target_unresolved` — LANDED in PR 6 (cross-package ownership detection)
 //! - `typescript_path_alias_unresolved` — LANDED in RIPR-SPEC-0099 (tsconfig path alias gap)
 
@@ -326,7 +327,14 @@ fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &s
 
 /// Collect named oracle-based limitations from oracle-eligible related candidates.
 ///
-/// Scans assertions in oracle-eligible related tests for three real producers:
+/// Scans oracle-eligible related tests for real producers:
+///
+/// - assertion-helper call wrapping the changed owner call with no direct
+///   extracted assertion → `typescript_oracle_helper_gated`
+///   Real producer: the test body contains an `assert*` / `expect*` helper call
+///   whose argument list includes the changed owner call, but the syntax-first
+///   assertion extractor found no supported direct assertion. This is a
+///   limitation only; the helper's semantics are not credited.
 ///
 /// - `OracleKind::Snapshot` → `typescript_snapshot_discriminator_unresolved`
 ///   Real producer: `oracle.rs::oracle_for_matcher` already recognises
@@ -345,23 +353,41 @@ fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &s
 ///   value). This is a PR 5 addition — the producer now exists.
 ///
 /// Deferred (no producer yet — do NOT add without a real producer):
-/// - `typescript_oracle_helper_gated` — deferred (OpaqueCustomAssertionHelper
-///   detection not yet wired for TS)
 /// - `typescript_table_case_unresolved` — deferred (test.each detection is a
 ///   separate seam for a later PR)
 /// - `typescript_target_unresolved` — deferred to PR 6 (ownership detection)
 pub(crate) fn named_limitations_for_oracle_candidates(
+    owner: &TypeScriptOwner,
     candidates: &[TypeScriptRelatedCandidate<'_>],
 ) -> Vec<TypeScriptNamedLimitation> {
     // Only consider oracle-eligible candidates (direct call, imported call, etc.)
     // Heuristic-only (name/proximity) links are not oracle-eligible and cannot
     // produce oracle-based limitation evidence.
     let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
+    let mut saw_oracle_helper_gated = false;
     let mut saw_snapshot = false;
     let mut saw_custom_matcher = false;
     let mut saw_dynamic_assertion = false;
 
     for candidate in candidates.iter().filter(|c| c.relation.uses_oracle()) {
+        if !saw_oracle_helper_gated
+            && candidate.test.assertions.is_empty()
+            && let Some((helper_name, helper_line)) =
+                oracle_helper_gated_call(owner, candidate.test)
+        {
+            let sample = format!("{}:{}", normalized_path(&candidate.test.file), helper_line);
+            let why = format!(
+                "the test calls assertion helper `{helper_name}(...)` around owner `{}`; the adapter cannot inspect the helper body or prove its oracle semantics from the test call site",
+                owner.name
+            );
+            limitations.push(TypeScriptNamedLimitation {
+                name: "typescript_oracle_helper_gated",
+                sample_source: sample,
+                why_not_actionable: why,
+                repair_route: "analysis/typescript-oracle-helper-resolution",
+            });
+            saw_oracle_helper_gated = true;
+        }
         for assertion in &candidate.test.assertions {
             // Snapshot limitation: `toMatchSnapshot` / `toMatchInlineSnapshot`
             if matches!(assertion.oracle_kind, OracleKind::Snapshot) && !saw_snapshot {
@@ -428,6 +454,49 @@ pub(crate) fn named_limitations_for_oracle_candidates(
         }
     }
     limitations
+}
+
+fn oracle_helper_gated_call(
+    owner: &TypeScriptOwner,
+    test: &TypeScriptTest,
+) -> Option<(String, usize)> {
+    for (offset, line) in test.body_text.lines().enumerate() {
+        if !contains_call_name(line, &owner.name) {
+            continue;
+        }
+        let Some(helper_name) = assertion_helper_call_name(line, &owner.name) else {
+            continue;
+        };
+        return Some((helper_name, test.line + offset));
+    }
+    None
+}
+
+fn assertion_helper_call_name(line: &str, owner_name: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with('*') {
+        return None;
+    }
+    let trimmed = trimmed
+        .strip_prefix("await ")
+        .or_else(|| trimmed.strip_prefix("return "))
+        .or_else(|| trimmed.strip_prefix("void "))
+        .unwrap_or(trimmed)
+        .trim_start();
+    let before_args = trimmed.split_once('(')?.0.trim();
+    if before_args.is_empty() || before_args.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let helper_name = before_args
+        .rsplit(['.', ':'])
+        .find(|part| !part.is_empty())?
+        .trim();
+    if helper_name == owner_name {
+        return None;
+    }
+    let lower = helper_name.to_ascii_lowercase();
+    let helper_shaped = lower.starts_with("assert") || lower.starts_with("expect");
+    helper_shaped.then(|| helper_name.to_string())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

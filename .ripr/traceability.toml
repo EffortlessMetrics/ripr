@@ -5298,6 +5298,7 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_snapshot_discriminator_emitted_for_snapshot_oracle",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_emitted_for_unrecognised_matcher",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_custom_matcher_not_emitted_for_recognised_matcher",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_oracle_helper_gated_emitted_for_assertion_helper_wrapping_owner_call",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_oracle_based_not_emitted_for_heuristic_only_relation",
   # PR5: oracle metadata hardening
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_emitted_for_literal_expected_value",
@@ -5340,6 +5341,7 @@ fixtures = [
   "fixtures/typescript_static_limit_taxonomy",
   "fixtures/typescript_jest_vitest_assertion_facts",
   "fixtures/typescript_limitation_custom_matcher",
+  "fixtures/typescript_oracle_helper_gated",
   # PR5: oracle metadata hardening (new fixture)
   "fixtures/typescript_dynamic_assertion_unresolved",
   # PR6: ownership hardening — package-local and CommonJS require
@@ -5406,6 +5408,7 @@ tests = [
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_missing_verify_command_returns_none",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_missing_oracle_expected_returns_none",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_dynamic_oracle_returns_none",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_named_typescript_limitation_returns_none",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_wrong_category_returns_none",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_no_related_tests_returns_none",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::validator_parity_no_missing_discriminators_returns_none",

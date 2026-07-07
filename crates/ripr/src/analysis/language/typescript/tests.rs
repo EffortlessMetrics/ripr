@@ -4789,6 +4789,55 @@ fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Resul
     Ok(())
 }
 
+/// `typescript_oracle_helper_gated` fires when an oracle-eligible related test
+/// wraps the changed owner call in an assertion-shaped helper, but the
+/// syntax-first extractor finds no direct supported assertion to credit.
+#[test]
+fn named_limitation_oracle_helper_gated_emitted_for_assertion_helper_wrapping_owner_call()
+-> Result<(), String> {
+    let owner = test_owner("computePrice", "src/pricing.ts");
+    let tests = extract_tests(
+        Path::new("tests/pricing.test.ts"),
+        r#"import { computePrice } from "../src/pricing";
+test("price is checked through helper", () => {
+  assertPriceBoundary(computePrice(10, 3), 20);
+});
+"#,
+    );
+    let finding = classify_change(
+        Path::new("src/pricing.ts"),
+        2,
+        "    if (base >= 0) {",
+        &[owner],
+        &tests,
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_oracle_helper_gated",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_oracle_helper_gated at tests/pricing.test.ts:3",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_oracle_helper_gated — the test calls assertion helper `assertPriceBoundary(...)` around owner `computePrice`",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_oracle_helper_gated → analysis/typescript-oracle-helper-resolution",
+    );
+    assert_eq!(finding.static_limit_kind, None);
+    assert!(!matches!(finding.class, ExposureClass::Exposed));
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
+    Ok(())
+}
+
 /// Heuristic-only (name/proximity) related tests must NOT trigger oracle-based
 /// named limitations, because heuristic relations are not oracle-eligible.
 #[test]
