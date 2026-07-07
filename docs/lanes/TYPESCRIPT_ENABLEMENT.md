@@ -129,6 +129,9 @@ now includes:
   `fixtures/real-repair-attempts` corpus also records a test-only closed
   receipt for that packet while keeping TypeScript preview advisory-only and
   ineligible for gate, badge, baseline, RIPR Zero, or support-tier authority.
+- `fixtures/typescript-preview-repair-loop/corpus.json` also checks the same
+  complete packet as a packet-ready advisory dogfood receipt with a closed
+  static outcome movement and the same no-promotion boundary.
 
 These are usefulness and precision improvements only. They do not make
 TypeScript/JavaScript repair-packet, gate, badge, baseline, or RIPR Zero

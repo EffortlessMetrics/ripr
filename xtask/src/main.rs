@@ -9006,6 +9006,7 @@ const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] = &[
         "javascript_already_observed_unchanged",
         "already_observed_unchanged",
     ),
+    ("typescript_complete_boundary_packet_closed", "resolved"),
 ];
 
 const TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES: &[(&str, &str)] = &[
@@ -10700,9 +10701,9 @@ fn validate_typescript_preview_repair_loop_fixture_corpus_at(
                 .to_string(),
         );
     }
-    if packet_ready_cases > 0 {
+    if packet_ready_cases == 0 {
         violations.push(
-            "TypeScript preview repair-loop corpus must not claim complete repair packets yet"
+            "TypeScript preview repair-loop corpus must include a checked packet-ready advisory receipt"
                 .to_string(),
         );
     }
@@ -56378,6 +56379,26 @@ fn dogfood_typescript_preview_repair_loop_run(
     if !scenario.repair_packet_ready && scenario.outcome == "resolved" {
         errors.push("repair_packet_ready=false must not claim resolved".to_string());
     }
+    if scenario.repair_packet_ready {
+        if scenario.gap_state != "actionable"
+            || scenario.actionability_category != "complete_repair_packet"
+        {
+            errors.push(
+                "repair_packet_ready=true requires actionable / complete_repair_packet".to_string(),
+            );
+        }
+        if scenario.outcome != "resolved" {
+            errors.push("repair_packet_ready=true requires outcome resolved".to_string());
+        }
+        if scenario.verify_result != "pass" {
+            errors.push("repair_packet_ready=true requires verify_result=pass".to_string());
+        }
+        if scenario.must_not_emit_repair_packet {
+            errors.push(
+                "repair_packet_ready=true cannot set must_not_emit_repair_packet".to_string(),
+            );
+        }
+    }
     if !typescript_preview_repair_loop_allowed_outcomes().contains(&scenario.outcome.as_str()) {
         errors.push(format!(
             "outcome must be a TypeScript preview repair-loop outcome, got {}",
@@ -56426,6 +56447,9 @@ fn dogfood_typescript_preview_repair_loop_run(
             "already_observed_unchanged must preserve already_observed / strong_oracle_observed"
                 .to_string(),
         );
+    }
+    if scenario.outcome == "resolved" {
+        dogfood_typescript_preview_repair_loop_check_closed_receipt(scenario, &mut errors);
     }
 
     dogfood_typescript_preview_repair_loop_check_source_fixture(scenario, &mut errors);
@@ -56613,6 +56637,34 @@ fn dogfood_typescript_preview_repair_loop_check_source_fixture(
             );
         }
     }
+    if scenario.repair_packet_ready {
+        if finding.get("typescript_repair_packet").is_none() {
+            errors.push(
+                "repair_packet_ready=true requires source typescript_repair_packet".to_string(),
+            );
+        }
+        if finding
+            .get("typescript_preview_card")
+            .and_then(|card| json_bool_field(card, "repair_packet_ready"))
+            != Some(true)
+        {
+            errors.push(
+                "repair_packet_ready=true requires source preview card repair_packet_ready=true"
+                    .to_string(),
+            );
+        }
+        if finding
+            .get("typescript_repair_packet")
+            .and_then(|packet| json_string_field(packet, "verify_command"))
+            .as_deref()
+            != Some(scenario.verify_command.as_str())
+        {
+            errors.push(
+                "repair_packet_ready=true requires verify_command to match source packet"
+                    .to_string(),
+            );
+        }
+    }
     if scenario.must_not_invent_verify_command {
         if json_string_array_field(finding, "evidence")
             .iter()
@@ -56634,7 +56686,19 @@ fn dogfood_typescript_preview_repair_loop_check_source_fixture(
             ));
         }
     }
-    if json_string_field(actionability, "why_not_actionable").as_deref()
+    if scenario.repair_packet_ready {
+        let source_why = json_string_field(actionability, "why_not_actionable").unwrap_or_default();
+        if !source_why.contains("complete repair packet")
+            || !scenario
+                .why_not_actionable
+                .contains("complete repair packet")
+        {
+            errors.push(
+                "packet-ready why_not_actionable must document the complete repair packet boundary"
+                    .to_string(),
+            );
+        }
+    } else if json_string_field(actionability, "why_not_actionable").as_deref()
         != Some(scenario.why_not_actionable.as_str())
     {
         errors.push("why_not_actionable must match source preview actionability".to_string());
@@ -56659,6 +56723,80 @@ fn typescript_preview_repair_loop_concrete_operator_command(value: &str) -> bool
         )
 }
 
+fn dogfood_typescript_preview_repair_loop_check_closed_receipt(
+    scenario: &DogfoodTypescriptPreviewRepairLoopScenario,
+    errors: &mut Vec<String>,
+) {
+    if !scenario.receipt_command.starts_with("ripr outcome ") {
+        errors.push("resolved TypeScript preview receipt must use ripr outcome".to_string());
+    }
+    let Some(receipt_ref) = scenario.raw_evidence_refs.iter().find(|reference| {
+        reference.starts_with(
+            "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json",
+        )
+    }) else {
+        errors.push(
+            "resolved TypeScript preview receipt must cite the closed outcome fixture".to_string(),
+        );
+        return;
+    };
+    let receipt_path = receipt_ref.split('#').next().unwrap_or(receipt_ref);
+    let receipt = match read_json_value(Path::new(receipt_path)) {
+        Ok(value) => value,
+        Err(err) => {
+            errors.push(format!(
+                "resolved TypeScript preview receipt is unavailable at {receipt_path}: {err}"
+            ));
+            return;
+        }
+    };
+    if json_string_field(&receipt, "status").as_deref() != Some("advisory") {
+        errors.push("resolved TypeScript preview receipt must stay advisory".to_string());
+    }
+    let closed = receipt
+        .get("summary")
+        .and_then(|summary| summary.get("gap_movement"))
+        .and_then(|movement| movement.get("closed"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if closed == 0 {
+        errors.push("resolved TypeScript preview receipt must close at least one gap".to_string());
+    }
+    let Some(expected_gap) =
+        typescript_preview_repair_loop_expected_gap_id(&scenario.source_finding_id)
+    else {
+        errors.push(format!(
+            "resolved TypeScript preview receipt cannot derive a canonical gap id from {}",
+            scenario.source_finding_id
+        ));
+        return;
+    };
+    let moved_contains_gap = receipt
+        .get("moved")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|movement| {
+            json_string_field(movement, "seam_id").as_deref() == Some(expected_gap.as_str())
+                && json_string_field(movement, "gap_movement").as_deref() == Some("closed")
+        });
+    if !moved_contains_gap {
+        errors.push(format!(
+            "resolved TypeScript preview receipt must close {expected_gap}"
+        ));
+    }
+}
+
+fn typescript_preview_repair_loop_expected_gap_id(source_finding_id: &str) -> Option<String> {
+    let mut parts = source_finding_id.rsplit(':');
+    let digest = parts.next()?.trim();
+    let family = parts.next()?.trim();
+    if digest.is_empty() || family.is_empty() {
+        return None;
+    }
+    Some(format!("gap:typescript:{family}:{digest}"))
+}
+
 fn dogfood_typescript_preview_repair_loop_expect_string(
     errors: &mut Vec<String>,
     value: &Value,
@@ -56680,6 +56818,7 @@ fn typescript_preview_repair_loop_allowed_outcomes() -> &'static [&'static str] 
         "static_limitation_recorded",
         "already_observed_unchanged",
         "intentionally_skipped",
+        "resolved",
     ]
 }
 
@@ -59062,10 +59201,10 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         .filter(|run| run.repair_packet_ready)
         .count();
     body.push_str("## TypeScript Preview Repair-Loop Receipts\n\n");
-    body.push_str("These receipts pin TypeScript-family preview repair-loop evidence against checked fixture outputs. They record useful advisory routes, weak-oracle downgrades, static limitations, and skipped incomplete-packet cases without claiming TypeScript parity or complete repair packets.\n\n");
+    body.push_str("These receipts pin TypeScript-family preview repair-loop evidence against checked fixture outputs. They record useful advisory routes, weak-oracle downgrades, static limitations, skipped incomplete-packet cases, and checked complete-packet receipts without claiming TypeScript parity or support-tier promotion.\n\n");
     body.push_str("- Default CI blocking: no\n");
     body.push_str("- Preview authority: advisory\n");
-    body.push_str("- Repair packets: none until `repair_packet_ready` is true\n");
+    body.push_str("- Repair packets: advisory only when `repair_packet_ready` is true\n");
     body.push_str("- Receipt input: `fixtures/typescript-preview-repair-loop/corpus.json`\n");
     body.push_str(&format!(
         "- Cases: {}; TypeScript: {}; JavaScript: {}; static limitations: {}; weak-oracle downgrades: {}; skipped: {}; packet-ready: {}\n\n",
@@ -93133,10 +93272,15 @@ fn exact_owner_call_has_external_expected_value() {
                 "TypeScript preview repair-loop receipts should include a weak-oracle downgrade"
             );
             assert!(
-                scenarios
-                    .iter()
-                    .all(|scenario| !scenario.repair_packet_ready),
-                "TypeScript preview repair-loop receipts should not claim complete repair packets yet"
+                scenarios.iter().any(|scenario| {
+                    scenario.name == "typescript_complete_boundary_packet_closed"
+                        && scenario.repair_packet_ready
+                        && scenario.gap_state == "actionable"
+                        && scenario.actionability_category == "complete_repair_packet"
+                        && scenario.outcome == "resolved"
+                        && scenario.verify_result == "pass"
+                }),
+                "TypeScript preview repair-loop receipts should include the closed complete advisory packet"
             );
             assert!(
                 scenarios.iter().any(|scenario| {

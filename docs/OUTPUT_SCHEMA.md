@@ -804,18 +804,18 @@ JSON fields:
     "corpus": "fixtures/typescript-preview-false-actionable-audit/corpus.json"
   },
   "summary": {
-    "cases_total": 12,
-    "must_remain_non_actionable_total": 12,
+    "cases_total": 14,
+    "must_remain_non_actionable_total": 14,
     "repair_packet_ready_true_total": 0,
     "actionable_gap_state_total": 0,
     "complete_packet_category_total": 0,
     "false_actionable_total": 0,
-    "false_actionable_denominator": 12,
+    "false_actionable_denominator": 14,
     "false_actionable_rate": 0.0,
     "preview_boundary_violation_total": 0
   },
   "disposition_counts": [
-    { "value": "candidate_future_support", "count": 5 }
+    { "value": "candidate_future_support", "count": 7 }
   ],
   "risk_class_counts": [
     { "value": "mock interaction payload gap", "count": 1 }
@@ -12997,7 +12997,8 @@ findings must include an explicit limit reason.
 The checked TypeScript-family preview repair-loop receipts are read from
 `fixtures/typescript-preview-repair-loop/` and preserve advisory preview
 boundaries for useful TypeScript/JavaScript routes, weak-oracle downgrades,
-static limitations, skipped incomplete-packet cases, and packet-ready counts.
+static limitations, skipped incomplete-packet cases, checked complete-packet
+receipts, and packet-ready counts.
 The checked TypeScript false-actionable audit rows are read from
 `fixtures/typescript-preview-false-actionable-audit/`; dogfood projects
 `typescript_false_actionable_audit.summary.false_actionable_rate` from rows
