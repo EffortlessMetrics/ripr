@@ -5269,6 +5269,10 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
         &finding,
         "typescript_limitation: typescript_dynamic_assertion_unresolved",
     );
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_table_case_unresolved",
+    );
     assert_evidence_contains(
         &finding,
         "typescript_limitation_sample: typescript_dynamic_assertion_unresolved at tests/clamp.test.ts:3",
@@ -5279,6 +5283,66 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
     assert_evidence_contains(&finding, "typescript_oracle_confidence: medium");
     // repair_packet_ready stays false
     assert_evidence_contains(&finding, "repair_route:");
+    Ok(())
+}
+
+/// `typescript_table_case_unresolved` limitation emitted when an oracle-eligible
+/// `test.each` / `it.each` table case uses a row-derived dynamic matcher arg.
+#[test]
+fn named_limitation_table_case_emitted_for_table_dynamic_matcher_arg() -> Result<(), String> {
+    let owner = test_owner("clamp", "src/clamp.ts");
+    let test = TypeScriptTest {
+        name: "clamps table %#".to_string(),
+        local_name: "clamps table %#".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/clamp.test.ts"),
+        line: 1,
+        body_text: "test.each([[ -5, 0 ]])(\"clamps table %#\", (value, expected) => {\nclamp(value, 0, 10);\nexpect(clamp(value, 0, 10)).toBe(expected);\n});".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 3,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("clamp(value, 0, 10)".to_string()),
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: true,
+            oracle_confidence: OracleConfidence::Medium,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/clamp.ts"),
+        2,
+        "    if (value < min) {",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_table_case_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_table_case_unresolved at tests/clamp.test.ts:3",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_table_case_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_dynamic_assertion_unresolved",
+    );
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
     Ok(())
 }
 

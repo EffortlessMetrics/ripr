@@ -5306,6 +5306,7 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_has_dynamic_matcher_arg_for_call_expression",
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_metadata_no_dynamic_flag_for_no_arg_matchers",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_table_case_emitted_for_table_dynamic_matcher_arg",
   "crates/ripr/src/analysis/language/typescript/tests.rs::named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation",
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_high_when_strong_oracle_and_literal_expected",
   "crates/ripr/src/analysis/language/typescript/tests.rs::oracle_confidence_medium_when_strong_oracle_and_no_literal",

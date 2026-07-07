@@ -243,6 +243,13 @@ typescript_target_unresolved
 typescript_import_graph_unresolved
 ```
 
+`typescript_table_case_unresolved` is emitted only from a real table-case
+producer: an oracle-eligible `test.each(...)` / `it.each(...)` test whose
+matcher expected value is row-derived or otherwise dynamic. The finding may
+still carry useful preview evidence, but the adapter does not bind table rows
+to concrete expected values, so the limitation stays advisory and emits no
+repair packet by itself.
+
 ### Source-to-test ownership and the cross-language boundary
 
 Ownership prefers same-package, direct-import, nearby-naming, runner-path

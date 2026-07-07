@@ -3,10 +3,10 @@
 //! Named limitation taxonomy (RIPR-SPEC-0085 §PR4):
 //! Each limitation variant emits `typescript_limitation: <name>` as an additive
 //! evidence line. Only limitations with a REAL producer are emitted here.
-//! Deferred limitations (no producer yet) are noted inline below:
+//! Producer status for named limitations owned by this module:
 //!
-//! - `typescript_table_case_unresolved` — deferred to PR 5 (oracle-hardening detection)
-//! - `typescript_dynamic_assertion_unresolved` — deferred to PR 5
+//! - `typescript_table_case_unresolved` — LANDED in table-case oracle hardening
+//! - `typescript_dynamic_assertion_unresolved` — LANDED in oracle hardening
 //! - `typescript_oracle_helper_gated` — LANDED in helper-gated oracle disclosure
 //! - `typescript_target_unresolved` — LANDED in PR 6 (cross-package ownership detection)
 //! - `typescript_path_alias_unresolved` — LANDED in RIPR-SPEC-0099 (tsconfig path alias gap)
@@ -352,10 +352,14 @@ fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &s
 ///   non-literal dynamic expression (a variable, function call, or computed
 ///   value). This is a PR 5 addition — the producer now exists.
 ///
-/// Deferred (no producer yet — do NOT add without a real producer):
-/// - `typescript_table_case_unresolved` — deferred (test.each detection is a
-///   separate seam for a later PR)
-/// - `typescript_target_unresolved` — deferred to PR 6 (ownership detection)
+/// - table-form test with `has_dynamic_matcher_arg = true` →
+///   `typescript_table_case_unresolved`
+///   Real producer: `tests_extract.rs::test_callee_is_each` accepts array-form
+///   `test.each(...)` / `it.each(...)` calls and stores the call source in
+///   `TypeScriptTest::body_text`. When the matcher expected value is a row
+///   variable, syntax-only preview evidence cannot bind the row to a concrete
+///   expected value.
+///
 pub(crate) fn named_limitations_for_oracle_candidates(
     owner: &TypeScriptOwner,
     candidates: &[TypeScriptRelatedCandidate<'_>],
@@ -367,6 +371,7 @@ pub(crate) fn named_limitations_for_oracle_candidates(
     let mut saw_oracle_helper_gated = false;
     let mut saw_snapshot = false;
     let mut saw_custom_matcher = false;
+    let mut saw_table_case = false;
     let mut saw_dynamic_assertion = false;
 
     for candidate in candidates.iter().filter(|c| c.relation.uses_oracle()) {
@@ -434,6 +439,24 @@ pub(crate) fn named_limitations_for_oracle_candidates(
             // Real producer: `oracle.rs::extract_matcher_expected_value` sets
             // `has_dynamic_matcher_arg = true` for such cases (RIPR-SPEC-0085 §PR5).
             if assertion.has_dynamic_matcher_arg && !saw_dynamic_assertion {
+                if table_case_test(candidate.test) && !saw_table_case {
+                    let sample = format!(
+                        "{}:{}",
+                        normalized_path(&candidate.test.file),
+                        assertion.line
+                    );
+                    let why = format!(
+                        "the table-driven test `{}` uses a row-derived dynamic value in `.{}(...)`; the adapter cannot statically bind table rows to concrete expected values",
+                        candidate.test.name, assertion.matcher
+                    );
+                    limitations.push(TypeScriptNamedLimitation {
+                        name: "typescript_table_case_unresolved",
+                        sample_source: sample,
+                        why_not_actionable: why,
+                        repair_route: "analysis/typescript-table-case-resolution",
+                    });
+                    saw_table_case = true;
+                }
                 let sample = format!(
                     "{}:{}",
                     normalized_path(&candidate.test.file),
@@ -454,6 +477,11 @@ pub(crate) fn named_limitations_for_oracle_candidates(
         }
     }
     limitations
+}
+
+fn table_case_test(test: &TypeScriptTest) -> bool {
+    let body = test.body_text.trim_start();
+    body.starts_with("test.each(") || body.starts_with("it.each(")
 }
 
 fn oracle_helper_gated_call(
