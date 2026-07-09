@@ -823,6 +823,9 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
         owner: changed_owner,
         dedupe_fingerprint: Some(canonical_gap_id.clone()),
     };
+    let missing_discriminator = string_at(packet, &["missing_discriminator"])
+        .or_else(|| first_missing_discriminator_value(finding))
+        .map(ToString::to_string);
     let repair_route = if repairability == "repairable" {
         Some(GapRepairRoute {
             route_kind: typescript_route_kind(repair_kind, behavior_kind).to_string(),
@@ -830,8 +833,7 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
             target_line,
             related_test: target_test,
             assertion_shape: string_at(packet, &["assertion_shape"]).map(ToString::to_string),
-            missing_discriminator: string_at(packet, &["missing_discriminator"])
-                .map(ToString::to_string),
+            missing_discriminator,
             changed_behavior: string_at(finding, &["typescript_preview_card", "changed_behavior"])
                 .map(ToString::to_string),
             stop_conditions: vec![
@@ -903,6 +905,15 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
             .unwrap_or("preview_advisory_only")
             .to_string(),
     })
+}
+
+fn first_missing_discriminator_value(finding: &Value) -> Option<&str> {
+    finding
+        .get("missing_discriminators")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(|missing| string_at(missing, &["value"]))
+        .find(|value| !value.trim().is_empty())
 }
 
 fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option<GapRecord> {
@@ -3194,6 +3205,10 @@ mod tests {
             .ok_or("expected TypeScript fixture repair route")?;
         assert_eq!(route.route_kind, "AddBoundaryAssertion");
         assert_eq!(route.target_file.as_deref(), Some("tests/discount.test.ts"));
+        assert_eq!(
+            route.missing_discriminator.as_deref(),
+            Some("amount == threshold")
+        );
         assert_eq!(
             route.related_test.as_deref(),
             Some(

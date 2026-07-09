@@ -16,6 +16,7 @@ use ripr::output::receipt_lifecycle::{
 };
 use ripr::output::start_here_state::{
     START_HERE_ACTIONABLE_GAP, START_HERE_CLEAN, START_HERE_MISSING_ARTIFACTS,
+    START_HERE_PREVIEW_LIMITED,
 };
 
 mod cache;
@@ -9254,6 +9255,12 @@ const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str, &str)] = &[
         "actionable",
         "top_gap",
         START_HERE_ACTIONABLE_GAP,
+    ),
+    (
+        "typescript-preview-gap",
+        "actionable",
+        "top_gap",
+        START_HERE_PREVIEW_LIMITED,
     ),
     ("empty-diff", "no_action", "empty_diff", START_HERE_CLEAN),
     (

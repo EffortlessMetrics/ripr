@@ -52,6 +52,9 @@
           "oracle_kind": "relational_check"
         }
       ],
+      "typescript_preview_card": {
+        "changed_behavior": "amount >= threshold"
+      },
       "typescript_repair_packet": {
         "source": "typescript_preview_projection",
         "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",

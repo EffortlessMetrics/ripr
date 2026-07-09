@@ -123,9 +123,9 @@ now includes:
   baseline, RIPR Zero, runtime, generated-test, provider, or support-tier
   authority.
 - complete `typescript_repair_packet` findings can now be materialized from
-  check-output JSON into PR-local preview `GapRecord` packets and before/after
-  `ripr outcome` receipts, pinned by
-  `fixtures/first_successful_pr/typescript-preview-gap`; the
+  check-output JSON into PR-local preview `GapRecord` packets, preview-limited
+  `ripr first-pr` start-here packets, and before/after `ripr outcome` receipts,
+  pinned by `fixtures/first_successful_pr/typescript-preview-gap`; the
   `fixtures/real-repair-attempts` corpus also records a test-only closed
   receipt for that packet while keeping TypeScript preview advisory-only and
   ineligible for gate, badge, baseline, RIPR Zero, or support-tier authority.

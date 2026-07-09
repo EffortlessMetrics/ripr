@@ -32,8 +32,8 @@ manual pilot, coding-agent, and advisory-CI adoption.
 ## Behavior
 
 RIPR should provide one documented first-run path for a stable Rust PR, plus
-preview/advisory projection for Python gaps when a gap ledger already supplies
-repairable preview records. The public path is `ripr first-pr`; the repo-local
+preview/advisory projection for Python and TypeScript gaps when a gap ledger
+already supplies repairable preview records. The public path is `ripr first-pr`; the repo-local
 `cargo xtask first-pr` command remains a compatibility wrapper over the same
 first-run packet contract.
 
@@ -63,8 +63,8 @@ The public `ripr first-pr` command should include a read-only preflight section
 in the start-here packet. The preflight answers whether the supplied root,
 Git worktree, base/head refs, diff, supported project marker, repository
 config, artifact output directory, and write/check mode are usable for the
-first-run path. Supported project markers currently mean a Cargo workspace or a
-Python preview project root.
+first-run path. Supported project markers currently mean a Cargo workspace,
+Python preview project root, or TypeScript preview project root.
 
 Preflight checks explain setup and recovery. They do not create analyzer facts,
 rank gaps, edit source, generate tests, run mutation testing, or decide gate
@@ -91,7 +91,7 @@ The packet must answer these reviewer questions in stable, user-facing terms:
 | Question | Required answer |
 | --- | --- |
 | What happened? | First-run status and selected state. |
-| What matters most? | One top repairable stable Rust gap, one preview Python gap from explicit gap-ledger evidence, or a no-action/error state. |
+| What matters most? | One top repairable stable Rust gap, one preview Python/TypeScript gap from explicit gap-ledger evidence, or a no-action/error state. |
 | What should happen next? | One repair, refresh, retry, inspect, or no-action step, with changed behavior, current evidence strength, missing discriminator, and focused proof intent when a repairable gap is selected. |
 | Which artifact backs it? | Paths to the source gap ledger, repair card, agent packet, receipt, and gate decision when present. |
 | Which command regenerates the missing piece? | A copyable command when the packet knows one. |
@@ -106,7 +106,8 @@ machine-readable form consumed by generated CI, LSP orchestration, and agents.
 The packet should select at most one top item for the first screen:
 
 1. A PR-local repairable, unsuppressed, unwaived, non-baseline stable Rust gap
-   or preview Python gap with a repair route and verification command.
+   or preview Python/TypeScript gap with a repair route and verification
+   command.
 2. A missing required artifact state with a regeneration command.
 3. A stale, wrong-root, malformed, timeout, or other blocked state with a retry
    or inspection command.

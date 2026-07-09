@@ -10611,8 +10611,8 @@ map.
 `ripr first-pr` writes the first successful PR front-door packet from explicit
 existing RIPR artifacts. `cargo xtask first-pr` remains a repo-local wrapper
 over the same public command. The packet selects one top repairable PR-local
-stable Rust gap or preview Python gap when the gap decision ledger supplies
-one, or emits a bounded no-action or blocked recovery state. It does not rerun
+stable Rust gap or preview Python/TypeScript gap when the gap decision ledger
+supplies one, or emits a bounded no-action or blocked recovery state. It does not rerun
 hidden analysis, edit source, generate tests, call providers, run mutation
 testing, change gate policy, or change CI blocking.
 
@@ -10643,10 +10643,10 @@ target/ripr/reports/start-here.md
 When `--check-output` is supplied, `ripr first-pr` treats the saved check JSON
 as an explicit input artifact and materializes
 `target/ripr/reports/gap-decision-ledger.{json,md}` before selecting the
-start-here repair. This is the direct Python preview path for actionable
-`python_repair_card` records that already came from `ripr check`; it does not
-rerun hidden analysis, run tests, import Python code, generate tests, or change
-gate authority.
+start-here repair. This is the direct preview-language path for actionable
+`python_repair_card` records and `typescript_repair_packet` records that
+already came from `ripr check`; it does not rerun hidden analysis, run tests,
+import preview-language code, generate tests, or change gate authority.
 
 JSON shape:
 
@@ -10737,9 +10737,10 @@ Field contract:
   when a top gap is selected. Generated CI and report indexes should prefer the
   canonical gap id when present.
 - `selected.language` and `selected.language_status` keep stable Rust evidence
-  distinct from preview Python evidence when a top gap is selected. Preview
-  Python top gaps use `selected.output_state = "preview_limited"` and remain
-  advisory repair routing, not support-tier promotion.
+  distinct from preview Python and TypeScript evidence when a top gap is
+  selected. Preview top gaps use
+  `selected.output_state = "preview_limited"` and remain advisory repair
+  routing, not support-tier promotion.
 - `selected.current_evidence_strength`,
   `selected.missing_discriminator`, and `selected.focused_proof_intent`
   provide the one-screen recommendation contract. They are derived from typed
@@ -10779,8 +10780,9 @@ Field contract:
   records read-only front-door checks for root, Git worktree, base/head refs,
   diff presence, supported project marker, `ripr.toml` defaulting, output
   directory, and write/check mode. Supported project markers currently mean a
-  Cargo workspace or Python preview project root. Preflight does not create
-  analyzer facts and does not become gate authority.
+  Cargo workspace, Python preview project root, or TypeScript preview project
+  root. Preflight does not create analyzer facts and does not become gate
+  authority.
 - `inputs.check_output` is present only when `--check-output` was supplied.
   In that mode, the start-here packet can include a `check_output` artifact and
   the `gap_ledger` artifact is the ledger materialized from that saved check

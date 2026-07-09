@@ -3948,6 +3948,7 @@ outputs = [
   "fixtures/first_successful_pr/empty-diff/expected/start-here.md",
   "fixtures/first_successful_pr/output-contract-gap/expected/start-here.md",
   "fixtures/first_successful_pr/python-preview-gap/expected/start-here.md",
+  "fixtures/first_successful_pr/typescript-preview-gap/expected/start-here.md",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.md",
@@ -5452,7 +5453,9 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json",
-  "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md"
+  "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md",
+  "fixtures/first_successful_pr/typescript-preview-gap/expected/start-here.json",
+  "fixtures/first_successful_pr/typescript-preview-gap/expected/start-here.md"
 ]
 metrics = [
   "typescript_actionable_repair_packet_contract_status_proposed",
