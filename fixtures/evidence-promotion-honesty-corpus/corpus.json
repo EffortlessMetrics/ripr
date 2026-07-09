@@ -549,6 +549,23 @@
       ]
     },
     {
+      "id": "perl_preview_card_advisory_no_repair_packet",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl-preview-advisory-no-packet.json",
+      "vector": "perl_preview_card_advisory_only",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "scope_committed_diff_changed_rust_file",
       "language": "rust",
       "tier": "pure",

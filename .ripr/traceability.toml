@@ -6133,6 +6133,7 @@ fixtures = [
   "fixtures/evidence-promotion-honesty-corpus/reports/scope-clean-complete-empty-may-be-clean.json",
   "fixtures/evidence-promotion-honesty-corpus/reports/scope-limited-empty-not-clean.json",
   "fixtures/evidence-promotion-honesty-corpus/reports/scope-no-scope-empty-not-clean.json",
+  "fixtures/evidence-promotion-honesty-corpus/reports/perl-preview-advisory-no-packet.json",
   "fixtures/evidence-promotion-honesty-corpus/reports/scope-unanalyzed-worktree-empty-not-clean.json",
   "fixtures/python_adversarial_buffer_token",
   "fixtures/python_adversarial_mock_call_not_value",

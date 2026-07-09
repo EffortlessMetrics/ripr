@@ -317,13 +317,26 @@ commands = [
 ]
 
 [[work_item]]
+id = "perl-D16a/evidence-promotion-guard"
+status = "done"
+stackable = false
+branch = "perl-honesty-preview-guard"
+acceptance = "D16 prerequisite. Add a Perl `must_not_emit_repair_packet` evidence-promotion-honesty corpus case backed by a pinned `perl_preview_card.v1` advisory report. The guard proves the existing bespoke Perl preview card cannot grow `repair_packet_ready=true` or command-shaped delegation while D16 remains blocked on real-repo eval evidence and shared-renderer decommissioning."
+commands = [
+  "cargo xtask check-evidence-promotion-honesty",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "perl-D16/public-projection"
 status = "blocked"
 stackable = false
 branch = "perl-D16-public-projection"
 blocked_by = ["perl-D14/managed-producer-mode", "perl-C12/discriminator-relation-gating"]
-blocked_reason = "fixture-scoped two-binary proof landed in #1491, but public projection still needs real-repo eval evidence/receipts and ADR-0019 shared-renderer decommissioning; perl_preview_card.rs is still wired into production output on main."
-acceptance = "Phase D PR 16 (ripr-swarm, OPEN). AFTER the real two-binary proof, project validated Perl GapRecords as PUBLIC repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger using the SHARED renderers — NOT bespoke Perl renderers (ADR 0019). repair_packet_ready flips to true ONLY via validate_agent_gap_record_packet. Gates/badges/baseline/RIPR Zero authority stay false. ADR-0019 DECOMMISSIONING (CONFIRMED-OPEN BLOCKER as of 2026-06-27): this PR MUST remove or formally scope-down gap_record_from_perl_preview_finding (gap_decision_ledger.rs:756, read at :424) and the bespoke perl_preview_card renderer (perl_preview_card.rs, called from github.rs:99 + human/sections.rs:143) — both still wired into production output on main. Either (a) delete them once shared renderers cover Perl, re-blessing the test at gap_decision_ledger.rs:2824; or (b) pin the old path to markdown_advisory-only and add a regression test proving it can never reach repair_packet_ready=true. Option (a) preferred. Also adds the Perl must_not_emit_repair_packet case to fixtures/evidence-promotion-honesty-corpus/corpus.json."
+blocked_reason = "fixture-scoped two-binary proof landed in #1491 and the Perl evidence-promotion-honesty no-packet guard landed as `perl-D16a/evidence-promotion-guard`, but public projection still needs real-repo eval evidence/receipts and ADR-0019 shared-renderer decommissioning; perl_preview_card.rs is still wired into production output on main."
+acceptance = "Phase D PR 16 (ripr-swarm, OPEN). AFTER the real two-binary proof, project validated Perl GapRecords as PUBLIC repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger using the SHARED renderers — NOT bespoke Perl renderers (ADR 0019). repair_packet_ready flips to true ONLY via validate_agent_gap_record_packet. Gates/badges/baseline/RIPR Zero authority stay false. ADR-0019 DECOMMISSIONING (CONFIRMED-OPEN BLOCKER as of 2026-06-27): this PR MUST remove or formally scope-down gap_record_from_perl_preview_finding (gap_decision_ledger.rs:756, read at :424) and the bespoke perl_preview_card renderer (perl_preview_card.rs, called from github.rs:99 + human/sections.rs:143) — both still wired into production output on main. Either (a) delete them once shared renderers cover Perl, re-blessing the test at gap_decision_ledger.rs:2824; or (b) pin the old path to markdown_advisory-only and add a regression test proving it can never reach repair_packet_ready=true. Option (a) preferred. The cross-language Perl no-packet guard is already tracked by `perl-D16a/evidence-promotion-guard`."
 commands = [
   "cargo test -p ripr --features lang-perl",
   "cargo xtask check-output-contracts",

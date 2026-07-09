@@ -5312,7 +5312,7 @@ Contract & safety (**mechanically enforced**):
 - Zero public repair packets from heuristic-only relations, generic
   discriminators, low/unknown confidence, partial packets, or unsupported
   dynamics — enforced by the Perl `must_not_emit_repair_packet`
-  evidence-promotion-honesty corpus entry added in PR 16.
+  evidence-promotion-honesty corpus guard.
 - Validator parity demonstrates Perl uses the same shared packet authority as
   Rust/TypeScript/Python (PR 3 `validator_parity_perl_*` unit tests +
   cross-language corpus).
