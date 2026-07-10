@@ -663,6 +663,9 @@ impl LanguageAdapter for RustAdapter {
             .filter(|file| self.accepts_path(&file.path))
         {
             changed_rust_files += 1;
+            if rust_index::is_test_file(&changed.path) {
+                continue;
+            }
             let probes = probes::probes_for_file(&options.root, changed, &index);
             for probe in probes {
                 let mut finding = classifier::classify_probe(&probe, &index);
@@ -753,7 +756,7 @@ impl LanguageAdapter for RustAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT,
+        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, RustAdapter,
         apply_rust_macro_wrapped_assertion_limit, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit, macro_reach_limit_kind,
@@ -762,13 +765,120 @@ mod tests {
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{CallFact, FunctionSummary, LiteralFact, RustIndex, TestSummary};
+    use crate::analysis::language::LanguageAdapter;
+    use crate::analysis::{AnalysisMode, AnalysisOptions, diff};
+    use crate::config::OraclePolicy;
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
         ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
         StageState, StaticLimitKind, SymbolId,
     };
     use std::env::VarError;
+    use std::fs;
     use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root(name: &str) -> Result<PathBuf, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("ripr-rust-adapter-{name}-{stamp}"));
+        fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+        Ok(root)
+    }
+
+    fn write(path: &Path, text: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|err| format!("create parent failed: {err}"))?;
+        }
+        fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
+    }
+
+    #[test]
+    fn diff_analysis_indexes_changed_tests_without_probing_them() -> Result<(), String> {
+        assert!(!crate::analysis::rust_index::is_test_file(Path::new(
+            "src/test_helper.rs"
+        )));
+
+        let root = temp_root("changed-tests-are-evidence")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='probe-authority'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )?;
+        write(
+            &root.join("src/tests/gate_state_tests.rs"),
+            "#[test]\nfn exact_gate_state() {\n    assert_eq!(gate_state(true), true);\n}\n",
+        )?;
+        let changed_files = diff::parse_unified_diff(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             new file mode 100644\n\
+             --- /dev/null\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,3 @@\n\
+             +pub fn gate_state(flag: bool) -> bool {\n\
+             +    if flag { true } else { false }\n\
+             +}\n\
+             diff --git a/src/tests/gate_state_tests.rs b/src/tests/gate_state_tests.rs\n\
+             new file mode 100644\n\
+             --- /dev/null\n\
+             +++ b/src/tests/gate_state_tests.rs\n\
+             @@ -0,0 +1,4 @@\n\
+             +#[test]\n\
+             +fn exact_gate_state() {\n\
+             +    assert_eq!(gate_state(true), true);\n\
+             +}\n",
+        );
+
+        let result = RustAdapter.analyze_diff(
+            &AnalysisOptions {
+                root,
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Ready,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+            },
+            &OraclePolicy::default(),
+            &changed_files,
+        )?;
+
+        assert_eq!(
+            result.changed_files, 2,
+            "changed-file accounting must retain the test file"
+        );
+        assert!(
+            result.findings.iter().all(|finding| {
+                !finding
+                    .probe
+                    .location
+                    .file
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("/tests/")
+            }),
+            "test code must not become a production probe: {:?}",
+            result.findings
+        );
+        assert!(
+            result.findings.iter().any(|finding| {
+                finding.related_tests.iter().any(|test| {
+                    test.file
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                        .ends_with("src/tests/gate_state_tests.rs")
+                })
+            }),
+            "changed test must remain indexed as related evidence: {:?}",
+            result.findings
+        );
+        Ok(())
+    }
 
     #[test]
     fn diff_index_file_limit_defaults_when_unset() {
