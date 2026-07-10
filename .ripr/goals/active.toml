@@ -63,7 +63,7 @@ commands = ["cargo-allow doctor --profile spec-system --config .allow/profiles/s
 
 [[work_item]]
 id = "output/bounded-start-here"
-status = "ready"
+status = "done"
 branch = "codex/make-default-human-output-bounded"
 stackable = false
 acceptance = "Refresh, prove, and land or explicitly supersede #1489: default human output has one bounded start-here route, human-full preserves exhaustive evidence, and limited/no-scope/suppressed states remain explicit."
@@ -71,16 +71,15 @@ commands = ["cargo xtask goldens check", "cargo xtask check-output-contracts", "
 
 [[work_item]]
 id = "docs/first-screen-agent-loop"
-status = "blocked"
+status = "ready"
 branch = "docs/readme-first-screen-agent-loop-1453"
 stackable = false
-blocked_by = ["output/bounded-start-here"]
 acceptance = "README first screen describes current bounded human output; land or supersede #1487 after behavior ships."
 commands = ["cargo xtask check-doc-index", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "review/card-oracle-projection"
-status = "ready"
+status = "done"
 branch = "claude/hopeful-keller-4lo0s0"
 stackable = false
 acceptance = "Refresh and land or supersede #1483; document seam-level representative oracle evidence may differ from a nullable related-test object."
@@ -88,10 +87,9 @@ commands = ["cargo test -p ripr review_comments -- --test-threads=1", "cargo xta
 
 [[work_item]]
 id = "review/canonical-working-set-id"
-status = "blocked"
+status = "ready"
 branch = "output/canonical-working-set-id"
 stackable = false
-blocked_by = ["review/card-oracle-projection"]
 acceptance = "Project canonical domain gap identity onto working-set cards without renderer synthesis; absent identity fails closed or names the packet limitation."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-traceability", "cargo xtask check-pr"]
 

@@ -5454,10 +5454,10 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `control-plane/cargo-allow-spec-system-adoption` | done | Add advisory cargo-allow profile/ledger and doctor, audit, and worklist evidence without a second active goal. |
 | `control-plane/rust-one-shot-goal` | done | Replace the stale release-era active manifest and execution plan with Campaign 32. |
 | `control-plane/cargo-allow-active-goal-dialect` | blocked | Blocked on cargo-allow #2119 or a separately approved RIPR manifest migration. |
-| `output/bounded-start-here` | ready | Refresh and land or supersede #1489, including bounded human output and `human-full`. |
-| `docs/first-screen-agent-loop` | blocked | Refresh and land or supersede #1487 only after bounded behavior lands. |
-| `review/card-oracle-projection` | ready | Refresh and land or supersede #1483 with explicit representative-oracle semantics. |
-| `review/canonical-working-set-id` | blocked | Carry domain-supplied canonical identity onto working-set cards. |
+| `output/bounded-start-here` | done | #1489 merged: bounded human output and `human-full` are on main. |
+| `docs/first-screen-agent-loop` | ready | Refresh and land or supersede #1487 now that bounded behavior is on main. |
+| `review/card-oracle-projection` | done | #1483 merged with explicit representative-oracle semantics. |
+| `review/canonical-working-set-id` | ready | Carry domain-supplied canonical identity onto working-set cards; its card-oracle dependency has shipped. |
 | `gate/exact-repair-route` | blocked | Close #1440 with a self-explanatory failure-time repair packet. |
 | `gate/concrete-targeted-mutation` | blocked | Close #1425 with a concrete route or named no-safe-candidate limitation. |
 | `analysis/field-constant-observation` | blocked | Close #1423 with conservative positive and adversarial coverage. |
