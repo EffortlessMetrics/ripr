@@ -34,7 +34,10 @@ This compact table is the cargo-allow `spec-system` structural claim surface.
 It does not replace the buyer-facing support map below or promote any product
 surface. The active RIPR execution manifest remains outside cargo-allow's
 native active-goal validator until upstream compatibility issue
-`EffortlessMetrics/cargo-allow#2119` is resolved.
+`EffortlessMetrics/cargo-allow#2119` is resolved. The table's fixed vocabulary
+and shape are a transitional projection tracked by
+`EffortlessMetrics/cargo-allow#2120`. This projection does not create a second
+product-claim authority.
 
 | Surface | Tier | Claim | Proof command | Notes |
 | --- | --- | --- | --- | --- |
