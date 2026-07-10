@@ -67894,6 +67894,12 @@ fn is_known_campaign_command(command: &str) -> bool {
         let command_name = rest.split_whitespace().next().unwrap_or_default();
         return known_xtask_command(command_name);
     }
+    if let Some(rest) = trimmed.strip_prefix("cargo-allow ") {
+        let command_name = rest.split_whitespace().next().unwrap_or_default();
+        return matches!(command_name, "doctor" | "check" | "worklist")
+            && rest.contains("--profile spec-system")
+            && rest.contains("--config .allow/profiles/spec-system.toml");
+    }
     trimmed.starts_with("cargo fmt")
         || trimmed.starts_with("cargo check")
         || trimmed.starts_with("cargo test")
@@ -87659,6 +87665,21 @@ commands = [
         ));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));
+        assert!(is_known_campaign_command(
+            "cargo-allow doctor --profile spec-system --config .allow/profiles/spec-system.toml --format json"
+        ));
+        assert!(is_known_campaign_command(
+            "cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit --format json"
+        ));
+        assert!(is_known_campaign_command(
+            "cargo-allow worklist --profile spec-system --config .allow/profiles/spec-system.toml --format json"
+        ));
+        assert!(!is_known_campaign_command(
+            "cargo-allow audit --profile spec-system --config .allow/profiles/spec-system.toml"
+        ));
+        assert!(!is_known_campaign_command(
+            "cargo-allow check --profile spec-system"
+        ));
         assert!(!is_known_campaign_command("cargo xtask missing-command"));
         assert!(!is_known_campaign_command(""));
 

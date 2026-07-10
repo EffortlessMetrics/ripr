@@ -4991,7 +4991,8 @@ Non-claims:
 
 Campaign ID: `use-case-spec-spine`
 
-Status: active
+Status: superseded for active execution on 2026-07-09 by Campaign 32. Its
+accepted specs remain source truth; its release-era execution sequence does not.
 
 RIPR has strong mechanism (reports, packets, runtime status, readiness,
 preview cards, limitation routes, receipts) and a weak product spine: no
@@ -5427,3 +5428,44 @@ cargo clippy --workspace --all-targets -- -D warnings
 # perl-lsp side (Phase B): cargo test -p perl-lsp-rs-core, cargo test -p perl-workspace
 # alpha gate (Phase D PR 18): the CPAN-style end-to-end fixture proves all three outcomes
 ```
+
+## Campaign 32: Rust One-Shot Evidence-to-Repair Product Closure
+
+Campaign ID: `rust-one-shot-evidence-to-repair`
+
+Status: active
+
+Tracker: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) ·
+`.ripr/goals/active.toml` · issues #1423, #1424, #1425, #1427, #1440
+
+The completed 0.9.0 release made Campaign 29's post-release activation gate
+obsolete. The current crate is 0.10.0, while the old manifest still described
+implementation as paused. This campaign reconciles that state and focuses the
+next Rust product wave on one obvious, safe repair rather than broad evidence.
+
+The queue begins by refreshing existing aligned PRs: #1489 bounded human output,
+#1487 README first screen after behavior ships, and #1483 card-level oracle
+projection. It then completes canonical working-set identity, self-explanatory
+gate routes, concrete targeted-mutation routes, the two Rust analysis dogfood
+gaps, targeted reruns, and receipt-backed route-quality closeout.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `control-plane/cargo-allow-spec-system-adoption` | done | Add advisory cargo-allow profile/ledger and doctor, audit, and worklist evidence without a second active goal. |
+| `control-plane/rust-one-shot-goal` | done | Replace the stale release-era active manifest and execution plan with Campaign 32. |
+| `control-plane/cargo-allow-active-goal-dialect` | blocked | Blocked on cargo-allow #2119 or a separately approved RIPR manifest migration. |
+| `output/bounded-start-here` | ready | Refresh and land or supersede #1489, including bounded human output and `human-full`. |
+| `docs/first-screen-agent-loop` | blocked | Refresh and land or supersede #1487 only after bounded behavior lands. |
+| `review/card-oracle-projection` | ready | Refresh and land or supersede #1483 with explicit representative-oracle semantics. |
+| `review/canonical-working-set-id` | blocked | Carry domain-supplied canonical identity onto working-set cards. |
+| `gate/exact-repair-route` | blocked | Close #1440 with a self-explanatory failure-time repair packet. |
+| `gate/concrete-targeted-mutation` | blocked | Close #1425 with a concrete route or named no-safe-candidate limitation. |
+| `analysis/field-constant-observation` | blocked | Close #1423 with conservative positive and adversarial coverage. |
+| `analysis/constructor-field-observation` | blocked | Close #1427 with conservative same-crate constructor observation. |
+| `perf/targeted-rerun` | blocked | Close #1424 with explicit cache correctness and benchmark evidence. |
+| `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review. |
+
+Hard boundaries: preview lanes remain preview; mutation execution stays explicit;
+there is no automatic test or consumer-source editing, default gate hardening,
+release/publish work, or claim beyond conservative static evidence. Every work
+item is one reviewable PR, a source-truth update, or a durable blocked report.

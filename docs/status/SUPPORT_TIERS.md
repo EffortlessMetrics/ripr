@@ -1,5 +1,7 @@
 # Support Tiers
 
+Artifact ID: `RIPR-SUPPORT-0001`
+
 This page answers the adoption question before the implementation question:
 
 ```text
@@ -25,6 +27,18 @@ the buyer-readable map over those artifacts.
 
 All tiers are static evidence tiers. None of them means runtime mutation
 adequacy, coverage adequacy, or general correctness.
+
+## Structural Validation Claim
+
+This compact table is the cargo-allow `spec-system` structural claim surface.
+It does not replace the buyer-facing support map below or promote any product
+surface. The active RIPR execution manifest remains outside cargo-allow's
+native active-goal validator until upstream compatibility issue
+`EffortlessMetrics/cargo-allow#2119` is resolved.
+
+| Surface | Tier | Claim | Proof command | Notes |
+| --- | --- | --- | --- | --- |
+| Source-of-truth artifact graph | advisory | cargo-allow validates registered artifact paths, kinds, lifecycle states, and links; it does not execute proof commands or validate RIPR's active-goal dialect. | `cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit` | Advisory adoption; RIPR xtask remains the proof executor. |
 
 ## Current Support Map
 

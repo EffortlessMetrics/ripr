@@ -1,67 +1,150 @@
-# Selected on 2026-06-06 during the queue reconciliation: the use-case
-# spec spine (RIPR-SPEC-0065 through RIPR-SPEC-0073) and its
-# implementation plan (RIPR-PLAN-0061) route all post-release
-# implementation work. Maintainer decision 2026-06-06: the goal points
-# at the plan; no implementation slice activates until after the 0.9.0
-# release ships and the source back-merge completes.
-id = "use-case-spec-spine"
-title = "Evidence-to-Repair Use-Case Spec Spine"
+# Selected 2026-07-09 after reconciling the completed 0.9.0 release with the
+# stale use-case-spec-spine manifest. This campaign owns the Rust repair loop.
+#
+# Spec-system authority: cargo-allow's advisory spec-system profile owns
+# structural artifact governance and its ledger. RIPR xtask executes product
+# proof; it must not become a second structural graph authority. The sole RIPR
+# active manifest remains excluded from cargo-allow native validation until
+# cargo-allow #2119 can preserve this execution dialect without duplication.
+id = "rust-one-shot-evidence-to-repair"
+title = "Rust One-Shot Evidence-to-Repair Product Closure"
 status = "active"
 lane = "lane1"
-issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/1040"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/1440"
 no_current_goal = false
 
 objective = """
-Land the use-case spec spine that makes ripr's surfaces usable,
-connected, and non-misleading, then drive implementation PR by PR from
-plans/use-case-specs/implementation-plan.md. ripr's product is
-evidence-to-repair routing, not raw findings: every surface projects
-canonical actionability plus runtime completeness, fails closed into
-named limitations, and states its non-claims next to its claims.
+Make RIPR's Rust pull-request workflow turn changed behavior into one exact,
+safe, test-only repair and a verified before/after receipt. Unsupported analysis
+must fail closed into a named limitation with a concrete route rather than
+recommend a repair RIPR cannot credit.
 """
 
 end_state = [
-  "specs RIPR-SPEC-0065 through RIPR-SPEC-0073 registered and merged",
-  "plans/use-case-specs/implementation-plan.md merged and indexed",
-  "active goals route through the plan, not a parallel product board",
-  "implementation slices resume from the plan after the 0.9.0 release",
+  "Default Rust human output presents one bounded start-here route while exhaustive and machine evidence remain explicitly available.",
+  "Actionable Rust packets carry canonical identity and complete repair/verify/receipt fields, or fail closed.",
+  "Gate failures name the exact repair route without artifact archaeology; targeted-mutation routes are concrete or limited.",
+  "Known Rust field-constant and same-crate construction false-actionability cases have positive and adversarial regression coverage.",
+  "Targeted reruns preserve canonical identity and receipt semantics, with explicit cache reuse and invalidation.",
+  "Receipt-backed Rust dogfood and route-quality results support only the reviewed support-tier claim.",
+]
+
+non_goals = [
+  "Preview-language breadth or promotion.",
+  "Automatic test generation, mutation execution by default, or consumer production edits.",
+  "Default CI blocking, badge/baseline authority changes, release, signing, publishing, credentials, or workspace reshaping.",
+  "Coverage, runtime mutation, correctness, or complete test-quality claims from static evidence.",
 ]
 
 [[work_item]]
-id = "docs/use-case-spec-spine"
+id = "control-plane/cargo-allow-spec-system-adoption"
 status = "done"
-branch = "docs/spec-use-case-roadmap"
+branch = "codex/control-plane-rust-one-shot-goal"
 stackable = true
-acceptance = "Specs RIPR-SPEC-0065 (roadmap) through RIPR-SPEC-0073 (receipts/outcomes/route quality) merge via the stacked PR sequence with registry entries in docs/specs/README.md and policy/doc-artifacts.toml, adversarial-review fixes applied, and all spec gates green. Docs-only; no analyzer behavior changes."
-specs = [
-  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
-]
-plan = "plans/use-case-specs/implementation-plan.md"
-commands = [
-  "cargo xtask check-spec-format",
-  "cargo xtask check-spec-numbering",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-doc-artifacts",
-  "cargo xtask check-support-tiers",
-  "cargo xtask check-static-language",
-  "cargo xtask markdown-links",
-]
+acceptance = "Add the owned advisory cargo-allow spec-system profile and ledger, register the existing proposal/spec/support-tier/new-plan graph, and record doctor/audit/worklist evidence without creating a second active-goal source."
+commands = ["cargo-allow doctor --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-doctor.json", "cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit --format json --output target/cargo-allow/spec-system.json", "cargo-allow worklist --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-worklist.json"]
 
 [[work_item]]
-id = "goals/route-through-use-case-plan"
+id = "control-plane/rust-one-shot-goal"
 status = "done"
-branch = "goals/route-use-case-plan"
+branch = "codex/control-plane-rust-one-shot-goal"
 stackable = true
-blocked_by = [
-  "docs/use-case-spec-spine",
-]
-acceptance = "Active goals point at plans/use-case-specs/implementation-plan.md as the single sequencing artifact for post-release implementation. No implementation slice activates in this PR; slice 1 (review file:line hardening, RIPR-SPEC-0068) activates as a deliberate post-release decision after the 0.9.0 publish and source back-merge complete."
-specs = [
-  "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md",
-]
-plan = "plans/use-case-specs/implementation-plan.md"
-commands = [
-  "cargo xtask check-goals",
-  "cargo xtask check-doc-artifacts",
-  "cargo xtask check-traceability",
-]
+acceptance = "Replace stale post-0.9.0 use-case-spec-spine execution state with this campaign, a reconciled plan, issues, dependencies, proof commands, non-goals, and closeout criteria. No production behavior change."
+commands = ["cargo xtask goals next", "cargo xtask check-goals", "cargo xtask check-doc-index", "cargo xtask check-pr-shape"]
+
+[[work_item]]
+id = "control-plane/cargo-allow-active-goal-dialect"
+status = "blocked"
+branch = "control-plane/cargo-allow-active-goal-dialect"
+stackable = false
+blocked_by = ["control-plane/cargo-allow-spec-system-adoption"]
+acceptance = "cargo-allow validates RIPR's sole active-goal source without duplication, execution-metadata loss, or weakened strict native validation. Blocked on cargo-allow issue #2119 or a separately approved RIPR manifest migration."
+commands = ["cargo-allow doctor --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-doctor.json", "cargo-allow worklist --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-worklist.json"]
+
+[[work_item]]
+id = "output/bounded-start-here"
+status = "ready"
+branch = "codex/make-default-human-output-bounded"
+stackable = false
+acceptance = "Refresh, prove, and land or explicitly supersede #1489: default human output has one bounded start-here route, human-full preserves exhaustive evidence, and limited/no-scope/suppressed states remain explicit."
+commands = ["cargo xtask goldens check", "cargo xtask check-output-contracts", "cargo xtask check-fixture-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "docs/first-screen-agent-loop"
+status = "blocked"
+branch = "docs/readme-first-screen-agent-loop-1453"
+stackable = false
+blocked_by = ["output/bounded-start-here"]
+acceptance = "README first screen describes current bounded human output; land or supersede #1487 after behavior ships."
+commands = ["cargo xtask check-doc-index", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "review/card-oracle-projection"
+status = "ready"
+branch = "claude/hopeful-keller-4lo0s0"
+stackable = false
+acceptance = "Refresh and land or supersede #1483; document seam-level representative oracle evidence may differ from a nullable related-test object."
+commands = ["cargo test -p ripr review_comments -- --test-threads=1", "cargo xtask goldens check", "cargo xtask check-output-contracts", "cargo xtask check-traceability", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "review/canonical-working-set-id"
+status = "blocked"
+branch = "output/canonical-working-set-id"
+stackable = false
+blocked_by = ["review/card-oracle-projection"]
+acceptance = "Project canonical domain gap identity onto working-set cards without renderer synthesis; absent identity fails closed or names the packet limitation."
+commands = ["cargo xtask check-output-contracts", "cargo xtask check-traceability", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "gate/exact-repair-route"
+status = "blocked"
+branch = "gate/exact-repair-route"
+stackable = false
+blocked_by = ["output/bounded-start-here", "review/canonical-working-set-id"]
+acceptance = "A policy-eligible gate decision exposes exact seam, missing discriminator, test intent, local verify/receipt commands, and explain route without artifact download."
+commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "gate/concrete-targeted-mutation"
+status = "blocked"
+branch = "gate/concrete-targeted-mutation"
+stackable = false
+blocked_by = ["gate/exact-repair-route"]
+acceptance = "Targeted mutation emits a bounded reproducible candidate and command, or a named no-safe-candidate limitation; it never executes by default."
+commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "analysis/field-constant-observation"
+status = "blocked"
+branch = "analysis/field-constant-observation"
+stackable = false
+blocked_by = ["review/canonical-working-set-id"]
+acceptance = "Conservative field assignment and named-constant observation supports safe equality boundaries, pins positive and negative fixtures, and names an unresolved limitation instead of an ineffective recommendation."
+commands = ["cargo xtask goldens check", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "analysis/constructor-field-observation"
+status = "blocked"
+branch = "analysis/constructor-field-observation"
+stackable = false
+blocked_by = ["review/canonical-working-set-id"]
+acceptance = "Conservative same-crate constructor and exact-field observation linkage closes safe cases; ambiguous aliases or owners remain explicit limitations."
+commands = ["cargo xtask goldens check", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/targeted-rerun"
+status = "blocked"
+branch = "perf/targeted-rerun"
+stackable = false
+blocked_by = ["analysis/field-constant-observation", "analysis/constructor-field-observation"]
+acceptance = "A safe first-class targeted rerun documents cache keys/invalidation, reports reuse status, preserves identity/receipt semantics, and records a reproducible benchmark."
+commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "dogfood/route-quality-closeout"
+status = "blocked"
+branch = "dogfood/rust-route-quality-closeout"
+stackable = false
+blocked_by = ["gate/concrete-targeted-mutation", "perf/targeted-rerun"]
+acceptance = "Record authorized receipt-backed Rust attempts, closed outcomes, route-quality scorecard, support-tier review, remaining limitations, and closeout; write a blocked report rather than fabricate evidence."
+commands = ["cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]

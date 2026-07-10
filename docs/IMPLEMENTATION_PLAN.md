@@ -21,6 +21,7 @@ than one behavior contract or touches repo shape.
 
 | Campaign | Objective | Work items |
 | --- | --- | --- |
+| Rust One-Shot Evidence-to-Repair Product Closure (32) | Make RIPR's Rust PR workflow lead from one changed behavior to one exact test-only repair and a receipt, without artifact archaeology or known-ineffective routing. | Active: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) and `.ripr/goals/active.toml` select the campaign; cargo-allow spec-system is advisory while active-goal dialect support is blocked on cargo-allow #2119. |
 | Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
 | Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
 | Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `output/unknown-stop-reason-invariant`, `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `fixtures/negative-metamorphic-baseline` |
@@ -78,8 +79,12 @@ than one behavior contract or touches repo shape.
 | Lane 1 Cross-Language Guidance Safety | Pin the #908 MarkdownObject review-comments wrong-target sample so externally observed TypeScript evidence remains navigation-only when target placement is unresolved. | Complete: `output/markdownobject-review-comments-target-safety` adds a MarkdownObject-specific review-comments regression proving no guessed `vendor/lolhtml` Rust test target, no verify command, no public repair packet, and navigation-only `test/js/bun/md/md-edge-cases.test.ts` context routed to `analysis/cross-language-test-target-inference`; #908/#910 remain open for broader cross-language oracle work. |
 | Cross-Language Evidence Router UX | Turn the calibrated TypeScript/Bun graph path into a repeatable mixed TypeScript plus Rust operating loop for Bun operators, Claude Code, and other configured projects without promoting preview evidence. | Complete: [RIPR-SPEC-0063](specs/RIPR-SPEC-0063-cross-language-evidence-router-ux.md) and [RIPR-PLAN-0063](../plans/cross-language-evidence-router-ux/implementation-plan.md) defined PR-sized slices for 0.8.1 patch proof, compact Bun UB summary, advisory agent packet, proof-mode projection, node:fs and Bun.write manifest-only profiles, bridge inventory, live Bun dogfood, runbook polish, and the post-0.8.1 support decision. The [post-0.8.1 TypeScript/Bun support decision](handoffs/2026-06-05-post-081-typescript-bun-support-decision.md) keeps TypeScript/JavaScript preview/advisory, confirms calibrated Bun stable-byte evidence is useful for TS-discriminated, missing-discriminator, mention-only, bridge-unknown, and named-limitation states, and requires a separate accepted promotion contract for any stronger claim. |
 
-The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-it records `status = "active"` for `cross-language-evidence-router-ux` and
+The following machine-readable execution record is historical. The current
+manifest is `.ripr/goals/active.toml` with
+`id = "rust-one-shot-evidence-to-repair"`; see
+[RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) for current work
+items. The prior manifest recorded `status = "active"` for
+`cross-language-evidence-router-ux` and
 records `release/typescript-bun-preview-patch-proof`,
 `output/bun-ub-preview-summary`, and
 `agent/bun-cross-language-advisory-packet`,

@@ -1,7 +1,9 @@
 # Use-Case Spec Layer Implementation Plan
 
-Status: proposed; implementation starts only after the spec set (RIPR-SPEC-0065
-through RIPR-SPEC-0073) lands and is registered
+Status: superseded for active execution on 2026-07-09 by
+[`RIPR-PLAN-0062`](../rust-one-shot-evidence-to-repair.md). This remains the
+historical implementation mapping for RIPR-SPEC-0065 through RIPR-SPEC-0073;
+its pending statuses and maintainer-fixed sequence are not the current queue.
 Owner: product-swarm
 Plan artifact: RIPR-PLAN-0061
 Linked proposal: n/a
@@ -10,8 +12,8 @@ RIPR-SPEC-0069, RIPR-SPEC-0070, RIPR-SPEC-0071, RIPR-SPEC-0072, RIPR-SPEC-0073
 Linked ADRs: n/a
 Linked issues: #1031 (large-repo diff-first), #1040 (spec lifecycle dashboard),
 #1041 (unsafe-review contract alignment)
-Active goal: none yet; `.ripr/goals/active.toml` routes through this plan in a
-separate PR after the plan lands (per RIPR-SPEC-0065 Implementation Mapping)
+Historical active goal: `use-case-spec-spine`. The active manifest now routes
+through `.ripr/goals/active.toml` and RIPR-PLAN-0062.
 
 ## Current State
 

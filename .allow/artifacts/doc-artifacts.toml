@@ -1,0 +1,40 @@
+schema_version = "1.0"
+policy = "cargo-allow-spec-system"
+owner = "product-swarm"
+status = "advisory"
+
+[[artifact]]
+id = "RIPR-PROP-0014"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md"
+status = "accepted"
+owner = "product-swarm"
+created = "2026-05-20"
+
+[[artifact]]
+id = "RIPR-SPEC-0068"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0068-pr-review-card-use-case.md"
+status = "accepted"
+owner = "product-swarm"
+created = "2026-06-06"
+standalone_reason = "The review-card use-case is an accepted member of the RIPR-SPEC-0065 roadmap family; no separate proposal artifact was created."
+
+[[artifact]]
+id = "RIPR-SUPPORT-0001"
+kind = "support_tier"
+path = "docs/status/SUPPORT_TIERS.md"
+status = "active"
+owner = "product-swarm"
+created = "2026-05-20"
+
+[[artifact]]
+id = "RIPR-PLAN-0062"
+kind = "implementation_plan"
+path = "plans/rust-one-shot-evidence-to-repair.md"
+status = "active"
+owner = "product-swarm"
+created = "2026-07-09"
+linked_proposal = "RIPR-PROP-0014"
+linked_spec = "RIPR-SPEC-0068"
+linked_support_tier = "RIPR-SUPPORT-0001"

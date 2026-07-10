@@ -150,6 +150,15 @@ status = "proposed"
 owner = "product-swarm"
 
 [[artifact]]
+id = "RIPR-PLAN-0062"
+kind = "plan"
+path = "plans/rust-one-shot-evidence-to-repair.md"
+status = "proposed"
+owner = "product-swarm"
+linked_proposal = "RIPR-PROP-0015"
+linked_spec = "RIPR-SPEC-0060"
+
+[[artifact]]
 id = "RIPR-SPEC-0065"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"

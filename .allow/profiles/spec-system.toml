@@ -1,0 +1,22 @@
+schema_version = "1.0"
+profile = "spec-system"
+mode = "advisory"
+
+[roots]
+proposals = "docs/proposals"
+specs = "docs/specs"
+adrs = "docs/adr"
+plans = "plans"
+goals = ".ripr/goals"
+support_tiers = "docs/status/SUPPORT_TIERS.md"
+artifact_ledger = ".allow/artifacts/doc-artifacts.toml"
+
+[requirements]
+ledger_required = true
+templates_required = false
+support_tiers_required = true
+# cargo-allow #2119: the native active-goal dialect cannot parse RIPR's sole
+# execution manifest without rejecting its execution metadata. Do not create a
+# second `.allow/goals/active.toml` while that upstream compatibility gap exists.
+active_goal_required = false
+closeout_required_for_done_items = false
