@@ -76197,18 +76197,19 @@ mod tests {
         dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
         dogfood_finding_alignment_scenarios, dogfood_first_action_scenarios,
         dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_push_python_quality_ratio_json, dogfood_python_no_action_eval_run,
-        dogfood_python_no_action_eval_scenarios, dogfood_python_real_repo_eval_run,
-        dogfood_python_real_repo_eval_scenarios, dogfood_python_repair_routing_quality_summary,
-        dogfood_python_static_limit_eval_run, dogfood_python_static_limit_eval_scenarios,
-        dogfood_real_repair_attempt_run, dogfood_real_repair_attempt_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, dogfood_surface_projection_alignment_run,
-        dogfood_surface_projection_alignment_scenarios, dogfood_typescript_preview_repair_loop_run,
+        dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_push_python_quality_ratio_json,
+        dogfood_python_no_action_eval_run, dogfood_python_no_action_eval_scenarios,
+        dogfood_python_real_repo_eval_run, dogfood_python_real_repo_eval_scenarios,
+        dogfood_python_repair_routing_quality_summary, dogfood_python_static_limit_eval_run,
+        dogfood_python_static_limit_eval_scenarios, dogfood_real_repair_attempt_run,
+        dogfood_real_repair_attempt_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        dogfood_surface_projection_alignment_run, dogfood_surface_projection_alignment_scenarios,
+        dogfood_typescript_preview_repair_loop_run,
         dogfood_typescript_preview_repair_loop_scenarios, dogfood_user_surface_projection_run,
         dogfood_user_surface_projection_scenarios, error_ripr_plus_receipt,
         evaluate_semantic_no_panic_policy, evidence_health_args,
@@ -95004,6 +95005,59 @@ jobs:
                 );
             }
 
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_blocking_gate_report_is_self_contained() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_gate_adoption_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "calibrated-high-confidence-new-gap")
+                .ok_or_else(|| "calibrated blocking gate scenario is missing".to_string())?;
+            let run = dogfood_gate_adoption_run(&scenario)?;
+            if !run.errors.is_empty() {
+                return Err(format!(
+                    "calibrated blocking gate dogfood drifted: {:?}",
+                    run.errors
+                ));
+            }
+            let markdown = fs::read_to_string(&run.markdown_path).map_err(|err| {
+                format!(
+                    "failed to read calibrated gate Markdown {}: {err}",
+                    normalize_path(&run.markdown_path)
+                )
+            })?;
+            for required in [
+                "Decision: blocked",
+                "  - Gap state: `actionable`",
+                "  - Gap: `gap:",
+                "  - Seam: `",
+                "  - Classification: `weakly_gripped`",
+                "  - Changed owner:",
+                "  - Changed behavior:",
+                "  - Why it remains open:",
+                "  - Near test:",
+                "  - Add:",
+                "  - Verify:",
+                "  - Receipt:",
+                "  - Inspect: `ripr agent brief --root . --seam-id",
+                "  - Boundary: `static_ripr_evidence_only`",
+            ] {
+                if !markdown.contains(required) {
+                    return Err(format!(
+                        "blocking gate Markdown is not self-contained; missing {required:?}"
+                    ));
+                }
+            }
+            for forbidden in ["gh run download", "pr-guidance"] {
+                if markdown.contains(forbidden) {
+                    return Err(format!(
+                        "blocking gate Markdown still requires artifact archaeology: {forbidden:?}"
+                    ));
+                }
+            }
             Ok(())
         })
     }

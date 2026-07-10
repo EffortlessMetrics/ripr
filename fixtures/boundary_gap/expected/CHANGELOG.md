@@ -3,6 +3,19 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0067: refresh CLI-backed gate adoption receipts and pin a self-contained blocking repair route
+
+Command:
+`cargo test -p xtask tests::dogfood_blocking_gate_report_is_self_contained -- --exact --test-threads=1`
+
+Updated:
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.json`
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.md`
+- `expected/gate-adoption/README.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0067: project producer-owned gate repair routes into the human and generated-CI summary surface
 
 Command:

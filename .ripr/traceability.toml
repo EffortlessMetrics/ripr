@@ -4849,17 +4849,20 @@ tests = [
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_complete_repair_route_for_ci_summary",
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_incomplete_route_limitation_without_fabricated_command",
   "crates/ripr/src/output/gate/presentation.rs::tests::production_caller_target_markdown_preserves_explicit_location",
+  "xtask/src/main.rs::tests::dogfood_blocking_gate_report_is_self_contained",
   "xtask/src/verification_contracts.rs::check_verification_contracts"
 ]
 fixtures = [
   "tests/fixtures/verification/ripr/gate-decision.valid.json",
-  "fixtures/boundary_gap/expected/calibrated-gate"
+  "fixtures/boundary_gap/expected/calibrated-gate",
+  "fixtures/boundary_gap/expected/gate-adoption"
 ]
 code = [
   "crates/ripr/src/output/gate.rs",
   "crates/ripr/src/output/gate/model.rs",
   "crates/ripr/src/output/gate/repair_route.rs",
   "crates/ripr/src/output/gate/presentation.rs",
+  "xtask/src/main.rs",
   "xtask/src/verification_contracts.rs"
 ]
 outputs = [

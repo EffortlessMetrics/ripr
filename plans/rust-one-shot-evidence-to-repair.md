@@ -66,6 +66,21 @@ a bounded candidate and command or a named limitation. Value-flow additions are
 conservative and fixture-first. Targeted reruns disclose cache reuse and
 invalidation, never silently serving stale evidence.
 
+## Gate route dogfood status (2026-07-10)
+
+The structured route and shared human/generated-CI projection are shipped. A
+CLI-backed calibrated blocking receipt now pins the full route directly in
+`gate-decision.{json,md}` and rejects artifact-download or PR-guidance lookup as
+the repair step.
+
+The #1440 call-observation acceptance is not yet closed. Real current
+CallPresence probes exercised through `ripr review-comments` remain
+`static_limitation` when propagation to a side-effect/call-effect sink is
+unknown; they therefore do not carry a policy-eligible receipt. Keep
+`gate/exact-repair-route` open and fail closed rather than synthesizing a
+blocking call-observation receipt. Resolving that producer limitation belongs
+in an analysis-authority slice, not a gate renderer.
+
 ## Boundaries and closeout
 
 No preview promotion, automatic test generation, default mutation execution,

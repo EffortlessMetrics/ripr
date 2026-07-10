@@ -407,8 +407,13 @@ manufactured block and never a silent pass.
 
 - Structured repair-route tests pin complete PR-guidance projection,
   fail-closed incomplete projection, exact producer-owned inspection commands,
-  schema validation, and the shared human/check-summary rendering. The later
-  dogfood slice adds the real no-artifact-archaeology receipt.
+  schema validation, and the shared human/check-summary rendering. CLI-backed
+  gate-adoption dogfood pins a self-contained blocking threshold route without
+  artifact archaeology.
+- The real call-observation receipt remains open: current CallPresence producer
+  cases are `static_limitation` because propagation to a side-effect/call-effect
+  sink is unknown, so they correctly lack a policy-eligible receipt. PR C must
+  not manufacture a blocking call-observation route from that limited evidence.
 
 ## Implementation Mapping
 
@@ -421,8 +426,10 @@ manufactured block and never a silent pass.
   the generated-CI `RIPR_GATE_MODE` / `RIPR_GATE_BASELINE` wiring,
   and `fixtures/boundary_gap/expected/calibrated-gate/`.
 - #1440 PR A owns the shared model and JSON contract; PR B projects that object
-  into human and CI summaries; PR C pins the real call-observation dogfood
-  round trip. No slice adds a classifier.
+  into human and CI summaries; the CLI dogfood receipt now proves the complete
+  failure surface for a supported threshold route. PR C remains open until a
+  real policy-eligible call-observation producer can drive the same round trip.
+  No slice adds a classifier.
 
 ## Metrics
 
