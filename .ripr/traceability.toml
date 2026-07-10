@@ -6668,3 +6668,19 @@ metrics = [
   "unit_test_pass_rate",
   "bounded_human_line_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0123"
+name = "targeted Rust rerun"
+spec = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0123-targeted-rerun.md",
+]
+metrics = [
+  "targeted_rerun_warm_p50_ms",
+  "targeted_rerun_warm_p95_ms",
+  "targeted_rerun_cache_hit_rate",
+]

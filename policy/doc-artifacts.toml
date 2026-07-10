@@ -586,3 +586,11 @@ path = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Bounded human check output: default human output becomes a start-here triage view, human-full preserves the exhaustive evidence report, repo-scoped formats disclose that --base/--diff do not bound them, and first-pr --check missing-packet errors explain validate-only recovery. Human-only/default-output contract change; no JSON schema, analyzer, classification, or gate-policy change."
+
+[[artifact]]
+id = "RIPR-SPEC-0123"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Targeted Rust rerun contract: explicit canonical-gap or changed-test selection, content-keyed fact reuse, named invalidation and cold fallback, identity and receipt continuity, and a reproducible cold-versus-warm benchmark receipt. No implementation, dependency, runtime mutation, source edit, default gate, or support-tier promotion in this spec-only slice."
