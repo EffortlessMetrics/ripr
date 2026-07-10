@@ -5461,8 +5461,8 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `gate/exact-repair-route` | ready | Close #1440 with a self-explanatory failure-time repair packet. |
 | `gate/concrete-targeted-mutation` | blocked | Close #1425 with a concrete route or named no-safe-candidate limitation. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
-| `analysis/constructor-field-observation` | ready | Close #1427 with conservative same-crate constructor observation. |
-| `perf/targeted-rerun` | blocked | Close #1424 with explicit cache correctness and benchmark evidence. |
+| `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
+| `perf/targeted-rerun` | ready | Both analyzer dependencies have shipped; close #1424 with explicit cache correctness and benchmark evidence. |
 | `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;

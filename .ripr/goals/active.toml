@@ -120,7 +120,7 @@ commands = ["cargo xtask goldens check", "cargo xtask check-evidence-promotion-h
 
 [[work_item]]
 id = "analysis/constructor-field-observation"
-status = "ready"
+status = "done"
 branch = "analysis/constructor-field-observation"
 stackable = false
 acceptance = "Conservative same-crate constructor and exact-field observation linkage closes safe cases; ambiguous aliases or owners remain explicit limitations."
@@ -128,10 +128,9 @@ commands = ["cargo xtask goldens check", "cargo xtask check-evidence-promotion-h
 
 [[work_item]]
 id = "perf/targeted-rerun"
-status = "blocked"
+status = "ready"
 branch = "perf/targeted-rerun"
 stackable = false
-blocked_by = ["analysis/constructor-field-observation"]
 acceptance = "A safe first-class targeted rerun documents cache keys/invalidation, reports reuse status, preserves identity/receipt semantics, and records a reproducible benchmark."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
