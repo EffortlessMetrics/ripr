@@ -5470,10 +5470,24 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
             normalize_path(&run.human_txt)
         )
     })?;
+    let expected_human_full = expected.join("human-full.txt");
+    let updated_human_full = expected_human_full.exists();
+    if updated_human_full {
+        fs::copy(&run.human_full_txt, &expected_human_full).map_err(|err| {
+            format!(
+                "failed to update {} from {}: {err}",
+                normalize_path(&expected_human_full),
+                normalize_path(&run.human_full_txt)
+            )
+        })?;
+    }
     let changelog = expected.join("CHANGELOG.md");
-    let entry = format!(
+    let mut entry = format!(
         "\n## Pending\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n\nUpdated:\n- `expected/check.json`\n- `expected/human.txt`\n"
     );
+    if updated_human_full {
+        entry.push_str("- `expected/human-full.txt`\n");
+    }
     let mut text = if changelog.exists() {
         read_text_lossy(&changelog)?
     } else {
@@ -5482,14 +5496,24 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
     text.push_str(&entry);
     fs::write(&changelog, text)
         .map_err(|err| format!("failed to write {}: {err}", normalize_path(&changelog)))?;
-    let body = format!(
-        "# ripr goldens bless report\n\nStatus: pass\n\nFixture:\n- `{}`\n\nReason:\n```text\n{reason}\n```\n\nActual outputs:\n- `{}`\n- `{}`\n\nUpdated:\n- `{}`\n- `{}`\n- `{}`\n",
-        normalize_path(&fixture),
+    let mut actual_outputs = format!(
+        "- `{}`\n- `{}`\n",
         normalize_path(&run.check_json),
-        normalize_path(&run.human_txt),
+        normalize_path(&run.human_txt)
+    );
+    let mut updated_outputs = format!(
+        "- `{}`\n- `{}`\n",
         normalize_path(&expected.join("check.json")),
-        normalize_path(&expected.join("human.txt")),
-        normalize_path(&changelog)
+        normalize_path(&expected.join("human.txt"))
+    );
+    if updated_human_full {
+        actual_outputs.push_str(&format!("- `{}`\n", normalize_path(&run.human_full_txt)));
+        updated_outputs.push_str(&format!("- `{}`\n", normalize_path(&expected_human_full)));
+    }
+    updated_outputs.push_str(&format!("- `{}`\n", normalize_path(&changelog)));
+    let body = format!(
+        "# ripr goldens bless report\n\nStatus: pass\n\nFixture:\n- `{}`\n\nReason:\n```text\n{reason}\n```\n\nActual outputs:\n{actual_outputs}\nUpdated:\n{updated_outputs}",
+        normalize_path(&fixture)
     );
     write_report("goldens-bless.md", &body)
 }
@@ -5601,6 +5625,7 @@ struct FixtureRun {
     actual_dir: PathBuf,
     check_json: PathBuf,
     human_txt: PathBuf,
+    human_full_txt: PathBuf,
     comparisons: Vec<GoldenComparison>,
 }
 
@@ -5672,7 +5697,12 @@ struct GoldenRunSet {
 fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
     let run = run_fixture_outputs(path)?;
     let expected = path.join("expected");
-    let comparisons = fixture_golden_comparisons(&expected, &run.check_json, &run.human_txt)?;
+    let comparisons = fixture_golden_comparisons(
+        &expected,
+        &run.check_json,
+        &run.human_txt,
+        &run.human_full_txt,
+    )?;
     Ok(FixtureRun { comparisons, ..run })
 }
 
@@ -5703,10 +5733,15 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
 
     let check_json = actual_dir.join("check.json");
     let human_txt = actual_dir.join("human.txt");
+    let human_full_txt = actual_dir.join("human-full.txt");
     let root = normalize_path(&input);
     let diff_file = normalize_path(&diff);
 
-    let json = normalize_fixture_json_output(&run_fixture_check(&root, &diff_file, true)?);
+    let json = normalize_fixture_json_output(&run_fixture_check(
+        &root,
+        &diff_file,
+        FixtureCheckFormat::Json,
+    )?);
     fs::write(&check_json, json).map_err(|err| {
         format!(
             "failed to write actual fixture output {}: {err}",
@@ -5714,11 +5749,27 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human = normalize_fixture_human_output(&run_fixture_check(&root, &diff_file, false)?);
+    let human = normalize_fixture_human_output(&run_fixture_check(
+        &root,
+        &diff_file,
+        FixtureCheckFormat::Human,
+    )?);
     fs::write(&human_txt, human).map_err(|err| {
         format!(
             "failed to write actual fixture output {}: {err}",
             normalize_path(&human_txt)
+        )
+    })?;
+
+    let human_full = normalize_fixture_human_output(&run_fixture_check(
+        &root,
+        &diff_file,
+        FixtureCheckFormat::HumanFull,
+    )?);
+    fs::write(&human_full_txt, human_full).map_err(|err| {
+        format!(
+            "failed to write actual fixture output {}: {err}",
+            normalize_path(&human_full_txt)
         )
     })?;
 
@@ -5727,11 +5778,23 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         actual_dir,
         check_json,
         human_txt,
+        human_full_txt,
         comparisons: Vec::new(),
     })
 }
 
-fn run_fixture_check(root: &str, diff_file: &str, json: bool) -> Result<String, String> {
+#[derive(Clone, Copy)]
+enum FixtureCheckFormat {
+    Json,
+    Human,
+    HumanFull,
+}
+
+fn run_fixture_check(
+    root: &str,
+    diff_file: &str,
+    format: FixtureCheckFormat,
+) -> Result<String, String> {
     let mut args = vec![
         "run".to_string(),
         "-p".to_string(),
@@ -5745,8 +5808,13 @@ fn run_fixture_check(root: &str, diff_file: &str, json: bool) -> Result<String, 
         "--mode".to_string(),
         "fast".to_string(),
     ];
-    if json {
-        args.push("--json".to_string());
+    match format {
+        FixtureCheckFormat::Json => args.push("--json".to_string()),
+        FixtureCheckFormat::Human => {}
+        FixtureCheckFormat::HumanFull => {
+            args.push("--format".to_string());
+            args.push("human-full".to_string());
+        }
     }
     run_output_owned("cargo", &args)
 }
@@ -5755,6 +5823,7 @@ fn fixture_golden_comparisons(
     expected: &Path,
     check_json: &Path,
     human_txt: &Path,
+    human_full_txt: &Path,
 ) -> Result<Vec<GoldenComparison>, String> {
     let mut comparisons = Vec::new();
     comparisons.push(compare_golden(
@@ -5766,6 +5835,14 @@ fn fixture_golden_comparisons(
     let expected_human = expected.join("human.txt");
     if expected_human.exists() {
         comparisons.push(compare_golden("human.txt", &expected_human, human_txt)?);
+    }
+    let expected_human_full = expected.join("human-full.txt");
+    if expected_human_full.exists() {
+        comparisons.push(compare_golden(
+            "human-full.txt",
+            &expected_human_full,
+            human_full_txt,
+        )?);
     }
     Ok(comparisons)
 }
@@ -12142,7 +12219,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_have_verify_command` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_have_verify_command` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12195,7 +12272,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_have_receipt_command` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_have_receipt_command` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12267,7 +12344,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_disclose_repair_packet_detail` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_disclose_repair_packet_detail` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12299,7 +12376,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `expected_repair_packet_detail` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `expected_repair_packet_detail` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12330,7 +12407,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_not_have_contradictory_packet_messaging` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_not_have_contradictory_packet_messaging` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12384,7 +12461,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `expected_oracle` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `expected_oracle` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12426,7 +12503,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `expected_class` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `expected_class` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12499,7 +12576,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_disclose_witness` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_disclose_witness` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12532,7 +12609,7 @@ fn evidence_promotion_semantic_violations(
                         }
                         None => {
                             violations.push(format!(
-                                "{case_label}: `must_disclose_limitation_detail` requires fixture human output at `expected/human.txt`, but it was missing"
+                                "{case_label}: `must_disclose_limitation_detail` requires fixture human output at `expected/human-full.txt`, but it was missing"
                             ));
                         }
                     }
@@ -12607,6 +12684,7 @@ fn evidence_promotion_semantic_violations(
 }
 
 const EVIDENCE_PROMOTION_WITNESS_PREFIX: &str = "For example, the test ";
+const EVIDENCE_PROMOTION_HUMAN_PROJECTION_PATH: &str = "expected/human-full.txt";
 const EVIDENCE_PROMOTION_LIMITATION_DETAILS: [(&str, &str); 4] = [
     (
         "last established edge",
@@ -12934,7 +13012,7 @@ fn evidence_promotion_missing_human_repair_packet_detail_paths(human_text: &str)
     EVIDENCE_PROMOTION_REPAIR_PACKET_HUMAN_SNIPPETS
         .iter()
         .filter(|(_, snippet)| !human_text.contains(snippet))
-        .map(|(label, snippet)| format!("expected/human.txt:missing {label} `{snippet}`"))
+        .map(|(label, snippet)| format!("expected/human-full.txt:missing {label} `{snippet}`"))
         .collect()
 }
 
@@ -13023,7 +13101,9 @@ fn evidence_promotion_expected_human_repair_packet_detail_mismatches(
 ) -> Vec<String> {
     let mut missing = Vec::new();
     let Some(packet_section) = evidence_promotion_human_repair_packet_section(human_text) else {
-        return vec!["expected/human.txt:missing TypeScript repair packet section".to_string()];
+        return vec![
+            "expected/human-full.txt:missing TypeScript repair packet section".to_string(),
+        ];
     };
     let source_line = expected.source_line.to_string();
     for (label, snippet) in [
@@ -13037,20 +13117,22 @@ fn evidence_promotion_expected_human_repair_packet_detail_mismatches(
         ("receipt command", expected.receipt_command.as_str()),
     ] {
         if !packet_section.contains(snippet) {
-            missing.push(format!("expected/human.txt:missing {label} `{snippet}`"));
+            missing.push(format!(
+                "expected/human-full.txt:missing {label} `{snippet}`"
+            ));
         }
     }
     for value in &expected.allowed_edit_surface {
         if !packet_section.contains(value) {
             missing.push(format!(
-                "expected/human.txt:missing allowed edit surface `{value}`"
+                "expected/human-full.txt:missing allowed edit surface `{value}`"
             ));
         }
     }
     for value in &expected.forbidden_files {
         if !packet_section.contains(value) {
             missing.push(format!(
-                "expected/human.txt:missing forbidden file `{value}`"
+                "expected/human-full.txt:missing forbidden file `{value}`"
             ));
         }
     }
@@ -13163,7 +13245,7 @@ fn evidence_promotion_human_contradictory_packet_messaging_lines(
         .flat_map(|section| {
             section.lines().filter_map(|line| {
                 evidence_promotion_human_packet_blocked_message_reason(line)
-                    .map(|reason| format!("expected/human.txt:{}:{reason}", line.trim()))
+                    .map(|reason| format!("expected/human-full.txt:{}:{reason}", line.trim()))
             })
         })
         .collect()
@@ -13256,7 +13338,7 @@ fn evidence_promotion_missing_human_limitation_detail_paths(
 
     let human_details = evidence_promotion_human_limitation_details(human_text);
     if human_details.is_empty() {
-        missing.push("expected/human.txt:missing Limitation detail".to_string());
+        missing.push("expected/human-full.txt:missing Limitation detail".to_string());
     }
     for (label, value) in expected_details {
         if !human_details
@@ -13264,7 +13346,7 @@ fn evidence_promotion_missing_human_limitation_detail_paths(
             .any(|(human_label, human_value)| human_label == label && human_value == value)
         {
             missing.push(format!(
-                "expected/human.txt:missing detail `{label}: {value}`"
+                "expected/human-full.txt:missing detail `{label}: {value}`"
             ));
         }
     }
@@ -13328,7 +13410,7 @@ fn evidence_promotion_missing_human_witness_paths(
     let human_witness_lines = evidence_promotion_human_where_to_look_witnesses(human_text);
 
     if human_witness_lines.is_empty() {
-        missing.push("expected/human.txt:missing Where to look".to_string());
+        missing.push("expected/human-full.txt:missing Where to look".to_string());
     }
     for witness_line in witness_lines {
         if !human_witness_lines
@@ -13336,7 +13418,7 @@ fn evidence_promotion_missing_human_witness_paths(
             .any(|human_line| human_line == witness_line)
         {
             missing.push(format!(
-                "expected/human.txt:missing witness `{witness_line}`"
+                "expected/human-full.txt:missing witness `{witness_line}`"
             ));
         }
     }
@@ -13374,7 +13456,7 @@ fn evidence_promotion_no_tests_found_human_paths(human_text: &str) -> Vec<String
         .lines()
         .enumerate()
         .filter(|(_, line)| line.contains("No tests were found"))
-        .map(|(index, _)| format!("expected/human.txt:{}", index + 1))
+        .map(|(index, _)| format!("expected/human-full.txt:{}", index + 1))
         .collect()
 }
 
@@ -13411,7 +13493,7 @@ fn evidence_promotion_missing_human_oracle_projection_paths(
     }
 
     vec![format!(
-        "expected/human.txt:missing oracle projection `{expected_kind}/{expected_strength}`"
+        "expected/human-full.txt:missing oracle projection `{expected_kind}/{expected_strength}`"
     )]
 }
 
@@ -13531,7 +13613,7 @@ fn evidence_promotion_missing_human_command_values(
         })
         .map(|expected| {
             format!(
-                "expected/human.txt:missing {} `{expected}`",
+                "expected/human-full.txt:missing {} `{expected}`",
                 kind.field_name()
             )
         })
@@ -13565,7 +13647,7 @@ fn evidence_promotion_human_command_projection_line(
         let value_start = trimmed.len() - after_colon.len();
         let value = trimmed.get(value_start..)?.trim();
         if evidence_promotion_human_command_value_is_concrete(value) {
-            return Some(format!("expected/human.txt:{trimmed}"));
+            return Some(format!("expected/human-full.txt:{trimmed}"));
         }
     }
     None
@@ -14673,7 +14755,8 @@ fn validate_evidence_promotion_honesty_corpus_at(
         let source_human_text = if source_fixture.is_empty() {
             None
         } else {
-            let human_path = Path::new(source_fixture).join("expected/human.txt");
+            let human_path =
+                Path::new(source_fixture).join(EVIDENCE_PROMOTION_HUMAN_PROJECTION_PATH);
             human_path
                 .exists()
                 .then(|| read_text_lossy(&human_path))
@@ -47807,7 +47890,7 @@ fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, String> {
     if errors.is_empty() {
         let root = normalize_path(&scenario.root);
         let diff = normalize_path(&scenario.diff);
-        match run_fixture_check(&root, &diff, true) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json) {
             Ok(json) => {
                 let normalized = normalize_fixture_json_output(&json);
                 findings = json_number_after(&normalized, "\"findings\":").unwrap_or(0);
@@ -47824,7 +47907,7 @@ fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, String> {
             Err(err) => errors.push(err),
         }
 
-        match run_fixture_check(&root, &diff, false) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human) {
             Ok(human) => {
                 let normalized = normalize_fixture_human_output(&human);
                 let path = actual_dir.join("human.txt");
@@ -49254,7 +49337,7 @@ fn dogfood_language_preview_run(
     if errors.is_empty() {
         let root = normalize_path(&scenario.root);
         let diff = normalize_path(&scenario.diff);
-        match run_fixture_check(&root, &diff, true) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json) {
             Ok(json) => {
                 let normalized = normalize_fixture_json_output(&json);
                 if let Err(err) = fs::write(&json_path, &normalized) {
@@ -49314,7 +49397,7 @@ fn dogfood_language_preview_run(
             Err(err) => errors.push(err),
         }
 
-        match run_fixture_check(&root, &diff, false) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human) {
             Ok(human) => {
                 human_output = normalize_fixture_human_output(&human);
                 if let Err(err) = fs::write(&human_path, &human_output) {
@@ -77227,7 +77310,7 @@ TypeScript preview
         .join("\n");
 
         assert!(report.contains("expected_oracle"), "{report}");
-        assert!(report.contains("expected/human.txt"), "{report}");
+        assert!(report.contains("expected/human-full.txt"), "{report}");
     }
 
     #[test]
@@ -77318,7 +77401,7 @@ Static exposure
         .join("\n");
 
         assert!(report.contains("expected_class"), "{report}");
-        assert!(report.contains("expected/human.txt"), "{report}");
+        assert!(report.contains("expected/human-full.txt"), "{report}");
     }
 
     #[test]
@@ -77635,12 +77718,12 @@ TypeScript repair packet (advisory)
         );
         assert!(
             report.contains(
-                "expected/human.txt:status: not actionable:blocked not-actionable status"
+                "expected/human-full.txt:status: not actionable:blocked not-actionable status"
             ),
             "{report}"
         );
         assert!(
-            report.contains("expected/human.txt:missing fields: verify_command, receipt_command:blocked missing-fields line"),
+            report.contains("expected/human-full.txt:missing fields: verify_command, receipt_command:blocked missing-fields line"),
             "{report}"
         );
     }
@@ -77845,7 +77928,7 @@ TypeScript repair packet (advisory)
             "{report}"
         );
         assert!(
-            report.contains("expected/human.txt:missing receipt command `receipt:`"),
+            report.contains("expected/human-full.txt:missing receipt command `receipt:`"),
             "{report}"
         );
     }
@@ -77928,13 +78011,13 @@ TypeScript repair packet (advisory)
         assert!(report.contains("expected_repair_packet_detail"), "{report}");
         assert!(
             report.contains(
-                "expected/human.txt:missing target test `tests/discount.test.ts::discount boundary`"
+                "expected/human-full.txt:missing target test `tests/discount.test.ts::discount boundary`"
             ),
             "{report}"
         );
         assert!(
             report.contains(
-                "expected/human.txt:missing verify command `jest tests/discount.test.ts`"
+                "expected/human-full.txt:missing verify command `jest tests/discount.test.ts`"
             ),
             "{report}"
         );
@@ -78012,12 +78095,12 @@ TypeScript repair packet (advisory)
 
         assert!(report.contains("must_disclose_witness"), "{report}");
         assert!(
-            report.contains("expected/human.txt:missing Where to look"),
+            report.contains("expected/human-full.txt:missing Where to look"),
             "{report}"
         );
         assert!(
             report.contains(
-                "expected/human.txt:missing witness `For example, the test `integration_path`"
+                "expected/human-full.txt:missing witness `For example, the test `integration_path`"
             ),
             "{report}"
         );
@@ -78056,7 +78139,7 @@ TypeScript repair packet (advisory)
         assert!(report.contains("must_disclose_witness"), "{report}");
         assert!(
             report.contains(
-                "expected/human.txt:missing witness `For example, the test `integration_path`"
+                "expected/human-full.txt:missing witness `For example, the test `integration_path`"
             ),
             "{report}"
         );
@@ -78091,7 +78174,7 @@ TypeScript repair packet (advisory)
 
         assert!(report.contains("must_disclose_witness"), "{report}");
         assert!(
-            report.contains("requires fixture human output at `expected/human.txt`"),
+            report.contains("requires fixture human output at `expected/human-full.txt`"),
             "{report}"
         );
     }
@@ -78136,7 +78219,7 @@ TypeScript repair packet (advisory)
         .join("\n");
 
         assert!(report.contains("must_not_claim_no_tests_found"), "{report}");
-        assert!(report.contains("expected/human.txt:3"), "{report}");
+        assert!(report.contains("expected/human-full.txt:3"), "{report}");
     }
 
     #[test]
@@ -78233,11 +78316,11 @@ TypeScript repair packet (advisory)
             "{report}"
         );
         assert!(
-            report.contains("expected/human.txt:missing Limitation detail"),
+            report.contains("expected/human-full.txt:missing Limitation detail"),
             "{report}"
         );
         assert!(
-            report.contains("expected/human.txt:missing detail `last established edge:"),
+            report.contains("expected/human-full.txt:missing detail `last established edge:"),
             "{report}"
         );
     }

@@ -3503,6 +3503,21 @@ fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
     path
 }
 
+fn repo_scope_diff_bound_warning(
+    format: OutputFormat,
+    base_explicitly_provided: bool,
+    diff_file: Option<&Path>,
+) -> Option<String> {
+    if !format.is_repo_scope() || (!base_explicitly_provided && diff_file.is_none()) {
+        return None;
+    }
+    Some(format!(
+        "ripr: format {} is repo-scoped; --base/--diff does not bound it.\n\
+Use --format json for diff-scoped findings, or --format repo-exposure-summary-json for a bounded repo summary.",
+        format.primary_cli_name()
+    ))
+}
+
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
@@ -3606,11 +3621,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     if input.suppression_policy.is_some()
         && !matches!(
             input.format,
-            OutputFormat::Human | OutputFormat::Json | OutputFormat::Github
+            OutputFormat::Human
+                | OutputFormat::HumanFull
+                | OutputFormat::Json
+                | OutputFormat::Github
         )
     {
         return Err(
-            "--suppression-policy applies to the findings-based check formats (human, json, github); \
+            "--suppression-policy applies to the findings-based check formats (human, human-full, json, github); \
              it is not yet supported for SARIF, badge, or repo formats"
                 .to_string(),
         );
@@ -3618,6 +3636,11 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
+    if let Some(warning) =
+        repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
+    {
+        eprintln!("{warning}");
+    }
     if let Some(gap_ledger) = gap_ledger.as_ref() {
         write_stdout_chunked(&render_check_gap_ledger_badge(
             gap_ledger, &format, &config,
@@ -5006,6 +5029,39 @@ mod tests {
                 .map_err(|err| format!("failed to copy sample file {relative}: {err}"))?;
         }
         Ok(dest)
+    }
+
+    #[test]
+    fn repo_scope_format_with_base_emits_scope_warning() -> Result<(), String> {
+        let warning = repo_scope_diff_bound_warning(OutputFormat::RepoExposureJson, true, None)
+            .ok_or_else(|| "repo-scoped format plus --base should warn".to_string())?;
+
+        assert!(warning.contains("format repo-exposure-json is repo-scoped"));
+        assert!(warning.contains("--base/--diff does not bound it"));
+        assert!(warning.contains("--format json"));
+        assert!(warning.contains("--format repo-exposure-summary-json"));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_scope_format_with_diff_emits_scope_warning() -> Result<(), String> {
+        let warning = repo_scope_diff_bound_warning(
+            OutputFormat::RepoSarif,
+            false,
+            Some(Path::new("changes.diff")),
+        )
+        .ok_or_else(|| "repo-scoped format plus --diff should warn".to_string())?;
+
+        assert!(warning.contains("format repo-sarif is repo-scoped"));
+        assert!(warning.contains("--base/--diff does not bound it"));
+        Ok(())
+    }
+
+    #[test]
+    fn diff_json_with_base_does_not_emit_repo_scope_warning() {
+        let warning = repo_scope_diff_bound_warning(OutputFormat::Json, true, None);
+
+        assert!(warning.is_none());
     }
 
     struct GeneratedWorkflowSmokeFixture<'a> {

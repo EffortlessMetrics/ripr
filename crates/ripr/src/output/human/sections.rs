@@ -18,6 +18,86 @@ use crate::output::typescript_preview_card::{
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
 
+pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &RiprConfig) -> String {
+    let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
+    out.push_str(&format!(
+        "  File: {}:{}\n",
+        display_path(&finding.probe.location.file),
+        finding.probe.location.line
+    ));
+    out.push_str(&format!(
+        "  Static exposure: {} ({}, confidence {:.2})\n",
+        finding.class.as_str(),
+        severity,
+        finding.confidence
+    ));
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  Canonical gap: {}\n", gap.id));
+    }
+    let changed = finding
+        .probe
+        .after
+        .as_deref()
+        .or(finding.probe.before.as_deref())
+        .unwrap_or(&finding.probe.expression);
+    out.push_str(&format!("  Changed behavior: {}\n", one_line(changed)));
+    if let Some(missing) = finding.missing.first() {
+        out.push_str(&format!("  Missing discriminator: {}\n", one_line(missing)));
+    }
+    if let Some(test) = finding.related_tests.first() {
+        out.push_str(&format!(
+            "  Related test: {}:{} {}\n",
+            display_path(&test.file),
+            test.line,
+            test.name
+        ));
+    }
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        out.push_str(&format!("  Suggested test file: {}\n", placement.test_file));
+        out.push_str(&format!("  Suggested test: {}\n", placement.test_name));
+        if let Some(node_id) = placement.test_node_id {
+            out.push_str(&format!("  Test node: {node_id}\n"));
+        }
+        out.push_str(&format!(
+            "  Verify command: {} ({})\n",
+            placement.verify_command, placement.verify_confidence
+        ));
+    }
+    if finding.recommended_next_step.is_some() {
+        out.push_str(&format!(
+            "  Next step: {}\n",
+            one_line(&reconcile_next_step(finding))
+        ));
+    }
+    let evidence = evidence_path_lines(finding);
+    if !evidence.is_empty() {
+        out.push_str("  Evidence:\n");
+        for line in evidence.iter().take(2) {
+            out.push_str(&format!("    - {}\n", one_line(line)));
+        }
+        if evidence.len() > 2 {
+            out.push_str(&format!(
+                "    - {} more evidence line(s) hidden\n",
+                evidence.len() - 2
+            ));
+        }
+    }
+    out
+}
+
+fn one_line(value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    const LIMIT: usize = 180;
+    if collapsed.chars().count() <= LIMIT {
+        collapsed
+    } else {
+        let mut truncated = collapsed.chars().take(LIMIT).collect::<String>();
+        truncated.push('…');
+        truncated
+    }
+}
+
 pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig) -> String {
     let mut out = String::new();
     let severity = config.severity().for_exposure(&finding.class).as_str();

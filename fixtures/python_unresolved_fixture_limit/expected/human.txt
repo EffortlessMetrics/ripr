@@ -4,42 +4,23 @@ root: fixtures/python_unresolved_fixture_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/pricing.py:2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/pricing.py:2
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: if amount >= threshold:
+  Missing discriminator: Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the chang…
+  Related test: tests/test_pricing.py:11 test_apply_discount_fixture_case
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `apply_discount`
+    - infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:      if amount >= threshold:
-
-Probe
-  family: predicate
-  delta:  control
-  owner:  python:src/pricing.py::apply_discount
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `apply_discount`
-  - infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python discriminator claim.
-  - related test tests/test_pricing.py:11 test_apply_discount_fixture_case uses strong exact value oracle: assert apply_discount(discount_case["amount"], discount_case["threshold"]) == discount_case[
-        "expected"
-    ]
-
-Weakness
-  - Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the changed discriminator or expected value.
-
-Stop reasons:
-  - static_probe_unknown
-
-Static limitation
-  unresolved_pytest_fixture — A pytest fixture could not be resolved, so ripr cannot statically connect the test setup to this change.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

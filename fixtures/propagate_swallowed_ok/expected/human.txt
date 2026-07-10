@@ -4,37 +4,21 @@ root: fixtures/propagate_swallowed_ok/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE fixtures/propagate_swallowed_ok/input/src/lib.rs:11
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/propagate_swallowed_ok/input/src/lib.rs:11
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Changed behavior: self.persist(amount * 9).ok();
+  Missing discriminator: No clear propagation path from changed behavior to an observable sink
+  Related test: tests/ledger_tests.rs:4 apply_changes_balance
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach apply: apply_changes_balance
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 7 more evidence line(s) hidden
 
-Changed
-  before: self.persist(amount).ok();
-  after:  self.persist(amount * 9).ok();
-
-Probe
-  family: call_deletion
-  delta:  effect
-  owner:  src/lib.rs::impl Ledger::apply
-
-Static exposure
-  propagation_unknown (note, confidence 0.66)
-
-Evidence
-  - reach yes: Related tests appear to reach apply: apply_changes_balance
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
-  - local flow reaches unknown sink: value is discarded at the call-chain tail; propagation unknown (line 11)
-  - related test tests/ledger_tests.rs:4 apply_changes_balance uses strong exact value oracle: assert_eq!(ledger.balance(), 145);
-  - observed function argument value amount = 5 at line 6
-  - observed assertion argument value 145 at line 7
-
-Weakness
-  - No clear propagation path from changed behavior to an observable sink
-  - No strong discriminator was detected
-
-Stop reasons:
-  - propagation_evidence_unknown
-
-Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

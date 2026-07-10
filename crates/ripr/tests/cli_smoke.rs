@@ -238,11 +238,13 @@ fn check_human_output_reports_sample_findings() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Summary: 5 probe(s)"));
-    assert!(stdout.contains("Static exposure\n  weakly_exposed"));
-    assert!(stdout.contains("Evidence\n"));
-    assert!(stdout.contains("observed function argument value"));
-    assert!(stdout.contains("missing discriminator"));
-    assert!(stdout.contains("Next step\n"));
+    assert!(stdout.contains("Start here:"));
+    assert!(stdout.contains("Static exposure: weakly_exposed"));
+    assert!(stdout.contains("Evidence:"));
+    assert!(stdout.contains("Missing discriminator:"));
+    assert!(stdout.contains("Next step:"));
+    assert!(stdout.contains("lower-priority finding(s) omitted"));
+    assert!(stdout.contains("--format human-full"));
 }
 
 #[test]

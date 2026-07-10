@@ -4,66 +4,29 @@ root: fixtures/python_mock_interaction_shape/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/callbacks.py:4
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/callbacks.py:4
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
+  Changed behavior: callback = MagicMock(name="receipt.sent")
+  Missing discriminator: Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call eff…
+  Related test: tests/test_callbacks.py:4 test_recording_callback_starts_idle
+  Suggested test file: tests/test_callbacks.py
+  Suggested test: test_recording_callback_starts_idle
+  Test node: tests/test_callbacks.py::test_recording_callback_starts_idle
+  Verify command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
+  Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `recording_callback`
+    - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
+    - 5 more evidence line(s) hidden
 
-Changed
-  after:      callback = MagicMock(name="receipt.sent")
-
-Probe
-  family: side_effect
-  delta:  effect
-  owner:  python:src/callbacks.py::recording_callback
-  canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `recording_callback`
-  - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
-  - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
-  - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
-  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes "receipt.sent"`.
-  - local flow reaches call effect: callback = MagicMock(name="receipt.sent") (line 4)
-  - related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()
-
-Weakness
-  - Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
-  - missing discriminator call includes "receipt.sent": changed Python output/log/call effect at line 4 lacks a concrete repair discriminator
-
-Python repair card (preview/advisory)
-  card version: python_repair_card.v1
-  canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
-  authority: preview_advisory_only (python/preview)
-  repair action: strengthen_existing_test
-  changed owner: recording_callback
-  changed behavior: call_or_output_effect changed at src/callbacks.py:4: `callback = MagicMock(name="receipt.sent")`
-  current test evidence: tests/test_callbacks.py:4 test_recording_callback_starts_idle currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_not_called()
-  missing discriminator: call includes "receipt.sent"
-  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
-  suggested assertion: Assert the changed output, log text, or call effect for `call includes "receipt.sent"`.
-  suggested file: tests/test_callbacks.py
-  suggested test: test_recording_callback_starts_idle
-  pytest node: tests/test_callbacks.py::test_recording_callback_starts_idle
-  verify: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
-  receipt: unavailable_until_python_gap_ledger
-  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
-  stop conditions:
-    - Stop if imports, fixtures, or test setup cannot call the changed owner.
-    - Stop if the expected value for the missing discriminator is ambiguous.
-    - Stop if adding the test appears to require a production-code edit.
-  limits:
-    - Syntax-first Python preview evidence only.
-    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
-    - Verify success alone is not a gap-closure receipt.
-
-Next step
-  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

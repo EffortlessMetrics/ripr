@@ -4,40 +4,23 @@ root: fixtures/python_metaprogramming_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/models.py:2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/models.py:2
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: return type(name, (), {"kind": "preview"})
+  Missing discriminator: Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.
+  Related test: tests/test_models.py:4 test_build_model_sets_name
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `build_model`
+    - infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:      return type(name, (), {"kind": "preview"})
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/models.py::build_model
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `build_model`
-  - infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator unknown: Static limit `metaprogramming` prevents a safe Python discriminator claim.
-  - related test tests/test_models.py:4 test_build_model_sets_name uses strong exact value oracle: assert build_model("Invoice").__name__ == "Invoice"
-
-Weakness
-  - Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.
-
-Stop reasons:
-  - static_probe_unknown
-
-Static limitation
-  metaprogramming — Metaprogramming (macros or code generation) produces calls ripr cannot see in the source, so the reaching path is not statically resolvable.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

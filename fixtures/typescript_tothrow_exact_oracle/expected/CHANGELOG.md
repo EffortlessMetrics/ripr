@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless typescript_tothrow_exact_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

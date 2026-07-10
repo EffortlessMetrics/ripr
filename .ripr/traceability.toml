@@ -6555,3 +6555,45 @@ outputs = [
 metrics = [
   "ci_scratch_disk_free_space_after_gc",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0122"
+name = "bounded human check output"
+spec = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
+tests = [
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_caps_many_findings_and_reports_omitted_count",
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair",
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state",
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_keeps_preview_language_in_preview_limited_state",
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_prefers_stable_gap_over_preview_with_route",
+  "crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_no_actionable_gap_when_all_findings_suppressed",
+  "crates/ripr/src/output/human.rs::tests::human_full_preserves_legacy_all_findings_output",
+  "crates/ripr/src/output/format.rs::tests::parses_human_full_aliases",
+  "crates/ripr/src/output/format.rs::tests::human_full_is_not_repo_scope",
+  "crates/ripr/src/cli/commands.rs::tests::repo_scope_format_with_base_emits_scope_warning",
+  "crates/ripr/src/cli/commands.rs::tests::repo_scope_format_with_diff_emits_scope_warning",
+  "crates/ripr/src/cli/commands.rs::tests::diff_json_with_base_does_not_emit_repo_scope_warning",
+  "crates/ripr/src/output/first_pr.rs::tests::first_pr_check_missing_packet_error_explains_validate_only_mode",
+  "crates/ripr/src/output/first_pr.rs::tests::first_pr_write_command_preserves_explicit_gap_ledger_only",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help/core.rs",
+  "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/output/first_pr/options.rs",
+  "crates/ripr/src/output/format.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/human/sections.rs",
+  "crates/ripr/src/output/human/triage.rs",
+  "crates/ripr/src/output/render.rs",
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "bounded_human_line_count",
+]

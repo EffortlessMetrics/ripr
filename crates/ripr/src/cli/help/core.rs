@@ -88,7 +88,7 @@ Options:
                            instead of HEAD, including staged and unstaged
                            tracked edits. Cannot be combined with --diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, json, github, sarif, badge-json, badge-shields,
+  --format FORMAT          human, human-full, json, github, sarif, badge-json, badge-shields,
                            badge-plus-json, badge-plus-shields, repo-badge-json,
                            repo-badge-shields, repo-badge-plus-json,
                            repo-badge-plus-shields, repo-seams-json,
@@ -110,7 +110,7 @@ Options:
   --suppression-policy PATH
                            Apply a suppressions TOML (same schema as
                            .ripr/suppressions.toml) to the findings-based
-                           formats (human, json, github). exposure_gap
+                           formats (human, human-full, json, github). exposure_gap
                            entries select findings by finding_id or by a
                            path glob (with optional static_class narrowing).
                            Suppressed findings stay visible in JSON with

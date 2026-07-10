@@ -578,3 +578,11 @@ path = "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "perl-lsp-swarm CI scratch-GC orphan-reaper path mismatch: spec-only — the fix lands in the perl-lsp-swarm repo (unreachable from this session), mirroring ripr-swarm scratch-gc.yml which sweeps inside each scratch subdir at -maxdepth 1 rather than scanning the parent at depth 1. No ripr product, schema, or classification change."
+
+[[artifact]]
+id = "RIPR-SPEC-0122"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Bounded human check output: default human output becomes a start-here triage view, human-full preserves the exhaustive evidence report, repo-scoped formats disclose that --base/--diff do not bound them, and first-pr --check missing-packet errors explain validate-only recovery. Human-only/default-output contract change; no JSON schema, analyzer, classification, or gate-policy change."

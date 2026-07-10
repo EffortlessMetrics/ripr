@@ -4,40 +4,23 @@ root: fixtures/python_monkeypatch_module_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/service.py:10
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/service.py:10
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: return remote_total_with_tax()
+  Missing discriminator: Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.
+  Related test: tests/test_service.py:4 test_fetch_total_monkeypatches_remote_total
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `fetch_total`
+    - infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:      return remote_total_with_tax()
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/service.py::fetch_total
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `fetch_total`
-  - infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `mocked_module` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator unknown: Static limit `mocked_module` prevents a safe Python discriminator claim.
-  - related test tests/test_service.py:4 test_fetch_total_monkeypatches_remote_total uses strong exact value oracle: assert fetch_total() == 10
-
-Weakness
-  - Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.
-
-Stop reasons:
-  - static_probe_unknown
-
-Static limitation
-  mocked_module — A mocked module replaces the real implementation, so a passing test may not observe the actual changed behavior.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

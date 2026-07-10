@@ -107,3 +107,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless boundary_gap_reordered_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

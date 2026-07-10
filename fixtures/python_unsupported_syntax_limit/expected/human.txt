@@ -4,40 +4,23 @@ root: fixtures/python_unsupported_syntax_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/mapper.py:2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/mapper.py:2
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: return lambda value: value + 2
+  Missing discriminator: Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.
+  Related test: tests/test_mapper.py:4 test_make_mapper_adds_two
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `make_mapper`
+    - infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:      return lambda value: value + 2
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/mapper.py::make_mapper
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `make_mapper`
-  - infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `unsupported_syntax` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator unknown: Static limit `unsupported_syntax` prevents a safe Python discriminator claim.
-  - related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3
-
-Weakness
-  - Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.
-
-Stop reasons:
-  - static_probe_unknown
-
-Static limitation
-  unsupported_syntax — The surrounding syntax is not yet supported by ripr's static model, so the reaching path is not resolvable.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

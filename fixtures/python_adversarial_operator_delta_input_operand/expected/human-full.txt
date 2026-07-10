@@ -1,0 +1,69 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_operator_delta_input_operand/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/counter.py:2
+
+Changed
+  after:      return count - 1
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  python:src/counter.py::next_value
+  canonical gap: gap:python:src/counter.py:next_value:return_value:return_value:count-1
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `next_value`
+  - infection yes: Changed Python return expression can alter the owner return value: `return count - 1`
+  - propagation yes: Changed Python return value is already at the owner output boundary.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches returned value: return count - 1 (line 2)
+  - related test tests/test_counter.py:4 test_next uses strong exact value oracle: assert count == 5
+
+Weakness
+  - A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.
+  - missing discriminator return value == count - 1: changed Python returned-value at line 2 lacks a concrete repair discriminator
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/counter.py:next_value:return_value:return_value:count-1
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: next_value
+  changed behavior: return_value changed at src/counter.py:2: `return count - 1`
+  current test evidence: tests/test_counter.py:4 test_next currently has oracle_strength=strong, oracle_kind=exact_value: assert count == 5
+  missing discriminator: return value == count - 1
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == count - 1`.
+  suggested assertion: Assert the returned value equals the expected value for the changed inputs.
+  suggested file: tests/test_counter.py
+  suggested test: test_next
+  pytest node: tests/test_counter.py::test_next
+  verify: pytest tests/test_counter.py::test_next (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

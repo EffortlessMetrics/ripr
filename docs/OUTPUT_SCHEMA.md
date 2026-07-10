@@ -34,6 +34,18 @@ not expose receipt commands, edit-boundary authority, or agent packets, and
 remains advisory review context rather than verify, receipt, gate, badge, or
 RIPR Zero authority.
 
+`ripr check --format human` is the bounded default terminal surface. It prints
+header and summary counts, then one `Start here:` triage block with a closed
+state (`top_gap`, `no_actionable_gap`, `preview_limited`, `static_limited`, or
+`missing_scope`), one selected finding digest when available, an omitted-finding
+count, and pointers to `--format human-full` and `--format json`.
+`ripr check --format human-full` (alias `text-full`) preserves the exhaustive
+per-finding human report. These human text formats do not change
+`schema_version`; the machine-readable contract remains `--format json`.
+Repo-scoped formats such as `repo-exposure-json`, `repo-exposure-md`,
+`repo-sarif`, and `agent-seam-packets-json` warn on stderr when paired with
+`--base` or `--diff`, because those flags do not bound full-repo formats.
+
 ## Check Output
 
 `ripr check --json` emits:
@@ -1186,7 +1198,7 @@ Example:
 ```
 
 Scope: the flag applies to the findings-based check formats (`human`,
-`json`, `github`). Human output lists suppressed findings as compact
+`human-full`, `json`, `github`). Human output lists suppressed findings as compact
 one-liners instead of detailed blocks; GitHub-format output skips
 annotations for suppressed findings. SARIF keeps its existing
 `.ripr/suppressions.toml` `finding_id` suppression channel, and badge/repo

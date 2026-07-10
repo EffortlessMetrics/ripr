@@ -4,40 +4,23 @@ root: fixtures/python_dynamic_route_registration_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE app/checkout.py:17
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: app/checkout.py:17
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: return {"detail": "coupon expired"}
+  Missing discriminator: Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a concrete…
+  Related test: tests/test_checkout.py:1 test_expired_coupon_response_smoke
+  Evidence:
+    - reach weak: 1 heuristic Python test link(s) found for owner `checkout`; relation is uncertain
+    - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:          return {"detail": "coupon expired"}
-
-Probe
-  family: field_construction
-  delta:  value
-  owner:  python:app/checkout.py::checkout
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach weak: 1 heuristic Python test link(s) found for owner `checkout`; relation is uncertain
-  - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `decorator_indirection` prevents a safe Python propagation claim.
-  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator unknown: Static limit `decorator_indirection` prevents a safe Python discriminator claim.
-  - related test tests/test_checkout.py:1 test_expired_coupon_response_smoke uses unknown unknown oracle
-
-Weakness
-  - Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a concrete route path.
-
-Stop reasons:
-  - static_probe_unknown
-
-Static limitation
-  decorator_indirection — A decorator wraps the changed owner, so ripr cannot statically confirm a test exercises the underlying behavior.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope analyzed: 1 changed Rust file(s), 1 changed expression(s), and 1 statically linked related test(s). This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.

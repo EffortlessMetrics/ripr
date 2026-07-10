@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless typescript_commonjs_require --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -104,6 +104,13 @@ fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     let out_dir = resolve_path(output_root, &options.out_dir);
     let json_path = out_dir.join(START_HERE_JSON);
     let markdown_path = out_dir.join(START_HERE_MD);
+    if !json_path.exists() || !markdown_path.exists() {
+        return Err(first_pr_missing_packet_recovery_error(
+            &json_path,
+            &markdown_path,
+            options,
+        ));
+    }
     let packet = validate_start_here_packet(&json_path, &markdown_path)?;
     validate_current_preflight_recovery(&packet, &root, options, preflight_recovery)?;
     print!(
@@ -112,6 +119,47 @@ fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     );
     println!("First PR start-here packet ok: {}", json_path.display());
     Ok(())
+}
+
+fn first_pr_missing_packet_recovery_error(
+    json_path: &Path,
+    markdown_path: &Path,
+    options: &FirstPrOptions,
+) -> String {
+    let missing = if !json_path.exists() {
+        json_path
+    } else {
+        markdown_path
+    };
+    format!(
+        "first-pr --check validates an existing start-here packet; it does not create one.\n\nMissing:\n  {}\n\nCreate and validate it with:\n  {}",
+        missing.display(),
+        first_pr_write_command(options)
+    )
+}
+
+fn first_pr_write_command(options: &FirstPrOptions) -> String {
+    let mut parts = vec![
+        "ripr".to_string(),
+        "first-pr".to_string(),
+        "--root".to_string(),
+        shell_arg(&options.root),
+        "--base".to_string(),
+        shell_arg(&options.base),
+        "--head".to_string(),
+        shell_arg(&options.head),
+    ];
+    if let Some(check_output) = &options.check_output {
+        parts.push("--check-output".to_string());
+        parts.push(shell_arg(check_output));
+    }
+    if options.gap_ledger_explicit {
+        parts.push("--gap-ledger".to_string());
+        parts.push(shell_arg(&options.gap_ledger));
+    }
+    parts.push("--out-dir".to_string());
+    parts.push(shell_arg(&options.out_dir));
+    parts.join(" ")
 }
 
 fn validate_current_preflight_recovery(
@@ -2038,6 +2086,41 @@ fn repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn first_pr_check_missing_packet_error_explains_validate_only_mode() {
+        let mut options = FirstPrOptions {
+            check_output: Some("target/ripr/foo/check.json".to_string()),
+            out_dir: "target/ripr/foo/reports".to_string(),
+            ..FirstPrOptions::default()
+        };
+        options.check = true;
+        let err = first_pr_missing_packet_recovery_error(
+            Path::new("target/ripr/foo/reports/start-here.json"),
+            Path::new("target/ripr/foo/reports/start-here.md"),
+            &options,
+        );
+
+        assert!(err.contains("first-pr --check validates an existing start-here packet"));
+        assert!(err.contains("it does not create one"));
+        assert!(err.contains("Missing:\n  target/ripr/foo/reports/start-here.json"));
+        assert!(err.contains("--check-output target/ripr/foo/check.json"));
+        assert!(err.contains("--out-dir target/ripr/foo/reports"));
+        assert!(!err.trim_end().ends_with(" --check"));
+    }
+
+    #[test]
+    fn first_pr_write_command_preserves_explicit_gap_ledger_only() {
+        let implicit = FirstPrOptions::default();
+        assert!(!first_pr_write_command(&implicit).contains("--gap-ledger"));
+
+        let explicit = FirstPrOptions {
+            gap_ledger: "target/custom/gaps.json".to_string(),
+            gap_ledger_explicit: true,
+            ..FirstPrOptions::default()
+        };
+        assert!(first_pr_write_command(&explicit).contains("--gap-ledger target/custom/gaps.json"));
+    }
 
     #[test]
     fn parse_accepts_artifact_paths_and_check() -> Result<(), String> {
