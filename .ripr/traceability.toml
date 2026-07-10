@@ -295,6 +295,16 @@ tests = [
   "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::same_crate_constructor_caller_with_exact_field_assertion_is_strongly_gripped",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::same_crate_constructor_caller_with_wrong_field_assertion_stays_weak",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::unrelated_constructor_with_same_field_name_does_not_link_to_owner",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::ambiguous_same_crate_constructor_name_names_a_static_limitation",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::same_file_constructor_caller_with_exact_field_assertion_is_strongly_gripped",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::assertion_only_unrelated_test_does_not_activate_constructor_field_seam",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::constructor_field_fixtures_pin_exact_field_credit_and_sibling_rejection",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::renamed_record_pattern_field_binding_is_credited_to_constructor_seam",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::same_named_local_without_record_pattern_does_not_observe_constructor_field",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories",
   "crates/ripr/src/analysis/value_resolution.rs::tests::extract_let_bindings_picks_up_literal_rhs_and_skips_expressions",
   "crates/ripr/src/analysis/value_resolution.rs::tests::builder_method_match_accepts_fixture_override_prefixes_and_rejects_unrelated_methods",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_option_result_constructor_keeps_unresolved_inner_opaque",
@@ -386,16 +396,20 @@ tests = [
   "editors/vscode/test/suite/extension.test.ts::status bar reports stale saved-workspace analysis after Rust edits"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/rust_constructor_field_observation",
+  "fixtures/rust_constructor_field_wrong_field_observer"
 ]
 code = [
   "crates/ripr/src/analysis/seams.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",
   "crates/ripr/src/analysis/test_grip_evidence.rs",
+  "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
   "crates/ripr/src/analysis/value_resolution.rs",
   "crates/ripr/src/analysis/seam_classification.rs",
   "crates/ripr/src/output/repo_seams.rs",
   "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/badge/mod.rs",
   "crates/ripr/src/output/badge/model.rs",
   "crates/ripr/src/output/badge/render.rs",
@@ -423,7 +437,13 @@ outputs = [
   "docs/handoffs/2026-05-09-editor-evidence-ux-closeout.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
-  "docs/IMPLEMENTATION_PLAN.md"
+  "docs/IMPLEMENTATION_PLAN.md",
+  "fixtures/rust_constructor_field_observation/expected/check.json",
+  "fixtures/rust_constructor_field_observation/expected/human.txt",
+  "fixtures/rust_constructor_field_observation/expected/human-full.txt",
+  "fixtures/rust_constructor_field_wrong_field_observer/expected/check.json",
+  "fixtures/rust_constructor_field_wrong_field_observer/expected/human.txt",
+  "fixtures/rust_constructor_field_wrong_field_observer/expected/human-full.txt"
 ]
 metrics = [
   "seam_inventory_count",

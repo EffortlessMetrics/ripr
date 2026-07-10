@@ -1103,7 +1103,9 @@ fn push_stage_limitation(
 
 fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'static str {
     let reason = reason.to_ascii_lowercase();
-    if reason.contains("field assignment value is unresolved") {
+    if reason.contains("constructor_field_owner_ambiguous") {
+        "constructor_field_owner_ambiguous"
+    } else if reason.contains("field assignment value is unresolved") {
         "field_assignment_value_unresolved"
     } else if reason.contains("cross-file")
         || reason.contains("cross file")
@@ -1169,6 +1171,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         }
         "activation_owner_call_absent_same_file_only" => "analysis/same-file-owner-call-tracing",
         "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
+        "constructor_field_owner_ambiguous" => "analysis/constructor-field-observation",
         "activation_boundary_input_unresolved" => {
             "analysis/local-computed-boundary-operand-resolution"
         }
@@ -2728,6 +2731,12 @@ mod tests {
             (
                 "activate",
                 "unknown",
+                "constructor_field_owner_ambiguous: exact field observer found",
+                "constructor_field_owner_ambiguous",
+            ),
+            (
+                "activate",
+                "unknown",
                 "No direct owner call observed for value-insensitive seam `Vec::new()`",
                 "activation_owner_call_absent",
             ),
@@ -2848,6 +2857,10 @@ mod tests {
         }
 
         for (category, expected) in [
+            (
+                "constructor_field_owner_ambiguous",
+                "analysis/constructor-field-observation",
+            ),
             (
                 "activation_owner_call_absent",
                 "analysis/owner-call-absence-triage",

@@ -2766,7 +2766,8 @@ Field contract:
   `activation_owner_call_absent_assertion_target_affinity`,
   `activation_owner_call_absent_affinity_only`,
   `activation_owner_call_absent_same_file_only`,
-  `activation_owner_call_unresolved`, `opaque_helper_call`,
+  `activation_owner_call_unresolved`, `constructor_field_owner_ambiguous`,
+  `opaque_helper_call`,
   `cross_file_constant_unresolved`, `dynamic_dispatch`,
   `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
@@ -2794,6 +2795,11 @@ Field contract:
   missing-owner-call routes, so analyzer work can distinguish local receiver
   method evidence from free-function call tracing without making the item
   actionable.
+- `constructor_field_owner_ambiguous` routes to
+  `analysis/constructor-field-observation`; it means an exact-field observer
+  exists but a same-name same-crate caller maps to multiple possible owners.
+  The seam remains a static limitation rather than selecting an owner or
+  presenting the field observer as actionable closure evidence.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.

@@ -297,9 +297,15 @@ fn activate_evidence(
                     target_affinity_tokens.as_ref(),
                 )
         });
+    let ambiguous_constructor_field_owner = !owner_name.is_empty()
+        && related
+            .iter()
+            .any(|indexed| has_ambiguous_constructor_field_owner(indexed, seam, owner_name));
 
     let state = if related.is_empty() {
         StageState::No
+    } else if ambiguous_constructor_field_owner {
+        StageState::Unknown
     } else if !observed.is_empty()
         || direct_value_insensitive_owner_call
         || helper_value_insensitive_owner_call
@@ -320,7 +326,11 @@ fn activate_evidence(
         } else {
             Confidence::Low
         },
-        if !observed.is_empty() {
+        if ambiguous_constructor_field_owner {
+            format!(
+                "constructor_field_owner_ambiguous: exact field observer found, but same-crate caller linkage to owner `{owner_name}` is ambiguous"
+            )
+        } else if !observed.is_empty() {
             format!(
                 "Observed {} concrete activation value(s) for seam `{}`",
                 observed.len(),
@@ -535,6 +545,22 @@ fn has_owner_call_via_target_affinity(
         .contains(owner_name)
         && target_tokens
             .is_some_and(|tokens| test_assertion_mentions_any_target_token(indexed, tokens))
+}
+
+fn has_ambiguous_constructor_field_owner(
+    indexed: &CompactTest<'_>,
+    seam: &RepoSeam,
+    owner_name: &str,
+) -> bool {
+    seam.kind() == SeamKind::FieldConstruction
+        && indexed
+            .ambiguous_target_affinity_owner_call_names
+            .contains(owner_name)
+        && indexed
+            .test
+            .assertions
+            .iter()
+            .any(|oracle| field_construction_oracle_matches_seam_field(seam, &oracle.text))
 }
 
 fn observed_argument_selection(
@@ -1027,20 +1053,24 @@ fn compact_activate_evidence(
                     target_affinity_tokens.as_ref(),
                 )
         });
+    let ambiguous_constructor_field_owner = !owner_name.is_empty()
+        && related
+            .iter()
+            .any(|indexed| has_ambiguous_constructor_field_owner(indexed, seam, owner_name));
     let state = if related.is_empty() {
         StageState::No
+    } else if ambiguous_constructor_field_owner {
+        StageState::Unknown
     } else if direct_owner_call {
         StageState::Yes
     } else {
         StageState::Unknown
     };
-    let stage = StageEvidence::new(
-        state.clone(),
-        if direct_owner_call {
-            Confidence::Medium
-        } else {
-            Confidence::Low
-        },
+    let summary = if ambiguous_constructor_field_owner {
+        format!(
+            "constructor_field_owner_ambiguous: exact field observer found, but same-crate caller linkage to owner `{owner_name}` is ambiguous"
+        )
+    } else {
         format!(
             "Compact activation evidence for seam `{}` is `{}`",
             seam.expression()
@@ -1048,7 +1078,16 @@ fn compact_activate_evidence(
                 .next()
                 .unwrap_or(seam.expression()),
             state.as_str()
-        ),
+        )
+    };
+    let stage = StageEvidence::new(
+        state.clone(),
+        if direct_owner_call && !ambiguous_constructor_field_owner {
+            Confidence::Medium
+        } else {
+            Confidence::Low
+        },
+        summary,
     );
     (stage, Vec::new())
 }
@@ -1280,7 +1319,7 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
         );
     }
     let mut best = OracleStrength::None;
-    let mut best_kind_matches_seam = false;
+    let mut best_matching = OracleStrength::None;
     for test in related {
         for oracle in &test.assertions {
             if oracle.strength.rank() > best.rank() {
@@ -1289,31 +1328,47 @@ fn discriminate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvid
             // RIPR-SPEC-0106 (Part B): for ErrorVariant seams, oracle_kind_matches_seam
             // is necessary but not sufficient — the oracle must also structurally pin
             // the seam's specific variant. oracle_discriminates_seam checks both.
-            if oracle_discriminates_seam(seam, oracle) {
-                best_kind_matches_seam = true;
+            if oracle_discriminates_seam(seam, oracle)
+                && oracle.strength.rank() > best_matching.rank()
+            {
+                best_matching = oracle.strength.clone();
             }
         }
     }
-    let state = match (best_kind_matches_seam, &best) {
-        (_, OracleStrength::None) => StageState::No,
-        (_, OracleStrength::Unknown) => StageState::Unknown,
-        (_, OracleStrength::Weak | OracleStrength::Smoke) => StageState::Weak,
-        (true, OracleStrength::Strong | OracleStrength::Medium) => StageState::Yes,
-        (false, OracleStrength::Strong | OracleStrength::Medium) => StageState::Weak,
+    let state = if seam.kind() == SeamKind::FieldConstruction {
+        match (&best_matching, &best) {
+            (OracleStrength::Strong | OracleStrength::Medium, _) => StageState::Yes,
+            (OracleStrength::Weak | OracleStrength::Smoke, _) => StageState::Weak,
+            (OracleStrength::Unknown, _) => StageState::Unknown,
+            (OracleStrength::None, OracleStrength::None) => StageState::No,
+            (OracleStrength::None, OracleStrength::Unknown) => StageState::Unknown,
+            (OracleStrength::None, _) => StageState::Weak,
+        }
+    } else {
+        match (best_matching != OracleStrength::None, &best) {
+            (_, OracleStrength::None) => StageState::No,
+            (_, OracleStrength::Unknown) => StageState::Unknown,
+            (_, OracleStrength::Weak | OracleStrength::Smoke) => StageState::Weak,
+            (true, OracleStrength::Strong | OracleStrength::Medium) => StageState::Yes,
+            (false, OracleStrength::Strong | OracleStrength::Medium) => StageState::Weak,
+        }
     };
     let summary = format!(
         "Strongest oracle for seam kind `{}` is `{}` (kind-match {})",
         seam.kind().as_str(),
         best.as_str(),
-        best_kind_matches_seam
+        best_matching != OracleStrength::None
     );
     StageEvidence::new(state, Confidence::Medium, summary)
 }
 
 /// Returns true when `oracle` is a discriminating match for `seam`.
 ///
-/// For non-ErrorVariant seams this is identical to `oracle_kind_matches_seam`
-/// (the existing kind-category check).
+/// For most non-ErrorVariant seams this is identical to
+/// `oracle_kind_matches_seam` (the existing kind-category check).
+/// `FieldConstruction` additionally requires the oracle to name the exact
+/// constructed field through a member access or record field/pattern. A strong
+/// assertion on a sibling field is not evidence for this field seam.
 ///
 /// For `ErrorVariant` seams (RIPR-SPEC-0106, Part B) the oracle must also
 /// structurally pin the seam's specific variant:
@@ -1329,11 +1384,64 @@ fn oracle_discriminates_seam(seam: &RepoSeam, oracle: &super::facts::OracleFact)
     if !oracle_kind_matches_seam(seam, &oracle.kind) {
         return false;
     }
+    if seam.kind() == SeamKind::FieldConstruction {
+        return field_construction_oracle_matches_seam_field(seam, &oracle.text);
+    }
     if seam.kind() != SeamKind::ErrorVariant {
         return true;
     }
     // ErrorVariant seam: require variant-level structural match.
     error_variant_oracle_matches_seam_variant(seam, &oracle.text)
+}
+
+fn field_construction_oracle_matches_seam_field(seam: &RepoSeam, oracle_text: &str) -> bool {
+    use crate::analysis::seams::RequiredDiscriminator;
+
+    let RequiredDiscriminator::FieldValue { field } = seam.required_discriminator() else {
+        return false;
+    };
+    let Some(field_name) = record_field_name(field) else {
+        return false;
+    };
+    let oracle = strip_comments_and_strings(oracle_text);
+    code_contains_member_field(&oracle, field_name)
+        || code_contains_record_field(&oracle, field_name)
+}
+
+fn record_field_name(field_expression: &str) -> Option<&str> {
+    let candidate = field_expression
+        .split_once(':')
+        .map_or(field_expression, |(field, _value)| field)
+        .trim();
+    let candidate = candidate.strip_prefix("r#").unwrap_or(candidate);
+    (!candidate.is_empty()
+        && candidate
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+        && candidate
+            .chars()
+            .next()
+            .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic()))
+    .then_some(candidate)
+}
+
+fn code_contains_member_field(code: &str, field: &str) -> bool {
+    let pattern = format!(".{field}");
+    code.match_indices(&pattern).any(|(start, _)| {
+        let after = code[start + pattern.len()..].chars().next();
+        after.is_none_or(|ch| ch != '_' && !ch.is_ascii_alphanumeric())
+    })
+}
+
+fn code_contains_record_field(code: &str, field: &str) -> bool {
+    code.match_indices(field).any(|(start, _)| {
+        let before = code[..start].chars().next_back();
+        if before.is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric()) {
+            return false;
+        }
+        let after = code[start + field.len()..].trim_start();
+        after.starts_with(':')
+    })
 }
 
 /// Returns true when the oracle text structurally pins the same error variant
@@ -1722,6 +1830,8 @@ fn related_test_grip(
 fn best_oracle(test: &TestSummary, seam: &RepoSeam) -> (OracleKind, OracleStrength) {
     let mut best_kind = OracleKind::Unknown;
     let mut best_strength = OracleStrength::None;
+    let mut best_matching_kind = OracleKind::Unknown;
+    let mut best_matching_strength = OracleStrength::None;
     for oracle in &test.assertions {
         if oracle.strength.rank() > best_strength.rank() {
             best_strength = oracle.strength.clone();
@@ -1731,8 +1841,19 @@ fn best_oracle(test: &TestSummary, seam: &RepoSeam) -> (OracleKind, OracleStreng
         {
             best_kind = oracle.kind.clone();
         }
+        if oracle_discriminates_seam(seam, oracle)
+            && oracle.strength.rank() > best_matching_strength.rank()
+        {
+            best_matching_strength = oracle.strength.clone();
+            best_matching_kind = oracle.kind.clone();
+        }
     }
-    (best_kind, best_strength)
+    if seam.kind() == SeamKind::FieldConstruction && best_matching_strength != OracleStrength::None
+    {
+        (best_matching_kind, best_matching_strength)
+    } else {
+        (best_kind, best_strength)
+    }
 }
 
 // --- Argument-extraction helpers, lifted from analysis::classifier and

@@ -1,0 +1,26 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_constructor_field_wrong_field_observer/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/rust_constructor_field_wrong_field_observer/input/src/lib.rs:15
+  Static exposure: no_static_path (warning, confidence 0.35)
+  Changed behavior: storage,
+  Missing discriminator: No relevant oracle was detected
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…
+  Evidence:
+    - reach no: No static test path found for the changed owner
+    - infection unknown: No reachable tests were found, so infection cannot be established
+    - 4 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope analyzed: 1 changed Rust file(s), 1 changed expression(s), and 0 statically linked related test(s). This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.
