@@ -9,6 +9,10 @@ pub(super) fn custom_assertion_arguments(line: &str) -> Option<Vec<String>> {
     delimited_contents_at(line, open).map(|contents| split_top_level_commas(&contents))
 }
 
+pub(super) fn ensure_assertion_arguments(line: &str) -> Option<Vec<String>> {
+    macro_invocation_arguments(line, "ensure!")
+}
+
 fn macro_invocation_arguments(line: &str, macro_name: &str) -> Option<Vec<String>> {
     line.match_indices(macro_name)
         .filter_map(|(index, _)| {

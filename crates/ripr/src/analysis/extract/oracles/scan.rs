@@ -3,8 +3,8 @@ use crate::domain::{OracleKind, OracleStrength};
 
 use super::classify::classify_assertion;
 use super::patterns::{
-    is_custom_assertion_helper, is_mock_expectation_line, is_side_effect_observer_assertion,
-    is_snapshot_assertion, is_unwrap_err_bound_error_assertion,
+    contains_macro_invocation, is_custom_assertion_helper, is_mock_expectation_line,
+    is_side_effect_observer_assertion, is_snapshot_assertion, is_unwrap_err_bound_error_assertion,
 };
 use crate::analysis::extract::text::extract_identifier_tokens;
 
@@ -206,18 +206,20 @@ fn ends_with_expect_err(expr: &str) -> bool {
 
 pub(crate) fn extract_line_scanned_oracles(body: &str, start_line: usize) -> Vec<OracleFact> {
     let mut out = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
-        let trimmed = line.trim();
-        if !is_line_scanned_oracle(trimmed) {
+    let mut lines = body.lines().enumerate().peekable();
+    while let Some((offset, line)) = lines.next() {
+        let mut statement = line.trim().to_string();
+        if !is_line_scanned_oracle(&statement) {
             continue;
         }
-        let classification = classify_assertion(trimmed);
+        collect_multiline_assertion(&mut statement, &mut lines);
+        let classification = classify_assertion(&statement);
         out.push(OracleFact {
             line: start_line + offset,
-            text: trimmed.to_string(),
+            text: statement.clone(),
             kind: classification.kind,
             strength: classification.strength,
-            observed_tokens: extract_identifier_tokens(trimmed),
+            observed_tokens: extract_identifier_tokens(&statement),
         });
     }
     out
@@ -236,18 +238,73 @@ fn is_assertion_line(line: &str) -> bool {
         || line.contains(".expect(")
         || line.contains(".unwrap(")
         || line.contains("should_panic")
+        || contains_macro_invocation(line, "ensure!")
 }
 
 fn is_line_scanned_oracle(line: &str) -> bool {
-    is_custom_assertion_helper(line)
-        || is_side_effect_observer_assertion(line)
-        || is_mock_expectation_line(line)
+    !is_function_signature(line)
+        && (is_custom_assertion_helper(line)
+            || is_side_effect_observer_assertion(line)
+            || is_mock_expectation_line(line)
+            || contains_macro_invocation(line, "ensure!"))
+}
+
+fn is_function_signature(line: &str) -> bool {
+    line.contains('(') && line.contains('{') && line.split_whitespace().any(|token| token == "fn")
 }
 
 #[cfg(test)]
 mod spec_0106_scan_tests {
     use super::*;
     use crate::domain::OracleKind;
+
+    #[test]
+    fn line_scanner_collects_multiline_exact_fallible_oracle() -> Result<(), String> {
+        let facts = extract_line_scanned_oracles(
+            r#"
+                ensure!(
+                    state == TerminalState::Pass,
+                    "terminal state must match"
+                );
+            "#,
+            10,
+        );
+        let fact = facts
+            .first()
+            .ok_or_else(|| "expected multiline ensure oracle".to_string())?;
+        if facts.len() != 1
+            || fact.kind != OracleKind::ExactValue
+            || fact.strength != crate::domain::OracleStrength::Strong
+        {
+            return Err(format!("unexpected multiline ensure oracle: {facts:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn line_scanner_does_not_consume_expect_named_function_body() -> Result<(), String> {
+        let facts = extract_line_scanned_oracles(
+            r#"fn expect_metric_recorded() {
+    ensure!(
+        state == TerminalState::Pass,
+        "terminal state must match"
+    );
+}"#,
+            10,
+        );
+        let fact = facts
+            .first()
+            .ok_or_else(|| "expected nested ensure oracle".to_string())?;
+        if facts.len() != 1
+            || fact.line != 11
+            || fact.kind != OracleKind::ExactValue
+            || fact.strength != crate::domain::OracleStrength::Strong
+            || fact.text.contains("fn expect_metric_recorded")
+        {
+            return Err(format!("unexpected expect-named scan result: {facts:?}"));
+        }
+        Ok(())
+    }
 
     // Control 1 (POSITIVE): unwrap_err_bound_variables collects the variable name.
     #[test]

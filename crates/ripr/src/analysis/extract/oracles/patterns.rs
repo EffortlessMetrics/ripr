@@ -216,11 +216,86 @@ pub(super) fn is_duplicative_equality_assertion(line: &str) -> bool {
     comparable_expression(left) == comparable_expression(right)
 }
 
+pub(super) fn is_duplicative_comparison(condition: &str) -> bool {
+    let Some((operator, width)) = top_level_comparison_operator(condition) else {
+        return false;
+    };
+    let left = condition[..operator].trim();
+    let right = condition[operator + width..].trim();
+    !left.is_empty()
+        && !right.is_empty()
+        && comparable_expression(left) == comparable_expression(right)
+}
+
 pub(super) fn is_exact_value_assertion(line: &str) -> bool {
     line.contains("assert_eq!")
         || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
+}
+
+pub(super) fn contains_exact_comparison(condition: &str) -> bool {
+    let mut chars = condition.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '=' | '!' if matches!(chars.peek(), Some('=')) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn top_level_comparison_operator(condition: &str) -> Option<(usize, usize)> {
+    let mut paren_depth = 0i32;
+    let mut bracket_depth = 0i32;
+    let mut brace_depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut chars = condition.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            '=' | '!'
+                if paren_depth == 0
+                    && bracket_depth == 0
+                    && brace_depth == 0
+                    && matches!(chars.peek(), Some((_, '='))) =>
+            {
+                return Some((index, 2));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub(super) fn is_mock_expectation_line(line: &str) -> bool {
@@ -444,5 +519,24 @@ mod spec_0106_tests {
             !contains_named_enum_variant("assert!(err.to_string().contains(\"error\"));"),
             "no qualified variant — must return false"
         );
+    }
+
+    #[test]
+    fn exact_comparison_ignores_string_contents_and_escapes() -> Result<(), String> {
+        for (condition, expected) in [
+            ("state == TerminalState::Pass", true),
+            ("state != TerminalState::Pending", true),
+            (r#"label.contains("==")"#, false),
+            (r#"label.contains("escaped \"!=\" text")"#, false),
+            ("ready = true", false),
+        ] {
+            let actual = contains_exact_comparison(condition);
+            if actual != expected {
+                return Err(format!(
+                    "comparison classification mismatch for {condition}: {actual}"
+                ));
+            }
+        }
+        Ok(())
     }
 }
