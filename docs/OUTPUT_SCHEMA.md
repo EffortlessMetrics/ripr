@@ -7458,6 +7458,14 @@ Field contract:
   missing fields, and a bounded detail. A candidate that would otherwise be
   policy-eligible fails closed to advisory visibility when this limitation is
   present; no renderer invents a fallback identity, location, test, or command.
+- `gate-decision.md` - human projection consumed directly by generated GitHub
+  step summaries. Blocking, acknowledged, and advisory decisions expand the
+  same structured route into gap/seam identity, gap state, classification,
+  changed owner/behavior, missing discriminator, tagged target, test intent,
+  verify/receipt/inspection commands, and the static authority boundary.
+  Incomplete routes print their named limitation and missing fields without a
+  fabricated inspection command; suppressed and not-applicable decisions do
+  not present an actionable route.
 - `decisions[].evidence.repair_route` and `verification_commands` - optional
   GapRecord repair route and verification commands. These fields are present
   when the gate decision is driven by a repairable gap ledger record.

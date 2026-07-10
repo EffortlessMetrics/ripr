@@ -3,6 +3,18 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0067: project producer-owned gate repair routes into the human and generated-CI summary surface
+
+Command:
+`cargo test -p ripr output::gate --lib -- --test-threads=1`
+
+Updated:
+- `expected/calibrated-gate/*/gate-decision.md`
+- `expected/calibrated-gate/README.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0025: pin and exercise PR inline comment publish-plan cases against the read-only producer
 
 Command:

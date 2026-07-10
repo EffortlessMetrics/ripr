@@ -70,6 +70,14 @@ Every mode writes the same JSON and Markdown surfaces. Blocking modes return a
 non-zero exit only after writing `target/ripr/reports/gate-decision.json` and
 `target/ripr/reports/gate-decision.md`.
 
+For blocking, acknowledged, and advisory decisions, the Markdown report expands
+the structured gate repair route into the exact gap/seam identity, missing
+observation, focused test target and intent, verify/receipt commands, and
+producer-owned inspection command. Incomplete routes remain visible with their
+named missing fields and no fabricated command. Generated GitHub CI appends this
+same Markdown report to the step summary, so no artifact download is needed to
+read the route.
+
 ## Waivers And Suppressions
 
 `ripr-waive` is the default acknowledgement label. It is not a silent skip. In

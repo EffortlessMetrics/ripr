@@ -353,10 +353,150 @@ fn push_decision_section(
             md_escape(decision.static_class.as_deref().unwrap_or("unknown")),
             md_escape(&decision.gate_reason)
         ));
+        if matches!(
+            decision.decision.as_str(),
+            "blocking" | "acknowledged" | "advisory"
+        ) {
+            push_optional_code(out, "Gap state", decision.gap_state.as_deref());
+            push_repair_route(out, &decision.repair_route);
+        }
     }
     out.push('\n');
 }
 
+fn push_repair_route(out: &mut String, route: &GateRepairRoute) {
+    push_optional_code(out, "Gap", route.canonical_gap_id.as_deref());
+    push_optional_code(out, "Seam", route.seam_id.as_deref());
+    push_optional_code(out, "Classification", route.classification.as_deref());
+    push_optional_code(out, "Changed owner", route.changed_owner.as_deref());
+    push_optional_text(out, "Changed behavior", route.changed_behavior.as_deref());
+    push_optional_text(
+        out,
+        "Why it remains open",
+        route.missing_discriminator.as_deref(),
+    );
+    push_repair_target(out, route.repair_target.as_ref());
+    push_optional_text(out, "Add", route.test_intent.as_deref());
+    push_optional_code(out, "Verify", route.verify_command.as_deref());
+    push_optional_code(out, "Receipt", route.receipt_command.as_deref());
+    push_optional_code(out, "Inspect", route.inspection_command.as_deref());
+    out.push_str(&format!(
+        "  - Boundary: `{}`\n",
+        md_inline_code(&route.authority_boundary)
+    ));
+    if let Some(limitation) = &route.limitation {
+        out.push_str(&format!(
+            "  - Repair route limitation: `{}`\n",
+            md_inline_code(limitation.kind)
+        ));
+        out.push_str(&format!(
+            "  - Missing route fields: `{}`\n",
+            md_inline_code(&limitation.missing_fields.join(", "))
+        ));
+        out.push_str(&format!(
+            "  - Limitation detail: {}\n",
+            md_escape(limitation.detail)
+        ));
+    }
+}
+
+fn push_repair_target(out: &mut String, target: Option<&GateRepairTarget>) {
+    match target {
+        Some(GateRepairTarget::RelatedTest { name, file, line }) => {
+            out.push_str(&format!(
+                "  - Near test: `{}` at `{}:{line}`\n",
+                md_inline_code(name),
+                md_inline_code(file)
+            ));
+        }
+        Some(GateRepairTarget::ProductionCaller { owner, file, line }) => {
+            out.push_str(&format!(
+                "  - Production caller: `{}`",
+                md_inline_code(owner)
+            ));
+            match (file.as_deref(), line) {
+                (Some(file), Some(line)) => {
+                    out.push_str(&format!(" at `{}:{line}`", md_inline_code(file)));
+                }
+                (Some(file), None) => {
+                    out.push_str(&format!(" at `{}`", md_inline_code(file)));
+                }
+                (None, Some(line)) => out.push_str(&format!(" at line `{line}`")),
+                (None, None) => {}
+            }
+            out.push('\n');
+        }
+        None => {}
+    }
+}
+
+fn push_optional_code(out: &mut String, label: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        out.push_str(&format!("  - {label}: `{}`\n", md_inline_code(value)));
+    }
+}
+
+fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        out.push_str(&format!("  - {label}: {}\n", md_escape(value)));
+    }
+}
+
+fn md_inline_code(value: &str) -> String {
+    md_escape(value).replace('`', "\\`")
+}
+
 fn md_escape(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_caller_target_markdown_preserves_explicit_location() -> Result<(), String> {
+        let mut rendered = String::new();
+        let targets = [
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch".to_string(),
+                file: Some("crates/foo/src/lib.rs".to_string()),
+                line: Some(88),
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_file_only".to_string(),
+                file: Some("crates/foo/src/lib.rs".to_string()),
+                line: None,
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_line_only".to_string(),
+                file: None,
+                line: Some(89),
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_without_location".to_string(),
+                file: None,
+                line: None,
+            },
+        ];
+
+        for target in &targets {
+            push_repair_target(&mut rendered, Some(target));
+        }
+        push_repair_target(&mut rendered, None);
+
+        let expected = concat!(
+            "  - Production caller: `foo::dispatch` at `crates/foo/src/lib.rs:88`\n",
+            "  - Production caller: `foo::dispatch_file_only` at `crates/foo/src/lib.rs`\n",
+            "  - Production caller: `foo::dispatch_line_only` at line `89`\n",
+            "  - Production caller: `foo::dispatch_without_location`\n",
+        );
+        if rendered == expected {
+            Ok(())
+        } else {
+            Err(format!(
+                "production caller Markdown mismatch: actual={rendered:?} expected={expected:?}"
+            ))
+        }
+    }
 }

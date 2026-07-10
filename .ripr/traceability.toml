@@ -4846,6 +4846,9 @@ tests = [
   "crates/ripr/src/output/gate/repair_route.rs::tests::generic_gap_record_evidence_ids_do_not_become_seam_identity",
   "crates/ripr/src/output/gate/repair_route.rs::tests::blank_gap_record_commands_render_as_null_and_remain_missing",
   "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_is_advisory_only_and_renders_named_limitation",
+  "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_complete_repair_route_for_ci_summary",
+  "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_incomplete_route_limitation_without_fabricated_command",
+  "crates/ripr/src/output/gate/presentation.rs::tests::production_caller_target_markdown_preserves_explicit_location",
   "xtask/src/verification_contracts.rs::check_verification_contracts"
 ]
 fixtures = [
@@ -4862,6 +4865,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CALIBRATED_GATE_POLICY.md",
   "schemas/ripr/gate-decision.schema.json",
 ]
 metrics = [

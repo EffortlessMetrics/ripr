@@ -940,6 +940,88 @@ fn gate_calibration_can_keep_candidates_advisory() -> Result<(), String> {
 }
 
 #[test]
+fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), String> {
+    let input = fixture_input(GateMode::Acknowledgeable);
+    let report = build_gate_decision_report(&input)?;
+    let rendered = render_gate_decision_markdown(&report);
+
+    for (label, expected) in [
+        ("gap identity", "  - Gap: `gap:dedf923a13a00573`"),
+        ("seam identity", "  - Seam: `8f7fa8644fd12280`"),
+        ("gap state", "  - Gap state: `actionable`"),
+        ("classification", "  - Classification: `weakly_gripped`"),
+        (
+            "changed owner",
+            "  - Changed owner: `pricing::discounted_total`",
+        ),
+        (
+            "changed behavior",
+            "  - Changed behavior: amount >= discount_threshold",
+        ),
+        (
+            "missing discriminator",
+            "  - Why it remains open: input that hits the boundary: amount == discount_threshold",
+        ),
+        (
+            "related test",
+            "  - Near test: `above_threshold_gets_discount` at `tests/pricing.rs:12`",
+        ),
+        (
+            "inspection command",
+            "  - Inspect: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json`",
+        ),
+        (
+            "authority boundary",
+            "  - Boundary: `static_ripr_evidence_only`",
+        ),
+    ] {
+        require_contains(&rendered, expected, label)?;
+    }
+    require_contains(
+        &rendered,
+        "  - Add: Write one focused Rust test",
+        "test intent",
+    )?;
+    require_contains(
+        &rendered,
+        "  - Verify: `ripr agent verify",
+        "verify command",
+    )?;
+    require_contains(
+        &rendered,
+        "  - Receipt: `ripr agent receipt",
+        "receipt command",
+    )
+}
+
+#[test]
+fn gate_markdown_projects_incomplete_route_limitation_without_fabricated_command()
+-> Result<(), String> {
+    let mut input = fixture_input(GateMode::Acknowledgeable);
+    input.pr_guidance = Some(PathBuf::from(
+        "fixtures/boundary_gap/expected/calibrated-gate/summary-and-suppressed/pr-guidance.json",
+    ));
+    let report = build_gate_decision_report(&input)?;
+    let rendered = render_gate_decision_markdown(&report);
+
+    require_contains(
+        &rendered,
+        "  - Repair route limitation: `incomplete_repair_route`",
+        "limitation kind",
+    )?;
+    require_contains(
+        &rendered,
+        "  - Missing route fields: `canonical_gap_id, gap_state, changed_owner, changed_behavior, repair_target, test_intent, verify_command, receipt_command, inspection_command`",
+        "limitation missing fields",
+    )?;
+    require_not_contains(
+        &rendered,
+        "  - Inspect:",
+        "incomplete route inspection command",
+    )
+}
+
+#[test]
 fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String> {
     let cases = [
         GateFixtureCase {
@@ -2344,6 +2426,26 @@ fn read_repo_fixture(path: &Path) -> Result<String, String> {
     let resolved = repo_root().join(path);
     fs::read_to_string(&resolved)
         .map_err(|err| format!("read {} failed: {err}", resolved.display()))
+}
+
+fn require_contains(actual: &str, expected: &str, label: &str) -> Result<(), String> {
+    if actual.contains(expected) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} missing from rendered gate Markdown: {expected}"
+        ))
+    }
+}
+
+fn require_not_contains(actual: &str, unexpected: &str, label: &str) -> Result<(), String> {
+    if actual.contains(unexpected) {
+        Err(format!(
+            "{label} unexpectedly present in rendered gate Markdown: {unexpected}"
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn assert_repo_fixture(path: &Path, rendered: &str, label: &str) -> Result<(), String> {

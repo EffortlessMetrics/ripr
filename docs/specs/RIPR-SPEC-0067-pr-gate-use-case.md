@@ -233,9 +233,9 @@ absent, `limitation` is:
 
 The candidate then fails closed to advisory visibility and is not counted as a
 policy-eligible blocking candidate or in `new_unsuppressed.count`. The gate must
-not synthesize a seam ID from
-file/line, substitute a canonical gap ID for a seam ID, guess a test command,
-or expose an unsupported `ripr explain` spelling.
+not synthesize a seam ID from file/line, substitute a canonical gap ID for a
+seam ID, guess a test command, or expose an unsupported `ripr explain`
+spelling.
 Generic ordered `GapRecord.evidence_ids` entries are not seam identities. Until
 the gap-record producer preserves a typed seam identity and exact inspection
 command, that source emits `incomplete_repair_route` rather than guessing.
@@ -243,6 +243,21 @@ command, that source emits `incomplete_repair_route` rather than guessing.
 `authority_boundary` is `static_ripr_evidence_only`. It means the route is
 static repair guidance under the configured gate policy, not runtime mutation
 evidence, coverage adequacy, or proof of correctness.
+
+### Human and check-summary projection
+
+`gate-decision.md` projects the same structured route for every blocking,
+acknowledged, or advisory decision. A complete route names the gap and seam,
+gap state, classification, changed owner and behavior, missing discriminator,
+tagged test or caller target, focused test intent, verify command, receipt
+command, exact inspection command, and authority boundary. An incomplete route
+prints `incomplete_repair_route` plus its closed missing-field list and does not
+invent an inspection command.
+
+Generated GitHub CI already appends `gate-decision.md` verbatim to
+`GITHUB_STEP_SUMMARY`; it must not maintain a second inference or rendering
+path. Suppressed and not-applicable decisions retain their policy reason but do
+not expand into an actionable repair route.
 
 ### Required versus forbidden wording for clean and empty states
 
@@ -390,19 +405,16 @@ manufactured block and never a silent pass.
 
 ## Test Mapping
 
-- Structured repair-route tests land with the #1440 implementation slices and
-  pin complete PR-guidance projection, fail-closed incomplete projection,
-  exact producer-owned inspection commands, and schema validation. The later human/CI
-  and dogfood slices add rendering and no-artifact-archaeology coverage.
+- Structured repair-route tests pin complete PR-guidance projection,
+  fail-closed incomplete projection, exact producer-owned inspection commands,
+  schema validation, and the shared human/check-summary rendering. The later
+  dogfood slice adds the real no-artifact-archaeology receipt.
 
 ## Implementation Mapping
 
 - docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md — this document.
-- plans/use-case-specs/implementation-plan.md (planned) — the "PR
-  gate advisory behavior" slice: ensure the decision report carries
-  all required output fields, express gate reasons as canonical gap /
-  receipt deltas over changed surfaces, surface input `run_status` in
-  the decision, and pin the reject-list with fixtures.
+- plans/rust-one-shot-evidence-to-repair.md (RIPR-PLAN-0062) — the active
+  `gate/exact-repair-route` work item and its PR A / PR B / PR C proof split.
 - Existing surfaces this contract binds: `ripr gate evaluate`,
   `ripr baseline diff`, `ripr policy readiness`,
   `docs/CALIBRATED_GATE_POLICY.md`, `docs/BLOCKING_READINESS.md`,
