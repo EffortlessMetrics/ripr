@@ -121,11 +121,18 @@ fn normalize_path(path: &Path) -> String {
 
 fn package_prefix(path: &Path) -> Option<String> {
     let normalized = normalize_path(path);
-    if let Some(rest) = normalized.strip_prefix("crates/")
-        && let Some((crate_name, crate_relative)) = rest.split_once('/')
-        && (crate_relative.starts_with("src/") || crate_relative.starts_with("tests/"))
+    let crate_relative = normalized
+        .strip_prefix("crates/")
+        .or_else(|| normalized.rsplit_once("/crates/").map(|(_, rest)| rest));
+    if let Some(crate_relative) = crate_relative
+        && let Some((crate_name, package_relative)) = crate_relative.split_once('/')
+        && (package_relative.starts_with("src/") || package_relative.starts_with("tests/"))
     {
         return Some(format!("crates/{crate_name}/"));
+    }
+    let has_drive_prefix = normalized.as_bytes().get(1).copied() == Some(b':');
+    if path.is_absolute() || normalized.starts_with('/') || has_drive_prefix {
+        return None;
     }
     for marker in ["/src/", "/tests/"] {
         if let Some(idx) = normalized.rfind(marker) {
@@ -573,5 +580,56 @@ mod tests {
             related.is_empty(),
             "assertions_reference_owner must not fire when owner_fn is Some"
         );
+    }
+
+    #[test]
+    fn absolute_root_probe_matches_relative_companion_test_file() -> Result<(), String> {
+        let index = RustIndex {
+            tests: vec![test(
+                "src/tests/gate_watchdog_tests.rs",
+                "terminal_states_are_exact",
+                "classify_gate_watchdog(&input);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = struct_field_probe(
+            "/repo/ub-review/src/gate_watchdog.rs",
+            "pub(crate) state: GateWatchdogState",
+        );
+
+        let related = find_related_tests(&probe, None, &index);
+        let Some((test, reason)) = related.first() else {
+            return Err(
+                "absolute root probe did not match its relative companion test".to_string(),
+            );
+        };
+        if test.file != Path::new("src/tests/gate_watchdog_tests.rs")
+            || *reason != RelationReason::SameTestFile
+        {
+            return Err(format!("unexpected companion-test relation: {related:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn absolute_workspace_probe_keeps_relative_cross_crate_guard() -> Result<(), String> {
+        let index = RustIndex {
+            tests: vec![test(
+                "crates/other/tests/state_tests.rs",
+                "state_is_exact",
+                "state();",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = struct_field_probe(
+            "/repo/ripr/crates/core/src/state.rs",
+            "pub(crate) state: State",
+        );
+
+        let related = find_related_tests(&probe, None, &index);
+        if !related.is_empty() {
+            return Err(format!("cross-crate test must stay unrelated: {related:?}"));
+        }
+        Ok(())
     }
 }
