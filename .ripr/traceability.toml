@@ -6673,11 +6673,23 @@ metrics = [
 id = "RIPR-SPEC-0123"
 name = "targeted Rust rerun"
 spec = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::changed_test_inventory_recomputes_only_directly_called_owner_seams",
+  "crates/ripr/src/cli/rerun.rs::tests::rerun_requires_changed_test_selector",
+  "crates/ripr/src/cli/rerun.rs::tests::rerun_rejects_gap_selector_until_its_ledger_adapter_exists",
+  "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_changed_test_json_output",
+  "crates/ripr/src/cli/rerun.rs::tests::human_rerun_report_names_current_state_only_boundary",
+]
+fixtures = [
+  "fixtures/boundary_gap/input",
+]
+code = [
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/cli/rerun.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0123-targeted-rerun.md",
+  "docs/OUTPUT_SCHEMA.md",
 ]
 metrics = [
   "targeted_rerun_warm_p50_ms",

@@ -34,6 +34,7 @@ pub(super) enum CliCommand {
     PrEvidence(Vec<String>),
     ImpactedEvidence(Vec<String>),
     RiprPlus(Vec<String>),
+    Rerun(Vec<String>),
 }
 
 impl CliCommand {
@@ -73,6 +74,7 @@ impl CliCommand {
             Some("pr-evidence") => Ok(Self::PrEvidence(command_args)),
             Some("impacted-evidence") => Ok(Self::ImpactedEvidence(command_args)),
             Some("plus") => Ok(Self::RiprPlus(command_args)),
+            Some("rerun") => Ok(Self::Rerun(command_args)),
             Some(command) => Err(unknown_command_error(command)),
         }
     }
@@ -105,6 +107,7 @@ const KNOWN_COMMANDS: &[&str] = &[
     "context",
     "doctor",
     "lsp",
+    "rerun",
 ];
 
 fn unknown_command_error(command: &str) -> String {
@@ -166,6 +169,7 @@ mod tests {
             (Some("init"), CliCommand::Init(Vec::new())),
             (Some("pilot"), CliCommand::Pilot(Vec::new())),
             (Some("outcome"), CliCommand::Outcome(Vec::new())),
+            (Some("rerun"), CliCommand::Rerun(Vec::new())),
             (
                 Some("evidence-health"),
                 CliCommand::EvidenceHealth(Vec::new()),

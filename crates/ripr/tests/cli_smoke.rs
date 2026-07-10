@@ -2731,6 +2731,41 @@ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), 
 }
 
 #[test]
+fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ]);
+    assert_success(&output);
+    let json = String::from_utf8_lossy(&output.stdout);
+    for expected in [
+        r#""schema_version": "ripr-targeted-rerun-v1""#,
+        r#""state": "current_state_only""#,
+        r#""changed_test": "tests/pricing.rs""#,
+        r#""canonical_gap_id": "gap:"#,
+        "gap movement is not inferred",
+    ] {
+        if !json.contains(expected) {
+            return Err(format!("rerun report missing {expected:?}: {json}"));
+        }
+    }
+    for forbidden in ["\"improved\"", "\"closed\"", "\"regressed\""] {
+        if json.contains(forbidden) {
+            return Err(format!(
+                "current-state report must not infer {forbidden}: {json}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn pilot_accepts_python_project_without_ripr_config() -> Result<(), String> {
     let root = workspace_root().join("fixtures/python/basic");
     let out_dir = unique_temp_workspace("pilot-python-basic");

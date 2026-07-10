@@ -4,6 +4,7 @@ Usage:
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
+  ripr rerun --changed-test PATH [--root PATH] [--json] [--out PATH]
   ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
@@ -57,6 +58,7 @@ Quick start:
   ripr doctor
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
+  ripr rerun --changed-test tests/pricing.rs --json
   ripr evidence-health --root .
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
   ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only

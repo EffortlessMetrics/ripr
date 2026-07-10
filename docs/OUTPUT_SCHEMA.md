@@ -14327,6 +14327,55 @@ that no real condition can produce (see #1130 adversarial review).
 
 Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 
+## Targeted rerun output
+
+`ripr rerun --changed-test <path> --json` emits the initial targeted-rerun
+receipt shape:
+
+```json
+{
+  "schema_version": "ripr-targeted-rerun-v1",
+  "state": "current_state_only",
+  "selector": {
+    "changed_test": "tests/pricing.rs",
+    "selected_test_count": 1,
+    "direct_call_names": ["discounted_total"]
+  },
+  "cache": {
+    "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
+    "hits": 2,
+    "misses": 0,
+    "corrupt_ignored": 0,
+    "stores": 0,
+    "store_errors": 0
+  },
+  "seams": [
+    {
+      "canonical_gap_id": "gap:4b5fdc1a2a157b0d",
+      "seam_id": "67fc764ba37d77bd",
+      "file": "src/lib.rs",
+      "line": 2,
+      "owner": "src/lib.rs::discounted_total",
+      "static_class": "weakly_gripped"
+    }
+  ],
+  "authority_boundary": "static evidence only; no before snapshot was supplied, so gap movement is not inferred"
+}
+```
+
+`state` is currently always `current_state_only`: this slice accepts one
+repository-relative changed-test file and returns only seams owned by uniquely
+resolved functions directly called from its parsed tests. It reuses valid file facts but recomputes
+the selected seam/test evidence. It does not infer movement, execute tests or
+mutations, or select a gap from an ambient report. `canonical_gap_id` is
+domain-supplied and nullable; it is never derived from the file, line,
+expression, or test navigation.
+
+The future `--gap`, test-node, explicit-`--before`, invalidation-reason, and
+benchmark-receipt surfaces remain specified by
+[RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md), not implemented by
+this initial changed-test report.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

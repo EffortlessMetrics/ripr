@@ -26,7 +26,7 @@ use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache, WorkspaceState,
+    CacheLoad, CachedSeamLimitInfo, FileFactCacheStats, RepoSeamFactCache, WorkspaceState,
     classified_seam_cache_store_limit, compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
@@ -522,6 +522,111 @@ pub(crate) struct ScopedClassifiedSeamInventory {
     pub(crate) scoped_production_files: Vec<PathBuf>,
     pub(crate) changed_production_files: Vec<PathBuf>,
     pub(crate) immediate_caller_files: Vec<PathBuf>,
+}
+
+/// Cache-backed inventory for one edited test file.
+///
+/// The whole workspace still contributes file facts and ownership context, but
+/// only seams owned by functions directly called from the selected test file
+/// receive fresh relation/evidence/classification work. This intentionally
+/// recomputes selected edges after a test edit rather than serving an invalid
+/// workspace-level classified-seam cache.
+#[derive(Clone, Debug)]
+pub(crate) struct TargetedTestClassifiedSeamInventory {
+    pub(crate) classified: Vec<ClassifiedSeam>,
+    pub(crate) selected_test_count: usize,
+    pub(crate) direct_call_names: Vec<String>,
+    pub(crate) file_fact_cache: FileFactCacheStats,
+}
+
+pub(crate) fn inventory_changed_test_classified_seams_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+    changed_test: &Path,
+) -> Result<TargetedTestClassifiedSeamInventory, String> {
+    let state = collect_workspace_state(root, config)?;
+    let changed_test = normalized_inventory_path(changed_test);
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+
+    let selected_tests = cached
+        .index
+        .tests
+        .iter()
+        .filter(|test| normalized_inventory_path(&test.file) == changed_test)
+        .collect::<Vec<_>>();
+    if selected_tests.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{changed_test}` did not resolve to a parsed test"
+        ));
+    }
+
+    let direct_call_names = selected_tests
+        .iter()
+        .flat_map(|test| {
+            test.calls
+                .iter()
+                .filter(move |call| call.name != test.name)
+                .map(|call| call.name.trim())
+        })
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if direct_call_names.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{changed_test}` has no direct owner-call selector"
+        ));
+    }
+
+    let candidate_functions = cached
+        .index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && direct_call_names.contains(&function.name))
+        .collect::<Vec<_>>();
+    let matched_call_names = candidate_functions
+        .iter()
+        .map(|function| function.name.clone())
+        .collect::<BTreeSet<_>>();
+    if matched_call_names.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{changed_test}` did not resolve a direct production owner"
+        ));
+    }
+    for call_name in &matched_call_names {
+        let matching_owners = candidate_functions
+            .iter()
+            .filter(|function| function.name == *call_name)
+            .count();
+        if matching_owners > 1 {
+            return Err(format!(
+                "targeted rerun changed test `{changed_test}` has ambiguous direct production owner `{call_name}`"
+            ));
+        }
+    }
+    let production_files = candidate_functions
+        .into_iter()
+        .map(|function| function.file.clone())
+        .collect::<Vec<_>>();
+    let seams = inventory_seams_from_index(&production_files, &cached.index)
+        .into_iter()
+        .filter(|seam| {
+            seam.owner()
+                .rsplit("::")
+                .next()
+                .is_some_and(|name| matched_call_names.contains(name))
+        })
+        .collect::<Vec<_>>();
+    let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
+
+    Ok(TargetedTestClassifiedSeamInventory {
+        classified,
+        selected_test_count: selected_tests.len(),
+        direct_call_names: matched_call_names.into_iter().collect(),
+        file_fact_cache: cached.file_fact_cache,
+    })
 }
 
 pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
@@ -2406,5 +2511,102 @@ pub fn check_b(x: i32) -> bool { x < 0 }
             "slice smaller than budget must return None, got {info:?}"
         );
         assert_eq!(classified.len(), 2, "slice should be unchanged");
+    }
+
+    #[test]
+    fn changed_test_inventory_recomputes_only_directly_called_owner_seams() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-owner-selection")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32) -> i32 { if amount >= 100 { amount - 10 } else { amount } }
+pub fn unrelated_total(amount: i32) -> i32 { if amount >= 50 { amount - 5 } else { amount } }
+"#,
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn discounted_total_case() {
+    assert_eq!(discounted_total(100), 90);
+}
+"#,
+        )?;
+
+        let inventory = inventory_changed_test_classified_seams_at_with_config(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+        )?;
+        if inventory.selected_test_count != 1 {
+            return Err(format!(
+                "expected one selected test, got {}",
+                inventory.selected_test_count
+            ));
+        }
+        if inventory.direct_call_names != ["discounted_total".to_string()] {
+            return Err(format!(
+                "unexpected owner-call selection: {:?}",
+                inventory.direct_call_names
+            ));
+        }
+        if inventory.classified.is_empty() {
+            return Err("expected directly called owner seams".to_string());
+        }
+        if inventory
+            .classified
+            .iter()
+            .any(|entry| entry.seam.owner().ends_with("::unrelated_total"))
+        {
+            return Err("unrelated owner seams must not be recomputed".to_string());
+        }
+        if inventory.file_fact_cache.misses == 0 {
+            return Err("cold targeted run should record file-fact misses".to_string());
+        }
+
+        let warm = inventory_changed_test_classified_seams_at_with_config(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+        )?;
+        if warm.file_fact_cache.hits == 0 || warm.file_fact_cache.misses != 0 {
+            return Err(format!(
+                "warm targeted run should reuse all file facts, got {:?}",
+                warm.file_fact_cache
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn changed_test_inventory_refuses_ambiguous_direct_production_owner() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-ambiguous-owner")?;
+        write_file(
+            &root.join("src/first.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount > 0 { amount } else { 0 } }",
+        )?;
+        write_file(
+            &root.join("src/second.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount >= 0 { amount } else { 0 } }",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test] fn same_name_case() { assert_eq!(same_name(1), 1); }",
+        )?;
+
+        let result = inventory_changed_test_classified_seams_at_with_config(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        match result {
+            Err(message) if message.contains("ambiguous direct production owner `same_name`") => {
+                Ok(())
+            }
+            Err(message) => Err(format!("unexpected ambiguity diagnostic: {message}")),
+            Ok(_) => Err("ambiguous direct owner must fail closed".to_string()),
+        }
     }
 }
