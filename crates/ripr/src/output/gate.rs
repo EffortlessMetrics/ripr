@@ -2,6 +2,7 @@ mod exception_policy;
 mod input;
 mod model;
 mod presentation;
+mod repair_route;
 
 use super::gap_decision_ledger::{self, GapRecord};
 #[cfg(test)]
@@ -11,6 +12,9 @@ pub(crate) use model::{GateEvaluateInput, GateMode};
 pub(crate) use presentation::{
     gate_decision_should_fail, gate_decision_status, markdown_path_for, render_gate_decision_json,
     render_gate_decision_markdown,
+};
+use repair_route::{
+    GateRouteSource, build_gate_repair_route, gate_repair_route_is_complete, normalize_route_source,
 };
 use serde_json::Value;
 #[cfg(test)]
@@ -301,6 +305,7 @@ fn candidate_from_guidance_item(
     nearby_test_changed: bool,
     suppressed: bool,
 ) -> GateCandidate {
+    let route_facts = normalize_route_source(GateRouteSource::ReviewCard(item));
     let source_id = item
         .get("id")
         .and_then(Value::as_str)
@@ -339,13 +344,14 @@ fn candidate_from_guidance_item(
         source_id,
         gap_id: None,
         gap_kind: None,
-        canonical_gap_id: canonical_gap_id_from_value(item),
-        seam_id: string_field(item.get("seam_id")),
-        static_class: string_field(item.get("grip_class"))
-            .or_else(|| string_field(item.get("class"))),
+        canonical_gap_id: route_facts.canonical_gap_id.clone(),
+        seam_id: route_facts.seam_id.clone(),
+        gap_state: route_facts.gap_state.clone(),
+        static_class: route_facts.classification.clone(),
         severity: string_field(item.get("severity")),
         placement,
-        missing_discriminator: string_field(item.get("missing_discriminator")),
+        missing_discriminator: route_facts.missing_discriminator.clone(),
+        route_facts,
         assertion_shape: string_field(item.pointer("/suggested_test/assertion_shape")),
         candidate_values: item
             .pointer("/suggested_test/candidate_values")
@@ -373,6 +379,7 @@ fn candidate_from_guidance_item(
 }
 
 fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
+    let route_facts = normalize_route_source(GateRouteSource::GapRecord(record));
     let gap_id = non_empty_string(&record.gap_id);
     let canonical_gap_id = non_empty_string(&record.canonical_gap_id);
     let source_id = gap_id
@@ -385,9 +392,6 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
         .and_then(|projection| non_empty_string(&projection.reason))
         .or_else(|| Some("not_gate_candidate".to_string()));
     let repair_route = record.repair_route.clone();
-    let changed_behavior = repair_route
-        .as_ref()
-        .and_then(|route| route.changed_behavior.clone());
     let assertion_shape = repair_route
         .as_ref()
         .and_then(|route| route.assertion_shape.clone());
@@ -411,12 +415,14 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
         source_id,
         gap_id,
         gap_kind: non_empty_string(&record.kind),
-        canonical_gap_id,
-        seam_id: None,
-        static_class: non_empty_string(&record.kind),
+        canonical_gap_id: route_facts.canonical_gap_id.clone(),
+        seam_id: route_facts.seam_id.clone(),
+        gap_state: route_facts.gap_state.clone(),
+        static_class: route_facts.classification.clone(),
         severity: Some("warning".to_string()),
         placement,
-        missing_discriminator: changed_behavior.clone(),
+        missing_discriminator: route_facts.missing_discriminator.clone(),
+        route_facts,
         assertion_shape,
         candidate_values: Vec::new(),
         recommended_test,
@@ -463,10 +469,13 @@ fn gate_decision(
         &recommendation_calibration,
         &mutation_calibration,
     );
+    let route_limited = candidate_is_policy_eligible_without_route(candidate)
+        && !gate_repair_route_is_complete(candidate);
     let decision = if candidate.suppressed || candidate.configured_off {
         "suppressed"
     } else if !eligible
         && (candidate.static_class.is_none() || candidate.source == "gap_decision_ledger")
+        && !route_limited
     {
         "not_applicable"
     } else if would_block && acknowledgement_label.is_some() {
@@ -489,6 +498,7 @@ fn gate_decision(
             acknowledgement_label: acknowledgement_label.as_deref(),
         },
     );
+    let repair_route = build_gate_repair_route(candidate);
     GateDecision {
         id: format!("ripr-gate-{}", stable_identity(candidate)),
         source: if candidate.source == "summary_only" {
@@ -504,6 +514,7 @@ fn gate_decision(
         gap_kind: candidate.gap_kind.clone(),
         canonical_gap_id: candidate.canonical_gap_id.clone(),
         seam_id: candidate.seam_id.clone(),
+        gap_state: candidate.gap_state.clone(),
         source_id: candidate.source_id.clone(),
         static_class: candidate.static_class.clone(),
         severity: candidate.severity.clone(),
@@ -527,6 +538,7 @@ fn gate_decision(
             recommendation_calibration,
             mutation_calibration,
         },
+        repair_route,
         is_baseline_new,
     }
 }
@@ -549,6 +561,11 @@ fn calibration_for_candidate(
 }
 
 fn candidate_is_policy_eligible(candidate: &GateCandidate) -> bool {
+    candidate_is_policy_eligible_without_route(candidate)
+        && gate_repair_route_is_complete(candidate)
+}
+
+fn candidate_is_policy_eligible_without_route(candidate: &GateCandidate) -> bool {
     if candidate.source == "gap_decision_ledger" {
         return !candidate.suppressed
             && !candidate.configured_off
@@ -687,6 +704,15 @@ fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> Str
         );
     }
     if !context.eligible {
+        if candidate_is_policy_eligible_without_route(candidate)
+            && let Some(limitation) = build_gate_repair_route(candidate).limitation
+        {
+            return format!(
+                "{}: missing {}",
+                limitation.kind,
+                limitation.missing_fields.join(", ")
+            );
+        }
         if candidate.source == "gap_decision_ledger" {
             if !candidate.gap_ledger_gate_candidate {
                 return format!(
@@ -834,12 +860,14 @@ fn compute_new_unsuppressed(
     // Count: decisions d where:
     //   - candidate_class_is_policy_eligible(d.static_class) is true, AND
     //   - d.decision ∈ {"blocking", "advisory"} (suppressed/acknowledged/not_applicable excluded), AND
+    //   - d.repair_route has no named limitation, AND
     //   - if basis=="baseline": d.is_baseline_new is true.
     let count = decisions
         .iter()
         .filter(|d| {
             candidate_class_is_policy_eligible(d.static_class.as_deref())
                 && matches!(d.decision.as_str(), "blocking" | "advisory")
+                && d.repair_route.limitation.is_none()
                 && (!use_baseline_basis || d.is_baseline_new)
         })
         .count();

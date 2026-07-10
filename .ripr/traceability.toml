@@ -4838,13 +4838,35 @@ id = "RIPR-SPEC-0067"
 name = "PR gate use case"
 spec = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
 tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/output/gate/repair_route.rs::tests::complete_route_projects_existing_identity_and_exact_inspection_command",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_names_missing_fields_without_fabricating_fallbacks",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::current_review_fixture_projects_complete_route_without_renderer_inference",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::same_line_seams_keep_distinct_producer_owned_inspection_commands",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::generic_gap_record_evidence_ids_do_not_become_seam_identity",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::blank_gap_record_commands_render_as_null_and_remain_missing",
+  "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_is_advisory_only_and_renders_named_limitation",
+  "xtask/src/verification_contracts.rs::check_verification_contracts"
+]
+fixtures = [
+  "tests/fixtures/verification/ripr/gate-decision.valid.json",
+  "fixtures/boundary_gap/expected/calibrated-gate"
+]
+code = [
+  "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/gate/model.rs",
+  "crates/ripr/src/output/gate/repair_route.rs",
+  "crates/ripr/src/output/gate/presentation.rs",
+  "xtask/src/verification_contracts.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "schemas/ripr/gate-decision.schema.json",
 ]
 metrics = [
   "pr_gate_use_case_status_proposed",
+  "gate_repair_route_completeness",
 ]
 
 [[behavior]]
@@ -6231,6 +6253,7 @@ name = "gate new_unsuppressed receipt field"
 spec = "docs/specs/RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md"
 tests = [
   "crates/ripr/src/output/gate.rs::tests::new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking",
+  "crates/ripr/src/output/gate.rs::tests::new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes",
   "crates/ripr/src/output/gate.rs::tests::new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason",
 ]
 fixtures = [

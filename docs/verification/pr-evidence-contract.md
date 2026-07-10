@@ -76,6 +76,22 @@ target/ripr/review/comments.md
 schemas/ripr/review-comments.schema.json
 ```
 
+Configured gate decisions are a separate pass/fail authority and are validated
+by:
+
+```text
+schemas/ripr/gate-decision.schema.json
+```
+
+Every per-candidate decision contains `repair_route`. A complete route carries
+the canonical gap and seam identities, classification when producer-owned,
+changed owner and behavior, missing discriminator, one tagged related-test or
+explicit production-caller target, focused test intent, verify and receipt
+commands, the exact producer-owned inspection command, and the static-evidence
+boundary. An incomplete route names `incomplete_repair_route` and cannot remain
+policy-eligible. The adapter does not infer caller identity from owner, seam
+identity from evidence-vector order, or an exact command from path and line.
+
 The `comments.json` file is validated by
 `schemas/ripr/review-comments.schema.json`. It separates recommendations by
 placement and policy state:

@@ -25,6 +25,7 @@
         "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
         "suppressed": false
       },
+      "gap_state": "actionable",
       "gate_reason": "new policy-eligible gap has supporting recommendation calibration",
       "id": "ripr-gate-gap-dedf923a13a00573",
       "placement": {
@@ -36,6 +37,26 @@
         "baseline_identity": "gap:dedf923a13a00573",
         "mode": "calibrated-gate",
         "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": "gap:dedf923a13a00573",
+        "changed_behavior": "amount >= discount_threshold",
+        "changed_owner": "pricing::discounted_total",
+        "classification": "weakly_gripped",
+        "inspection_command": "ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json",
+        "limitation": null,
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+        "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_target": {
+          "file": "tests/pricing.rs",
+          "kind": "related_test",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "seam_id": "8f7fa8644fd12280",
+        "test_intent": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "seam_id": "8f7fa8644fd12280",
       "severity": "warning",

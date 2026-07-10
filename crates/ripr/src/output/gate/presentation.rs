@@ -1,7 +1,7 @@
 use super::exception_policy::ExceptionPolicyReport;
 use super::model::{
     CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePolicy,
-    GateSummary, NewUnsuppressed,
+    GateRepairRoute, GateRepairTarget, GateSummary, NewUnsuppressed,
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use serde_json::{Value, json};
@@ -210,6 +210,7 @@ fn decision_json(decision: &GateDecision) -> Value {
         "gate_reason": decision.gate_reason,
         "seam_id": decision.seam_id,
         "source_id": decision.source_id,
+        "gap_state": decision.gap_state,
         "static_class": decision.static_class,
         "severity": decision.severity,
         "placement": {
@@ -222,6 +223,7 @@ fn decision_json(decision: &GateDecision) -> Value {
             "acknowledgement_label": decision.policy.acknowledgement_label,
             "baseline_identity": decision.policy.baseline_identity,
         },
+        "repair_route": repair_route_json(&decision.repair_route),
         "evidence": {
             "missing_discriminator": decision.evidence.missing_discriminator,
             "assertion_shape": decision.evidence.assertion_shape,
@@ -266,6 +268,45 @@ fn decision_json(decision: &GateDecision) -> Value {
         object.insert("gap_kind".to_string(), Value::String(gap_kind.clone()));
     }
     value
+}
+
+pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
+    let repair_target = route.repair_target.as_ref().map(|target| match target {
+        GateRepairTarget::RelatedTest { name, file, line } => json!({
+            "kind": "related_test",
+            "name": name,
+            "file": file,
+            "line": line,
+        }),
+        GateRepairTarget::ProductionCaller { owner, file, line } => json!({
+            "kind": "production_caller",
+            "owner": owner,
+            "file": file,
+            "line": line,
+        }),
+    });
+    let limitation = route.limitation.as_ref().map(|limitation| {
+        json!({
+            "kind": limitation.kind,
+            "missing_fields": limitation.missing_fields,
+            "detail": limitation.detail,
+        })
+    });
+    json!({
+        "canonical_gap_id": route.canonical_gap_id,
+        "seam_id": route.seam_id,
+        "classification": route.classification,
+        "changed_owner": route.changed_owner,
+        "changed_behavior": route.changed_behavior,
+        "missing_discriminator": route.missing_discriminator,
+        "repair_target": repair_target,
+        "test_intent": route.test_intent,
+        "verify_command": route.verify_command,
+        "receipt_command": route.receipt_command,
+        "inspection_command": route.inspection_command,
+        "authority_boundary": route.authority_boundary,
+        "limitation": limitation,
+    })
 }
 
 fn calibration_json(evidence: &CalibrationEvidence) -> Value {

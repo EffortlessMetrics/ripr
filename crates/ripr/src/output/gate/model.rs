@@ -140,16 +140,56 @@ pub(super) struct GateDecision {
     pub(super) gap_kind: Option<String>,
     pub(super) canonical_gap_id: Option<String>,
     pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
     pub(super) source_id: String,
     pub(super) static_class: Option<String>,
     pub(super) severity: Option<String>,
     pub(super) placement: GatePlacement,
     pub(super) policy: GateDecisionPolicy,
     pub(super) evidence: GateEvidence,
+    pub(super) repair_route: GateRepairRoute,
     /// Whether the candidate was absent from the baseline at decision time.
     /// Always `true` for diff-scoped modes (no baseline).
     /// Used when computing `new_unsuppressed.count` in baseline mode.
     pub(super) is_baseline_new: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateRepairRoute {
+    pub(super) canonical_gap_id: Option<String>,
+    pub(super) seam_id: Option<String>,
+    pub(super) classification: Option<String>,
+    pub(super) changed_owner: Option<String>,
+    pub(super) changed_behavior: Option<String>,
+    pub(super) missing_discriminator: Option<String>,
+    pub(super) repair_target: Option<GateRepairTarget>,
+    pub(super) test_intent: Option<String>,
+    pub(super) verify_command: Option<String>,
+    pub(super) receipt_command: Option<String>,
+    pub(super) inspection_command: Option<String>,
+    pub(super) authority_boundary: String,
+    pub(super) limitation: Option<GateRepairRouteLimitation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum GateRepairTarget {
+    RelatedTest {
+        name: String,
+        file: String,
+        line: u64,
+    },
+    ProductionCaller {
+        owner: String,
+        file: Option<String>,
+        line: Option<u64>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateRepairRouteLimitation {
+    pub(super) kind: &'static str,
+    pub(super) missing_fields: Vec<String>,
+    pub(super) detail: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -196,10 +236,12 @@ pub(super) struct GateCandidate {
     pub(super) gap_kind: Option<String>,
     pub(super) canonical_gap_id: Option<String>,
     pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
     pub(super) static_class: Option<String>,
     pub(super) severity: Option<String>,
     pub(super) placement: GatePlacement,
     pub(super) missing_discriminator: Option<String>,
+    pub(super) route_facts: GateRouteFacts,
     pub(super) assertion_shape: Option<String>,
     pub(super) candidate_values: Vec<String>,
     pub(super) recommended_test: Option<String>,
@@ -216,6 +258,22 @@ pub(super) struct GateCandidate {
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct GateRouteFacts {
+    pub(super) canonical_gap_id: Option<String>,
+    pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
+    pub(super) classification: Option<String>,
+    pub(super) changed_owner: Option<String>,
+    pub(super) changed_behavior: Option<String>,
+    pub(super) missing_discriminator: Option<String>,
+    pub(super) repair_target: Option<GateRepairTarget>,
+    pub(super) test_intent: Option<String>,
+    pub(super) verify_command: Option<String>,
+    pub(super) receipt_command: Option<String>,
+    pub(super) inspection_command: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]

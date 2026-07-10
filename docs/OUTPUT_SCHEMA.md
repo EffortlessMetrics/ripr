@@ -7329,13 +7329,12 @@ JSON shape:
   "decisions": [
     {
       "id": "ripr-gate-67fc764ba37d77bd",
-      "source": "gap_decision_ledger",
+      "source": "pr_guidance",
       "decision": "acknowledged",
       "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
-      "gap_id": "gap:pricing",
-      "gap_kind": "MissingBoundaryAssertion",
       "seam_id": "67fc764ba37d77bd",
       "source_id": "ripr-review-67fc764ba37d77bd",
+      "gap_state": "actionable",
       "static_class": "weakly_gripped",
       "severity": "warning",
       "placement": {
@@ -7348,19 +7347,31 @@ JSON shape:
         "acknowledgement_label": "ripr-waive",
         "baseline_identity": null
       },
+      "repair_route": {
+        "canonical_gap_id": "gap:pricing:threshold",
+        "seam_id": "67fc764ba37d77bd",
+        "classification": "weakly_gripped",
+        "changed_owner": "pricing::discounted_total",
+        "changed_behavior": "amount >= discount_threshold",
+        "missing_discriminator": "amount == discount_threshold",
+        "repair_target": {
+          "kind": "related_test",
+          "name": "discounted_total_boundary",
+          "file": "tests/pricing.rs",
+          "line": 12
+        },
+        "test_intent": "Exercise the production caller at the equality boundary and assert the returned discount.",
+        "verify_command": "cargo test -p pricing discounted_total_boundary",
+        "receipt_command": "ripr receipt write --gap gap:pricing:threshold",
+        "inspection_command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+        "authority_boundary": "static_ripr_evidence_only",
+        "limitation": null
+      },
       "evidence": {
         "missing_discriminator": "amount == discount_threshold",
         "assertion_shape": "Assert the returned discount behavior directly.",
         "candidate_values": ["amount == discount_threshold"],
         "recommended_test": "tests/pricing.rs::discounted_total_boundary",
-        "repair_route": {
-          "route_kind": "AddBoundaryAssertion",
-          "target_file": "tests/pricing.rs",
-          "related_test": "tests/pricing.rs::discounted_total_boundary",
-          "assertion_shape": "Assert the returned discount behavior directly.",
-          "changed_behavior": "amount == discount_threshold"
-        },
-        "verification_commands": ["cargo xtask fixtures boundary_gap"],
         "nearby_test_changed": false,
         "suppressed": false,
         "configured_off": false,
@@ -7421,6 +7432,8 @@ Field contract:
 - `decisions[].decision` - one of `blocking`, `acknowledged`, `advisory`,
   `suppressed`, or `not_applicable`.
 - `decisions[].gate_reason` - short policy explanation for human summaries.
+- `decisions[].gap_state` - producer-owned gap state, or `null` when the source
+  cannot supply it.
 - `decisions[].static_class` - source static class copied without rewriting
   seam-grip classes into finding classes.
 - `decisions[].severity` - configured severity from the source surface.
@@ -7431,6 +7444,20 @@ Field contract:
   ID, dedupe-key, and path/line/static-class fallback identities.
 - `decisions[].evidence` - static evidence and optional calibration confidence
   effects used for the candidate.
+- `decisions[].repair_route` - uniform failure-time route object, present on
+  every decision. It carries nullable producer-owned fields for
+  `canonical_gap_id`, `seam_id`, `classification`, `changed_owner`,
+  `changed_behavior`, `missing_discriminator`, tagged `repair_target`,
+  `test_intent`, `verify_command`, `receipt_command`, and exact producer-owned
+  `inspection_command`. A changed owner is not assumed to be a production
+  caller, generic evidence-vector position is not treated as seam identity,
+  and path/line is not manufactured into an exact inspection selector. The
+  `authority_boundary` is `static_ripr_evidence_only`.
+- `decisions[].repair_route.limitation` - `null` only when the route is
+  complete. Otherwise it has kind `incomplete_repair_route`, a closed list of
+  missing fields, and a bounded detail. A candidate that would otherwise be
+  policy-eligible fails closed to advisory visibility when this limitation is
+  present; no renderer invents a fallback identity, location, test, or command.
 - `decisions[].evidence.repair_route` and `verification_commands` - optional
   GapRecord repair route and verification commands. These fields are present
   when the gate decision is driven by a repairable gap ledger record.
@@ -7458,14 +7485,17 @@ where ALL of the following hold:
    (policy-eligible class).
 2. `d.decision ∈ {"blocking","advisory"}` — suppressed, acknowledged, and
    not_applicable candidates are EXCLUDED (they are handled or ineligible).
-3. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
-   `basis == "diff"`: all candidates in 1+2 count (diff scope equals "new").
+3. `d.repair_route.limitation == null`. An advisory decision with
+   `incomplete_repair_route` is visible but is not policy-eligible debt for a
+   downstream threshold.
+4. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
+   `basis == "diff"`: all candidates in 1+2+3 count (diff scope equals "new").
 
 CRITICAL: `count` INCLUDES policy-eligible `advisory` decisions. It is NOT
 equal to `summary.blocking`. In `visible-only` mode every eligible candidate is
 advisory (`blocking=0`) but `count` is the advisory candidate count. An external
-thresholder applies its own policy; `ripr` reports the candidate count
-regardless of its own blocking/advisory label.
+thresholder applies its own policy; `ripr` reports the complete-route candidate
+count regardless of its own blocking/advisory label.
 
 **`basis` values.**
 

@@ -255,14 +255,32 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
                 {
                   "id": "ripr-review-new-line",
                   "seam_id": "new-seam",
+                  "gap_state": "actionable",
                   "grip_class": "weakly_gripped",
                   "severity": "warning",
+                  "owner": "pricing::discounted_total",
+                  "seam": {
+                    "expression": "amount >= discount_threshold",
+                    "file": "src/pricing.rs",
+                    "line": 144
+                  },
                   "missing_discriminator": "amount == discount_threshold",
                   "placement": {"path": "src/pricing.rs", "line": 144},
                   "suggested_test": {
                     "candidate_values": ["amount == discount_threshold"],
-                    "near_test": "above_threshold_gets_discount"
+                    "near_test": "above_threshold_gets_discount",
+                    "related_test": {
+                      "name": "above_threshold_gets_discount",
+                      "file": "tests/pricing.rs",
+                      "line": 12
+                    }
                   },
+                  "llm_guidance": {
+                    "command": "ripr agent brief --root . --seam-id new-seam --json",
+                    "prompt": "Add the equality-boundary discriminator next to the related test.",
+                    "verify_command": "cargo test -p pricing above_threshold_gets_discount"
+                  },
+                  "receipt_command": "ripr receipt write --gap pricing::discount::threshold_equality",
                   "evidence_record": {
                     "canonical_gap_id": "pricing::discount::threshold_equality"
                   }
@@ -743,7 +761,8 @@ fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
 }
 
 #[test]
-fn gate_acknowledgeable_blocks_safe_gap_ledger_candidate() -> Result<(), String> {
+fn gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity()
+-> Result<(), String> {
     let dir = temp_dir("gate-gap-ledger-block")?;
     let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
     let input = GateEvaluateInput {
@@ -774,8 +793,15 @@ fn gate_acknowledgeable_blocks_safe_gap_ledger_candidate() -> Result<(), String>
     let value: Value = serde_json::from_str(&rendered)
         .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
 
-    assert_eq!(report.status, "blocked");
-    assert_eq!(report.summary.blocking, 1);
+    assert_eq!(report.status, "advisory");
+    assert_eq!(report.summary.blocking, 0);
+    assert_eq!(report.summary.advisory, 1);
+    assert_eq!(report.decisions[0].decision, "advisory");
+    assert!(
+        report.decisions[0]
+            .gate_reason
+            .contains("incomplete_repair_route")
+    );
     assert_eq!(report.decisions[0].source, "gap_decision_ledger");
     assert_eq!(report.decisions[0].gap_id.as_deref(), Some("gap:pricing"));
     assert_eq!(
@@ -1012,11 +1038,16 @@ fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String
         let rendered_md = render_gate_decision_markdown(&report);
         let expected_dir =
             PathBuf::from("fixtures/boundary_gap/expected/calibrated-gate").join(case.name);
-        let expected_json = read_repo_fixture(&expected_dir.join("gate-decision.json"))?;
-        let expected_md = read_repo_fixture(&expected_dir.join("gate-decision.md"))?;
-
-        assert_eq!(rendered_json, expected_json, "{} JSON drifted", case.name);
-        assert_eq!(rendered_md, expected_md, "{} Markdown drifted", case.name);
+        assert_repo_fixture(
+            &expected_dir.join("gate-decision.json"),
+            &rendered_json,
+            &format!("{} JSON", case.name),
+        )?;
+        assert_repo_fixture(
+            &expected_dir.join("gate-decision.md"),
+            &rendered_md,
+            &format!("{} Markdown", case.name),
+        )?;
     }
 
     Ok(())
@@ -1369,6 +1400,7 @@ fn given_candidate_without_any_identity_then_baseline_identity_uses_path_line_cl
         gap_kind: None,
         canonical_gap_id: None,
         seam_id: None,
+        gap_state: None,
         static_class: Some("weakly_gripped".to_string()),
         severity: Some("warning".to_string()),
         placement: GatePlacement {
@@ -1376,6 +1408,7 @@ fn given_candidate_without_any_identity_then_baseline_identity_uses_path_line_cl
             line: Some(88),
         },
         missing_discriminator: None,
+        route_facts: GateRouteFacts::default(),
         assertion_shape: None,
         candidate_values: Vec::new(),
         recommended_test: None,
@@ -1643,7 +1676,7 @@ fn given_gap_ledger_record_with_safe_predicate_but_missing_anchor_then_reason_ci
 }
 
 #[test]
-fn given_gap_ledger_record_in_baseline_check_with_new_identity_then_reason_cites_baseline_check_ledger()
+fn given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails_closed()
 -> Result<(), String> {
     let dir = temp_dir("gate-gap-ledger-baseline-check-new")?;
     let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
@@ -1677,15 +1710,14 @@ fn given_gap_ledger_record_in_baseline_check_with_new_identity_then_reason_cites
     };
 
     let report = build_gate_decision_report(&input)?;
-    assert_eq!(report.status, "blocked");
-    assert_eq!(report.decisions[0].decision, "blocking");
+    assert_eq!(report.status, "advisory");
+    assert_eq!(report.decisions[0].decision, "advisory");
     assert_eq!(report.decisions[0].source, "gap_decision_ledger");
     assert!(
-        report.decisions[0].gate_reason.contains("baseline-check")
-            && report.decisions[0]
-                .gate_reason
-                .contains("gap decision ledger"),
-        "expected baseline-check + gap ledger reason, got {:?}",
+        report.decisions[0]
+            .gate_reason
+            .contains("incomplete_repair_route"),
+        "expected fail-closed route reason, got {:?}",
         report.decisions[0].gate_reason,
     );
     let _ = fs::remove_dir_all(dir);
@@ -2005,10 +2037,32 @@ fn given_cap_demoted_summary_only_gap_when_gate_evaluated_then_blocking_not_advi
                 {
                   "id": "cap-demoted-gap",
                   "seam_id": "cap-demoted-seam",
+                  "canonical_gap_id": "gap:cap-demoted",
+                  "gap_state": "actionable",
                   "grip_class": "weakly_exposed",
                   "severity": "warning",
+                  "owner": "d::changed_caller",
+                  "seam": {
+                    "expression": "changed_caller emits real_blocker_value",
+                    "file": "src/d.rs",
+                    "line": 40
+                  },
                   "missing_discriminator": "real_blocker_value",
                   "placement": {"path": "src/d.rs", "line": 40},
+                  "suggested_test": {
+                    "intent": "Add one focused discriminator test.",
+                    "related_test": {
+                      "name": "changed_caller_observes_value",
+                      "file": "tests/d.rs",
+                      "line": 12
+                    }
+                  },
+                  "llm_guidance": {
+                    "command": "ripr agent brief --root . --seam-id cap-demoted-seam --json",
+                    "prompt": "Exercise d::changed_caller and assert real_blocker_value.",
+                    "verify_command": "cargo test -p d changed_caller_observes_value"
+                  },
+                  "receipt_command": "ripr receipt write --gap gap:cap-demoted",
                   "summary_reason": "inline_comment_cap_reached"
                 }
               ],
@@ -2104,6 +2158,63 @@ fn new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking
         report.new_unsuppressed.reason.is_none(),
         "no reason expected for clean diff run",
     );
+    Ok(())
+}
+
+#[test]
+fn new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes()
+-> Result<(), String> {
+    let dir = temp_dir("gate-incomplete-route-count")?;
+    let source = read_repo_fixture(Path::new(
+        "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+    ))?;
+    let mut guidance: Value = serde_json::from_str(&source)
+        .map_err(|err| format!("parse current PR-guidance fixture: {err}"))?;
+    let verify = guidance
+        .pointer_mut("/comments/0/llm_guidance/verify_command")
+        .ok_or_else(|| "current PR-guidance fixture lacks verify command".to_string())?;
+    *verify = Value::Null;
+    let guidance_text = serde_json::to_string_pretty(&guidance)
+        .map_err(|err| format!("render incomplete PR guidance: {err}"))?;
+    let guidance_path = write_temp_json(&dir, "comments.json", &guidance_text)?;
+    let mut input = fixture_input(GateMode::Acknowledgeable);
+    input.root = dir.clone();
+    input.pr_guidance = Some(
+        guidance_path
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf(),
+    );
+
+    let report = build_gate_decision_report(&input)?;
+    let decision = report
+        .decisions
+        .first()
+        .ok_or_else(|| "expected one incomplete gate decision".to_string())?;
+
+    if decision.decision != "advisory" {
+        return Err(format!(
+            "incomplete route must stay advisory, got {}",
+            decision.decision
+        ));
+    }
+    if decision
+        .repair_route
+        .limitation
+        .as_ref()
+        .map(|item| item.kind)
+        != Some("incomplete_repair_route")
+    {
+        return Err("incomplete route must name its limitation".to_string());
+    }
+    if report.new_unsuppressed.count != 0 {
+        return Err(format!(
+            "incomplete route must not count as new policy-eligible debt, got {}",
+            report.new_unsuppressed.count
+        ));
+    }
+
+    let _ = fs::remove_dir_all(dir);
     Ok(())
 }
 
@@ -2235,6 +2346,18 @@ fn read_repo_fixture(path: &Path) -> Result<String, String> {
         .map_err(|err| format!("read {} failed: {err}", resolved.display()))
 }
 
+fn assert_repo_fixture(path: &Path, rendered: &str, label: &str) -> Result<(), String> {
+    let resolved = repo_root().join(path);
+    if std::env::var("RIPR_UPDATE_FIXTURES").is_ok() {
+        fs::write(&resolved, rendered)
+            .map_err(|err| format!("write {} failed: {err}", resolved.display()))?;
+        return Ok(());
+    }
+    let expected = read_repo_fixture(path)?;
+    assert_eq!(rendered, expected, "{label} drifted");
+    Ok(())
+}
+
 const PR_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
       "summary": {"unchanged_tests": true},
@@ -2339,8 +2462,10 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
           "repair_route": {
             "route_kind": "AddBoundaryAssertion",
             "target_file": "tests/pricing.rs",
+            "target_line": 12,
             "related_test": "tests/pricing.rs::above_threshold_gets_discount",
             "assertion_shape": "assert_eq!(price(threshold), discounted)",
+            "missing_discriminator": "amount == discount_threshold",
             "changed_behavior": "amount == discount_threshold"
           },
           "anchor": {
@@ -2349,6 +2474,7 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
             "owner": "price",
             "dedupe_fingerprint": "gap:pricing"
           },
+          "evidence_ids": ["seam-pricing"],
           "projection_eligibility": {
             "gate_candidate": {
               "eligible": true,
@@ -2356,6 +2482,7 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
             }
           },
           "verification_commands": ["cargo xtask fixtures boundary_gap"],
+          "receipt_command": "ripr receipt write --gap pricing::discount::threshold",
           "safe_gate_predicate": {
             "policy_target_enabled": true,
             "suppressed": false,

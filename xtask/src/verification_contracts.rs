@@ -62,6 +62,30 @@ const CONTRACTS: &[VerificationContract] = &[
             "limits_note",
         ],
     },
+    VerificationContract {
+        schema_path: "schemas/ripr/gate-decision.schema.json",
+        fixture_path: "tests/fixtures/verification/ripr/gate-decision.valid.json",
+        doc_path: "docs/OUTPUT_SCHEMA.md",
+        doc_markers: &[
+            "schema_version",
+            "tool",
+            "status",
+            "mode",
+            "root",
+            "decisions[]",
+            "repair_route",
+            "canonical_gap_id",
+            "seam_id",
+            "gap_state",
+            "changed_owner",
+            "repair_target",
+            "verify_command",
+            "receipt_command",
+            "inspection_command",
+            "authority_boundary",
+            "incomplete_repair_route",
+        ],
+    },
 ];
 
 pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String> {
@@ -81,6 +105,7 @@ pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String
         "schemas/badges/shields-endpoint.schema.json",
         "schemas/ripr/pr-evidence.schema.json",
         "schemas/ripr/review-comments.schema.json",
+        "schemas/ripr/gate-decision.schema.json",
     ] {
         if !readme.contains(required) {
             violations.push(format!("{VERIFICATION_README} does not link `{required}`"));
