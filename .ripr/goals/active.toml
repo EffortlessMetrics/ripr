@@ -112,7 +112,7 @@ commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "analysis/field-constant-observation"
-status = "ready"
+status = "done"
 branch = "analysis/field-constant-observation"
 stackable = false
 acceptance = "Conservative field assignment and named-constant observation supports safe equality boundaries, pins positive and negative fixtures, and names an unresolved limitation instead of an ineffective recommendation."
@@ -131,7 +131,7 @@ id = "perf/targeted-rerun"
 status = "blocked"
 branch = "perf/targeted-rerun"
 stackable = false
-blocked_by = ["analysis/field-constant-observation", "analysis/constructor-field-observation"]
+blocked_by = ["analysis/constructor-field-observation"]
 acceptance = "A safe first-class targeted rerun documents cache keys/invalidation, reports reuse status, preserves identity/receipt semantics, and records a reproducible benchmark."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
