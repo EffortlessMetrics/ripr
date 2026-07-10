@@ -76,6 +76,12 @@ pub(crate) struct ValueEnvFacts {
     /// invalidations so later shadows do not erase earlier safe calls.
     struct_field_bindings: BTreeMap<String, StructFieldBinding>,
     struct_field_invalidations: BTreeMap<String, Vec<SourcePosition>>,
+    /// Direct `IDENT.field = VALUE` writes in the same test. The
+    /// binding and write positions keep these facts local to the
+    /// exact object, field, and owner-call ordering.
+    field_assignments: BTreeMap<(String, String), Vec<FieldAssignmentBinding>>,
+    local_binding_positions: BTreeMap<String, Vec<SourcePosition>>,
+    field_assignment_invalidations: BTreeMap<String, Vec<SourcePosition>>,
     /// Bare `Path::new(...)` / `PathBuf::from(...)` only count when
     /// the source file imports the std path type by that exact name
     /// and does not define a same-file shadow. Fully qualified std
@@ -88,6 +94,12 @@ pub(crate) struct ValueEnvFacts {
 struct StructFieldBinding {
     position: SourcePosition,
     fields: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FieldAssignmentBinding {
+    position: SourcePosition,
+    values: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,6 +129,15 @@ impl ValueEnvFacts {
             .unwrap_or_default();
         let (struct_field_bindings, struct_field_invalidations) =
             extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
+        let local_binding_positions = extract_local_binding_positions(&body_clean, test.start_line);
+        let field_assignments =
+            extract_field_assignments(&body_clean, test.start_line, &module_constants);
+        let field_assignment_invalidations = field_assignment_invalidations(
+            &body_clean,
+            test.start_line,
+            &test_param_names,
+            &local_binding_positions,
+        );
         Self {
             body_clean,
             let_bindings,
@@ -126,6 +147,9 @@ impl ValueEnvFacts {
             module_constants,
             struct_field_bindings,
             struct_field_invalidations,
+            field_assignments,
+            local_binding_positions,
+            field_assignment_invalidations,
             bare_std_path_imported: path_constructor_imports.path,
             bare_std_path_buf_imported: path_constructor_imports.path_buf,
         }
@@ -183,6 +207,27 @@ impl<'a> ValueEnv<'a> {
         self.resolve_at_position(arg, call_position(call_line, call_name, call_text))
     }
 
+    pub(crate) fn field_assignment_value_unresolved_at_call(
+        &self,
+        arg: &str,
+        call_line: usize,
+        call_name: &str,
+        call_text: &str,
+    ) -> bool {
+        let call_position = call_position(call_line, call_name, call_text);
+        let arg = arg.trim().trim_end_matches([',', ';']);
+        let arg = unwrap_shared_borrow(arg).unwrap_or(arg);
+        let Some((object, field)) = field_projection(arg) else {
+            return false;
+        };
+        let Some(assignment) = self.field_assignment_candidate_at(object, field, call_position)
+        else {
+            return false;
+        };
+        assignment.values.is_empty()
+            || self.field_assignment_is_invalidated(object, assignment.position, call_position)
+    }
+
     fn resolve_at_position(
         &self,
         arg: &str,
@@ -223,6 +268,20 @@ impl<'a> ValueEnv<'a> {
         // chars, simple paths.
         if looks_like_literal(expr) {
             return vec![(expr.to_string(), ValueContext::FunctionArgument)];
+        }
+        if let Some((object, field)) = field_projection(expr)
+            && let Some(assignment) =
+                self.field_assignment_candidate_at(object, field, call_position)
+        {
+            if self.field_assignment_is_invalidated(object, assignment.position, call_position) {
+                return Vec::new();
+            }
+            return assignment
+                .values
+                .iter()
+                .cloned()
+                .map(|value| (value, ValueContext::FunctionArgument))
+                .collect();
         }
         if let Some((object, field)) = field_projection(expr)
             && let Some(binding) = self.facts.struct_field_bindings.get(object)
@@ -272,6 +331,50 @@ impl<'a> ValueEnv<'a> {
             return vec![(value.clone(), ValueContext::FunctionArgument)];
         }
         Vec::new()
+    }
+
+    fn field_assignment_candidate_at(
+        &self,
+        object: &str,
+        field: &str,
+        call_position: SourcePosition,
+    ) -> Option<&FieldAssignmentBinding> {
+        let local_binding = self
+            .facts
+            .local_binding_positions
+            .get(object)?
+            .iter()
+            .copied()
+            .filter(|position| position.at_or_before(call_position))
+            .max_by_key(|position| (position.line, position.column))?;
+        let assignment = self
+            .facts
+            .field_assignments
+            .get(&(object.to_string(), field.to_string()))?
+            .iter()
+            .filter(|assignment| {
+                local_binding.at_or_before(assignment.position)
+                    && assignment.position.at_or_before(call_position)
+            })
+            .max_by_key(|assignment| (assignment.position.line, assignment.position.column))?;
+        Some(assignment)
+    }
+
+    fn field_assignment_is_invalidated(
+        &self,
+        object: &str,
+        assignment_position: SourcePosition,
+        call_position: SourcePosition,
+    ) -> bool {
+        self.facts
+            .field_assignment_invalidations
+            .get(object)
+            .is_some_and(|positions| {
+                positions.iter().any(|position| {
+                    assignment_position.at_or_before(*position)
+                        && position.at_or_before(call_position)
+                })
+            })
     }
 
     /// Builder-method facts for the test body. The method name must
@@ -614,6 +717,223 @@ fn extract_struct_field_bindings(
         }
     }
     (out, invalidations)
+}
+
+fn extract_local_binding_positions(
+    body: &str,
+    start_line: usize,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let mut bindings: BTreeMap<String, Vec<SourcePosition>> = BTreeMap::new();
+    for start in find_all(body, "let ") {
+        let after_let = &body[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, _) = stmt.split_at(eq_idx);
+        let Some((ident, _is_mut)) = let_binding_ident(lhs) else {
+            continue;
+        };
+        bindings
+            .entry(ident.to_string())
+            .or_default()
+            .push(position_at_offset(body, start, start_line));
+    }
+    bindings
+}
+
+fn extract_field_assignments(
+    body: &str,
+    start_line: usize,
+    module_constants: &BTreeMap<String, String>,
+) -> BTreeMap<(String, String), Vec<FieldAssignmentBinding>> {
+    let mut assignments: BTreeMap<(String, String), Vec<FieldAssignmentBinding>> = BTreeMap::new();
+    let mut line_offset = 0;
+    for line in body.lines() {
+        let mut segment_offset = 0;
+        for segment in line.split(';') {
+            let leading = segment.len().saturating_sub(segment.trim_start().len());
+            let statement = segment.trim().trim_start_matches('{').trim();
+            let Some(eq_idx) = first_single_eq(statement) else {
+                segment_offset += segment.len() + 1;
+                continue;
+            };
+            let (lhs, rhs) = statement.split_at(eq_idx);
+            let Some((object, field)) = field_projection(lhs.trim()) else {
+                segment_offset += segment.len() + 1;
+                continue;
+            };
+            let rhs = rhs[1..].trim();
+            let assignment_offset = line_offset + segment_offset + leading;
+            let values = if is_unconditional_test_statement(body, assignment_offset) {
+                resolve_field_assignment_values(rhs, module_constants)
+            } else {
+                Vec::new()
+            };
+            assignments
+                .entry((object.to_string(), field.to_string()))
+                .or_default()
+                .push(FieldAssignmentBinding {
+                    position: position_at_offset(body, assignment_offset, start_line),
+                    values,
+                });
+            segment_offset += segment.len() + 1;
+        }
+        line_offset += line.len() + 1;
+    }
+    assignments
+}
+
+fn resolve_field_assignment_values(
+    rhs: &str,
+    module_constants: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let rhs = rhs.trim();
+    if looks_like_literal(rhs) {
+        return vec![rhs.to_string()];
+    }
+    if module_constants.contains_key(rhs) {
+        return vec![rhs.to_string()];
+    }
+    let Some((constant, operator, offset)) = split_constant_offset(rhs) else {
+        return Vec::new();
+    };
+    let Some(base) = module_constants
+        .get(constant)
+        .and_then(|value| parse_integer_literal(value))
+    else {
+        return Vec::new();
+    };
+    let Some(offset) = parse_integer_literal(offset) else {
+        return Vec::new();
+    };
+    let value = match operator {
+        '+' => base.checked_add(offset),
+        '-' => base.checked_sub(offset),
+        _ => None,
+    };
+    value
+        .map(|value| vec![value.to_string()])
+        .unwrap_or_default()
+}
+
+fn split_constant_offset(rhs: &str) -> Option<(&str, char, &str)> {
+    for operator in ['+', '-'] {
+        let Some(index) = rhs
+            .char_indices()
+            .find_map(|(index, ch)| (ch == operator && index > 0).then_some(index))
+        else {
+            continue;
+        };
+        let (constant, offset) = rhs.split_at(index);
+        let constant = constant.trim();
+        let offset = offset[operator.len_utf8()..].trim();
+        if is_simple_identifier(constant) && !offset.is_empty() {
+            return Some((constant, operator, offset));
+        }
+    }
+    None
+}
+
+fn parse_integer_literal(value: &str) -> Option<i128> {
+    let normalized: String = value.trim().chars().filter(|ch| *ch != '_').collect();
+    normalized.parse::<i128>().ok()
+}
+
+fn is_unconditional_test_statement(body: &str, offset: usize) -> bool {
+    let mut depth = 0usize;
+    for ch in body[..offset.min(body.len())].chars() {
+        match ch {
+            '{' => depth = depth.saturating_add(1),
+            '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    depth == 1
+}
+
+fn field_assignment_invalidations(
+    body: &str,
+    start_line: usize,
+    invalid_idents: &[String],
+    local_bindings: &BTreeMap<String, Vec<SourcePosition>>,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let mutable_borrows = mutable_borrow_positions(body, start_line);
+    let mut invalidations: BTreeMap<String, Vec<SourcePosition>> = invalid_idents
+        .iter()
+        .map(|ident| {
+            (
+                ident.clone(),
+                vec![SourcePosition {
+                    line: start_line,
+                    column: 0,
+                }],
+            )
+        })
+        .collect();
+    for ident in local_bindings.keys() {
+        for position in non_simple_let_shadowing_lines(body, ident, start_line)
+            .into_iter()
+            .chain(non_let_shadowing_lines(body, ident, start_line))
+            .chain(
+                mutable_borrows
+                    .get(ident)
+                    .into_iter()
+                    .flat_map(|positions| positions.iter().copied()),
+            )
+        {
+            push_invalidation(&mut invalidations, ident, position);
+        }
+    }
+    invalidations
+}
+
+fn mutable_borrow_positions(
+    body: &str,
+    start_line: usize,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let bytes = body.as_bytes();
+    let mut positions: BTreeMap<String, Vec<SourcePosition>> = BTreeMap::new();
+    for (offset, ch) in body.char_indices() {
+        if ch != '&' {
+            continue;
+        }
+        let mut cursor = offset + 1;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        let Some(after_mut) = body.get(cursor..).and_then(|rest| rest.strip_prefix("mut")) else {
+            continue;
+        };
+        let after_mut_offset = body.len().saturating_sub(after_mut.len());
+        if !bytes
+            .get(after_mut_offset)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            continue;
+        }
+        cursor = after_mut_offset;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        let ident_len = body[cursor..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let Some(ident) = body.get(cursor..cursor + ident_len) else {
+            continue;
+        };
+        if !is_simple_identifier(ident) {
+            continue;
+        }
+        positions
+            .entry(ident.to_string())
+            .or_default()
+            .push(position_at_offset(body, offset, start_line));
+    }
+    positions
 }
 
 fn push_invalidation(

@@ -251,6 +251,12 @@ fn activate_evidence(
     }
     sort_value_facts(&mut observed);
 
+    let field_assignment_value_unresolved = observed.is_empty()
+        && !owner_name.is_empty()
+        && related.iter().any(|indexed| {
+            field_assignment_value_unresolved_for_test(seam, indexed, index, owner_name)
+        });
+
     let boundary_equality_observed = owner_fn.is_some_and(|owner_fn| {
         seam.kind() == SeamKind::PredicateBoundary
             && related
@@ -334,6 +340,14 @@ fn activate_evidence(
         } else if helper_value_insensitive_owner_call {
             format!(
                 "Observed helper owner call for value-insensitive seam `{}`",
+                seam.expression()
+                    .lines()
+                    .next()
+                    .unwrap_or(seam.expression())
+            )
+        } else if field_assignment_value_unresolved {
+            format!(
+                "Field assignment value is unresolved for seam `{}`; direct field writes only support unconditional source-ordered assignments of literals and same-file literal constants with bounded +/- integer offsets and no intervening mutable borrow",
                 seam.expression()
                     .lines()
                     .next()
@@ -468,6 +482,37 @@ fn observed_value_facts_for_test(
     // that filter.
     observed.extend(env.builder_facts());
     observed
+}
+
+fn field_assignment_value_unresolved_for_test(
+    seam: &RepoSeam,
+    indexed: &CompactTest<'_>,
+    index: &RustIndex,
+    owner_name: &str,
+) -> bool {
+    let selection = observed_argument_selection(seam, index, owner_name);
+    let ObservedArgumentSelection::ArgumentOperands(operands) = selection else {
+        return false;
+    };
+    let value_facts = indexed
+        .value_facts
+        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let env = super::value_resolution::ValueEnv::new(seam, value_facts);
+    indexed.test.calls.iter().any(|call| {
+        if call.name != owner_name {
+            return false;
+        }
+        let Some(args) = call_arguments(&call.text, owner_name) else {
+            return false;
+        };
+        operands.iter().any(|operand| {
+            let Some(arg) = args.get(operand.index) else {
+                return false;
+            };
+            let arg = projected_argument_expression(arg, operand.projection.as_deref());
+            env.field_assignment_value_unresolved_at_call(&arg, call.line, &call.name, &call.text)
+        })
+    })
 }
 
 fn has_direct_owner_call(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
@@ -743,6 +788,10 @@ fn projected_argument_expression(arg: &str, projection: Option<&str>) -> String 
     };
     if is_boundary_operand_identifier(arg) {
         format!("{arg}.{field}")
+    } else if let Some(borrowed) = arg.strip_prefix('&').map(str::trim)
+        && is_boundary_operand_identifier(borrowed)
+    {
+        format!("&{borrowed}.{field}")
     } else {
         arg.to_string()
     }

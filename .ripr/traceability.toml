@@ -17,7 +17,16 @@ tests = [
   "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/output/human.rs",
   "crates/ripr/src/output/json",
-  "crates/ripr/tests/cli_smoke.rs"
+  "crates/ripr/tests/cli_smoke.rs",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_direct_field_assignments_from_named_constant_boundaries_then_values_are_observed",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_other_object_or_field_assignments_then_boundary_value_is_not_credited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_similarly_named_constant_then_equality_boundary_stays_missing",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_assignment_only_in_unrelated_helper_or_test_then_value_is_not_credited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_direct_field_assignment_with_opaque_rhs_then_names_field_assignment_limitation",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_control_flow_nested_field_assignment_then_boundary_value_is_not_credited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_mutable_borrow_after_field_assignment_then_stale_value_is_not_credited",
+  "crates/ripr/src/analysis/value_resolution.rs::tests::field_assignment_named_constant_values_are_exact_and_bounded",
+  "crates/ripr/src/analysis/value_resolution.rs::tests::field_assignment_values_fail_closed_for_unresolved_or_ambiguous_expressions"
 ]
 fixtures = [
   "fixtures/boundary_gap",
@@ -1560,6 +1569,9 @@ tests = [
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_marks_opaque_seams_as_static_limitation_work",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_direct_field_assignment_with_opaque_rhs_then_names_field_assignment_limitation",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_control_flow_nested_field_assignment_then_boundary_value_is_not_credited",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_mutable_borrow_after_field_assignment_then_stale_value_is_not_credited",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_carries_shared_evidence_record_projection",

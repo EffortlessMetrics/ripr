@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Fixed
+
+- Rust equality-boundary analysis now credits exact, source-ordered direct
+  field assignments from same-file literal constants and bounded `+/-` integer
+  offsets. Other owners, fields, similarly named constants, helper-only writes,
+  control-flow-nested writes, values invalidated by an intervening mutable
+  borrow, and opaque expressions remain fail-closed; unsupported direct writes
+  report `field_assignment_value_unresolved` instead of an ineffective repair
+  route.
+
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 
 Release date: staged (unreleased).

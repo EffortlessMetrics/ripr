@@ -1103,7 +1103,9 @@ fn push_stage_limitation(
 
 fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'static str {
     let reason = reason.to_ascii_lowercase();
-    if reason.contains("cross-file")
+    if reason.contains("field assignment value is unresolved") {
+        "field_assignment_value_unresolved"
+    } else if reason.contains("cross-file")
         || reason.contains("cross file")
         || reason.contains("unresolved constant")
         || reason.contains("constant boundary")
@@ -1171,6 +1173,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
             "analysis/local-computed-boundary-operand-resolution"
         }
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
+        "field_assignment_value_unresolved" => "analysis/field-assignment-value-resolution",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
         "opaque_helper_call" => "analysis/oracle-semantics-audit-fixes",
@@ -2743,6 +2746,12 @@ mod tests {
             (
                 "activate",
                 "unknown",
+                "Field assignment value is unresolved for seam `file.version == SUPPORTED_VERSION`",
+                "field_assignment_value_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
                 "Boundary activation operand is iterator-derived for seam `idx >= offset`; add analyzer support for iterator boundary operand resolution before emitting an actionable repair packet",
                 "activation_boundary_input_unresolved",
             ),
@@ -2870,6 +2879,10 @@ mod tests {
             (
                 "activation_value_unresolved",
                 "analysis/value-resolution-audit-fixes",
+            ),
+            (
+                "field_assignment_value_unresolved",
+                "analysis/field-assignment-value-resolution",
             ),
             (
                 "cross_file_constant_unresolved",

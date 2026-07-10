@@ -407,6 +407,12 @@ Downstream surfaces may use these rows to explain why a canonical item is
 blocked by analyzer work, but must not count them as user test debt or infer a
 focused repair action from a raw `static_unknown` finding.
 
+The activation limitation category `field_assignment_value_unresolved` routes
+to `analysis/field-assignment-value-resolution`. It names a direct field write
+whose value RIPR cannot safely resolve. This limitation remains non-actionable;
+renderers must not substitute the broader `activation_value_unresolved` label
+or recommend a boundary test that the current analyzer cannot credit.
+
 When `canonical_item.gap_state` is `actionable`, `canonical_item.repair_route`
 must be a structured object with:
 
@@ -435,6 +441,7 @@ count by itself and it does not claim mutation execution.
 | Record carries identity, evidence path, recommendation, actionability, and calibration placeholder | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
 | Unknown stages become static limitations | `evidence_record_names_static_limitations_from_unknown_stages` |
 | Opaque classification is static limitation work | `evidence_record_marks_opaque_seams_as_static_limitation_work` |
+| Unsupported direct field assignments use their named limitation and analyzer route | `evidence_record_normalizes_static_limitation_categories` |
 | Repo exposure schema and metrics remain present | `json_carries_schema_version_scope_and_metrics` |
 | Repo exposure carries existing seam fields plus the new record | `json_carries_full_classified_record` |
 | Evidence record carries raw findings and canonical item alignment fields | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |

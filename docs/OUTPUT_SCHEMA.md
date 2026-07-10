@@ -2388,9 +2388,15 @@ Field contract:
   `activation_overlap` is a static tie-breaker from already observed call
   values, such as a predicate-boundary equality call. `related_tests_total` is
   unaffected by ranking.
-- `seams[].observed_values` — literal scalar values seen in owner-call
-  arguments across related tests. Bare identifiers and helper-derived
-  values are intentionally excluded.
+- `seams[].observed_values` — statically resolved scalar values seen in
+  owner-call arguments across related tests. In addition to direct literals,
+  Rust predicate boundaries may carry exact values from source-ordered direct
+  field assignments whose right-hand side is a same-file literal constant or
+  that constant plus/minus a bounded integer offset. The write must be an
+  unconditional function-body statement with no intervening explicit mutable
+  borrow before the owner call. Other bare identifiers, helper-derived values,
+  conditional writes, invalidated values, and ambiguous field writes are
+  intentionally excluded.
 - `seams[].missing_discriminators` — per-rule hypothesis strings (e.g.,
   the equality-boundary case for predicate seams). Empty when no rule
   fires.
@@ -2433,6 +2439,9 @@ Field contract:
   unknown states. Downstream canonical-item consumers may use these category
   and repair-route rows to explain why an item is not actionable, but must not
   treat them as user test debt.
+  `field_assignment_value_unresolved` routes to
+  `analysis/field-assignment-value-resolution` when a direct Rust field write
+  is present but its value is outside the safe literal/constant-offset subset.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.

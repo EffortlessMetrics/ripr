@@ -609,3 +609,155 @@ fn allowed_builder_method_names_includes_required_discriminator_tokens() {
     assert!(allowed.contains("amount"));
     assert!(allowed.contains("discount_threshold"));
 }
+
+#[test]
+fn field_assignment_named_constant_values_are_exact_and_bounded() -> Result<(), String> {
+    let constants = BTreeMap::from([("SUPPORTED_VERSION".to_string(), "1".to_string())]);
+    for (expression, expected) in [
+        ("SUPPORTED_VERSION", vec!["SUPPORTED_VERSION".to_string()]),
+        ("SUPPORTED_VERSION - 1", vec!["0".to_string()]),
+        ("SUPPORTED_VERSION + 1", vec!["2".to_string()]),
+    ] {
+        let actual = resolve_field_assignment_values(expression, &constants);
+        if actual != expected {
+            return Err(format!(
+                "unexpected field-assignment resolution for {expression}: {actual:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn field_assignment_values_fail_closed_for_unresolved_or_ambiguous_expressions()
+-> Result<(), String> {
+    let constants = BTreeMap::from([
+        ("SUPPORTED_VERSION".to_string(), "1".to_string()),
+        ("SUPPORTED_VERSION_COPY".to_string(), "1".to_string()),
+    ]);
+    if resolve_field_assignment_values("SUPPORTED_VERSION_COPY", &constants)
+        != vec!["SUPPORTED_VERSION_COPY".to_string()]
+    {
+        return Err("similarly named constants must preserve their exact identity".to_string());
+    }
+    for expression in [
+        "UNDECLARED_VERSION",
+        "supported_version()",
+        "SUPPORTED_VERSION + offset",
+        "SUPPORTED_VERSION * 2",
+    ] {
+        if !resolve_field_assignment_values(expression, &constants).is_empty() {
+            return Err(format!(
+                "unsupported field-assignment expression must stay unresolved: {expression}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn field_assignment_control_flow_and_mutable_alias_guards_are_conservative() -> Result<(), String> {
+    let body = r#"fn test() {
+        file.body_model_version = SUPPORTED_VERSION;
+        if runtime_flag() {
+            file.body_model_version = SUPPORTED_VERSION;
+        }
+        mutate(&mut file);
+        mutate(& mut file);
+        mutate(&mut filename);
+    }"#;
+    let first = body
+        .find("file.body_model_version")
+        .ok_or_else(|| "top-level field assignment fixture must exist".to_string())?;
+    let nested = body
+        .rfind("file.body_model_version")
+        .ok_or_else(|| "nested field assignment fixture must exist".to_string())?;
+    if !is_unconditional_test_statement(body, first) {
+        return Err("function-body field assignment must remain eligible".to_string());
+    }
+    if is_unconditional_test_statement(body, nested) {
+        return Err("control-flow-nested field assignment must fail closed".to_string());
+    }
+    let borrow_positions = mutable_borrow_positions(body, 10);
+    let borrows = borrow_positions.get("file").cloned().unwrap_or_default();
+    if borrows.len() != 2 {
+        return Err(format!(
+            "exact mutable-borrow scan must accept whitespace and reject prefix matches: {borrows:?}"
+        ));
+    }
+    if borrow_positions.get("filename").map(Vec::len) != Some(1) {
+        return Err(format!(
+            "similarly prefixed mutable borrow must retain distinct identity: {borrow_positions:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn mutable_borrow_before_assignment_does_not_invalidate_the_later_value() -> Result<(), String> {
+    let mut facts = ValueEnvFacts::default();
+    facts.local_binding_positions.insert(
+        "file".to_string(),
+        vec![SourcePosition { line: 1, column: 0 }],
+    );
+    facts.field_assignment_invalidations.insert(
+        "file".to_string(),
+        vec![SourcePosition { line: 2, column: 0 }],
+    );
+    facts.field_assignments.insert(
+        ("file".to_string(), "body_model_version".to_string()),
+        vec![FieldAssignmentBinding {
+            position: SourcePosition { line: 3, column: 0 },
+            values: vec!["SUPPORTED_VERSION".to_string()],
+        }],
+    );
+    let seam = predicate_seam();
+    let env = ValueEnv::new(&seam, &facts);
+    let actual = env.resolve_at("file.body_model_version", 4);
+    let expected = vec![(
+        "SUPPORTED_VERSION".to_string(),
+        ValueContext::FunctionArgument,
+    )];
+    if actual != expected {
+        return Err(format!(
+            "a mutation before the selected assignment must not invalidate its value: {actual:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn invalidated_field_assignment_does_not_fall_back_to_a_stale_struct_value() -> Result<(), String> {
+    let mut facts = ValueEnvFacts::default();
+    facts.local_binding_positions.insert(
+        "file".to_string(),
+        vec![SourcePosition { line: 1, column: 0 }],
+    );
+    facts.struct_field_bindings.insert(
+        "file".to_string(),
+        StructFieldBinding {
+            position: SourcePosition { line: 1, column: 0 },
+            fields: BTreeMap::from([("body_model_version".to_string(), "0".to_string())]),
+        },
+    );
+    facts.field_assignments.insert(
+        ("file".to_string(), "body_model_version".to_string()),
+        vec![FieldAssignmentBinding {
+            position: SourcePosition { line: 2, column: 0 },
+            values: vec!["SUPPORTED_VERSION".to_string()],
+        }],
+    );
+    facts.field_assignment_invalidations.insert(
+        "file".to_string(),
+        vec![SourcePosition { line: 3, column: 0 }],
+    );
+    let seam = predicate_seam();
+    let env = ValueEnv::new(&seam, &facts);
+    let actual = env.resolve_at("file.body_model_version", 4);
+    if !actual.is_empty() {
+        return Err(format!(
+            "an invalidated field assignment must block stale struct fallback: {actual:?}"
+        ));
+    }
+    Ok(())
+}

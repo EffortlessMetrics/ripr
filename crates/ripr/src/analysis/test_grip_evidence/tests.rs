@@ -9916,6 +9916,369 @@ fn given_boundary_owner_call_when_parameter_field_operands_are_opaque_then_activ
     Ok(())
 }
 
+fn field_constant_evidence(test_module: &str) -> Result<TestGripEvidence, String> {
+    let source = format!(
+        r#"
+const SUPPORTED_VERSION: u32 = 1;
+const SUPPORTED_VERSION_COPY: u32 = 1;
+
+pub struct File {{
+    pub body_model_version: u32,
+    pub other_version: u32,
+}}
+
+pub fn lower(file: &File) -> bool {{
+    file.body_model_version == SUPPORTED_VERSION
+}}
+
+{test_module}
+"#,
+    );
+    let path = PathBuf::from("src/lib.rs");
+    let index = index_from_files(&[(path.clone(), source.as_str())])?;
+    let seams = inventory_seams_from_index(&[path], &index);
+    let predicate = seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::PredicateBoundary
+                && seam
+                    .expression()
+                    .contains("body_model_version == SUPPORTED_VERSION")
+        })
+        .ok_or_else(|| "field-constant predicate seam present".to_string())?;
+    Ok(evidence_for_seam(predicate, &index))
+}
+
+#[test]
+fn given_direct_field_assignments_from_named_constant_boundaries_then_values_are_observed()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_file() -> File {
+        File { body_model_version: 99, other_version: 99 }
+    }
+
+    #[test]
+    fn boundary_versions() {
+        let mut equal = build_file();
+        equal.body_model_version = SUPPORTED_VERSION;
+        assert!(lower(&equal));
+
+        let mut below = build_file();
+        below.body_model_version = SUPPORTED_VERSION - 1;
+        assert!(!lower(&below));
+
+        let mut above = build_file();
+        above.body_model_version = SUPPORTED_VERSION + 1;
+        assert!(!lower(&above));
+    }
+}
+"#,
+    )?;
+    let values: BTreeSet<&str> = evidence
+        .observed_values
+        .iter()
+        .map(|fact| fact.value.as_str())
+        .collect();
+    for expected in ["SUPPORTED_VERSION", "0", "2"] {
+        if !values.contains(expected) {
+            return Err(format!(
+                "expected direct field-assignment value {expected}; got {:?}",
+                evidence.observed_values
+            ));
+        }
+    }
+    if !evidence.missing_discriminators.is_empty() {
+        return Err(format!(
+            "the exact named-constant boundary must close; got {:?}",
+            evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_other_object_or_field_assignments_then_boundary_value_is_not_credited()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrong_targets() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        let mut other = File { body_model_version: 0, other_version: 0 };
+        other.body_model_version = SUPPORTED_VERSION;
+        file.other_version = SUPPORTED_VERSION;
+        assert!(!lower(&file));
+    }
+}
+"#,
+    )?;
+    if evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION")
+    {
+        return Err(format!(
+            "other objects or fields must not satisfy this seam: {:?}",
+            evidence.observed_values
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_similarly_named_constant_then_equality_boundary_stays_missing() -> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrong_constant() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        file.body_model_version = SUPPORTED_VERSION_COPY;
+        assert!(lower(&file));
+    }
+}
+"#,
+    )?;
+    if !evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION_COPY")
+    {
+        return Err(format!(
+            "the exact assigned constant should remain visible: {:?}",
+            evidence.observed_values
+        ));
+    }
+    if evidence.missing_discriminators.is_empty() {
+        return Err("a similarly named constant must not satisfy SUPPORTED_VERSION".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn given_assignment_only_in_unrelated_helper_or_test_then_value_is_not_credited()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assign_supported(file: &mut File) {
+        file.body_model_version = SUPPORTED_VERSION;
+    }
+
+    #[test]
+    fn unrelated_assignment() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        assign_supported(&mut file);
+    }
+
+    #[test]
+    fn related_without_direct_assignment() {
+        let file = File { body_model_version: 0, other_version: 0 };
+        assert!(!lower(&file));
+    }
+}
+"#,
+    )?;
+    if evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION")
+    {
+        return Err(format!(
+            "helper or unrelated-test assignments must not cross test scope: {:?}",
+            evidence.observed_values
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_direct_field_assignment_with_opaque_rhs_then_names_field_assignment_limitation()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unknown_version() -> u32 { 1 }
+
+    #[test]
+    fn opaque_assignment() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        file.body_model_version = unknown_version();
+        assert!(lower(&file));
+    }
+}
+"#,
+    )?;
+    if !evidence
+        .activate
+        .summary
+        .contains("Field assignment value is unresolved")
+    {
+        return Err(format!(
+            "opaque direct assignment must name its limitation: {}",
+            evidence.activate.summary
+        ));
+    }
+    if !evidence.missing_discriminators.is_empty() {
+        return Err(format!(
+            "unsupported field assignment must not emit an ineffective repair: {:?}",
+            evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_control_flow_nested_field_assignment_then_boundary_value_is_not_credited()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime_flag() -> bool { true }
+
+    #[test]
+    fn conditional_assignment() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        if runtime_flag() {
+            file.body_model_version = SUPPORTED_VERSION;
+        }
+        assert!(lower(&file));
+    }
+}
+"#,
+    )?;
+    if evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION")
+    {
+        return Err(format!(
+            "control-flow-nested field assignment must not be unconditional evidence: {:?}",
+            evidence.observed_values
+        ));
+    }
+    if !evidence
+        .activate
+        .summary
+        .contains("Field assignment value is unresolved")
+    {
+        return Err(format!(
+            "conditional direct assignment must name its limitation: {}",
+            evidence.activate.summary
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_mutable_borrow_after_field_assignment_then_stale_value_is_not_credited()
+-> Result<(), String> {
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mutate(file: &mut File) {
+        file.body_model_version = 0;
+    }
+
+    #[test]
+    fn assignment_then_mutation() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        file.body_model_version = SUPPORTED_VERSION;
+        mutate(&mut file);
+        assert!(lower(&file));
+    }
+}
+"#,
+    )?;
+    if evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION")
+    {
+        return Err(format!(
+            "field value must be invalidated by a later mutable borrow: {:?}",
+            evidence.observed_values
+        ));
+    }
+    if !evidence
+        .activate
+        .summary
+        .contains("Field assignment value is unresolved")
+    {
+        return Err(format!(
+            "mutable-alias invalidation must name its limitation: {}",
+            evidence.activate.summary
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_mutable_borrow_before_field_assignment_then_later_value_is_credited() -> Result<(), String>
+{
+    let evidence = field_constant_evidence(
+        r#"
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mutate(file: &mut File) {
+        file.body_model_version = 0;
+    }
+
+    #[test]
+    fn mutation_then_assignment() {
+        let mut file = File { body_model_version: 0, other_version: 0 };
+        mutate(&mut file);
+        file.body_model_version = SUPPORTED_VERSION;
+        assert!(lower(&file));
+    }
+}
+"#,
+    )?;
+    if !evidence
+        .observed_values
+        .iter()
+        .any(|fact| fact.value == "SUPPORTED_VERSION")
+    {
+        return Err(format!(
+            "a later exact assignment must supersede an earlier mutable borrow: {:?}",
+            evidence.observed_values
+        ));
+    }
+    if !evidence.missing_discriminators.is_empty() {
+        return Err(format!(
+            "the later exact assignment should satisfy the equality boundary: {:?}",
+            evidence.missing_discriminators
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn iterator_boundary_operand_route_only_matches_iterator_loop_bindings() {
     for source in [
