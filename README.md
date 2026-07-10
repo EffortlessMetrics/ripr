@@ -32,30 +32,54 @@
 
 <!-- VS Marketplace install count is manually maintained. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
-`ripr` reads a PR diff and tells your reviewers and coding agents which changed
-behavior the current tests *reach* but don't actually *check* — the question
-mutation testing answers, asked at draft time without running a single mutant.
-Where a test would not catch the change breaking, it routes one focused,
-test-only repair: what to assert, where, the command that verifies it, and a
-before/after receipt.
+**ripr shows your agents where tests are needed and which tests are too weak to trust — without running mutation testing.**
 
 ## The first useful run
 
+The agent loop is a simple three-step flow:
+
 ```text
-one PR
--> one gap
--> one focused test
--> one before/after receipt
+gap → fix → verify
+   ripr names a gap (changed behavior lacks a focused assertion or discriminator)
+   the agent adds one focused test
+   ripr records whether the gap improved, closed, or still needs attention
 ```
+
+You work in five key terms. Everything else in this README and the reference
+docs expands on them:
+
+| Term | One-line meaning |
+| --- | --- |
+| **gap** | a place the code needs a test (or an existing test is too weak) |
+| **card** | the per-gap unit an agent acts on — what to assert, where, and why the current proof is weak |
+| **packet** | the bundle of evidence and guidance for one change (a bounded, test-only work order) |
+| **verify** | re-check that a fix actually closed the gap |
+| **receipt** | the durable before/after proof of what was checked |
 
 ```bash
 cargo install ripr
 ripr first-pr --root . --base origin/main --head HEAD
 ```
 
-That's the whole loop: ripr names the top repairable gap, you add one focused
-test outside ripr, and the receipt records whether the gap closed. `ripr.toml`
-is optional; the zero-config run is the intended first interface.
+For a direct PR-diff check, `ripr check --base origin/main --format human`
+starts with one bounded `Start here:` route: a named state, one selected gap or
+safe next action, the omitted-finding count, and explicit pointers to
+`--format human-full` for exhaustive evidence and `--format json` for machine
+data. That's the whole loop: ripr names the top repairable gap, you add one
+focused test outside ripr, and the receipt records the observed movement.
+`ripr.toml` is optional; the zero-config run is the intended first interface.
+
+## How ripr works (reference)
+
+> Internal vocabulary and capability detail live here and below. The first
+> screen above is all a new user or agent needs to start.
+
+`ripr` reads a PR diff and tells your reviewers and coding agents which changed
+behavior the current tests *reach* but don't actually *check* — the question
+mutation testing answers, asked at draft time without running a single mutant.
+Where a test would not catch the change breaking, it routes one focused,
+test-only repair: what to assert, where, the command that verifies it, and a
+before/after receipt.
 
 ## Where it fits
 
@@ -84,26 +108,27 @@ draft-time question between them.
 
 ## Example output
 
+Illustrative bounded `ripr check --format human` output (paths shortened):
+
 ```text
-WARNING src/pricing.rs:88
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: src/lib.rs:2
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Changed behavior: if amount >= discount_threshold {
+  Missing discriminator: Missing discriminator value: amount == discount_threshold
+  Related test: tests/pricing.rs:4 below_threshold_has_no_discount
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 12 more evidence line(s) hidden
 
-Static exposure: weakly_exposed
-Probe: predicate
-
-Changed behavior:
-  if amount >= discount_threshold {
-
-Evidence:
-  Reachability:     related tests found
-  Infection:        changed predicate can alter branch behavior
-  Propagation:      branch appears to influence returned total
-  Revealability:    tests assert returned values, but no equality-boundary case was found
-
-Gap:
-  No detected test input for amount == discount_threshold.
-
-Recommended next step:
-  Add below, equal, and above-threshold tests with exact assertions.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 ```
 
 The wording is intentionally conservative: static analysis identifies evidence
