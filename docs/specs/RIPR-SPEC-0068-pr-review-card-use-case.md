@@ -112,8 +112,12 @@ Every rendered review card must include:
   `placement.mode`) or, when no safe changed-line placement exists,
   an explicit `source_location` with a summary reason. A card with
   neither is invalid.
-- `canonical_gap_id` when the card projects a gap-ledger record;
-  `seam_id` whenever a seam identity exists.
+- `canonical_gap_id` on every card — projected unchanged from the canonical
+  domain identity for working-set seams or from `GapRecord.canonical_gap_id`
+  for the gap-ledger path. It is `null` when the producing domain has no
+  eligible identity; the renderer never synthesizes one from file, line,
+  expression, or test navigation. `seam_id` remains the source-locator
+  identity whenever a seam identity exists.
 - `gap_state` using the canonical actionability vocabulary
   (RIPR-SPEC-0061); cards never invent an alternate state. Today
   `gap_state` ships on gap-ledger cards and cross-language
@@ -307,12 +311,11 @@ these states as success:
   — the publish-plan cap skip reason uses `inline_comment_cap_reached`, not
   the historical `cap_reached` token.
 
-**Deferral note (working-set canonical_gap_id):** the gap-ledger path already emits
-`canonical_gap_id` from `record.canonical_gap_id`. The working-set path does not
-thread a `CanonicalGapIdentity` through `review_recommendation_json` today; emitting
-`canonical_gap_id` on working-set cards is deferred to the linked plan slice when the
-working-set render path gets access to the canonical gap identity. The seam_id and
-source_location contract is fully enforced now.
+**Canonical working-set identity (shipped):** the gap-ledger path preserves
+`record.canonical_gap_id`. The working-set renderer projects the ID returned by
+`analysis::canonical_gap_identity`; it does not derive a replacement from a path,
+line, expression, or test name. The field is required by the review-comments schema
+and is `null` only when the domain marks a seam ineligible for canonical identity.
 
 ## Implementation Mapping
 
@@ -386,9 +389,16 @@ source_location contract is fully enforced now.
   `working_set_card_reports_no_oracle_without_related_tests` pin the closed
   vocabulary and the honest no-oracle degradation.
 
-### Deferred (linked plan slice)
+### Canonical working-set identity (shipped)
 
-- `canonical_gap_id` on working-set cards (gap-ledger path already has it).
+- Working-set cards carry the exact `canonical_gap_id` supplied by
+  `analysis::canonical_gap_identity`; source-line movement may change `seam_id`
+  while the canonical gap ID remains stable according to the domain contract.
+- The gap-ledger projection remains unchanged and preserves
+  `GapRecord.canonical_gap_id`.
+- `spec0068_working_set_card_projects_domain_canonical_gap_id` pins the bridge
+  between domain identity and the rendered card. It also keeps canonical gap
+  identity independent of the nullable, navigation-only `related_test` object.
 
 ## Metrics
 

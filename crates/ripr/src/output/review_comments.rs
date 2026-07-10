@@ -2,6 +2,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
 };
+use crate::analysis::canonical_gap::canonical_gap_identity;
 use crate::app::Mode;
 use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
@@ -866,6 +867,10 @@ fn review_recommendation_json(
     let mut recommendation = json!({
         "id": format!("ripr-review-{seam_id}"),
         "seam_id": seam_id,
+        // Canonical gap identity is owned by the analysis domain. The review
+        // renderer only projects it; it must not derive an ID from a locator
+        // or other presentation fields.
+        "canonical_gap_id": canonical_gap_identity(entry).map(|identity| identity.id),
         "dedupe_key": format!("ripr:{seam_id}:{seam_file}:{seam_line}"),
         "kind": seam.kind().as_str(),
         "grip_class": entry.class.as_str(),
@@ -1149,11 +1154,10 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
         lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
-        if let Some(canonical_gap_id) =
-            string_field(item, "canonical_gap_id").filter(|value| !value.trim().is_empty())
-        {
-            lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
-        }
+        let canonical_gap_id = string_field(item, "canonical_gap_id")
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("null");
+        lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
         lines.push(format!("  - state: `{state}`"));
         if let Some(route) = repair_route_kind(item) {
             lines.push(format!("  - repair_route: `{route}`"));
@@ -1296,6 +1300,7 @@ fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
     use crate::analysis::ClassifiedSeam;
+    use crate::analysis::canonical_gap::canonical_gap_identity;
     use crate::analysis::seams::{
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
     };
@@ -3016,6 +3021,63 @@ mod tests {
     }
 
     #[test]
+    fn spec0068_working_set_card_projects_domain_canonical_gap_id() -> Result<(), String> {
+        // RIPR-SPEC-0068: working-set cards project the canonical domain
+        // identity unchanged. The renderer must not manufacture an identity
+        // from the seam locator, test name, or other presentation data.
+        let seam = classified(88);
+        let expected = canonical_gap_identity(&seam)
+            .ok_or_else(|| "classified seam should have a canonical gap identity".to_string())?
+            .id;
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let cards = all_cards(&value);
+        let card = cards
+            .iter()
+            .find(|card| card.get("seam").is_some())
+            .ok_or_else(|| "expected a working-set card".to_string())?;
+        assert_eq!(
+            card.get("canonical_gap_id").and_then(Value::as_str),
+            Some(expected.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn working_set_card_names_missing_domain_canonical_gap_id_as_null() -> Result<(), String> {
+        // A non-headline seam has no canonical behavioral-debt identity. The
+        // card makes that absence explicit instead of falling back to its
+        // source line, expression, or related test name.
+        let mut seam = classified(88);
+        seam.class = SeamGripClass::StronglyGripped;
+        assert!(canonical_gap_identity(&seam).is_none());
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let card = all_cards(&value)
+            .into_iter()
+            .find(|card| card.get("seam").is_some())
+            .ok_or_else(|| "expected a working-set card".to_string())?;
+        assert!(
+            card.get("canonical_gap_id").is_some_and(Value::is_null),
+            "card must name missing domain identity as null: {card:?}"
+        );
+        let markdown = render_markdown(&working_set, &seams);
+        assert!(
+            markdown.contains("canonical_gap_id: `null`"),
+            "Markdown must name the missing domain identity explicitly: {markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn working_set_card_reports_no_oracle_without_related_tests() -> Result<(), String> {
         // With no related tests, the card-level oracle degrades honestly to
         // unknown / none rather than claiming an observer that does not exist.
@@ -3057,6 +3119,9 @@ mod tests {
         for test in &mut seam.evidence.related_tests {
             test.oracle_strength = crate::domain::OracleStrength::Weak;
         }
+        let expected_canonical_gap_id = canonical_gap_identity(&seam)
+            .ok_or_else(|| "weakly gripped seam should have a canonical gap identity".to_string())?
+            .id;
         let seams = [seam];
         let working_set = AgentBriefResolvedWorkingSet::base(
             "main",
@@ -3083,6 +3148,11 @@ mod tests {
             assert_eq!(
                 card.get("oracle_strength").and_then(Value::as_str),
                 Some("weak")
+            );
+            assert_eq!(
+                card.get("canonical_gap_id").and_then(Value::as_str),
+                Some(expected_canonical_gap_id.as_str()),
+                "canonical identity must not depend on related-test navigation"
             );
             saw_card = true;
         }

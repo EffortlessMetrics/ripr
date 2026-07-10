@@ -2461,7 +2461,7 @@ fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
     let json = std::fs::read_to_string(&out_json).map_err(|e| format!("read delta json: {e}"))?;
     assert!(json.contains("\"kind\": \"baseline_debt_delta\""));
     assert!(json.contains("\"still_present\": 1"));
-    assert!(json.contains("\"matched_by\": \"seam_id\""));
+    assert!(json.contains("\"matched_by\": \"canonical_gap_id\""));
     let md = std::fs::read_to_string(&out_md).map_err(|e| format!("read delta md: {e}"))?;
     assert!(md.contains("# RIPR Baseline Debt Delta"));
     assert!(md.contains("| Still present | 1 |"));
@@ -2487,6 +2487,140 @@ fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
     assert!(missing_json.contains("\"missing_current_input\": 1"));
     assert!(missing_json.contains("required current gate-decision input"));
 
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn capped_pr_guidance_baseline_round_trip_preserves_shared_canonical_gap_seams()
+-> Result<(), String> {
+    let workspace = unique_temp_workspace("capped-baseline-round-trip");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let guidance =
+        workspace_root().join("fixtures/boundary_gap/expected/pr-guidance/capped/comments.json");
+    let gate = workspace.join("gate-decision.json");
+    let baseline = workspace.join("gate-baseline.json");
+    let delta = workspace.join("baseline-debt-delta.json");
+    let updated = workspace.join("updated-baseline.json");
+    let guidance_arg = guidance.display().to_string();
+    let gate_arg = gate.display().to_string();
+    let baseline_arg = baseline.display().to_string();
+    let delta_arg = delta.display().to_string();
+    let updated_arg = updated.display().to_string();
+
+    let gate_output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--root",
+        ".",
+        "--pr-guidance",
+        &guidance_arg,
+        "--mode",
+        "visible-only",
+        "--out",
+        &gate_arg,
+    ]);
+    assert_success(&gate_output);
+    let create = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &gate_arg,
+        "--out",
+        &baseline_arg,
+    ]);
+    assert_success(&create);
+    let baseline_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&baseline).map_err(|e| format!("read baseline: {e}"))?,
+    )
+    .map_err(|e| format!("parse baseline: {e}"))?;
+    let entries = baseline_value
+        .get("entries")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "baseline entries missing".to_string())?;
+    let entry_count = entries.len();
+    assert!(
+        entry_count > 1,
+        "capped guidance must retain multiple seams"
+    );
+
+    let diff = run_ripr(&[
+        "baseline",
+        "diff",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &gate_arg,
+        "--out",
+        &delta_arg,
+    ]);
+    assert_success(&diff);
+    let delta_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&delta).map_err(|e| format!("read delta: {e}"))?,
+    )
+    .map_err(|e| format!("parse delta: {e}"))?;
+    let summary = delta_value
+        .get("delta")
+        .ok_or_else(|| "delta counts missing".to_string())?;
+    assert_eq!(
+        summary
+            .get("still_present")
+            .and_then(serde_json::Value::as_u64),
+        Some(entry_count as u64)
+    );
+    assert_eq!(
+        summary.get("resolved").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        summary
+            .get("new_policy_eligible")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        summary
+            .get("stale_baseline_entry")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+
+    let update = run_ripr(&[
+        "baseline",
+        "update",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &gate_arg,
+        "--remove-resolved",
+        "--out",
+        &updated_arg,
+    ]);
+    assert_success(&update);
+    let updated_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&updated).map_err(|e| format!("read updated baseline: {e}"))?,
+    )
+    .map_err(|e| format!("parse updated baseline: {e}"))?;
+    assert_eq!(
+        updated_value
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(entry_count)
+    );
+    assert_eq!(
+        updated_value
+            .pointer("/update/removed_resolved")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert!(
+        updated_value
+            .pointer("/update/warnings")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(Vec::is_empty),
+        "unchanged capped evidence must not produce ambiguous or stale warnings: {updated_value}"
+    );
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
 }

@@ -659,6 +659,7 @@ fn push_index(index: &mut BTreeMap<String, Vec<usize>>, key: Option<&String>, va
 }
 
 fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> MatchResult {
+    let mut first_ambiguity = None;
     for (method, key, index) in [
         (
             "canonical_gap_id",
@@ -684,13 +685,15 @@ fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> Matc
                     matched_by: method.to_string(),
                 };
             }
-            return MatchResult::Ambiguous {
-                matched_by: method.to_string(),
-                count: matches.len(),
-            };
+            if first_ambiguity.is_none() {
+                first_ambiguity = Some(MatchResult::Ambiguous {
+                    matched_by: method.to_string(),
+                    count: matches.len(),
+                });
+            }
         }
     }
-    MatchResult::None
+    first_ambiguity.unwrap_or(MatchResult::None)
 }
 
 fn push_missing_input_items(
@@ -1307,6 +1310,33 @@ mod tests {
         assert!(rendered.contains("\"matched_by\": \"canonical_gap_id\""));
         assert!(rendered.contains("\"seam_id\": \"new-seam-after-refactor\""));
         assert!(!rendered.contains("\"resolved\": 1"));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_uses_unique_seam_after_shared_canonical_gap_is_ambiguous()
+    -> Result<(), String> {
+        let baseline = r#"{"schema_version":"0.1","entries":[
+          {"identity":{"canonical_gap_id":"gap:shared","seam_id":"seam:a"}},
+          {"identity":{"canonical_gap_id":"gap:shared","seam_id":"seam:b"}}
+        ]}"#;
+        let current = r#"{"schema_version":"0.1","decisions":[
+          {"decision":"advisory","canonical_gap_id":"gap:shared","seam_id":"seam:a","static_class":"weakly_gripped","placement":{"path":"src/a.rs","line":1}},
+          {"decision":"advisory","canonical_gap_id":"gap:shared","seam_id":"seam:b","static_class":"weakly_gripped","placement":{"path":"src/b.rs","line":2}}
+        ]}"#;
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 2"));
+        assert!(rendered.contains("\"stale_baseline_entry\": 0"));
+        assert!(rendered.contains("\"resolved\": 0"));
+        assert!(rendered.contains("\"new_policy_eligible\": 0"));
+        assert!(rendered.contains("\"matched_by\": \"seam_id\""));
         Ok(())
     }
 

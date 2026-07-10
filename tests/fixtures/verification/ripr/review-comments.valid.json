@@ -48,6 +48,7 @@
     {
       "id": "rec-1",
       "seam_id": "seam:src/lib.rs:42",
+      "canonical_gap_id": "gap:fixture:parse-limit-inclusive-edge",
       "dedupe_key": "seam:src/lib.rs:42:boundary",
       "kind": "focused_test",
       "grip_class": "weakly_exposed",
@@ -98,6 +99,7 @@
     {
       "id": "rec-2",
       "seam_id": "seam:src/config.rs:9",
+      "canonical_gap_id": null,
       "dedupe_key": "seam:src/config.rs:9:default",
       "kind": "focused_test",
       "grip_class": "reachable_unrevealed",

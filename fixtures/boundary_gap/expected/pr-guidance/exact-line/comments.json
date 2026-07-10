@@ -24,6 +24,7 @@
   "base": "main",
   "comments": [
     {
+      "canonical_gap_id": "gap:dedf923a13a00573",
       "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88",
       "gap_state": "actionable",
       "grip_class": "weakly_gripped",

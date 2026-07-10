@@ -449,11 +449,11 @@ fn gate_decision(
         calibration_for_candidate(candidate, recommendation_calibration);
     let mutation_calibration = calibration_for_candidate(candidate, mutation_calibration);
     let eligible = candidate_is_policy_eligible(candidate);
-    let baseline_identity = baseline_identity(candidate);
-    let is_baseline_new = baseline_identity
-        .as_ref()
-        .map(|identity| !baseline.identities.contains(identity))
-        .unwrap_or(true);
+    let identity_candidates = baseline_identity_candidates(candidate);
+    let baseline_identity = identity_candidates.first().cloned();
+    let is_baseline_new = !identity_candidates
+        .iter()
+        .any(|identity| baseline.identities.contains(identity));
     let acknowledgement_label = acknowledgement_label(policy, labels);
     let would_block = candidate_would_block(
         candidate,
@@ -594,20 +594,40 @@ fn has_concrete_guidance(candidate: &GateCandidate) -> bool {
 }
 
 fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
-    candidate
-        .canonical_gap_id
-        .clone()
-        .or_else(|| candidate.gap_id.clone())
-        .or_else(|| candidate.seam_id.clone())
-        .or_else(|| (!candidate.source_id.is_empty()).then(|| candidate.source_id.clone()))
-        .or_else(|| {
-            Some(format!(
-                "{}:{}:{}",
-                candidate.placement.path.as_deref()?,
-                candidate.placement.line?,
-                candidate.static_class.as_deref().unwrap_or("unknown")
-            ))
-        })
+    baseline_identity_candidates(candidate).into_iter().next()
+}
+
+/// Candidate identities are ordered from the canonical domain identity through
+/// legacy selectors. New output prefers the first value, while baseline
+/// comparison accepts any historical selector so adding canonical identity to
+/// a review card does not reclassify existing reviewed debt as new.
+fn baseline_identity_candidates(candidate: &GateCandidate) -> Vec<String> {
+    let mut identities = Vec::new();
+    let fallback = match (
+        candidate.placement.path.as_deref(),
+        candidate.placement.line,
+    ) {
+        (Some(path), Some(line)) => Some(format!(
+            "{path}:{line}:{}",
+            candidate.static_class.as_deref().unwrap_or("unknown")
+        )),
+        _ => None,
+    };
+    for identity in [
+        candidate.canonical_gap_id.clone(),
+        candidate.gap_id.clone(),
+        candidate.seam_id.clone(),
+        (!candidate.source_id.is_empty()).then(|| candidate.source_id.clone()),
+        fallback,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !identities.contains(&identity) {
+            identities.push(identity);
+        }
+    }
+    identities
 }
 
 fn stable_identity(candidate: &GateCandidate) -> String {

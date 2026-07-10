@@ -2,6 +2,7 @@
   "config_errors": [],
   "decisions": [
     {
+      "canonical_gap_id": "gap:dedf923a13a00573",
       "decision": "advisory",
       "evidence": {
         "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
@@ -25,14 +26,14 @@
         "suppressed": false
       },
       "gate_reason": "candidate identity is already present in the explicit baseline",
-      "id": "ripr-gate-8f7fa8644fd12280",
+      "id": "ripr-gate-gap-dedf923a13a00573",
       "placement": {
         "line": 88,
         "path": "src/pricing.rs"
       },
       "policy": {
         "acknowledgement_label": null,
-        "baseline_identity": "8f7fa8644fd12280",
+        "baseline_identity": "gap:dedf923a13a00573",
         "mode": "baseline-check",
         "threshold": "high_confidence_new_gap"
       },

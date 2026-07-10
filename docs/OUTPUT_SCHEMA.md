@@ -6297,6 +6297,7 @@ JSON shape:
     {
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
+      "canonical_gap_id": "gap:67fc764ba37d77bd",
       "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
       "placement": {
         "path": "src/pricing.rs",
@@ -6396,6 +6397,11 @@ Field contract:
 - `comments[].id` - stable report-local ID derived from the seam when possible.
 - `comments[].seam_id` - static seam identifier from the existing exposure or
   agent packet evidence.
+- `comments[].canonical_gap_id` - required, nullable stable behavioral-gap
+  identity. Working-set cards project it from the canonical analysis domain;
+  gap-ledger cards preserve `GapRecord.canonical_gap_id`. The renderer never
+  derives it from file, line, expression, or related-test navigation. `null`
+  names the absence of an eligible domain identity rather than a fallback.
 - `comments[].dedupe_key` - stable key based on seam ID, path, and seam line.
 - `comments[].placement` - GitHub-compatible changed-line placement. Items
   without safe placement belong in `summary_only[]`.

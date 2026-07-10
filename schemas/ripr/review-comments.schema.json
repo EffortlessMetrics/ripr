@@ -294,6 +294,7 @@
       "required": [
         "id",
         "seam_id",
+        "canonical_gap_id",
         "dedupe_key",
         "kind",
         "grip_class",
@@ -382,7 +383,7 @@
           "$ref": "#/$defs/non_claims"
         },
         "canonical_gap_id": {
-          "description": "Stable gap identity from the gap-ledger (gap-ledger path only; deferred on working-set path).",
+          "description": "Stable canonical gap identity projected from the domain model. Present on working-set and gap-ledger cards; null when the producing domain has no eligible identity.",
           "type": [
             "string",
             "null"
