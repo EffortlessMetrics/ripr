@@ -6306,6 +6306,8 @@ JSON shape:
       },
       "kind": "predicate_boundary",
       "grip_class": "weakly_gripped",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "severity": "warning",
       "source_location": {
         "file": "src/pricing.rs",
@@ -6429,6 +6431,18 @@ Field contract:
   comment body instead of raw static classes. It carries gap kind, changed
   behavior when available, why the gap matters, the bounded repair route,
   evidence IDs, verification commands, source artifact, and authority boundary.
+- `comments[].oracle_kind` / `comments[].oracle_strength` - card-level oracle
+  facts (RIPR-SPEC-0068) projecting the representative related test's oracle
+  (the nearest strong related test, else the top-ranked related test). When no
+  related test observes the seam they degrade honestly to `oracle_kind =
+  "unknown"` / `oracle_strength = "none"`, never a fabricated observer. These
+  project the same oracle facts agent briefs and seam packets already carry;
+  the review card computes no oracle of its own. Working-set path. `oracle_kind`
+  is one of `"exact_value"`, `"exact_error_variant"`, `"whole_object_equality"`,
+  `"snapshot"`, `"relational_check"`, `"broad_error"`, `"smoke_only"`,
+  `"mock_expectation"`, `"unknown"`; `oracle_strength` is one of `"strong"`,
+  `"medium"`, `"weak"`, `"smoke"`, `"none"`, `"unknown"`. Enforced by
+  `spec0068_card_carries_oracle_kind_and_strength`.
 - `comments[].gap_state` - canonical actionability state per RIPR-SPEC-0061.
   Present on every card (working-set and gap-ledger paths). Values:
   `"actionable"`, `"static_limitation"`, `"already_observed"`,

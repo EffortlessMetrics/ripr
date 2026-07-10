@@ -35,6 +35,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 10,
@@ -88,6 +90,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 20,
@@ -141,6 +145,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 30,
@@ -212,6 +218,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 40,
@@ -266,6 +274,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 50,
@@ -320,6 +330,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 60,
@@ -374,6 +386,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 70,
@@ -428,6 +442,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 80,
@@ -482,6 +498,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 90,
@@ -536,6 +554,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 100,

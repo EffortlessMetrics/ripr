@@ -369,10 +369,26 @@ source_location contract is fully enforced now.
 - Output-contract test `spec0068_card_carries_structured_related_test` pins
   the navigational object shape against rendered cards.
 
+### Shipped (card-level oracle follow-up)
+
+- Card-level `oracle_kind` / `oracle_strength` on every working-set card,
+  projecting the representative related test's oracle (the nearest strong
+  related test, else the top-ranked related test) from the closed domain
+  vocabulary. When no related test observes the seam they degrade honestly to
+  `oracle_kind = "unknown"` / `oracle_strength = "none"`, never a fabricated
+  observer. The review card projects the same oracle facts agent briefs and
+  seam packets carry; it computes no oracle of its own. The gap-ledger artifact
+  path carries no related-test oracle source and does not emit these fields.
+- Both fields registered as closed enums on the `recommendation` card in
+  `schemas/ripr/review-comments.schema.json` and documented in
+  `docs/OUTPUT_SCHEMA.md`.
+- Output-contract tests `spec0068_card_carries_oracle_kind_and_strength` and
+  `working_set_card_reports_no_oracle_without_related_tests` pin the closed
+  vocabulary and the honest no-oracle degradation.
+
 ### Deferred (linked plan slice)
 
 - `canonical_gap_id` on working-set cards (gap-ledger path already has it).
-- Card-level `oracle_kind` / `oracle_strength`.
 
 ## Metrics
 

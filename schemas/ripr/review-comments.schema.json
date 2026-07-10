@@ -387,6 +387,33 @@
             "string",
             "null"
           ]
+        },
+        "oracle_kind": {
+          "description": "Card-level oracle kind (RIPR-SPEC-0068) — the representative related test's oracle, or 'unknown' when no related test observes the seam. Working-set path.",
+          "type": "string",
+          "enum": [
+            "exact_value",
+            "exact_error_variant",
+            "whole_object_equality",
+            "snapshot",
+            "relational_check",
+            "broad_error",
+            "smoke_only",
+            "mock_expectation",
+            "unknown"
+          ]
+        },
+        "oracle_strength": {
+          "description": "Card-level oracle strength (RIPR-SPEC-0068) — the representative related test's oracle strength, or 'none' when no related test observes the seam. Working-set path.",
+          "type": "string",
+          "enum": [
+            "strong",
+            "medium",
+            "weak",
+            "smoke",
+            "none",
+            "unknown"
+          ]
         }
       }
     },

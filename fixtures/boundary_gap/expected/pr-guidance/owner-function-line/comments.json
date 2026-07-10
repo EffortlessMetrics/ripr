@@ -35,6 +35,8 @@
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 70,
