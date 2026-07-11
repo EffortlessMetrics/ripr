@@ -69,31 +69,31 @@ invalidation, never silently serving stale evidence.
 ## Targeted rerun benchmark slice (2026-07-11)
 
 The benchmark receipt command and controlled fixture are now available through
-`cargo xtask targeted-rerun-benchmark`. The registered local receipt records a
-matched parity result, warm targeted p50 of 204 ms, and 6.4069x cold-full to
-warm-targeted p50 speedup on benchmark revision `29130a95`. It also exercises
+`cargo xtask targeted-rerun-benchmark`. The current-main receipt records a
+matched parity result, warm targeted p50 of 204 ms, and 5.9167x cold-full to
+warm-targeted p50 speedup on benchmark revision `b46f828f`. It also exercises
 an explicit file-fact cache reset and records `recomputed_file_facts`.
 
-This closes only the benchmark-receipt slice. Broader input invalidation
-attribution, test-node selectors, and full campaign closeout remain pending;
-the active `perf/targeted-rerun` item stays open until those requirements are
-demonstrated. PR #1532 additionally ships explicit `path::test_node`
-selection for changed-test reruns; broader input invalidation attribution and
-full campaign closeout remain pending.
+This closes the benchmark-receipt slice on current main. PR #1532 additionally
+ships explicit `path::test_node` selection for changed-test reruns. The active
+`perf/targeted-rerun` item remains open for any remaining graph attribution,
+benchmark scope expansion, and full campaign closeout.
 
 ## Targeted rerun invalidation and parity slices (2026-07-11)
 
 PR #1534 merged file-content invalidation disclosure. When a prior same-path
 file-fact envelope exists under a different content key, the rerun receipt now
 reports `file_content_changed` and names the affected path; cold misses and
-broader input families remain explicitly `not_available`.
+unsupported input families remain explicitly named.
 
 PR #1535 merged targeted/full parity evidence expansion. `--check-parity` now
 compares producer-owned related-test and missing-discriminator evidence in
 addition to canonical identity, class, file, and owner, and emits per-seam
-`parity.mismatches[]` fields before failing closed. The targeted-rerun item
-remains open for broader manifest/package/config invalidation attribution,
-expanded parity over those inputs, and final campaign closeout.
+`parity.mismatches[]` fields before failing closed. At that point the
+targeted-rerun item remained open for broader manifest/package/config
+invalidation attribution, expanded parity over those inputs, and final
+campaign closeout; subsequent workspace-input and parity slices are recorded
+below.
 
 PR #1537 merged owned workspace-input fingerprint disclosure. Aggregate cache
 identity now includes recursively discovered workspace manifests, lockfile, and

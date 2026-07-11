@@ -1,6 +1,6 @@
 # Targeted rerun benchmark receipt
 
-Recorded for `RIPR-SPEC-0123` on commit `29130a956fe086827ae6a46dfada5eed22616243`.
+Recorded for `RIPR-SPEC-0123` on commit `b46f828fc929c5e845d44f6c3e654f54876f3da1`.
 
 Command:
 
@@ -20,11 +20,11 @@ Measured receipt (`target/ripr/reports/targeted-rerun-benchmark.json`):
 
 | Measure | Result |
 | --- | ---: |
-| Cold full p50 | 1,307 ms |
-| Cold full p95 | 1,308 ms |
+| Cold full p50 | 1,207 ms |
+| Cold full p95 | 1,713 ms |
 | Warm targeted p50 | 204 ms |
-| Warm targeted p95 | 320 ms |
-| Cold-to-warm p50 speedup | 6.4069x |
+| Warm targeted p95 | 205 ms |
+| Cold-to-warm p50 speedup | 5.9167x |
 | Warm p50 target | 30,000 ms |
 | Parity | `matched` |
 | Explicit invalidation | `recomputed_file_facts` after cache reset |
@@ -32,7 +32,7 @@ Measured receipt (`target/ripr/reports/targeted-rerun-benchmark.json`):
 
 This is a named benchmark for the committed fixture, revision, configuration,
 and runner class. It does not claim universal latency, runtime mutation
-behavior, correctness, coverage adequacy, or complete broader-input
-invalidation attribution. The targeted-rerun receipt continues to report
-broader invalidation as `not_available` until the analyzer can attribute those
-inputs from owned facts.
+behavior, correctness, or coverage adequacy. Targeted receipts now attribute
+owned file-content, workspace manifest, lockfile, toolchain, configuration,
+feature, policy, and explicit selector-ledger changes when those fingerprints
+are available; unsupported or unavailable inputs remain explicitly named.
