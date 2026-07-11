@@ -70,8 +70,8 @@ invalidation, never silently serving stale evidence.
 
 The benchmark receipt command and controlled fixture are now available through
 `cargo xtask targeted-rerun-benchmark`. The current-main receipt records a
-matched parity result, warm targeted p50 of 204 ms, and 5.9167x cold-full to
-warm-targeted p50 speedup on benchmark revision `b46f828f`. It also exercises
+matched parity result, warm targeted p50 of 204 ms, and 5.9216x cold-full to
+warm-targeted p50 speedup on benchmark revision `3e4a44c2`. It also exercises
 an explicit file-fact cache reset and records `recomputed_file_facts`.
 
 This closes the benchmark-receipt slice on current main. PR #1532 additionally

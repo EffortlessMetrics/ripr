@@ -1,6 +1,6 @@
 # Targeted rerun benchmark receipt
 
-Recorded for `RIPR-SPEC-0123` on commit `b46f828fc929c5e845d44f6c3e654f54876f3da1`.
+Recorded for `RIPR-SPEC-0123` on current main commit `3e4a44c21b3a3dd29db0ab072da1d1ce09b64cb5`.
 
 Command:
 
@@ -8,8 +8,8 @@ Command:
 cargo xtask targeted-rerun-benchmark \
   --root benchmarks/targeted_rerun_benchmark/input \
   --changed-test tests/targeted.rs \
-  --samples 5 \
-  --timeout-ms 120000
+  --samples 3 \
+  --timeout-ms 300000
 ```
 
 Runner: `local-windows-x86_64`  
@@ -20,11 +20,11 @@ Measured receipt (`target/ripr/reports/targeted-rerun-benchmark.json`):
 
 | Measure | Result |
 | --- | ---: |
-| Cold full p50 | 1,207 ms |
-| Cold full p95 | 1,713 ms |
+| Cold full p50 | 1,208 ms |
+| Cold full p95 | 1,688 ms |
 | Warm targeted p50 | 204 ms |
 | Warm targeted p95 | 205 ms |
-| Cold-to-warm p50 speedup | 5.9167x |
+| Cold-to-warm p50 speedup | 5.9216x |
 | Warm p50 target | 30,000 ms |
 | Parity | `matched` |
 | Explicit invalidation | `recomputed_file_facts` after cache reset |
@@ -36,3 +36,7 @@ behavior, correctness, or coverage adequacy. Targeted receipts now attribute
 owned file-content, workspace manifest, lockfile, toolchain, configuration,
 feature, policy, and explicit selector-ledger changes when those fingerprints
 are available; unsupported or unavailable inputs remain explicitly named.
+
+The receipt was refreshed after the targeted-mutation route and campaign-state
+merges. Parity remains `matched`, the explicit cache-reset invalidation remains
+`recomputed_file_facts`, and the registered thresholds remain satisfied.
