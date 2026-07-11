@@ -64,14 +64,18 @@ struct TargetedRerunSelector {
     direct_call_names: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct TargetedRerunCache {
+    schema_version: &'static str,
+    reuse_state: &'static str,
     file_fact_status: String,
     hits: usize,
     misses: usize,
     corrupt_ignored: usize,
     stores: usize,
     store_errors: usize,
+    recomputation_reasons: Vec<String>,
+    invalidation_status: &'static str,
 }
 
 #[derive(Serialize)]
@@ -253,7 +257,10 @@ fn rerun_changed_test(
             selected_test_count: inventory.selected_test_count,
             direct_call_names: inventory.direct_call_names,
         },
-        cache_from(&inventory.file_fact_cache),
+        cache_from(
+            &inventory.file_fact_cache,
+            ["selected_test_scope_recomputed"],
+        ),
         seams_from(&inventory.classified),
         None,
         None,
@@ -394,7 +401,7 @@ fn rerun_gap(
     Ok(report(
         "current_state_only",
         selector,
-        cache_from(&cache),
+        cache_from(&cache, ["selected_gap_scopes_recomputed"]),
         seams.into_values().collect(),
         Some(route_from_gap_records(&records)),
         None,
@@ -673,12 +680,16 @@ fn limited_report(
         "limited",
         selector,
         TargetedRerunCache {
+            schema_version: crate::analysis::seam_cache::FILE_FACT_CACHE_SCHEMA_VERSION,
+            reuse_state: "not_run",
             file_fact_status: "not_run".to_string(),
             hits: 0,
             misses: 0,
             corrupt_ignored: 0,
             stores: 0,
             store_errors: 0,
+            recomputation_reasons: Vec::new(),
+            invalidation_status: "not_available",
         },
         Vec::new(),
         None,
@@ -698,14 +709,37 @@ fn limited_report_with_scope_limitations(
     report
 }
 
-fn cache_from(cache: &crate::analysis::seam_cache::FileFactCacheStats) -> TargetedRerunCache {
+fn cache_from(
+    cache: &crate::analysis::seam_cache::FileFactCacheStats,
+    selected_scope_reasons: impl IntoIterator<Item = &'static str>,
+) -> TargetedRerunCache {
+    let mut recomputation_reasons = selected_scope_reasons
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if cache.corrupt_ignored > 0 {
+        recomputation_reasons.push("corrupt_file_fact_ignored".to_string());
+    }
+    if cache.store_errors > 0 {
+        recomputation_reasons.push("file_fact_store_error".to_string());
+    }
     TargetedRerunCache {
+        schema_version: crate::analysis::seam_cache::FILE_FACT_CACHE_SCHEMA_VERSION,
+        reuse_state: if cache.misses == 0 && cache.corrupt_ignored == 0 {
+            "reused_file_facts"
+        } else if cache.hits == 0 {
+            "recomputed_file_facts"
+        } else {
+            "mixed_file_fact_reuse"
+        },
         file_fact_status: cache.status_label(),
         hits: cache.hits,
         misses: cache.misses,
         corrupt_ignored: cache.corrupt_ignored,
         stores: cache.stores,
         store_errors: cache.store_errors,
+        recomputation_reasons,
+        invalidation_status: "not_available",
     }
 }
 
@@ -846,10 +880,11 @@ fn render_human(report: &TargetedRerunReport) -> String {
 mod tests {
     use super::{
         RerunSelector, TargetedRerunCache, TargetedRerunMovement, TargetedRerunReport,
-        TargetedRerunSeam, TargetedRerunSelector, entry_matches_selected_gap, parse_options,
-        render_human, resolve_gap_records, route_from_gap_records, same_root,
+        TargetedRerunSeam, TargetedRerunSelector, cache_from, entry_matches_selected_gap,
+        parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
         scopes_from_gap_records,
     };
+    use crate::analysis::seam_cache::FileFactCacheStats;
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
@@ -898,6 +933,44 @@ mod tests {
             parse_options(&args(&["--gap", "gap:example"])),
             Err("rerun --gap requires --gap-ledger <path>".to_string())
         );
+    }
+
+    #[test]
+    fn rerun_cache_disclosure_names_reuse_and_fallbacks() -> Result<(), String> {
+        let reused = cache_from(
+            &FileFactCacheStats {
+                hits: 2,
+                ..FileFactCacheStats::default()
+            },
+            ["selected_test_scope_recomputed"],
+        );
+        if reused.reuse_state != "reused_file_facts"
+            || reused.schema_version != crate::analysis::seam_cache::FILE_FACT_CACHE_SCHEMA_VERSION
+            || reused.recomputation_reasons != vec!["selected_test_scope_recomputed"]
+        {
+            return Err(format!("unexpected reused cache disclosure: {reused:?}"));
+        }
+        let fallback = cache_from(
+            &FileFactCacheStats {
+                corrupt_ignored: 1,
+                store_errors: 1,
+                ..FileFactCacheStats::default()
+            },
+            ["selected_gap_scopes_recomputed"],
+        );
+        if fallback.reuse_state != "recomputed_file_facts"
+            || fallback.recomputation_reasons
+                != vec![
+                    "selected_gap_scopes_recomputed",
+                    "corrupt_file_fact_ignored",
+                    "file_fact_store_error",
+                ]
+        {
+            return Err(format!(
+                "unexpected fallback cache disclosure: {fallback:?}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
@@ -1117,12 +1190,16 @@ mod tests {
                 direct_call_names: vec!["discounted_total".to_string()],
             },
             cache: TargetedRerunCache {
+                schema_version: "0.2",
+                reuse_state: "reused_file_facts",
                 file_fact_status: "warm".to_string(),
                 hits: 2,
                 misses: 0,
                 corrupt_ignored: 0,
                 stores: 0,
                 store_errors: 0,
+                recomputation_reasons: Vec::new(),
+                invalidation_status: "not_available",
             },
             seams: vec![TargetedRerunSeam {
                 canonical_gap_id: Some("gap:example".to_string()),
@@ -1167,12 +1244,16 @@ mod tests {
                 direct_call_names: Vec::new(),
             },
             cache: TargetedRerunCache {
+                schema_version: "0.2",
+                reuse_state: "reused_file_facts",
                 file_fact_status: "warm".to_string(),
                 hits: 1,
                 misses: 0,
                 corrupt_ignored: 0,
                 stores: 0,
                 store_errors: 0,
+                recomputation_reasons: Vec::new(),
+                invalidation_status: "not_available",
             },
             seams: Vec::new(),
             movement: Some(TargetedRerunMovement {

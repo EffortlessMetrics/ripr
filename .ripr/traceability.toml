@@ -6677,6 +6677,7 @@ tests = [
   "crates/ripr/src/analysis/seam_inventory.rs::tests::changed_test_inventory_recomputes_only_directly_called_owner_seams",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_requires_one_selector",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_gap_requires_explicit_ledger",
+  "crates/ripr/src/cli/rerun.rs::tests::rerun_cache_disclosure_names_reuse_and_fallbacks",
   "crates/ripr/src/cli/rerun.rs::tests::canonical_gap_selection_retains_explicit_seam_after_gap_identity_closes",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_gap_selector_with_explicit_ledger",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_changed_test_json_output",

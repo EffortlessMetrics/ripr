@@ -14344,12 +14344,16 @@ targeted-rerun receipt shape:
     "direct_call_names": ["discounted_total"]
   },
   "cache": {
+    "schema_version": "0.1",
+    "reuse_state": "reused_file_facts",
     "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
     "hits": 2,
     "misses": 0,
     "corrupt_ignored": 0,
     "stores": 0,
-    "store_errors": 0
+    "store_errors": 0,
+    "recomputation_reasons": ["selected_test_scope_recomputed"],
+    "invalidation_status": "not_available"
   },
   "seams": [
     {
@@ -14418,6 +14422,15 @@ malformed, unsupported, or non-overlapping before artifact returns
 evidence only and does not execute tests or mutations. Test-node, detailed
 invalidation-reason, full-pipeline parity, and benchmark receipt surfaces remain
 specified by [RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md).
+
+`cache.schema_version` names the file-fact cache codec contract and
+`cache.reuse_state` is one of `reused_file_facts`, `mixed_file_fact_reuse`,
+`recomputed_file_facts`, or `not_run`. `recomputation_reasons` names the
+selected scope and observed corrupt-entry/store-error fallbacks that caused
+this command to rebuild facts. `invalidation_status: "not_available"` is
+intentional until the analyzer owns complete broader-input invalidation
+attribution. A miss remains an observed cache result, not a fabricated claim
+about which workspace input changed.
 
 For a `--gap` receipt, the ledger may carry an explicit nullable `seam_id`
 beside its behavioral `canonical_gap_id`. RIPR uses that typed producer-owned

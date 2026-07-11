@@ -81,7 +81,7 @@ const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// Per-file fact cache schema. This is intentionally separate from the
 /// workspace-level classified seam cache so warm compute can reuse parser facts
 /// even when a full classified seam entry has not been written yet.
-const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
