@@ -5462,7 +5462,7 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `gate/concrete-targeted-mutation` | blocked | Close #1425 with a concrete route or named no-safe-candidate limitation. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
-| `perf/targeted-rerun` | ready | #1531, #1532, #1534, and #1535 shipped benchmark, selector, file-content invalidation, and parity slices; broader invalidation attribution and closeout remain. |
+| `perf/targeted-rerun` | ready | #1531, #1532, #1534, #1535, and #1537 shipped benchmark, selector, invalidation, parity, and fingerprint slices; broader graph attribution and closeout remain. |
 | `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;

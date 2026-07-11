@@ -95,6 +95,15 @@ addition to canonical identity, class, file, and owner, and emits per-seam
 remains open for broader manifest/package/config invalidation attribution,
 expanded parity over those inputs, and final campaign closeout.
 
+PR #1537 merged owned workspace-input fingerprint disclosure. Aggregate cache
+identity now includes recursively discovered workspace manifests, lockfile, and
+toolchain selector (with `RIPR_CFG_FEATURES` included when supplied). Targeted
+receipts carry the fingerprint, and an explicit before receipt names changed
+components as `input_changed:<field>` with
+`invalidation_status: "workspace_input_changed"`. The item remains open for
+external package/feature graph attribution, parity over every configured input
+family, and final campaign closeout.
+
 ## Gate route dogfood status (2026-07-10)
 
 The structured route and shared human/generated-CI projection are shipped. A
