@@ -57,7 +57,7 @@ id = "control-plane/cargo-allow-active-goal-dialect"
 status = "blocked"
 branch = "control-plane/cargo-allow-active-goal-dialect"
 stackable = false
-blocked_by = ["control-plane/cargo-allow-spec-system-adoption"]
+blocked_reason = "cargo-allow issue #2119: native active-goal parsing cannot validate RIPR's sole execution dialect without duplication or metadata loss."
 acceptance = "cargo-allow validates RIPR's sole active-goal source without duplication, execution-metadata loss, or weakened strict native validation. Blocked on cargo-allow issue #2119 or a separately approved RIPR manifest migration."
 commands = ["cargo-allow doctor --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-doctor.json", "cargo-allow worklist --profile spec-system --config .allow/profiles/spec-system.toml --format json --output target/cargo-allow/spec-system-worklist.json"]
 
@@ -114,7 +114,7 @@ id = "analysis/call-presence-gate-producer"
 status = "blocked"
 branch = "analysis/call-presence-gate-producer"
 stackable = false
-blocked_by = ["gate/exact-repair-route"]
+blocked_reason = "Issue #1543 still requires an authorized real CallPresence fixture or current-repo receipt proving an unambiguous caller/observer route; existing synthetic/unit evidence is not enough for policy eligibility."
 acceptance = "Close the remaining #1440 producer gap with an authorized real CallPresence fixture or receipt that yields a complete policy-eligible route for an unambiguous caller/observer, while method-string, dynamic, helper-only, and ambiguous cases remain named static limitations. Tracked in issue #1543."
 commands = ["cargo test -p ripr test_grip_evidence --lib", "cargo test -p ripr output::gate --lib", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-pr"]
 
@@ -156,5 +156,6 @@ status = "blocked"
 branch = "dogfood/rust-route-quality-closeout"
 stackable = false
 blocked_by = ["analysis/call-presence-gate-producer"]
+blocked_reason = "The required receipt-backed corpus across at least three authorized Rust repositories is not present; do not substitute synthetic fixture rows or claim route-quality closure."
 acceptance = "Record authorized receipt-backed Rust attempts, closed outcomes, route-quality scorecard, support-tier review, remaining limitations, and closeout; write a blocked report rather than fabricate evidence."
 commands = ["cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]

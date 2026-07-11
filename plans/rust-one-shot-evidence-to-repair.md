@@ -135,6 +135,13 @@ synthesizing a blocking call-observation receipt. Resolving that producer
 limitation belongs in the `analysis/call-presence-gate-producer` slice, not a
 gate renderer.
 
+The remaining campaign blockers are explicit: #1543 needs an authorized
+real/current-repository CallPresence receipt before any policy-eligible route
+can be claimed; the cargo-allow active-goal dialect remains blocked on #2119;
+and the final dogfood item lacks the required receipt-backed attempts across at
+least three authorized Rust repositories. Synthetic fixture rows do not satisfy
+that corpus requirement.
+
 ## Targeted mutation route delivery (2026-07-11)
 
 PR #1545 merged the concrete #1425 route. Diff-scoped PR evidence now emits a

@@ -5460,12 +5460,12 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `review/canonical-working-set-id` | done | #1505 merged: working-set cards now carry domain-supplied canonical gap identity. |
 | `gate/exact-repair-route` | done | Structural route shipped: policy-eligible decisions expose the exact seam, missing discriminator, focused test intent, verify/receipt commands, and producer-owned inspection route without artifact archaeology. Real CallPresence producer eligibility remains a separate fail-closed follow-up. |
 | `gate/concrete-targeted-mutation` | done | #1545 merged: PR-evidence and impacted-evidence now carry a bounded producer-owned predicate/operator candidate and command, or an explicit no-safe-candidate limitation; mutation execution remains opt-in. |
-| `analysis/call-presence-gate-producer` | blocked | Close the remaining #1440 CallPresence producer gap tracked in #1543; keep helper-only, dynamic, method-string, and ambiguous cases as named static limitations. |
+| `analysis/call-presence-gate-producer` | blocked | #1543 remains blocked on an authorized real/current-repo CallPresence receipt proving an unambiguous caller/observer route; helper-only, dynamic, method-string, and ambiguous cases stay named limitations. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
 | `perf/targeted-rerun` | done | #1531, #1532, #1534, #1535, #1537, #1539, #1540, #1542, and #1547 shipped canonical selectors, before/after movement, invalidation, parity, workspace-input, explicit-ledger fingerprints, and a current-main benchmark receipt. |
 | `perf/targeted-rerun-graph-provenance` | done | #1550 merged: receipts attribute local package/member and feature graph provenance, name unavailable external metadata, and fail parity closed on required graph mismatch without network inference. |
-| `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review after graph provenance and CallPresence limitations are resolved or explicitly blocked. |
+| `dogfood/route-quality-closeout` | blocked | Required multi-repository receipt corpus is unavailable; keep synthetic fixtures separate and do not claim route-quality closure. Depends on the explicit CallPresence blocker. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;
 there is no automatic test or consumer-source editing, default gate hardening,
