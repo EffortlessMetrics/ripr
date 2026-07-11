@@ -2766,6 +2766,57 @@ fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Res
 }
 
 #[test]
+fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ]);
+    assert_success(&before);
+    let before_path = workspace_root().join("target").join(format!(
+        "rerun-before-{}-{}.json",
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&before_path, &before.stdout).map_err(|err| {
+        format!(
+            "write explicit before receipt {}: {err}",
+            before_path.display()
+        )
+    })?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let displayed_before = before_arg.replace('\\', "/");
+    let after = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--before",
+        &before_arg,
+        "--json",
+    ]);
+    let _ = std::fs::remove_file(&before_path);
+    assert_success(&after);
+    let json: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse targeted rerun movement JSON: {err}"))?;
+    let selected_seam_count = json["seams"].as_array().map_or(0, Vec::len);
+    if json["state"] != "unchanged"
+        || json["movement"]["state"] != "unchanged"
+        || json["movement"]["before"] != displayed_before
+        || json["movement"]["matched_seam_count"] != serde_json::json!(selected_seam_count)
+    {
+        return Err(format!("unexpected explicit-before rerun receipt: {json}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Result<(), String> {
     let root_arg = "fixtures/boundary_gap/input";
     let changed = run_ripr_in_workspace(&[

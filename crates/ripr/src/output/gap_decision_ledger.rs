@@ -89,6 +89,11 @@ pub(crate) struct GapRecord {
     pub(crate) gap_id: String,
     #[serde(default)]
     pub(crate) canonical_gap_id: String,
+    /// Typed source-seam identity when the producer owns one. `evidence_ids`
+    /// are intentionally generic and cannot be used as a positional seam-ID
+    /// fallback by consumers such as targeted rerun.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seam_id: Option<String>,
     #[serde(default)]
     pub(crate) kind: String,
     #[serde(default)]
@@ -525,6 +530,7 @@ fn gap_record_from_repo_exposure_seam(seam: &Value) -> Option<GapRecord> {
     Some(GapRecord {
         gap_id,
         canonical_gap_id,
+        seam_id: Some(seam_id.to_string()),
         kind: gap_kind_from_evidence(gap_state, seam_kind).to_string(),
         language: "rust".to_string(),
         language_status: "stable".to_string(),
@@ -717,6 +723,7 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: gap_kind_from_evidence("actionable", behavior_kind).to_string(),
         language: "python".to_string(),
         language_status: string_at(card, &["language_status"])
@@ -869,6 +876,7 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: typescript_gap_kind(repair_kind, behavior_kind).to_string(),
         language: "typescript".to_string(),
         language_status: string_at(packet, &["language_status"])
@@ -1023,6 +1031,7 @@ fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: gap_kind_from_evidence("actionable", behavior_kind).to_string(),
         language: "perl".to_string(),
         language_status: string_at(card, &["language_status"])
@@ -1114,6 +1123,7 @@ fn gap_record_from_python_static_limit_finding(finding: &Value, index: usize) ->
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: "StaticLimitation".to_string(),
         language: "python".to_string(),
         language_status: string_at(finding, &["language_status"])
@@ -1200,6 +1210,7 @@ fn gap_record_from_python_no_action_finding(finding: &Value, index: usize) -> Op
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: kind.to_string(),
         language: "python".to_string(),
         language_status: string_at(finding, &["language_status"])
@@ -1526,6 +1537,7 @@ fn gap_record_from_finding_alignment_item(item: &Value, index: usize) -> Option<
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id: canonical_gap_id.clone(),
+        seam_id: string_at(item, &["seam_id"]).map(ToString::to_string),
         kind: gap_kind_from_evidence(gap_state, evidence_class).to_string(),
         language: "rust".to_string(),
         language_status: "stable".to_string(),

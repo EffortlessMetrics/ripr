@@ -1268,6 +1268,7 @@ mod seam_diagnostic_tests {
         GapRecord {
             gap_id: "gap:pr:pricing:threshold-boundary".to_string(),
             canonical_gap_id: "gap:rust:pricing:threshold-boundary".to_string(),
+            seam_id: None,
             kind: "MissingBoundaryAssertion".to_string(),
             language: "rust".to_string(),
             language_status: "stable".to_string(),
@@ -1452,6 +1453,7 @@ mod diagnostic_policy_tests {
         GapRecord {
             gap_id: "gap:pr:pricing:policy-test".to_string(),
             canonical_gap_id: "gap:rust:pricing:policy-test".to_string(),
+            seam_id: None,
             kind: "MissingBoundaryAssertion".to_string(),
             language: "rust".to_string(),
             language_status: "stable".to_string(),

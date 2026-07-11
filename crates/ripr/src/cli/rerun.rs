@@ -6,6 +6,7 @@ use crate::cli::commands_context::{ensure_command_root, load_root_input_and_conf
 use crate::cli::help;
 use crate::cli::parse::expect_value;
 use crate::output::gap_decision_ledger::{GapRecord, parse_gap_record_source_json};
+use crate::output::outcome::{TargetedRerunStaticSeam, targeted_rerun_movement_from_json};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ struct RerunOptions {
     selector: RerunSelector,
     json: bool,
     out: Option<PathBuf>,
+    before: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -34,6 +36,8 @@ struct TargetedRerunReport {
     selector: TargetedRerunSelector,
     cache: TargetedRerunCache,
     seams: Vec<TargetedRerunSeam>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    movement: Option<TargetedRerunMovement>,
     #[serde(skip_serializing_if = "Option::is_none")]
     route: Option<TargetedRerunRoute>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +85,14 @@ struct TargetedRerunSeam {
 }
 
 #[derive(Serialize)]
+struct TargetedRerunMovement {
+    state: &'static str,
+    before: String,
+    before_seam_count: usize,
+    matched_seam_count: usize,
+}
+
+#[derive(Serialize)]
 struct TargetedRerunRoute {
     verify_commands: Vec<String>,
     receipt_command: Option<String>,
@@ -118,7 +130,7 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
     let options = parse_options(args)?;
     ensure_command_root(&options.root, "rerun")?;
     let (input, config) = load_root_input_and_config(&options.root)?;
-    let report = match options.selector {
+    let mut report = match options.selector {
         RerunSelector::ChangedTest(changed_test) => {
             rerun_changed_test(&input.root, &config, &changed_test)?
         }
@@ -127,6 +139,9 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
             gap_ledger,
         } => rerun_gap(&input.root, &config, &canonical_gap_id, &gap_ledger)?,
     };
+    if let Some(before) = options.before.as_deref() {
+        apply_before(&mut report, before);
+    }
     let rendered = if options.json {
         serde_json::to_string_pretty(&report)
             .map_err(|err| format!("serialize targeted rerun report failed: {err}"))?
@@ -150,6 +165,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
     let mut gap_ledger = None;
     let mut json = false;
     let mut out = None;
+    let mut before = None;
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
@@ -180,6 +196,10 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
                 index += 1;
                 out = Some(PathBuf::from(expect_value(args, index, "--out")?));
             }
+            "--before" => {
+                index += 1;
+                before = Some(PathBuf::from(expect_value(args, index, "--before")?));
+            }
             other => return Err(format!("unknown rerun argument {other:?}")),
         }
         index += 1;
@@ -209,6 +229,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
         selector,
         json,
         out,
+        before,
     })
 }
 
@@ -329,12 +350,17 @@ fn rerun_gap(
             &changed_owner_names,
         )?;
         add_cache_stats(&mut cache, &inventory.file_fact_cache);
+        let scoped_record_seam_ids = seam_ids_for_scope(&records, &scope);
         let scope_seams = inventory
             .classified
             .iter()
             .filter(|entry| {
-                canonical_gap_identity(entry)
-                    .is_some_and(|identity| identity.id == canonical_gap_id)
+                entry_matches_selected_gap(
+                    canonical_gap_identity(entry).map(|identity| identity.id),
+                    entry.seam.id().as_str(),
+                    canonical_gap_id,
+                    &scoped_record_seam_ids,
+                )
             })
             .collect::<Vec<_>>();
         if scope_seams.is_empty() {
@@ -351,7 +377,7 @@ fn rerun_gap(
             continue;
         }
         for entry in scope_seams {
-            let seam = seam_from(entry);
+            let seam = seam_from_with_selected_gap(entry, canonical_gap_id);
             seams.entry(seam.seam_id.clone()).or_insert(seam);
         }
     }
@@ -374,6 +400,41 @@ fn rerun_gap(
         None,
         scope_limitations,
     ))
+}
+
+fn entry_matches_selected_gap(
+    current_canonical_gap_id: Option<String>,
+    seam_id: &str,
+    selected_canonical_gap_id: &str,
+    selected_seam_ids: &BTreeSet<String>,
+) -> bool {
+    current_canonical_gap_id.as_deref() == Some(selected_canonical_gap_id)
+        || selected_seam_ids.contains(seam_id)
+}
+
+fn seam_ids_for_scope(records: &[(usize, GapRecord)], scope: &GapRerunScope) -> BTreeSet<String> {
+    records
+        .iter()
+        .filter_map(|(_, record)| {
+            let anchor = record.anchor.as_ref()?;
+            let file = anchor.file.as_deref()?.trim();
+            if file.is_empty() {
+                return None;
+            }
+            let owner = anchor
+                .owner
+                .as_deref()
+                .map(str::trim)
+                .filter(|owner| !owner.is_empty())
+                .map(str::to_string);
+            (GapRerunScope {
+                file: PathBuf::from(file),
+                owner,
+            } == *scope)
+                .then(|| record.seam_id.clone())
+                .flatten()
+        })
+        .collect()
 }
 
 fn resolve_gap_records(
@@ -539,11 +600,68 @@ fn report(
         selector,
         cache,
         seams,
+        movement: None,
         route,
         limitation,
         scope_limitations,
         authority_boundary: "static evidence only; no before snapshot was supplied, so gap movement is not inferred",
     }
+}
+
+fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
+    if report.state == "limited" {
+        return;
+    }
+    let before_text = match std::fs::read_to_string(before) {
+        Ok(text) => text,
+        Err(err) => {
+            set_before_limitation(
+                report,
+                "before_artifact_unavailable",
+                format!(
+                    "read explicit before artifact {} failed: {err}",
+                    before.display()
+                ),
+            );
+            return;
+        }
+    };
+    let current = report
+        .seams
+        .iter()
+        .map(|seam| TargetedRerunStaticSeam {
+            seam_id: seam.seam_id.clone(),
+            seam_kind: "unknown".to_string(),
+            file: seam.file.clone(),
+            line: seam.line,
+            static_class: seam.static_class.clone(),
+        })
+        .collect::<Vec<_>>();
+    match targeted_rerun_movement_from_json(&before_text, &current) {
+        Ok(movement) => {
+            report.state = movement.state;
+            report.movement = Some(TargetedRerunMovement {
+                state: movement.state,
+                before: display_path(before),
+                before_seam_count: movement.before_seam_count,
+                matched_seam_count: movement.matched_seam_count,
+            });
+            if let Some(message) = movement.limitation {
+                report.limitation = Some(TargetedRerunLimitation {
+                    kind: "movement_indeterminate",
+                    message,
+                });
+            }
+            report.authority_boundary = "static before/after evidence only; movement does not establish runtime mutation behavior, correctness, coverage adequacy, or complete test quality";
+        }
+        Err(err) => set_before_limitation(report, "before_artifact_incompatible", err),
+    }
+}
+
+fn set_before_limitation(report: &mut TargetedRerunReport, kind: &'static str, message: String) {
+    report.state = "limited";
+    report.limitation = Some(TargetedRerunLimitation { kind, message });
+    report.authority_boundary = "static evidence only; explicit before-state movement was unavailable, so no improvement, closure, unchanged, or regression claim is made";
 }
 
 fn limited_report(
@@ -604,6 +722,15 @@ fn seam_from(entry: &crate::analysis::ClassifiedSeam) -> TargetedRerunSeam {
         owner: entry.seam.owner().to_string(),
         static_class: entry.class.as_str().to_string(),
     }
+}
+
+fn seam_from_with_selected_gap(
+    entry: &crate::analysis::ClassifiedSeam,
+    canonical_gap_id: &str,
+) -> TargetedRerunSeam {
+    let mut seam = seam_from(entry);
+    seam.canonical_gap_id = Some(canonical_gap_id.to_string());
+    seam
 }
 
 fn normalize_changed_test(root: &Path, changed_test: &Path) -> Result<PathBuf, String> {
@@ -681,6 +808,10 @@ fn render_human(report: &TargetedRerunReport) -> String {
             seam.static_class, seam.file, seam.line, seam.owner, seam.seam_id
         )
     }));
+    if let Some(movement) = report.movement.as_ref() {
+        lines.push(format!("Movement: {}", movement.state));
+        lines.push(format!("Before: {}", movement.before));
+    }
     if let Some(route) = report.route.as_ref() {
         if !route.verify_commands.is_empty() {
             lines.push(format!("Verify: {}", route.verify_commands.join(" && ")));
@@ -714,11 +845,13 @@ fn render_human(report: &TargetedRerunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RerunSelector, TargetedRerunCache, TargetedRerunReport, TargetedRerunSeam,
-        TargetedRerunSelector, parse_options, render_human, resolve_gap_records,
-        route_from_gap_records, same_root, scopes_from_gap_records,
+        RerunSelector, TargetedRerunCache, TargetedRerunMovement, TargetedRerunReport,
+        TargetedRerunSeam, TargetedRerunSelector, entry_matches_selected_gap, parse_options,
+        render_human, resolve_gap_records, route_from_gap_records, same_root,
+        scopes_from_gap_records,
     };
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
     fn args(values: &[&str]) -> Vec<String> {
@@ -765,6 +898,20 @@ mod tests {
             parse_options(&args(&["--gap", "gap:example"])),
             Err("rerun --gap requires --gap-ledger <path>".to_string())
         );
+    }
+
+    #[test]
+    fn canonical_gap_selection_retains_explicit_seam_after_gap_identity_closes()
+    -> Result<(), String> {
+        let selected = BTreeSet::from(["seam:price".to_string()]);
+        if !entry_matches_selected_gap(None, "seam:price", "gap:price", &selected)
+            || entry_matches_selected_gap(None, "seam:other", "gap:price", &selected)
+        {
+            return Err(
+                "explicit ledger seam identity did not constrain closed-gap selection".to_string(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
@@ -933,8 +1080,23 @@ mod tests {
             || options.selector != RerunSelector::ChangedTest(PathBuf::from("tests/pricing.rs"))
             || !options.json
             || options.out != Some(PathBuf::from("target/rerun.json"))
+            || options.before.is_some()
         {
             return Err(format!("unexpected rerun options: {options:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rerun_parses_explicit_before_artifact() -> Result<(), String> {
+        let options = parse_options(&args(&[
+            "--changed-test",
+            "tests/pricing.rs",
+            "--before",
+            "target/ripr/before.json",
+        ]))?;
+        if options.before != Some(PathBuf::from("target/ripr/before.json")) {
+            return Err(format!("expected explicit before path, got {options:?}"));
         }
         Ok(())
     }
@@ -970,6 +1132,7 @@ mod tests {
                 owner: "pricing::discounted_total".to_string(),
                 static_class: "weakly_gripped".to_string(),
             }],
+            movement: None,
             route: None,
             limitation: None,
             scope_limitations: Vec::new(),
@@ -980,6 +1143,54 @@ mod tests {
             "State: current_state_only",
             "File-fact cache: warm",
             "static evidence only",
+        ] {
+            if !rendered.contains(expected) {
+                return Err(format!("missing {expected:?} from {rendered:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn human_rerun_report_names_explicit_static_movement() -> Result<(), String> {
+        let report = TargetedRerunReport {
+            schema_version: "ripr-targeted-rerun-v1",
+            state: "improved",
+            selector: TargetedRerunSelector {
+                kind: "changed_test",
+                changed_test: Some("tests/pricing.rs".to_string()),
+                canonical_gap_id: None,
+                gap_ledger: None,
+                matched_record_count: None,
+                recomputed_scope_count: None,
+                selected_test_count: 1,
+                direct_call_names: Vec::new(),
+            },
+            cache: TargetedRerunCache {
+                file_fact_status: "warm".to_string(),
+                hits: 1,
+                misses: 0,
+                corrupt_ignored: 0,
+                stores: 0,
+                store_errors: 0,
+            },
+            seams: Vec::new(),
+            movement: Some(TargetedRerunMovement {
+                state: "improved",
+                before: "target/ripr/before.json".to_string(),
+                before_seam_count: 1,
+                matched_seam_count: 1,
+            }),
+            route: None,
+            limitation: None,
+            scope_limitations: Vec::new(),
+            authority_boundary: "static before/after evidence only",
+        };
+        let rendered = render_human(&report);
+        for expected in [
+            "State: improved",
+            "Movement: improved",
+            "Before: target/ripr/before.json",
         ] {
             if !rendered.contains(expected) {
                 return Err(format!("missing {expected:?} from {rendered:?}"));

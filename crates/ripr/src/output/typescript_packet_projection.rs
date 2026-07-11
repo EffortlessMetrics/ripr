@@ -178,6 +178,7 @@ pub(crate) fn typescript_gap_record_for(finding: &Finding) -> Option<GapRecord> 
     Some(GapRecord {
         gap_id: finding.id.clone(),
         canonical_gap_id,
+        seam_id: None,
         kind: "typescript_preview_boundary".to_string(),
         language: "typescript".to_string(),
         language_status: "preview".to_string(),

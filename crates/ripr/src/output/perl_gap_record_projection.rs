@@ -218,6 +218,7 @@ pub(crate) fn perl_gap_record_for(finding: &Finding) -> Option<GapRecord> {
     Some(GapRecord {
         gap_id: finding.id.clone(),
         canonical_gap_id,
+        seam_id: None,
         kind: "perl_preview_boundary".to_string(),
         language: "perl".to_string(),
         language_status: "preview".to_string(),

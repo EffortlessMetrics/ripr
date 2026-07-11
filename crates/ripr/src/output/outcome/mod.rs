@@ -56,6 +56,27 @@ pub(crate) struct StaticSeamRecord {
     related_tests_total: usize,
 }
 
+/// The minimal fact set a targeted rerun owns. This deliberately contains
+/// analysis facts rather than rendered outcome JSON, so the rerun command can
+/// reuse the same static-movement rules without treating a report as input
+/// evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TargetedRerunStaticSeam {
+    pub(crate) seam_id: String,
+    pub(crate) seam_kind: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) static_class: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TargetedRerunMovement {
+    pub(crate) state: &'static str,
+    pub(crate) before_seam_count: usize,
+    pub(crate) matched_seam_count: usize,
+    pub(crate) limitation: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StaticEvidenceStage {
     state: String,
@@ -152,6 +173,141 @@ pub(crate) fn targeted_test_outcome_report_from_json(
     let before = parse_repo_exposure_static_seams(before_json)?;
     let after = parse_repo_exposure_static_seams(after_json)?;
     build_targeted_test_outcome_report(&before, &after, before_path, after_path)
+}
+
+/// Compare explicit static before evidence with current targeted-rerun facts.
+///
+/// The caller must supply the prior artifact explicitly.  A missing selected
+/// seam or an unsupported snapshot is an error so the caller can render a
+/// named limitation rather than infer movement.
+pub(crate) fn targeted_rerun_movement_from_json(
+    before_json: &str,
+    current: &[TargetedRerunStaticSeam],
+) -> Result<TargetedRerunMovement, String> {
+    let before = parse_rerun_before_static_seams(before_json)?;
+    let current = current
+        .iter()
+        .map(|seam| StaticSeamRecord {
+            seam_id: seam.seam_id.clone(),
+            seam_kind: seam.seam_kind.clone(),
+            file: seam.file.clone(),
+            line: seam.line,
+            seam_grip_class: seam.static_class.clone(),
+            oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            observed_values: Vec::new(),
+            missing_discriminators: Vec::new(),
+            evidence_source: "targeted_rerun_current".to_string(),
+            evidence_path: BTreeMap::new(),
+            related_tests_total: 0,
+        })
+        .collect::<Vec<_>>();
+    let before_by_id = targeted_outcome_seams_by_id(&before, "before")?;
+    let current_by_id = targeted_outcome_seams_by_id(&current, "current")?;
+    if current_by_id.is_empty() {
+        return Err("targeted rerun selected no current seams".to_string());
+    }
+    let missing = current_by_id
+        .keys()
+        .filter(|seam_id| !before_by_id.contains_key(*seam_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(format!(
+            "before artifact does not contain selected seam_id(s): {}",
+            missing.join(", ")
+        ));
+    }
+
+    let mut has_improvement = false;
+    let mut all_closed = true;
+    for (seam_id, after) in &current_by_id {
+        let before = before_by_id
+            .get(seam_id)
+            .ok_or_else(|| format!("before artifact lost selected seam_id `{seam_id}`"))?;
+        let movement = targeted_test_outcome_movement(before, after);
+        match movement.gap_movement.as_str() {
+            "closed" => has_improvement = true,
+            "improved" => {
+                has_improvement = true;
+                all_closed = false;
+            }
+            "unchanged" => all_closed = false,
+            "regressed" | "opened" => {
+                return Ok(TargetedRerunMovement {
+                    state: "regressed",
+                    before_seam_count: before_by_id.len(),
+                    matched_seam_count: current_by_id.len(),
+                    limitation: None,
+                });
+            }
+            _ => {
+                return Ok(TargetedRerunMovement {
+                    state: "limited",
+                    before_seam_count: before_by_id.len(),
+                    matched_seam_count: current_by_id.len(),
+                    limitation: Some(format!(
+                        "selected seam_id `{seam_id}` changed from {} to {} without an ordered static movement",
+                        movement.before, movement.after
+                    )),
+                });
+            }
+        }
+    }
+    Ok(TargetedRerunMovement {
+        state: if all_closed {
+            "closed"
+        } else if has_improvement {
+            "improved"
+        } else {
+            "unchanged"
+        },
+        before_seam_count: before_by_id.len(),
+        matched_seam_count: current_by_id.len(),
+        limitation: None,
+    })
+}
+
+fn parse_rerun_before_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse explicit before JSON: {err}"))?;
+    if value.get("schema_version").and_then(Value::as_str) == Some("ripr-targeted-rerun-v1") {
+        let seams = value
+            .get("seams")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "targeted rerun before artifact is missing `seams` array".to_string())?;
+        return seams
+            .iter()
+            .map(|seam| {
+                Ok(StaticSeamRecord {
+                    seam_id: optional_json_string(Some(seam), "seam_id").ok_or_else(|| {
+                        "targeted rerun seam is missing string `seam_id`".to_string()
+                    })?,
+                    seam_kind: optional_json_string(Some(seam), "seam_kind")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    file: optional_json_string(Some(seam), "file")
+                        .map(|path| normalize_report_path(&path))
+                        .ok_or_else(|| {
+                            "targeted rerun seam is missing string `file`".to_string()
+                        })?,
+                    line: optional_json_usize(Some(seam), "line").ok_or_else(|| {
+                        "targeted rerun seam is missing numeric `line`".to_string()
+                    })?,
+                    seam_grip_class: optional_json_string(Some(seam), "static_class").ok_or_else(
+                        || "targeted rerun seam is missing string `static_class`".to_string(),
+                    )?,
+                    oracle_kind: "unknown".to_string(),
+                    oracle_strength: "unknown".to_string(),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                    evidence_source: "targeted_rerun_before".to_string(),
+                    evidence_path: BTreeMap::new(),
+                    related_tests_total: 0,
+                })
+            })
+            .collect();
+    }
+    parse_repo_exposure_static_seams(json)
 }
 
 fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
@@ -1926,6 +2082,66 @@ mod tests {
             "after.json".to_string(),
         );
         assert!(matches!(result, Err(message) if message.contains("missing string field `kind`")));
+    }
+
+    #[test]
+    fn targeted_rerun_movement_uses_explicit_rerun_before_artifact() -> Result<(), String> {
+        let before = r#"{
+  "schema_version":"ripr-targeted-rerun-v1",
+  "seams":[{"seam_id":"seam:price","file":"src/pricing.rs","line":42,"static_class":"weakly_gripped"}]
+}"#;
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:price".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "strongly_gripped".to_string(),
+        }];
+        let movement = targeted_rerun_movement_from_json(before, &current)?;
+        if movement.state != "closed"
+            || movement.before_seam_count != 1
+            || movement.matched_seam_count != 1
+        {
+            return Err(format!("unexpected targeted rerun movement: {movement:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_rerun_movement_rejects_before_without_selected_seam() {
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:current".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "weakly_gripped".to_string(),
+        }];
+        let result = targeted_rerun_movement_from_json(
+            r#"{"schema_version":"ripr-targeted-rerun-v1","seams":[{"seam_id":"seam:other","file":"src/pricing.rs","line":42,"static_class":"weakly_gripped"}]}"#,
+            &current,
+        );
+        assert!(
+            matches!(result, Err(message) if message.contains("does not contain selected seam_id"))
+        );
+    }
+
+    #[test]
+    fn targeted_rerun_movement_names_same_rank_change_as_limited() -> Result<(), String> {
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:price".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "static_unknown".to_string(),
+        }];
+        let movement = targeted_rerun_movement_from_json(
+            r#"{"schema_version":"ripr-targeted-rerun-v1","seams":[{"seam_id":"seam:price","file":"src/pricing.rs","line":42,"static_class":"unknown"}]}"#,
+            &current,
+        )?;
+        if movement.state != "limited" || movement.limitation.is_none() {
+            return Err(format!("expected named limited movement, got {movement:?}"));
+        }
+        Ok(())
     }
 
     fn targeted_static_seam(id: &str, grip_class: &str) -> StaticSeamRecord {

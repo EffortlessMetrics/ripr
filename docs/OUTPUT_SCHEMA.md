@@ -14329,8 +14329,8 @@ Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 
 ## Targeted rerun output
 
-`ripr rerun --changed-test <path> --json` and
-`ripr rerun --gap <canonical-gap-id> --gap-ledger <path> --json` emit the
+`ripr rerun --changed-test <path> [--before <path>] --json` and
+`ripr rerun --gap <canonical-gap-id> --gap-ledger <path> [--before <path>] --json` emit the
 targeted-rerun receipt shape:
 
 ```json
@@ -14394,13 +14394,39 @@ and a named `limitation` such as `canonical_gap_unresolved` or
 
 Both selectors reuse valid file facts but recompute the selected evidence. A
 `canonical_gap_id` is domain-supplied and nullable; it is never derived from a
-file, line, expression, or test navigation. The command does not infer movement,
-execute tests or mutations, or discover an ambient report as its before state.
+file, line, expression, or test navigation. Without `--before`, the command
+reports `state: "current_state_only"`, does not infer movement, and does not
+discover an ambient report as before state.
 
-Test-node, explicit-`--before`, detailed invalidation-reason, and benchmark
-receipt surfaces remain specified by
-[RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md), not implemented by
-this initial targeted-rerun report.
+With one explicit compatible prior targeted-rerun or repo-exposure snapshot,
+it adds:
+
+```json
+"movement": {
+  "state": "closed | improved | unchanged | regressed",
+  "before": "target/ripr/previous-rerun.json",
+  "before_seam_count": 1,
+  "matched_seam_count": 1
+}
+```
+
+The report `state` is the same closed-vocabulary movement value. Every current
+selected `seam_id` must exist in the explicit before artifact. A missing,
+malformed, unsupported, or non-overlapping before artifact returns
+`state: "limited"` with `before_artifact_unavailable` or
+`before_artifact_incompatible`; it never guesses movement. This remains static
+evidence only and does not execute tests or mutations. Test-node, detailed
+invalidation-reason, full-pipeline parity, and benchmark receipt surfaces remain
+specified by [RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md).
+
+For a `--gap` receipt, the ledger may carry an explicit nullable `seam_id`
+beside its behavioral `canonical_gap_id`. RIPR uses that typed producer-owned
+identity only to retain the selected source seam when it becomes strongly
+gripped and no longer produces a current canonical gap. Generic `evidence_ids`
+remain generic references and are never interpreted by position as seam IDs.
+When static evidence changes between incomparable same-rank classes, movement
+is `limited` with `movement_indeterminate` rather than being mislabeled as an
+incompatible before artifact.
 
 ## Stability Rules
 
