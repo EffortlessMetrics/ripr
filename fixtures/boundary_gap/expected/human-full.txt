@@ -8,7 +8,7 @@ WARNING fixtures/boundary_gap/input/src/lib.rs:2
 
 Changed
   before: if amount > discount_threshold {
-  after:  if amount >= discount_threshold {
+  after:  amount >= discount_threshold
 
 Probe
   family: predicate

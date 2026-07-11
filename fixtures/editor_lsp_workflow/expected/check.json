@@ -7,17 +7,17 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:predicate:8390dd91",
+      "id": "probe:src_lib.rs:predicate:c80557eb",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:8390dd91",
+        "id": "probe:src_lib.rs:predicate:c80557eb",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/editor_lsp_workflow/input/src/lib.rs",
         "line": 2,
-        "expression": "if amount >= discount_threshold {"
+        "expression": "amount >= discount_threshold"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts"},

@@ -239,3 +239,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+changed Rust semantic heads use canonical parser expressions without changing TypeScript preview behavior
+
+Command:
+`cargo xtask goldens bless mixed_rust_typescript_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -9,7 +9,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/opaque_fixture_builder/input/src/lib.rs:2
   Static exposure: infection_unknown (warning, confidence 0.66)
-  Changed behavior: if amount >= 100 {
+  Changed behavior: amount >= 100
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/pricing.rs:16 fixture_builder_case_has_no_discount
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.

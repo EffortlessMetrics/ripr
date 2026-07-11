@@ -9,7 +9,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/propagate_value_returned/input/src/lib.rs:11
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Changed behavior: return self.persist(amount * 9);
+  Changed behavior: self.persist(amount * 9)
   Missing discriminator: No strong discriminator was detected
   Related test: tests/ledger_tests.rs:4 apply_returns_ok_on_success
   Next step: Strengthen the related assertion so it discriminates the changed behavior.

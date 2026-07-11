@@ -335,3 +335,16 @@ cargo xtask goldens check
 
 Updated:
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

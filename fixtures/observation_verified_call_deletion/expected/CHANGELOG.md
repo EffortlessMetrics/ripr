@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+changed call heads use one canonical parser expression while verified observation remains exposed
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

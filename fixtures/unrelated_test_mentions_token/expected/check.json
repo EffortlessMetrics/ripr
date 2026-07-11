@@ -7,17 +7,17 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:predicate:8390dd91",
+      "id": "probe:src_lib.rs:predicate:c80557eb",
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.48,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:8390dd91",
+        "id": "probe:src_lib.rs:predicate:c80557eb",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/unrelated_test_mentions_token/input/src/lib.rs",
         "line": 2,
-        "expression": "if amount >= discount_threshold {"
+        "expression": "amount >= discount_threshold"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},

@@ -199,17 +199,17 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:predicate:e41c5ecf",
+      "id": "probe:src_lib.rs:predicate:431be027",
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.35,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:e41c5ecf",
+        "id": "probe:src_lib.rs:predicate:431be027",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs",
         "line": 8,
-        "expression": "if x >= 0 {"
+        "expression": "x >= 0"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},

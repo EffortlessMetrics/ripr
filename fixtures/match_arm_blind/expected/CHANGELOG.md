@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless match_arm_blind --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

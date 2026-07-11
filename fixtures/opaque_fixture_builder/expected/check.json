@@ -7,17 +7,17 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:predicate:47d36ed0",
+      "id": "probe:src_lib.rs:predicate:e177493b",
       "classification": "infection_unknown",
       "severity": "warning",
       "confidence": 0.66,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:47d36ed0",
+        "id": "probe:src_lib.rs:predicate:e177493b",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/opaque_fixture_builder/input/src/lib.rs",
         "line": 2,
-        "expression": "if amount >= 100 {"
+        "expression": "amount >= 100"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount"},

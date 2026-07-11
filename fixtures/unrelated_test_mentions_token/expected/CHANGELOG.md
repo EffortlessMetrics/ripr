@@ -155,3 +155,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions while unrelated token evidence remains non-authoritative
+
+Command:
+`cargo xtask goldens bless unrelated_test_mentions_token --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

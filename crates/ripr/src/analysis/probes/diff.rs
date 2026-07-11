@@ -3,7 +3,7 @@ use super::super::rust_index::{
     RustIndex, SyntaxNodeFact, changed_nodes_for_lines, extract_identifier_tokens,
     find_owner_function,
 };
-use super::classify::{classify_changed_syntax, should_ignore_changed_line};
+use super::classify::{parser_probe_shapes_for_changed_line, should_ignore_changed_line};
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::delta_for_family;
 use super::ids::{diff_probe_id, normalize_expression};
@@ -29,6 +29,7 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         index,
         changed_nodes: &changed_nodes,
     };
+    let mut emitted_parser_shapes = Vec::<(usize, String)>::new();
 
     for added in &changed.added_lines {
         let text = added.text.trim();
@@ -38,9 +39,54 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if changed_line_owned_by_test(index, &changed.path, added.new_side_line) {
             continue;
         }
-        let families = classify_changed_syntax(index, &changed.path, added.new_side_line, text)
-            .unwrap_or_else(|| classify_changed_line(text));
-        for family in families {
+        let parser_shapes =
+            parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text);
+        let canonical_shapes = parser_shapes
+            .iter()
+            .filter(|shape| {
+                changed
+                    .added_lines
+                    .iter()
+                    .any(|line| line.new_side_line == shape.start_line)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !canonical_shapes.is_empty() {
+            for shape in canonical_shapes {
+                let key = (shape.start_byte, shape.family.as_str().to_string());
+                if emitted_parser_shapes.iter().any(|current| current == &key) {
+                    continue;
+                }
+                emitted_parser_shapes.push(key);
+                let canonical_text = canonical_probe_text(text, shape.text);
+                let canonical_line = ChangedLine {
+                    line: shape.start_line,
+                    new_side_line: shape.start_line,
+                    text: canonical_text.clone(),
+                };
+                probes.push(build_probe(
+                    &build_context,
+                    &canonical_line,
+                    shape.family,
+                    nearby_removed_line(&canonical_text, changed),
+                    Some(canonical_text),
+                ));
+            }
+            continue;
+        }
+        if !parser_shapes.is_empty() {
+            for shape in parser_shapes {
+                probes.push(build_probe(
+                    &build_context,
+                    added,
+                    shape.family,
+                    nearby_removed_line(text, changed),
+                    Some(text.to_string()),
+                ));
+            }
+            continue;
+        }
+        for family in classify_changed_line(text) {
             probes.push(build_probe(
                 &build_context,
                 added,
@@ -81,6 +127,15 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
     dedup_probe_ids(&mut probes);
 
     probes
+}
+
+fn canonical_probe_text(changed_head: &str, parser_expression: &str) -> String {
+    let changed_head = changed_head.trim();
+    if changed_head.starts_with("let _ =") {
+        changed_head.to_string()
+    } else {
+        parser_expression.to_string()
+    }
 }
 
 /// Scan `probes` in order; for any id that appears more than once, rewrite the
@@ -212,7 +267,8 @@ fn nearby_removed_line(added: &str, changed: &ChangedFile) -> Option<String> {
 mod tests {
     use super::super::super::diff::ChangedLine;
     use super::super::super::rust_index::{
-        FileFacts, FunctionFact, PROBE_SHAPE_PREDICATE, ProbeShapeFact, RustIndex,
+        FileFacts, FunctionFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_PREDICATE, ProbeShapeFact,
+        RustIndex,
     };
     use super::*;
     use crate::domain::SymbolId;
@@ -284,6 +340,165 @@ mod tests {
                 .iter()
                 .any(|sink| sink == "branch result")
         );
+    }
+
+    #[test]
+    fn probes_for_file_emits_multiline_parser_shape_once() -> Result<(), String> {
+        let path = PathBuf::from("src/gate_watchdog.rs");
+        let expression = "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)";
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![
+                ChangedLine {
+                    line: 10,
+                    new_side_line: 10,
+                    text: "watchdog_reason(".to_string(),
+                },
+                ChangedLine {
+                    line: 11,
+                    new_side_line: 11,
+                    text: "\"run-missing\",".to_string(),
+                },
+                ChangedLine {
+                    line: 12,
+                    new_side_line: 12,
+                    text: "receipt,".to_string(),
+                },
+                ChangedLine {
+                    line: 13,
+                    new_side_line: 13,
+                    text: ")".to_string(),
+                },
+            ],
+            removed_lines: vec![],
+        };
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    functions: vec![FunctionFact {
+                        id: SymbolId("gate_watchdog::classify".to_string()),
+                        name: "classify".to_string(),
+                        file: path.clone(),
+                        start_line: 1,
+                        end_line: 20,
+                        body: expression.to_string(),
+                        calls: vec![],
+                        returns: vec![],
+                        literals: vec![],
+                        is_test: false,
+                        attrs: vec![],
+                    }],
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 10,
+                        end_line: 13,
+                        start_byte: 100,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: expression.to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+        if probes.len() != 1 {
+            return Err(format!(
+                "expected one semantic probe for multiline call, got {probes:?}"
+            ));
+        }
+        let Some(probe) = probes.first() else {
+            return Err("missing semantic probe".to_string());
+        };
+        if probe.expression != expression || probe.location.line != 10 {
+            return Err(format!("unexpected semantic probe: {probe:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probes_for_file_does_not_borrow_unchanged_outer_shape() -> Result<(), String> {
+        let path = PathBuf::from("src/hir.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 12,
+                new_side_line: 12,
+                text: "storage,".to_string(),
+            }],
+            removed_lines: vec![],
+        };
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path,
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 10,
+                        end_line: 13,
+                        start_byte: 100,
+                        kind: crate::analysis::rust_index::PROBE_SHAPE_RETURN_VALUE.to_string(),
+                        text: "HirLet {\n    name,\n    storage,\n}".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+        let Some(probe) = probes.first() else {
+            return Err("expected physical-line fallback probe".to_string());
+        };
+        if probe.expression != "storage," || probe.family != ProbeFamily::ReturnValue {
+            return Err(format!(
+                "isolated field edit borrowed unchanged outer shape: {probe:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probes_for_file_preserves_wildcard_discard_head() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let changed_text = "let _ = compute_fee(amount * 9);";
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 4,
+                new_side_line: 4,
+                text: changed_text.to_string(),
+            }],
+            removed_lines: vec![],
+        };
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path,
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 4,
+                        end_line: 4,
+                        start_byte: 40,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: "compute_fee(amount * 9)".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+        let Some(probe) = probes.first() else {
+            return Err("expected wildcard-discard call probe".to_string());
+        };
+        if probe.expression != changed_text {
+            return Err(format!("wildcard discard context was erased: {probe:?}"));
+        }
+        Ok(())
     }
 
     #[test]

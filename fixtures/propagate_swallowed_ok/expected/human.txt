@@ -9,7 +9,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/propagate_swallowed_ok/input/src/lib.rs:11
   Static exposure: propagation_unknown (note, confidence 0.66)
-  Changed behavior: self.persist(amount * 9).ok();
+  Changed behavior: self.persist(amount * 9).ok()
   Missing discriminator: No clear propagation path from changed behavior to an observable sink
   Related test: tests/ledger_tests.rs:4 apply_changes_balance
   Next step: Escalate to real mutation testing or deep static analysis for this probe.

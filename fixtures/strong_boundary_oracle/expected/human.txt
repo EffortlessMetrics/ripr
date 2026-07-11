@@ -9,7 +9,7 @@ Start here:
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/strong_boundary_oracle/input/src/lib.rs:2
   Static exposure: exposed (info, confidence 1.00)
-  Changed behavior: if amount >= discount_threshold {
+  Changed behavior: amount >= discount_threshold
   Related test: tests/pricing.rs:4 below_threshold_has_no_discount
   Evidence:
     - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, equality_threshold_discounts, far_above_threshold_discounts

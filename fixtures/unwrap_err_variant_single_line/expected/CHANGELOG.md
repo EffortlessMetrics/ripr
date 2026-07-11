@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions while exact error-family classifications stay stable
+
+Command:
+`cargo xtask goldens bless unwrap_err_variant_single_line --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -7,30 +7,30 @@
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:call_deletion:5d6526dc",
+      "id": "probe:src_lib.rs:call_deletion:ef417dc2",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:call_deletion:5d6526dc",
+        "id": "probe:src_lib.rs:call_deletion:ef417dc2",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/propagate_value_returned/input/src/lib.rs",
         "line": 11,
-        "expression": "return self.persist(amount * 9);"
+        "expression": "self.persist(amount * 9)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach apply: apply_returns_ok_on_success"},
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: self.persist(amount * 9)"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence persistence write: self.persist(amount * 9)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach apply: apply_returns_ok_on_success", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence returned value: self.persist(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: self.persist(amount * 9) (line 11)", "related test tests/ledger_tests.rs:4 apply_returns_ok_on_success uses smoke smoke only oracle: assert!(ledger.apply(5).is_ok());", "observed function argument value amount = 5 at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach apply: apply_returns_ok_on_success", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence persistence write: self.persist(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches persistence write: self.persist(amount * 9) (line 11)", "related test tests/ledger_tests.rs:4 apply_returns_ok_on_success uses smoke smoke only oracle: assert!(ledger.apply(5).is_ok());", "observed function argument value amount = 5 at line 6"],
       "flow_sinks": [
-        {"kind":"return_value","text":"self.persist(amount * 9)","line":11}
+        {"kind":"persistence","text":"self.persist(amount * 9)","line":11}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: self.persist(amount * 9)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach apply: apply_returns_ok_on_success"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence persistence write: self.persist(amount * 9)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach apply: apply_returns_ok_on_success"],
       "missing": ["No strong discriminator was detected"],
       "assertion_texts": {
         "6": "assert!(ledger.apply(5).is_ok());"
@@ -76,17 +76,17 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:return_value:f479b7bb",
+      "id": "probe:src_lib.rs:return_value:1b722e32",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:return_value:f479b7bb",
+        "id": "probe:src_lib.rs:return_value:1b722e32",
         "family": "return_value",
         "delta": "value",
         "file": "fixtures/propagate_value_returned/input/src/lib.rs",
         "line": 11,
-        "expression": "return self.persist(amount * 9);"
+        "expression": "return self.persist(amount * 9)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach apply: apply_returns_ok_on_success"},

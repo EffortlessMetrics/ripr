@@ -7,17 +7,17 @@
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:call_deletion:09dd1431",
+      "id": "probe:src_lib.rs:call_deletion:c13d820a",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:call_deletion:09dd1431",
+        "id": "probe:src_lib.rs:call_deletion:c13d820a",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/observation_verified_call_deletion/input/src/lib.rs",
         "line": 15,
-        "expression": "cache.insert(\"result_key\", result);"
+        "expression": "cache.insert(\"result_key\", result)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_inserts_result_key_with_value"},
@@ -87,17 +87,17 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:side_effect:827549d9",
+      "id": "probe:src_lib.rs:side_effect:4c5f48f0",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:side_effect:827549d9",
+        "id": "probe:src_lib.rs:side_effect:4c5f48f0",
         "family": "side_effect",
         "delta": "effect",
         "file": "fixtures/observation_verified_call_deletion/input/src/lib.rs",
         "line": 15,
-        "expression": "cache.insert(\"result_key\", result);"
+        "expression": "cache.insert(\"result_key\", result)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_inserts_result_key_with_value"},
