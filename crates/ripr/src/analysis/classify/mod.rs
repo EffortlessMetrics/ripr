@@ -19,7 +19,7 @@ pub(in crate::analysis) use flow::{local_flow_sinks, propagation_evidence};
 pub(in crate::analysis) use infection::infection_evidence;
 pub(in crate::analysis) use reach::reach_evidence;
 pub(in crate::analysis) use related_tests::find_related_tests;
-pub(in crate::analysis) use reveal::reveal_evidence;
+pub(in crate::analysis) use reveal::reveal_evidence_with_expression;
 // RIPR-SPEC-0106: re-export the variant parsers so test_grip_evidence.rs can
 // apply variant-binding without reaching into the private `text` submodule.
 pub(in crate::analysis) use text::{

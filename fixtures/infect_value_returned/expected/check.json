@@ -4,13 +4,13 @@
   "mode": "fast",
   "root": "fixtures/infect_value_returned/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
   "findings": [
     {
       "id": "probe:src_lib.rs:call_deletion:5f1380bd",
-      "classification": "exposed",
-      "severity": "info",
-      "confidence": 1.00,
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
       "probe": {
         "id": "probe:src_lib.rs:call_deletion:5f1380bd",
         "family": "call_deletion",
@@ -24,14 +24,14 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach score: score_uses_multiplier", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches call effect: let result = helper(amount * MULTIPLIER) (line 4)", "related test tests/score_tests.rs:4 score_uses_multiplier uses strong exact value oracle: assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);", "observed assertion argument value 1 at line 5", "observed assertion argument value 10 at line 5", "observed function argument value amount = 10 at line 5"],
+      "evidence_path": ["reach yes: Related tests appear to reach score: score_uses_multiplier", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches call effect: let result = helper(amount * MULTIPLIER) (line 4)", "related test tests/score_tests.rs:4 score_uses_multiplier uses strong exact value oracle: assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);", "observed assertion argument value 1 at line 5", "observed assertion argument value 10 at line 5", "observed function argument value amount = 10 at line 5"],
       "flow_sinks": [
         {"kind":"call_effect","text":"let result = helper(amount * MULTIPLIER)","line":4}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach score: score_uses_multiplier", "Strong oracle found: exact value or pattern assertion"],
-      "missing": [],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach score: score_uses_multiplier"],
+      "missing": ["No strong discriminator was detected"],
       "assertion_texts": {
         "5": "assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);"
       },
@@ -91,8 +91,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "",
-      "suggested_next_action": "",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
       "language": "rust"
     },
     {

@@ -23,7 +23,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::Negative)
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Medium oracle found: property or partial structural assertion
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 8)
   - related test tests/errors.rs:4 negative_input_rejects_with_negative_error uses medium exact error variant oracle: assert_eq!(err, CalcError::Negative);
   - observed function argument value x = -1 at line 5

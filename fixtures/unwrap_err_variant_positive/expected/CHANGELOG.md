@@ -46,3 +46,16 @@ cargo xtask goldens check
 
 Updated:
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Parser-backed reveal analysis avoids confirming call effects from argument-only token matches (#1453)
+
+Command:
+`cargo xtask goldens bless unwrap_err_variant_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

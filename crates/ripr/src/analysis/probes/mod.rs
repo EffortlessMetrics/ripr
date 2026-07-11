@@ -6,6 +6,7 @@ mod ids;
 mod lexical;
 mod repo;
 
+pub(crate) use classify::parser_expression_for_probe;
 pub use diff::probes_for_file;
 pub(crate) use expectations::{expected_sinks, required_oracles};
 pub(crate) use ids::{fingerprint_probe_id, normalize_expression};
