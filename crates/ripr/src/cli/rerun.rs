@@ -94,6 +94,26 @@ struct TargetedRerunSeam {
     line: usize,
     owner: String,
     static_class: String,
+    related_tests: Vec<TargetedRerunRelatedTest>,
+    missing_discriminators: Vec<TargetedRerunMissingDiscriminator>,
+}
+
+#[derive(Serialize, PartialEq, Eq)]
+struct TargetedRerunRelatedTest {
+    test_name: String,
+    file: String,
+    line: usize,
+    oracle_kind: String,
+    oracle_strength: String,
+    evidence_summary: String,
+    relation_reason: String,
+    relation_confidence: String,
+}
+
+#[derive(Serialize, PartialEq, Eq)]
+struct TargetedRerunMissingDiscriminator {
+    value: String,
+    reason: String,
 }
 
 #[derive(Serialize)]
@@ -109,6 +129,13 @@ struct TargetedRerunParity {
     state: &'static str,
     selected_seam_count: usize,
     matched_seam_count: usize,
+    mismatches: Vec<TargetedRerunParityMismatch>,
+}
+
+#[derive(Serialize)]
+struct TargetedRerunParityMismatch {
+    seam_id: String,
+    fields: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -665,24 +692,37 @@ fn apply_full_pipeline_parity(
     let mismatches = report
         .seams
         .iter()
-        .filter(|targeted| {
-            full_by_id.get(&targeted.seam_id).is_none_or(|full| {
-                full.canonical_gap_id != targeted.canonical_gap_id
-                    || full.static_class != targeted.static_class
-                    || full.file != targeted.file
-                    || full.owner != targeted.owner
+        .filter_map(|targeted| {
+            let full = full_by_id.get(&targeted.seam_id)?;
+            let fields = parity_mismatch_fields(targeted, full);
+            (!fields.is_empty()).then(|| TargetedRerunParityMismatch {
+                seam_id: targeted.seam_id.clone(),
+                fields,
             })
         })
-        .count();
-    let matched = report.seams.len().saturating_sub(mismatches);
+        .collect::<Vec<_>>();
+    let missing_from_full = report
+        .seams
+        .iter()
+        .filter(|targeted| !full_by_id.contains_key(&targeted.seam_id))
+        .map(|targeted| TargetedRerunParityMismatch {
+            seam_id: targeted.seam_id.clone(),
+            fields: vec!["seam_id"],
+        });
+    let mut mismatches = mismatches;
+    mismatches.extend(missing_from_full);
+    let mismatch_count = mismatches.len();
+    let matched = report.seams.len().saturating_sub(mismatch_count);
+    let has_mismatches = mismatch_count > 0;
     report.parity = Some(TargetedRerunParity {
-        state: if limit_info.is_none() && mismatches == 0 {
+        state: if limit_info.is_none() && !has_mismatches {
             "matched"
         } else {
             "limited"
         },
         selected_seam_count: report.seams.len(),
         matched_seam_count: matched,
+        mismatches,
     });
     if let Some(limit_info) = limit_info {
         report.state = "limited";
@@ -693,16 +733,43 @@ fn apply_full_pipeline_parity(
                 limit_info.analyzed, limit_info.total
             ),
         });
-    } else if mismatches > 0 {
+    } else if has_mismatches {
         report.state = "limited";
         report.limitation = Some(TargetedRerunLimitation {
             kind: "full_pipeline_parity_mismatch",
             message: format!(
-                "{mismatches} selected seam(s) differed from the full pipeline; targeted evidence is not a successful parity result"
+                "{} selected seam(s) differed from the full pipeline; targeted evidence is not a successful parity result",
+                mismatch_count
             ),
         });
     }
     Ok(())
+}
+
+fn parity_mismatch_fields(
+    targeted: &TargetedRerunSeam,
+    full: &TargetedRerunSeam,
+) -> Vec<&'static str> {
+    let mut fields = Vec::new();
+    if targeted.canonical_gap_id != full.canonical_gap_id {
+        fields.push("canonical_gap_id");
+    }
+    if targeted.static_class != full.static_class {
+        fields.push("static_class");
+    }
+    if targeted.file != full.file {
+        fields.push("file");
+    }
+    if targeted.owner != full.owner {
+        fields.push("owner");
+    }
+    if targeted.related_tests != full.related_tests {
+        fields.push("related_tests");
+    }
+    if targeted.missing_discriminators != full.missing_discriminators {
+        fields.push("missing_discriminators");
+    }
+    fields
 }
 
 fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
@@ -855,6 +922,30 @@ fn seam_from(entry: &crate::analysis::ClassifiedSeam) -> TargetedRerunSeam {
         line: entry.seam.display_line(),
         owner: entry.seam.owner().to_string(),
         static_class: entry.class.as_str().to_string(),
+        related_tests: entry
+            .evidence
+            .related_tests
+            .iter()
+            .map(|test| TargetedRerunRelatedTest {
+                test_name: test.test_name.clone(),
+                file: display_path(&test.file),
+                line: test.line,
+                oracle_kind: test.oracle_kind.as_str().to_string(),
+                oracle_strength: test.oracle_strength.as_str().to_string(),
+                evidence_summary: test.evidence_summary.clone(),
+                relation_reason: test.relation_reason.as_str().to_string(),
+                relation_confidence: test.relation_confidence.as_str().to_string(),
+            })
+            .collect(),
+        missing_discriminators: entry
+            .evidence
+            .missing_discriminators
+            .iter()
+            .map(|fact| TargetedRerunMissingDiscriminator {
+                value: fact.value.clone(),
+                reason: fact.reason.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -996,8 +1087,9 @@ fn render_human(report: &TargetedRerunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RerunSelector, TargetedRerunCache, TargetedRerunMovement, TargetedRerunReport,
-        TargetedRerunSeam, TargetedRerunSelector, cache_from, entry_matches_selected_gap,
+        RerunSelector, TargetedRerunCache, TargetedRerunMissingDiscriminator,
+        TargetedRerunMovement, TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam,
+        TargetedRerunSelector, cache_from, entry_matches_selected_gap, parity_mismatch_fields,
         parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
         scopes_from_gap_records,
     };
@@ -1350,6 +1442,55 @@ mod tests {
     }
 
     #[test]
+    fn parity_names_related_test_and_missing_discriminator_drift() {
+        let baseline = TargetedRerunSeam {
+            canonical_gap_id: Some("gap:example".to_string()),
+            seam_id: "seam:example".to_string(),
+            file: "src/lib.rs".to_string(),
+            line: 8,
+            owner: "pricing::discounted_total".to_string(),
+            static_class: "weakly_gripped".to_string(),
+            related_tests: Vec::new(),
+            missing_discriminators: Vec::new(),
+        };
+        let targeted = TargetedRerunSeam {
+            related_tests: vec![TargetedRerunRelatedTest {
+                test_name: "discounted_total_case".to_string(),
+                file: "tests/pricing.rs".to_string(),
+                line: 12,
+                oracle_kind: "exact_value".to_string(),
+                oracle_strength: "strong".to_string(),
+                evidence_summary: "asserts exact total".to_string(),
+                relation_reason: "direct_owner_call".to_string(),
+                relation_confidence: "high".to_string(),
+            }],
+            missing_discriminators: vec![TargetedRerunMissingDiscriminator {
+                value: "amount == threshold".to_string(),
+                reason: "boundary value is not observed".to_string(),
+            }],
+            ..baseline_fields()
+        };
+
+        assert_eq!(
+            parity_mismatch_fields(&targeted, &baseline),
+            vec!["related_tests", "missing_discriminators"]
+        );
+    }
+
+    fn baseline_fields() -> TargetedRerunSeam {
+        TargetedRerunSeam {
+            canonical_gap_id: Some("gap:example".to_string()),
+            seam_id: "seam:example".to_string(),
+            file: "src/lib.rs".to_string(),
+            line: 8,
+            owner: "pricing::discounted_total".to_string(),
+            static_class: "weakly_gripped".to_string(),
+            related_tests: Vec::new(),
+            missing_discriminators: Vec::new(),
+        }
+    }
+
+    #[test]
     fn human_rerun_report_names_current_state_only_boundary() -> Result<(), String> {
         let report = TargetedRerunReport {
             schema_version: "ripr-targeted-rerun-v1",
@@ -1383,6 +1524,8 @@ mod tests {
                 line: 8,
                 owner: "pricing::discounted_total".to_string(),
                 static_class: "weakly_gripped".to_string(),
+                related_tests: Vec::new(),
+                missing_discriminators: Vec::new(),
             }],
             movement: None,
             parity: None,

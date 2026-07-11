@@ -14362,7 +14362,9 @@ targeted-rerun receipt shape:
       "file": "src/lib.rs",
       "line": 2,
       "owner": "src/lib.rs::discounted_total",
-      "static_class": "weakly_gripped"
+      "static_class": "weakly_gripped",
+      "related_tests": [],
+      "missing_discriminators": []
     }
   ],
   "authority_boundary": "static evidence only; no before snapshot was supplied, so gap movement is not inferred"
@@ -14439,14 +14441,23 @@ input changed.
 
 Pass `--check-parity` to request an explicit full-inventory comparison. The
 optional `parity` object reports `matched` only when every selected seam has
-the same canonical gap ID, seam ID, static class, file, and owner in the
-current full pipeline.
+the same canonical gap ID, seam ID, static class, file, owner, related-test
+evidence, and missing-discriminator evidence in the current full pipeline.
 A difference changes the overall report to `limited` with
 `full_pipeline_parity_mismatch`; it is never rendered as a successful targeted
-result. This diagnostic is opt-in because it intentionally runs the broad
-pipeline and is not an interactive default. If the full inventory is capped,
-the report instead uses `full_pipeline_parity_incomplete` because an absent
-seam may simply lie outside the analyzed prefix.
+result. `parity.mismatches[]` identifies the seam and the evidence fields that
+differ, so a mismatch is actionable rather than an unexplained count. This
+diagnostic is opt-in because it intentionally runs the broad pipeline and is
+not an interactive default. If the full inventory is capped, the report
+instead uses `full_pipeline_parity_incomplete` because an absent seam may
+simply lie outside the analyzed prefix.
+
+Each targeted seam carries the producer-owned `related_tests` and
+`missing_discriminators` arrays used by the parity comparison. These are static
+evidence summaries; they do not claim runtime mutation behavior, correctness,
+coverage adequacy, or complete test quality. Verify and receipt commands remain
+the explicit route supplied by the selected ledger records; the rerun does not
+manufacture commands from seam placement.
 
 For a `--gap` receipt, the ledger may carry an explicit nullable `seam_id`
 beside its behavioral `canonical_gap_id`. RIPR uses that typed producer-owned

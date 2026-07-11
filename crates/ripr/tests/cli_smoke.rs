@@ -2784,10 +2784,13 @@ fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> R
     if report["state"] != "current_state_only"
         || report["parity"]["state"] != "matched"
         || report["parity"]["selected_seam_count"] != report["parity"]["matched_seam_count"]
+        || report["parity"]["mismatches"] != serde_json::json!([])
         || report["parity"]["selected_seam_count"] != serde_json::json!(1)
         || report
             .get("limitation")
             .is_some_and(|value| !value.is_null())
+        || !report["seams"][0]["related_tests"].is_array()
+        || !report["seams"][0]["missing_discriminators"].is_array()
     {
         return Err(format!("unexpected parity rerun receipt: {report}"));
     }

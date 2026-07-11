@@ -87,14 +87,20 @@ the full pipeline. Rendered artifacts are never cache inputs.
 
 An explicit `--check-parity` opt-in runs the full static seam inventory for the
 same root and configuration, then compares the selected canonical gap and seam
-identities plus their file, owner, and static classification fields. A mismatch
-is named as `full_pipeline_parity_mismatch` and fails the targeted result closed
-into a
-`limited` state. The full inventory is deliberately opt-in because it can be
-expensive; omitting the flag does not imply parity was checked. If the full
-inventory is seam-capped, the result is instead limited with
-`full_pipeline_parity_incomplete`, because an absent seam may be outside the
-analyzed prefix rather than a true mismatch.
+identities plus their file, owner, static classification, related-test, and
+missing-discriminator evidence. A mismatch is named as
+`full_pipeline_parity_mismatch` and fails the targeted result closed into a
+`limited` state. The report identifies each mismatching seam and evidence field
+so parity failures are actionable. The full inventory is deliberately opt-in
+because it can be expensive; omitting the flag does not imply parity was
+checked. If the full inventory is seam-capped, the result is instead limited
+with `full_pipeline_parity_incomplete`, because an absent seam may be outside
+the analyzed prefix rather than a true mismatch.
+
+Targeted seam entries carry the producer-owned related-test and
+missing-discriminator summaries used by this comparison. Verify and receipt
+commands remain the explicit route supplied by the selected gap ledger; the
+rerun does not manufacture commands from a seam's file or line.
 
 ### Cache correctness and disclosure
 
