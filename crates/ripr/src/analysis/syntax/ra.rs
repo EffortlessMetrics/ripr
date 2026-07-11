@@ -350,7 +350,7 @@ fn extract_parser_probe_shapes(
             range.start(),
             range.end(),
         );
-        if has_return_value_text(&call_text) {
+        if has_return_value_text(&call_text) && !call_is_argument(&call_expr) {
             push_probe_shape(
                 &mut shapes,
                 line_index,
@@ -561,6 +561,13 @@ fn has_return_value_text(text: &str) -> bool {
         || trimmed.contains(" Ok(")
         || trimmed.contains(" Some(")
         || trimmed.contains("None")
+}
+
+fn call_is_argument(call: &ast::CallExpr) -> bool {
+    call.syntax()
+        .parent()
+        .and_then(ast::ArgList::cast)
+        .is_some()
 }
 
 fn is_tail_return_value_text(text: &str) -> bool {
@@ -971,6 +978,40 @@ pub fn validate(value: i32) -> Result<i32, String> {
                 .any(|p| p.kind == PROBE_SHAPE_ERROR_PATH),
             "Should extract error_path probe shapes"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn ra_adapter_does_not_promote_nested_constructor_arguments_to_returns()
+    -> Result<(), Box<dyn Error>> {
+        let root = temp_dir("ra_nested_constructor_returns")?;
+        fs::create_dir_all(root.join("src"))?;
+        write_manifest(&root)?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+fn consume(_: Option<u64>) {}
+
+pub fn wrap(value: u64) -> Result<Option<u64>, ()> {
+    consume(Some(value));
+    Ok(Some(value))
+}
+"#,
+        )?;
+
+        let adapter = RaRustSyntaxAdapter;
+        let text = fs::read_to_string(root.join("src/lib.rs"))?;
+        let facts = adapter.summarize_file(&root.join("src/lib.rs"), &text)?;
+        let return_shapes = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == PROBE_SHAPE_RETURN_VALUE)
+            .map(|shape| shape.text.as_str())
+            .collect::<Vec<_>>();
+
+        if return_shapes != ["Ok(Some(value))"] {
+            return Err(format!("unexpected return probe shapes: {return_shapes:?}").into());
+        }
         Ok(())
     }
 
