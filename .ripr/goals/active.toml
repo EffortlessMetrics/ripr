@@ -103,10 +103,10 @@ commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "gate/concrete-targeted-mutation"
-status = "ready"
+status = "done"
 branch = "gate/concrete-targeted-mutation"
 stackable = false
-acceptance = "Targeted mutation emits a bounded reproducible candidate and command, or a named no-safe-candidate limitation; it never executes by default."
+acceptance = "#1545 shipped a bounded producer-owned predicate/operator candidate and command, or a named no-safe-candidate limitation; mutation execution remains explicit and never runs by default."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]

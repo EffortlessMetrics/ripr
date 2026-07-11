@@ -132,6 +132,17 @@ synthesizing a blocking call-observation receipt. Resolving that producer
 limitation belongs in the `analysis/call-presence-gate-producer` slice, not a
 gate renderer.
 
+## Targeted mutation route delivery (2026-07-11)
+
+PR #1545 merged the concrete #1425 route. Diff-scoped PR evidence now emits a
+`targeted_mutation_route` with a bounded producer-owned predicate/operator
+candidate and `cargo mutants --file ...` command when the probe has an
+unambiguous source file, line, and expression. Unsupported, ambiguous, or
+missing producer facts remain `static_limitation` with a named reason. The
+route is preserved through `impacted-evidence`; mutation execution and runtime
+claims remain out of scope. Future work may broaden safe candidate families
+only behind producer-owned facts and checked fixtures.
+
 ## Boundaries and closeout
 
 No preview promotion, automatic test generation, default mutation execution,

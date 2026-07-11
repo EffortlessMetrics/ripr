@@ -5459,7 +5459,7 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `review/card-oracle-projection` | done | #1483 merged with explicit representative-oracle semantics. |
 | `review/canonical-working-set-id` | done | #1505 merged: working-set cards now carry domain-supplied canonical gap identity. |
 | `gate/exact-repair-route` | done | Structural route shipped: policy-eligible decisions expose the exact seam, missing discriminator, focused test intent, verify/receipt commands, and producer-owned inspection route without artifact archaeology. Real CallPresence producer eligibility remains a separate fail-closed follow-up. |
-| `gate/concrete-targeted-mutation` | ready | Close #1425 with a concrete route or named no-safe-candidate limitation. |
+| `gate/concrete-targeted-mutation` | done | #1545 merged: PR-evidence and impacted-evidence now carry a bounded producer-owned predicate/operator candidate and command, or an explicit no-safe-candidate limitation; mutation execution remains opt-in. |
 | `analysis/call-presence-gate-producer` | blocked | Close the remaining #1440 CallPresence producer gap tracked in #1543; keep helper-only, dynamic, method-string, and ambiguous cases as named static limitations. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
