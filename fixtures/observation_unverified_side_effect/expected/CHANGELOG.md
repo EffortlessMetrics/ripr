@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+restrict CallDeletion probes to standalone call statements; refresh affected goldens and record intentional output changes
+
+Command:
+`cargo xtask goldens bless observation_unverified_side_effect --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

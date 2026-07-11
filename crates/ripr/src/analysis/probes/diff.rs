@@ -41,6 +41,10 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         }
         let parser_shapes =
             parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text);
+        let parser_shapes = parser_shapes
+            .into_iter()
+            .filter(|shape| shape.family != ProbeFamily::CallDeletion || shape.standalone_call)
+            .collect::<Vec<_>>();
         let canonical_shapes = parser_shapes
             .iter()
             .filter(|shape| {
@@ -422,6 +426,7 @@ mod tests {
                 path.clone(),
                 FileFacts {
                     path: path.clone(),
+                    source: format!("{expression};"),
                     functions: vec![FunctionFact {
                         id: SymbolId("gate_watchdog::classify".to_string()),
                         name: "classify".to_string(),
@@ -438,7 +443,7 @@ mod tests {
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 10,
                         end_line: 13,
-                        start_byte: 100,
+                        start_byte: 0,
                         kind: PROBE_SHAPE_CALL_DELETION.to_string(),
                         text: expression.to_string(),
                     }],

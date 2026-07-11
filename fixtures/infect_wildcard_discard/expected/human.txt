@@ -7,15 +7,15 @@ Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 2 unknown
 Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
-  File: fixtures/infect_wildcard_discard/input/src/lib.rs:2
-  Static exposure: infection_unknown (warning, confidence 0.66)
-  Changed behavior: let _ = compute_fee(amount * 9);
-  Missing discriminator: Changed value is bound to a discard pattern; it cannot infect a sink
+  File: fixtures/infect_wildcard_discard/input/src/lib.rs:3
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Changed behavior: amount
+  Missing discriminator: No clear propagation path from changed behavior to an observable sink
   Related test: tests/process_tests.rs:4 process_returns_amount_unchanged
-  Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:
     - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
-    - infection unknown: Changed value is bound to a discard pattern; it cannot infect a sink
+    - infection yes: Reachable tests can plausibly activate this changed behavior
     - 7 more evidence line(s) hidden
 
 Hidden:

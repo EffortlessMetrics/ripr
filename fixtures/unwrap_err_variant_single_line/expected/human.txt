@@ -2,23 +2,21 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/unwrap_err_variant_single_line/input
 
-Summary: 3 probe(s), 2 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
 Start here:
-  State: top_gap
-  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  State: no_actionable_gap
+  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Changed behavior: Err(ParseError::TooLong(name.len()))
-  Missing discriminator: No strong discriminator was detected
+  Static exposure: exposed (info, confidence 1.00)
+  Changed behavior: return Err(ParseError::TooLong(name.len()))
   Related test: tests/errors.rs:4 too_long_name_rejected_with_exact_variant
-  Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence:
     - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 10 more evidence line(s) hidden
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

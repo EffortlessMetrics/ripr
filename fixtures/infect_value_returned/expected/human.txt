@@ -2,23 +2,23 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/infect_value_returned/input
 
-Summary: 3 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 2 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 1 unknown
 
 Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
-  File: fixtures/infect_value_returned/input/src/lib.rs:4
+  File: fixtures/infect_value_returned/input/src/lib.rs:5
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Changed behavior: helper(amount * MULTIPLIER)
+  Changed behavior: result + 1
   Missing discriminator: No strong discriminator was detected
   Related test: tests/score_tests.rs:4 score_uses_multiplier
-  Next step: Strengthen the related assertion so it discriminates the changed behavior.
+  Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
   Evidence:
     - reach yes: Related tests appear to reach score: score_uses_multiplier
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 8 more evidence line(s) hidden
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

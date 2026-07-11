@@ -9,6 +9,7 @@ pub(crate) struct ParserProbeShape<'a> {
     pub(crate) start_line: usize,
     pub(crate) start_byte: usize,
     pub(crate) text: &'a str,
+    pub(crate) standalone_call: bool,
 }
 
 pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
@@ -36,6 +37,7 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
             start_line: shape.start_line,
             start_byte: shape.start_byte,
             text: &shape.text,
+            standalone_call: parser_call_shape_is_standalone(facts, shape),
         };
         if let Some(position) = selected
             .iter()
@@ -61,6 +63,28 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
             .then(left.text.cmp(right.text))
     });
     selected
+}
+
+fn parser_call_shape_is_standalone(
+    facts: &FileFacts,
+    shape: &super::super::rust_index::ProbeShapeFact,
+) -> bool {
+    if family_for_probe_shape(&shape.kind) != Some(ProbeFamily::CallDeletion) {
+        return true;
+    }
+    let end = shape.start_byte.saturating_add(shape.text.len());
+    let Some(before) = facts.source.get(..shape.start_byte) else {
+        return false;
+    };
+    let prefix = before.rsplit('\n').next().unwrap_or(before).trim();
+    if !prefix.is_empty() {
+        return false;
+    }
+    let Some(after) = facts.source.get(end..) else {
+        return false;
+    };
+    let suffix = after.split('\n').next().unwrap_or(after).trim_start();
+    suffix.starts_with(';') || suffix.starts_with("?;")
 }
 
 pub(crate) fn parser_expression_for_probe<'a>(
@@ -189,6 +213,58 @@ mod tests {
 
         let shapes = parser_probe_shapes_for_changed_line(&index, &path, 4, "return total");
         assert!(shapes.is_empty());
+    }
+
+    #[test]
+    fn parser_call_shapes_preserve_inventory_and_mark_diff_eligibility() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let source = "fn demo() {\n    read()?;\n    let value = read()?;\n}\n";
+        let first = source
+            .find("read()")
+            .ok_or_else(|| "missing standalone call".to_string())?;
+        let second = source
+            .rfind("read()")
+            .ok_or_else(|| "missing initializer call".to_string())?;
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    source: source.to_string(),
+                    probe_shapes: vec![
+                        ProbeShapeFact {
+                            start_line: 2,
+                            end_line: 2,
+                            start_byte: first,
+                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
+                                .to_string(),
+                            text: "read()".to_string(),
+                        },
+                        ProbeShapeFact {
+                            start_line: 3,
+                            end_line: 3,
+                            start_byte: second,
+                            kind: crate::analysis::rust_index::PROBE_SHAPE_CALL_DELETION
+                                .to_string(),
+                            text: "read()".to_string(),
+                        },
+                    ],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let standalone = parser_probe_shapes_for_changed_line(&index, &path, 2, "read()?;");
+        let initializer =
+            parser_probe_shapes_for_changed_line(&index, &path, 3, "let value = read()?;");
+        if standalone.len() != 1 || !standalone[0].standalone_call {
+            return Err(format!("standalone call was not retained: {standalone:?}"));
+        }
+        if initializer.len() != 1 || initializer[0].standalone_call {
+            return Err(format!("initializer call was promoted: {initializer:?}"));
+        }
+        Ok(())
     }
 
     #[test]
