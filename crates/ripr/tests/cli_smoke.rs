@@ -2786,6 +2786,13 @@ fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> R
         || report["parity"]["selected_seam_count"] != report["parity"]["matched_seam_count"]
         || report["parity"]["mismatches"] != serde_json::json!([])
         || report["parity"]["selected_seam_count"] != serde_json::json!(1)
+        || !report["cache"]["input_fingerprint"].is_object()
+        || report["cache"]["input_fingerprint"]["workspace_manifests_hash"]
+            .as_str()
+            .is_none()
+        || report["cache"]["input_fingerprint"]["lockfile_hash"]
+            .as_str()
+            .is_none()
         || report
             .get("limitation")
             .is_some_and(|value| !value.is_null())
@@ -2793,6 +2800,60 @@ fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> R
         || !report["seams"][0]["missing_discriminators"].is_array()
     {
         return Err(format!("unexpected parity rerun receipt: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_before_receipt_names_toolchain_fingerprint_change() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/pricing.rs",
+            "--json",
+        ],
+        &[("RUSTUP_TOOLCHAIN", "toolchain-before")],
+    );
+    assert_success(&before);
+    let workspace = unique_temp_workspace("rerun-input-fingerprint");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|err| format!("create fingerprint workspace: {err}"))?;
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write fingerprint before receipt: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/pricing.rs",
+            "--before",
+            &before_arg,
+            "--json",
+        ],
+        &[("RUSTUP_TOOLCHAIN", "toolchain-after")],
+    );
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse fingerprint rerun JSON: {err}"))?;
+    if report["cache"]["invalidation_status"] != "workspace_input_changed"
+        || !report["cache"]["recomputation_reasons"]
+            .as_array()
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some("input_changed:toolchain_hash"))
+            })
+    {
+        return Err(format!("unexpected input fingerprint disclosure: {report}"));
     }
     Ok(())
 }

@@ -115,6 +115,15 @@ Every result records:
 - whether a cold fallback occurred and why; and
 - whether the result is complete, limited, or unavailable.
 
+Every targeted receipt also carries an `input_fingerprint` containing owned
+hashes for the cache schema, analyzer version, workspace root, Rust file set,
+`RIPR_CFG_FEATURES` when supplied, RIPR config, test intent, suppressions,
+workspace manifests, lockfile, toolchain selector, and seam limit. When an explicit
+`--before` receipt contains the same shape, changed components are named as
+`input_changed:<field>` recomputation reasons and the receipt uses
+`invalidation_status: "workspace_input_changed"`. A missing fingerprint is
+reported as unavailable rather than inferred from ambient cache state.
+
 A content change to any selected test, selected production seam, Cargo manifest
 or lockfile, workspace membership or package graph, selected feature
 configuration, toolchain or analyzer configuration, configured oracle policy,
@@ -156,8 +165,9 @@ explicit cache-reset invalidation, and parity samples, and cleans the
 temporary cache after writing the receipt. A cache reset is intentionally
 reported as an explicit invalidation case. File-fact misses additionally
 report `file_content_changed` when a prior same-path envelope proves that the
-content key changed; broader input invalidation remains named `not_available`
-until the analyzer can attribute it from owned facts.
+content key changed. The receipt's explicit input fingerprint and `--before`
+comparison additionally name owned manifest, lockfile, config, policy, and
+toolchain changes; absent before fingerprints remain `not_available`.
 
 The proposed acceptance target is both:
 

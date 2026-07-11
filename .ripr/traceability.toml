@@ -11,6 +11,7 @@ spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
   "crates/ripr/src/analysis/facts/build.rs::tests::build_index_from_loaded_files_misses_when_content_changes",
   "crates/ripr/src/analysis/seam_cache.rs::tests::given_file_content_changes_when_file_facts_load_then_miss_is_returned",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::workspace_manifest_and_lockfile_changes_change_cache_identity",
   "crates/ripr/src/analysis/classify/flow.rs",
   "crates/ripr/src/analysis/classifier.rs",
   "crates/ripr/src/analysis/probes/lexical.rs",
@@ -6692,6 +6693,7 @@ tests = [
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_explicit_before_artifact",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_explicit_full_pipeline_parity_check",
   "crates/ripr/src/cli/rerun.rs::tests::parity_names_related_test_and_missing_discriminator_drift",
+  "crates/ripr/src/cli/rerun.rs::tests::input_fingerprint_changes_name_owned_workspace_inputs",
   "crates/ripr/src/cli/rerun.rs::tests::human_rerun_report_names_current_state_only_boundary",
   "crates/ripr/src/cli/rerun.rs::tests::human_rerun_report_names_explicit_static_movement",
   "crates/ripr/src/cli/rerun.rs::tests::canonical_gap_records_preserve_multiple_anchored_scopes",
@@ -6704,6 +6706,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger",
   "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_uses_explicit_before_receipt_for_static_movement",
   "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap",
+  "crates/ripr/tests/cli_smoke.rs::rerun_before_receipt_names_toolchain_fingerprint_change",
   "crates/ripr/tests/cli_smoke.rs::rerun_check_parity_names_capped_inventory_and_suppresses_movement",
   "crates/ripr/tests/cli_smoke.rs::rerun_gap_groups_multiple_current_seams",
   "xtask/src/reports/targeted_rerun.rs::tests::parse_options_requires_root_and_changed_test",

@@ -10,6 +10,7 @@ use crate::cli::parse::expect_value;
 use crate::output::gap_decision_ledger::{GapRecord, parse_gap_record_source_json};
 use crate::output::outcome::{TargetedRerunStaticSeam, targeted_rerun_movement_from_json};
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -83,7 +84,44 @@ struct TargetedRerunCache {
     stores: usize,
     store_errors: usize,
     recomputation_reasons: Vec<String>,
-    invalidation_status: &'static str,
+    invalidation_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_fingerprint: Option<TargetedRerunInputFingerprint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct TargetedRerunInputFingerprint {
+    schema_version: String,
+    analyzer_version: String,
+    workspace_root_hash: String,
+    files_content_hash: String,
+    cfg_features_hash: String,
+    config_hash: String,
+    test_intent_hash: String,
+    suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
+    seam_limit_key: String,
+}
+
+impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInputFingerprint {
+    fn from(key: &crate::analysis::seam_cache::RepoSeamCacheKey) -> Self {
+        Self {
+            schema_version: key.schema_version.clone(),
+            analyzer_version: key.analyzer_version.clone(),
+            workspace_root_hash: key.workspace_root_hash.clone(),
+            files_content_hash: key.files_content_hash.clone(),
+            cfg_features_hash: key.cfg_features_hash.clone(),
+            config_hash: key.config_hash.clone(),
+            test_intent_hash: key.test_intent_hash.clone(),
+            suppressions_hash: key.suppressions_hash.clone(),
+            workspace_manifests_hash: key.workspace_manifests_hash.clone(),
+            lockfile_hash: key.lockfile_hash.clone(),
+            toolchain_hash: key.toolchain_hash.clone(),
+            seam_limit_key: key.seam_limit_key.clone(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -301,7 +339,7 @@ fn rerun_changed_test(
         &changed_test,
         test_node,
     )?;
-    Ok(report(
+    let mut report = report(
         "current_state_only",
         TargetedRerunSelector {
             kind: "changed_test",
@@ -324,7 +362,9 @@ fn rerun_changed_test(
         None,
         None,
         Vec::new(),
-    ))
+    );
+    report.cache.input_fingerprint = Some((&inventory.workspace_cache_key).into());
+    Ok(report)
 }
 
 fn rerun_gap(
@@ -405,6 +445,7 @@ fn rerun_gap(
     }
 
     let mut cache = crate::analysis::seam_cache::FileFactCacheStats::default();
+    let mut input_fingerprint = None;
     let mut seams = BTreeMap::<String, TargetedRerunSeam>::new();
     for scope in scopes {
         let changed_files = vec![scope.file.clone()];
@@ -415,6 +456,7 @@ fn rerun_gap(
             &changed_files,
             &changed_owner_names,
         )?;
+        input_fingerprint.get_or_insert_with(|| (&inventory.workspace_cache_key).into());
         add_cache_stats(&mut cache, &inventory.file_fact_cache);
         let scoped_record_seam_ids = seam_ids_for_scope(&records, &scope);
         let scope_seams = inventory
@@ -457,7 +499,7 @@ fn rerun_gap(
             scope_limitations,
         ));
     }
-    Ok(report(
+    let mut report = report(
         "current_state_only",
         selector,
         cache_from(&cache, ["selected_gap_scopes_recomputed"]),
@@ -465,7 +507,9 @@ fn rerun_gap(
         Some(route_from_gap_records(&records)),
         None,
         scope_limitations,
-    ))
+    );
+    report.cache.input_fingerprint = input_fingerprint;
+    Ok(report)
 }
 
 fn entry_matches_selected_gap(
@@ -790,6 +834,7 @@ fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
             return;
         }
     };
+    disclose_before_input_changes(report, &before_text);
     let current = report
         .seams
         .iter()
@@ -822,6 +867,103 @@ fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
     }
 }
 
+fn disclose_before_input_changes(report: &mut TargetedRerunReport, before_text: &str) {
+    let Ok(value) = serde_json::from_str::<Value>(before_text) else {
+        return;
+    };
+    let Some(before_value) = value
+        .get("cache")
+        .and_then(|cache| cache.get("input_fingerprint"))
+    else {
+        return;
+    };
+    let Ok(before) = serde_json::from_value::<TargetedRerunInputFingerprint>(before_value.clone())
+    else {
+        return;
+    };
+    let Some(current) = report.cache.input_fingerprint.as_ref() else {
+        return;
+    };
+    let changed = input_fingerprint_changes(&before, current);
+    if changed.is_empty() {
+        return;
+    }
+    report.cache.invalidation_status = "workspace_input_changed".to_string();
+    report.cache.recomputation_reasons.extend(
+        changed
+            .into_iter()
+            .map(|field| format!("input_changed:{field}")),
+    );
+}
+
+fn input_fingerprint_changes(
+    before: &TargetedRerunInputFingerprint,
+    current: &TargetedRerunInputFingerprint,
+) -> Vec<&'static str> {
+    let fields = [
+        (
+            "schema_version",
+            &before.schema_version,
+            &current.schema_version,
+        ),
+        (
+            "analyzer_version",
+            &before.analyzer_version,
+            &current.analyzer_version,
+        ),
+        (
+            "workspace_root_hash",
+            &before.workspace_root_hash,
+            &current.workspace_root_hash,
+        ),
+        (
+            "files_content_hash",
+            &before.files_content_hash,
+            &current.files_content_hash,
+        ),
+        (
+            "cfg_features_hash",
+            &before.cfg_features_hash,
+            &current.cfg_features_hash,
+        ),
+        ("config_hash", &before.config_hash, &current.config_hash),
+        (
+            "test_intent_hash",
+            &before.test_intent_hash,
+            &current.test_intent_hash,
+        ),
+        (
+            "suppressions_hash",
+            &before.suppressions_hash,
+            &current.suppressions_hash,
+        ),
+        (
+            "workspace_manifests_hash",
+            &before.workspace_manifests_hash,
+            &current.workspace_manifests_hash,
+        ),
+        (
+            "lockfile_hash",
+            &before.lockfile_hash,
+            &current.lockfile_hash,
+        ),
+        (
+            "toolchain_hash",
+            &before.toolchain_hash,
+            &current.toolchain_hash,
+        ),
+        (
+            "seam_limit_key",
+            &before.seam_limit_key,
+            &current.seam_limit_key,
+        ),
+    ];
+    fields
+        .into_iter()
+        .filter_map(|(name, before, current)| (before != current).then_some(name))
+        .collect()
+}
+
 fn set_before_limitation(report: &mut TargetedRerunReport, kind: &'static str, message: String) {
     report.state = "limited";
     report.limitation = Some(TargetedRerunLimitation { kind, message });
@@ -846,7 +988,8 @@ fn limited_report(
             stores: 0,
             store_errors: 0,
             recomputation_reasons: Vec::new(),
-            invalidation_status: "not_available",
+            invalidation_status: "not_available".to_string(),
+            input_fingerprint: None,
         },
         Vec::new(),
         None,
@@ -903,10 +1046,11 @@ fn cache_from(
         store_errors: cache.store_errors,
         recomputation_reasons,
         invalidation_status: if cache.invalidated_files.is_empty() {
-            "not_available"
+            "not_available".to_string()
         } else {
-            "file_content_changed"
+            "file_content_changed".to_string()
         },
+        input_fingerprint: None,
     }
 }
 
@@ -1087,9 +1231,10 @@ fn render_human(report: &TargetedRerunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RerunSelector, TargetedRerunCache, TargetedRerunMissingDiscriminator,
-        TargetedRerunMovement, TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam,
-        TargetedRerunSelector, cache_from, entry_matches_selected_gap, parity_mismatch_fields,
+        RerunSelector, TargetedRerunCache, TargetedRerunInputFingerprint,
+        TargetedRerunMissingDiscriminator, TargetedRerunMovement, TargetedRerunRelatedTest,
+        TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector, cache_from,
+        entry_matches_selected_gap, input_fingerprint_changes, parity_mismatch_fields,
         parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
         scopes_from_gap_records,
     };
@@ -1477,6 +1622,37 @@ mod tests {
         );
     }
 
+    #[test]
+    fn input_fingerprint_changes_name_owned_workspace_inputs() {
+        let before = sample_input_fingerprint();
+        let mut current = before.clone();
+        current.workspace_manifests_hash = "changed-manifest".to_string();
+        current.lockfile_hash = "changed-lockfile".to_string();
+        current.config_hash = "changed-config".to_string();
+
+        assert_eq!(
+            input_fingerprint_changes(&before, &current),
+            vec!["config_hash", "workspace_manifests_hash", "lockfile_hash"]
+        );
+    }
+
+    fn sample_input_fingerprint() -> TargetedRerunInputFingerprint {
+        TargetedRerunInputFingerprint {
+            schema_version: "0.3".to_string(),
+            analyzer_version: "0.10.0".to_string(),
+            workspace_root_hash: "root".to_string(),
+            files_content_hash: "files".to_string(),
+            cfg_features_hash: "features".to_string(),
+            config_hash: "config".to_string(),
+            test_intent_hash: "intent".to_string(),
+            suppressions_hash: "suppressions".to_string(),
+            workspace_manifests_hash: "manifests".to_string(),
+            lockfile_hash: "lockfile".to_string(),
+            toolchain_hash: "toolchain".to_string(),
+            seam_limit_key: "unlimited".to_string(),
+        }
+    }
+
     fn baseline_fields() -> TargetedRerunSeam {
         TargetedRerunSeam {
             canonical_gap_id: Some("gap:example".to_string()),
@@ -1515,7 +1691,8 @@ mod tests {
                 stores: 0,
                 store_errors: 0,
                 recomputation_reasons: Vec::new(),
-                invalidation_status: "not_available",
+                invalidation_status: "not_available".to_string(),
+                input_fingerprint: None,
             },
             seams: vec![TargetedRerunSeam {
                 canonical_gap_id: Some("gap:example".to_string()),
@@ -1572,7 +1749,8 @@ mod tests {
                 stores: 0,
                 store_errors: 0,
                 recomputation_reasons: Vec::new(),
-                invalidation_status: "not_available",
+                invalidation_status: "not_available".to_string(),
+                input_fingerprint: None,
             },
             seams: Vec::new(),
             movement: Some(TargetedRerunMovement {

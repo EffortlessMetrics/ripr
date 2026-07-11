@@ -63,7 +63,7 @@ pub(crate) struct CachedSeamLimitInfo {
 /// Old envelopes lack those fields and would fail serde deserialization
 /// of the new shape; the version bump routes new entries to a fresh
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.3";
 const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Compact-classified seam cache schema. This cache stores the same
@@ -200,6 +200,9 @@ pub(crate) struct RepoSeamCacheKey {
     pub(crate) config_hash: String,
     pub(crate) test_intent_hash: String,
     pub(crate) suppressions_hash: String,
+    pub(crate) workspace_manifests_hash: String,
+    pub(crate) lockfile_hash: String,
+    pub(crate) toolchain_hash: String,
     /// Encodes the effective seam limit: `"unlimited"` when the operator
     /// set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` (unbounded opt-out), or
     /// `"limit_N"` for any positive limit (default or configured).
@@ -252,7 +255,7 @@ impl RepoSeamCacheKey {
     /// `seam_limit_key` is included so capped runs and unbounded runs
     /// never share a cache file.
     pub(crate) fn filename(&self) -> String {
-        let parts: [&str; 9] = [
+        let parts: [&str; 12] = [
             &self.schema_version,
             &self.analyzer_version,
             &self.workspace_root_hash,
@@ -261,6 +264,9 @@ impl RepoSeamCacheKey {
             &self.config_hash,
             &self.test_intent_hash,
             &self.suppressions_hash,
+            &self.workspace_manifests_hash,
+            &self.lockfile_hash,
+            &self.toolchain_hash,
             &self.seam_limit_key,
         ];
         let mut buf = String::new();
@@ -327,6 +333,16 @@ impl<'a> WorkspaceState<'a> {
             Some((n, _)) => format!("limit_{n}"),
         };
 
+        let workspace_manifests_hash =
+            hash_named_workspace_files(self.workspace_root, "Cargo.toml");
+        let lockfile_hash = hash_named_workspace_files(self.workspace_root, "Cargo.lock");
+        let toolchain_hash = hash_str(
+            std::env::var("RUSTUP_TOOLCHAIN")
+                .or_else(|_| std::env::var("RIPR_TOOLCHAIN"))
+                .unwrap_or_else(|_| "unavailable".to_string())
+                .as_str(),
+        );
+
         RepoSeamCacheKey {
             schema_version: CACHE_SCHEMA_VERSION.to_string(),
             analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -336,6 +352,9 @@ impl<'a> WorkspaceState<'a> {
             config_hash: hash_str(self.config_text.unwrap_or("")),
             test_intent_hash: hash_str(self.test_intent_text.unwrap_or("")),
             suppressions_hash: hash_str(self.suppressions_text.unwrap_or("")),
+            workspace_manifests_hash,
+            lockfile_hash,
+            toolchain_hash,
             seam_limit_key,
         }
     }
@@ -425,7 +444,7 @@ impl RepoSeamFactCache {
                     CacheLoad::Hit((envelope.classified_seams, envelope.seam_limit_info))
                 } else {
                     // Key collision is unlikely (16-char FNV file
-                    // names + 9 fields hashed in), but possible. Treat
+                    // names + 12 fields hashed in), but possible. Treat
                     // as miss without failing analysis.
                     CacheLoad::Miss
                 }
@@ -816,6 +835,9 @@ struct CacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     classified_seams: Vec<ClassifiedSeam>,
     /// `None` means this is a complete run (all seams were analyzed).
     /// `Some(...)` means the run was capped; the renderer uses this to
@@ -838,6 +860,9 @@ struct CountCacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     counts: SeamGripClassCounts,
 }
 
@@ -882,6 +907,9 @@ impl CountCacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             counts,
         }
     }
@@ -896,6 +924,9 @@ impl CountCacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -914,6 +945,9 @@ impl CacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             classified_seams,
             seam_limit_info,
         }
@@ -928,6 +962,9 @@ impl CacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -942,6 +979,9 @@ struct ShardedCacheManifest {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     total_seams: usize,
     shard_count: usize,
     shards: Vec<ShardedCacheShardRef>,
@@ -969,6 +1009,9 @@ struct ShardedCacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     shard_index: usize,
     shard_count: usize,
     classified_seams: Vec<ClassifiedSeam>,
@@ -992,6 +1035,9 @@ impl ShardedCacheManifest {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             total_seams,
             shard_count,
             shards,
@@ -1009,6 +1055,9 @@ impl ShardedCacheManifest {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -1029,6 +1078,9 @@ impl ShardedCacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             shard_index,
             shard_count,
             classified_seams,
@@ -1045,6 +1097,9 @@ impl ShardedCacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -1111,6 +1166,55 @@ fn hash_str(s: &str) -> String {
 
 fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a_64(bytes))
+}
+
+fn hash_named_workspace_files(root: &Path, file_name: &str) -> String {
+    let mut files = Vec::new();
+    collect_named_workspace_files(root, root, file_name, &mut files);
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut input = String::new();
+    for (path, bytes) in files {
+        input.push_str(&path.to_string_lossy().replace('\\', "/"));
+        input.push('\0');
+        input.push_str(&hash_bytes(&bytes));
+        input.push('\n');
+    }
+    if input.is_empty() {
+        input.push_str("<no matching workspace files>");
+    }
+    hash_str(&input)
+}
+
+fn collect_named_workspace_files(
+    root: &Path,
+    directory: &Path,
+    file_name: &str,
+    files: &mut Vec<(PathBuf, Vec<u8>)>,
+) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if matches!(
+                name,
+                ".git" | ".ripr" | "target" | "fixtures" | ".direnv" | "node_modules"
+            ) {
+                continue;
+            }
+            collect_named_workspace_files(root, &path, file_name, files);
+        } else if name == file_name {
+            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+            let bytes =
+                std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
+            files.push((relative, bytes));
+        }
+    }
 }
 
 /// FNV-1a 64-bit. Same algorithm `seams::compute_seam_id` uses; chosen
@@ -1553,6 +1657,53 @@ mod tests {
         };
         let _ = std::fs::remove_dir_all(&dir);
         result
+    }
+
+    #[test]
+    fn workspace_manifest_and_lockfile_changes_change_cache_identity() -> Result<(), String> {
+        let root = isolated_dir("workspace-inputs");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|err| format!("write manifest: {err}"))?;
+        std::fs::write(root.join("Cargo.lock"), "version = 4\n")
+            .map_err(|err| format!("write lockfile: {err}"))?;
+        let files: [(PathBuf, Vec<u8>); 0] = [];
+        let baseline = WorkspaceState {
+            workspace_root: &root,
+            files: &files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crate\"]\n",
+        )
+        .map_err(|err| format!("change manifest: {err}"))?;
+        std::fs::write(root.join("Cargo.lock"), "version = 4\n# changed\n")
+            .map_err(|err| format!("change lockfile: {err}"))?;
+        let updated = WorkspaceState {
+            workspace_root: &root,
+            files: &files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        assert_ne!(
+            baseline.workspace_manifests_hash,
+            updated.workspace_manifests_hash
+        );
+        assert_ne!(baseline.lockfile_hash, updated.lockfile_hash);
+        assert_ne!(baseline.filename(), updated.filename());
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]

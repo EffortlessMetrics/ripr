@@ -518,6 +518,7 @@ fn inventory_classified_seams_from_state_with_config(
 pub(crate) struct ScopedClassifiedSeamInventory {
     pub(crate) classified: Vec<ClassifiedSeam>,
     pub(crate) file_fact_cache: FileFactCacheStats,
+    pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
     pub(crate) total_rust_files: usize,
     pub(crate) total_production_files: usize,
     pub(crate) scoped_production_files: Vec<PathBuf>,
@@ -538,6 +539,7 @@ pub(crate) struct TargetedTestClassifiedSeamInventory {
     pub(crate) selected_test_count: usize,
     pub(crate) direct_call_names: Vec<String>,
     pub(crate) file_fact_cache: FileFactCacheStats,
+    pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
 }
 
 pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
@@ -547,6 +549,7 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
     test_node: Option<&str>,
 ) -> Result<TargetedTestClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
+    let workspace_cache_key = state.cache_key();
     let changed_test = normalized_inventory_path(changed_test);
     let mut cached =
         rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
@@ -631,6 +634,7 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         selected_test_count: selected_tests.len(),
         direct_call_names: matched_call_names.into_iter().collect(),
         file_fact_cache: cached.file_fact_cache,
+        workspace_cache_key,
     })
 }
 
@@ -641,6 +645,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     changed_owner_names: &[String],
 ) -> Result<ScopedClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
+    let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
     let production_files = production_files_from_state(&state);
     let total_production_files = production_files.len();
@@ -722,6 +727,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     Ok(ScopedClassifiedSeamInventory {
         classified,
         file_fact_cache: cached.file_fact_cache,
+        workspace_cache_key,
         total_rust_files,
         total_production_files,
         scoped_production_files,
@@ -971,10 +977,11 @@ struct OwnedWorkspaceState {
 
 impl OwnedWorkspaceState {
     fn cache_key(&self) -> super::seam_cache::RepoSeamCacheKey {
+        let cfg_features = std::env::var("RIPR_CFG_FEATURES").ok();
         WorkspaceState {
             workspace_root: &self.workspace_root,
             files: &self.files,
-            cfg_features: None,
+            cfg_features: cfg_features.as_deref(),
             config_text: self.config_text.as_deref(),
             test_intent_text: self.test_intent_text.as_deref(),
             suppressions_text: self.suppressions_text.as_deref(),

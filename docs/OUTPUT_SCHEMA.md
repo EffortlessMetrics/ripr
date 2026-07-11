@@ -14353,7 +14353,21 @@ targeted-rerun receipt shape:
     "stores": 0,
     "store_errors": 0,
     "recomputation_reasons": ["selected_test_scope_recomputed"],
-    "invalidation_status": "not_available"
+    "invalidation_status": "not_available",
+    "input_fingerprint": {
+      "schema_version": "0.3",
+      "analyzer_version": "0.10.0",
+      "workspace_root_hash": "…",
+      "files_content_hash": "…",
+      "cfg_features_hash": "…",
+      "config_hash": "…",
+      "test_intent_hash": "…",
+      "suppressions_hash": "…",
+      "workspace_manifests_hash": "…",
+      "lockfile_hash": "…",
+      "toolchain_hash": "…",
+      "seam_limit_key": "limit_10000"
+    }
   },
   "seams": [
     {
@@ -14434,10 +14448,18 @@ selected scope, observed corrupt-entry/store-error fallbacks, and owned
 content invalidations that caused this command to rebuild facts.
 `invalidation_status: "file_content_changed"` is emitted only when a prior
 same-path file-fact envelope is found under a different content key.
-`invalidation_status: "not_available"` remains intentional for cold misses and
-broader input families until the analyzer owns their attribution. A miss
-remains an observed cache result, not a fabricated claim about which workspace
-input changed.
+Every targeted receipt also carries `cache.input_fingerprint`, an owned hash
+summary for the analyzer/cache schema, analyzer version, workspace root, Rust
+file set, `RIPR_CFG_FEATURES` when supplied, RIPR config, test intent,
+suppressions, workspace manifests, lockfile, toolchain selector, and seam
+limit. When an explicit
+`--before` receipt carries the same fingerprint shape, changed components are
+added to `cache.recomputation_reasons` as `input_changed:<field>` and the
+receipt uses `invalidation_status: "workspace_input_changed"`. This comparison
+is never inferred from an ambient cache or report. Cold runs and before
+artifacts without fingerprints remain `not_available`; a miss remains an
+observed cache result, not a fabricated claim about which workspace input
+changed.
 
 Pass `--check-parity` to request an explicit full-inventory comparison. The
 optional `parity` object reports `matched` only when every selected seam has
