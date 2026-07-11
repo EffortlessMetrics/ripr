@@ -131,7 +131,7 @@ id = "perf/targeted-rerun"
 status = "ready"
 branch = "perf/targeted-rerun"
 stackable = false
-acceptance = "A safe first-class targeted rerun documents cache keys/invalidation fingerprints, reports reuse status, preserves identity/receipt semantics, compares targeted evidence with the full pipeline when requested, and records a reproducible benchmark; broader graph attribution and campaign closeout remain explicit follow-up requirements."
+acceptance = "A safe first-class targeted rerun documents cache keys/invalidation fingerprints, including the explicit --gap ledger bytes, reports reuse status, preserves identity/receipt semantics, compares targeted evidence with the full pipeline when requested, and records a reproducible benchmark; broader graph attribution and campaign closeout remain explicit follow-up requirements."
 commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]

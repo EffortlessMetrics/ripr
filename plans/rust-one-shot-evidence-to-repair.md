@@ -104,6 +104,16 @@ components as `input_changed:<field>` with
 external package/feature graph attribution, parity over every configured input
 family, and final campaign closeout.
 
+PR #1539 merged full-pipeline parity over the owned workspace-input fingerprint.
+When targeted and full inventory inputs differ, parity fails closed with
+`full_pipeline_parity_input_mismatch` and names the changed input components.
+PR #1540 merged explicit selector-ledger content fingerprinting: `--gap`
+receipts hash the supplied ledger bytes, while `--changed-test` reports that
+field as `not_applicable`; a changed ledger is disclosed as
+`input_changed:selector_ledger_hash`. The targeted-rerun item remains open for
+any remaining graph attribution, benchmark revalidation on final main, and
+campaign closeout.
+
 ## Gate route dogfood status (2026-07-10)
 
 The structured route and shared human/generated-CI projection are shipped. A
