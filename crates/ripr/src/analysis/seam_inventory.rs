@@ -240,6 +240,18 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     Ok((classified, limit_info))
 }
 
+/// Return the workspace cache identity used by the full classified inventory.
+///
+/// Targeted rerun parity uses this explicit identity check so a narrow result
+/// cannot be accepted against a different manifest, policy, or toolchain
+/// state than the full pipeline invocation.
+pub(crate) fn workspace_cache_key_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<super::seam_cache::RepoSeamCacheKey, String> {
+    Ok(collect_workspace_state(root, config)?.cache_key())
+}
+
 fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
     if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
         eprintln!("{}", latency_trace_line(phase, status, duration));

@@ -97,6 +97,11 @@ checked. If the full inventory is seam-capped, the result is instead limited
 with `full_pipeline_parity_incomplete`, because an absent seam may be outside
 the analyzed prefix rather than a true mismatch.
 
+Parity also compares the targeted receipt's owned workspace-input fingerprint
+with the full-pipeline fingerprint. Differences are listed in
+`parity.input_mismatches[]` and fail closed as
+`full_pipeline_parity_input_mismatch`.
+
 Targeted seam entries carry the producer-owned related-test and
 missing-discriminator summaries used by this comparison. Verify and receipt
 commands remain the explicit route supplied by the selected gap ledger; the

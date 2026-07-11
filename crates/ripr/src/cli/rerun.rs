@@ -2,7 +2,7 @@ use crate::analysis::{
     canonical_gap::canonical_gap_identity,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config, workspace_cache_key_at_with_config,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::help;
@@ -168,6 +168,7 @@ struct TargetedRerunParity {
     selected_seam_count: usize,
     matched_seam_count: usize,
     mismatches: Vec<TargetedRerunParityMismatch>,
+    input_mismatches: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -728,6 +729,16 @@ fn apply_full_pipeline_parity(
         return Ok(());
     }
     let (full, limit_info) = inventory_classified_seams_at_with_config(root, config)?;
+    let input_mismatches = match workspace_cache_key_at_with_config(root, config) {
+        Ok(full_key) => {
+            let full_fingerprint: TargetedRerunInputFingerprint = (&full_key).into();
+            report.cache.input_fingerprint.as_ref().map_or_else(
+                || vec!["input_fingerprint"],
+                |targeted| input_fingerprint_changes(targeted, &full_fingerprint),
+            )
+        }
+        Err(_) => vec!["input_fingerprint_unavailable"],
+    };
     let full_by_id = full
         .iter()
         .map(seam_from)
@@ -759,7 +770,7 @@ fn apply_full_pipeline_parity(
     let matched = report.seams.len().saturating_sub(mismatch_count);
     let has_mismatches = mismatch_count > 0;
     report.parity = Some(TargetedRerunParity {
-        state: if limit_info.is_none() && !has_mismatches {
+        state: if limit_info.is_none() && !has_mismatches && input_mismatches.is_empty() {
             "matched"
         } else {
             "limited"
@@ -767,6 +778,7 @@ fn apply_full_pipeline_parity(
         selected_seam_count: report.seams.len(),
         matched_seam_count: matched,
         mismatches,
+        input_mismatches,
     });
     if let Some(limit_info) = limit_info {
         report.state = "limited";
@@ -785,6 +797,18 @@ fn apply_full_pipeline_parity(
                 "{} selected seam(s) differed from the full pipeline; targeted evidence is not a successful parity result",
                 mismatch_count
             ),
+        });
+    } else if report
+        .parity
+        .as_ref()
+        .is_some_and(|parity| !parity.input_mismatches.is_empty())
+    {
+        report.state = "limited";
+        report.limitation = Some(TargetedRerunLimitation {
+            kind: "full_pipeline_parity_input_mismatch",
+            message:
+                "targeted and full pipeline workspace input fingerprints differed; parity is inconclusive"
+                    .to_string(),
         });
     }
     Ok(())

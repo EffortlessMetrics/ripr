@@ -5082,6 +5082,7 @@ tests = [
 ]
 fixtures = []
 code = [
+  "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",
   "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/analysis/mod.rs",

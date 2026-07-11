@@ -14469,6 +14469,9 @@ A difference changes the overall report to `limited` with
 `full_pipeline_parity_mismatch`; it is never rendered as a successful targeted
 result. `parity.mismatches[]` identifies the seam and the evidence fields that
 differ, so a mismatch is actionable rather than an unexplained count. This
+also includes `parity.input_mismatches[]` when the targeted and full pipeline
+workspace fingerprints differ; that condition is named
+`full_pipeline_parity_input_mismatch` and fails closed.
 diagnostic is opt-in because it intentionally runs the broad pipeline and is
 not an interactive default. If the full inventory is capped, the report
 instead uses `full_pipeline_parity_incomplete` because an absent seam may

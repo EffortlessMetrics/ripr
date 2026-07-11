@@ -2785,6 +2785,7 @@ fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> R
         || report["parity"]["state"] != "matched"
         || report["parity"]["selected_seam_count"] != report["parity"]["matched_seam_count"]
         || report["parity"]["mismatches"] != serde_json::json!([])
+        || report["parity"]["input_mismatches"] != serde_json::json!([])
         || report["parity"]["selected_seam_count"] != serde_json::json!(1)
         || !report["cache"]["input_fingerprint"].is_object()
         || report["cache"]["input_fingerprint"]["workspace_manifests_hash"]
