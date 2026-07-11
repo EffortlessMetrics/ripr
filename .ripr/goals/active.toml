@@ -136,17 +136,25 @@ commands = ["cargo xtask goldens check", "cargo xtask check-evidence-promotion-h
 
 [[work_item]]
 id = "perf/targeted-rerun"
-status = "ready"
+status = "done"
 branch = "perf/targeted-rerun"
 stackable = false
-acceptance = "A safe first-class targeted rerun documents cache keys/invalidation fingerprints, including the explicit --gap ledger bytes, reports reuse status, preserves identity/receipt semantics, compares targeted evidence with the full pipeline when requested, and records a reproducible benchmark; broader graph attribution and campaign closeout remain explicit follow-up requirements."
+acceptance = "Merged targeted-rerun slices provide canonical selectors, explicit before/after movement, cache reuse and invalidation disclosure, full-pipeline parity, explicit selector-ledger fingerprints, and a current-main benchmark receipt; remaining graph provenance is split into a dedicated follow-up."
 commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/targeted-rerun-graph-provenance"
+status = "ready"
+branch = "perf/targeted-rerun-graph-provenance"
+stackable = false
+acceptance = "Close #1548 by attributing package and feature graph provenance in targeted-rerun receipts, naming unavailable external metadata, and failing parity closed on graph-provenance mismatch without network or ambient-cache inference."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-traceability", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "dogfood/route-quality-closeout"
 status = "blocked"
 branch = "dogfood/rust-route-quality-closeout"
 stackable = false
-blocked_by = ["gate/concrete-targeted-mutation", "perf/targeted-rerun"]
+blocked_by = ["gate/concrete-targeted-mutation", "perf/targeted-rerun-graph-provenance"]
 acceptance = "Record authorized receipt-backed Rust attempts, closed outcomes, route-quality scorecard, support-tier review, remaining limitations, and closeout; write a blocked report rather than fabricate evidence."
 commands = ["cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]

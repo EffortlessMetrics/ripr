@@ -5463,8 +5463,9 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `analysis/call-presence-gate-producer` | blocked | Close the remaining #1440 CallPresence producer gap tracked in #1543; keep helper-only, dynamic, method-string, and ambiguous cases as named static limitations. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
-| `perf/targeted-rerun` | ready | #1531, #1532, #1534, #1535, #1537, #1539, and #1540 shipped benchmark, selector, invalidation, parity, workspace-input, and explicit-ledger fingerprint slices; broader graph attribution and closeout remain. |
-| `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review. |
+| `perf/targeted-rerun` | done | #1531, #1532, #1534, #1535, #1537, #1539, #1540, #1542, and #1547 shipped canonical selectors, before/after movement, invalidation, parity, workspace-input, explicit-ledger fingerprints, and a current-main benchmark receipt. |
+| `perf/targeted-rerun-graph-provenance` | ready | #1548: attribute package/feature graph provenance, name unavailable external metadata, and fail parity closed on graph-provenance mismatch without network inference. |
+| `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review after graph provenance and CallPresence limitations are resolved or explicitly blocked. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;
 there is no automatic test or consumer-source editing, default gate hardening,

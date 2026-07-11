@@ -76,8 +76,10 @@ an explicit file-fact cache reset and records `recomputed_file_facts`.
 
 This closes the benchmark-receipt slice on current main. PR #1532 additionally
 ships explicit `path::test_node` selection for changed-test reruns. The active
-`perf/targeted-rerun` item remains open for any remaining graph attribution,
-benchmark scope expansion, and full campaign closeout.
+The first targeted-rerun delivery is complete on current main. Remaining graph
+provenance work is split into `perf/targeted-rerun-graph-provenance` and tracked
+in issue #1548; it must attribute package/feature graph availability rather
+than treating a coarse manifest hash as complete provenance.
 
 ## Targeted rerun invalidation and parity slices (2026-07-11)
 
@@ -111,8 +113,8 @@ PR #1540 merged explicit selector-ledger content fingerprinting: `--gap`
 receipts hash the supplied ledger bytes, while `--changed-test` reports that
 field as `not_applicable`; a changed ledger is disclosed as
 `input_changed:selector_ledger_hash`. The targeted-rerun item remains open for
-any remaining graph attribution, benchmark revalidation on final main, and
-campaign closeout.
+any remaining graph attribution and campaign closeout. The current-main
+benchmark revalidation is recorded in #1547.
 
 ## Gate route dogfood status (2026-07-10)
 
