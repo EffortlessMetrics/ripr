@@ -5464,7 +5464,7 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
 | `perf/targeted-rerun` | done | #1531, #1532, #1534, #1535, #1537, #1539, #1540, #1542, and #1547 shipped canonical selectors, before/after movement, invalidation, parity, workspace-input, explicit-ledger fingerprints, and a current-main benchmark receipt. |
-| `perf/targeted-rerun-graph-provenance` | ready | #1548: attribute package/feature graph provenance, name unavailable external metadata, and fail parity closed on graph-provenance mismatch without network inference. |
+| `perf/targeted-rerun-graph-provenance` | done | #1550 merged: receipts attribute local package/member and feature graph provenance, name unavailable external metadata, and fail parity closed on required graph mismatch without network inference. |
 | `dogfood/route-quality-closeout` | blocked | Record authorized receipts, route-quality outcomes, and support review after graph provenance and CallPresence limitations are resolved or explicitly blocked. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;

@@ -144,7 +144,7 @@ commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <
 
 [[work_item]]
 id = "perf/targeted-rerun-graph-provenance"
-status = "ready"
+status = "done"
 branch = "perf/targeted-rerun-graph-provenance"
 stackable = false
 acceptance = "Close #1548 by attributing package and feature graph provenance in targeted-rerun receipts, naming unavailable external metadata, and failing parity closed on graph-provenance mismatch without network or ambient-cache inference."
@@ -155,6 +155,6 @@ id = "dogfood/route-quality-closeout"
 status = "blocked"
 branch = "dogfood/rust-route-quality-closeout"
 stackable = false
-blocked_by = ["gate/concrete-targeted-mutation", "perf/targeted-rerun-graph-provenance"]
+blocked_by = ["analysis/call-presence-gate-producer"]
 acceptance = "Record authorized receipt-backed Rust attempts, closed outcomes, route-quality scorecard, support-tier review, remaining limitations, and closeout; write a blocked report rather than fabricate evidence."
 commands = ["cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]

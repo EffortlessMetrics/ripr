@@ -75,11 +75,13 @@ warm-targeted p50 speedup on benchmark revision `3e4a44c2`. It also exercises
 an explicit file-fact cache reset and records `recomputed_file_facts`.
 
 This closes the benchmark-receipt slice on current main. PR #1532 additionally
-ships explicit `path::test_node` selection for changed-test reruns. The active
-The first targeted-rerun delivery is complete on current main. Remaining graph
-provenance work is split into `perf/targeted-rerun-graph-provenance` and tracked
-in issue #1548; it must attribute package/feature graph availability rather
-than treating a coarse manifest hash as complete provenance.
+ships explicit `path::test_node` selection for changed-test reruns.
+The first targeted-rerun delivery is complete on current main. PR #1550
+completed the graph-provenance follow-up from issue #1548: receipts now
+attribute local package/member and feature graph availability, explicitly name
+unavailable external dependency metadata, and fail parity closed when required
+local graph provenance is missing or differs. The implementation reads local
+Cargo manifests directly and does not use network or ambient Cargo metadata.
 
 ## Targeted rerun invalidation and parity slices (2026-07-11)
 
@@ -102,9 +104,7 @@ identity now includes recursively discovered workspace manifests, lockfile, and
 toolchain selector (with `RIPR_CFG_FEATURES` included when supplied). Targeted
 receipts carry the fingerprint, and an explicit before receipt names changed
 components as `input_changed:<field>` with
-`invalidation_status: "workspace_input_changed"`. The item remains open for
-external package/feature graph attribution, parity over every configured input
-family, and final campaign closeout.
+`invalidation_status: "workspace_input_changed"`.
 
 PR #1539 merged full-pipeline parity over the owned workspace-input fingerprint.
 When targeted and full inventory inputs differ, parity fails closed with
@@ -112,9 +112,10 @@ When targeted and full inventory inputs differ, parity fails closed with
 PR #1540 merged explicit selector-ledger content fingerprinting: `--gap`
 receipts hash the supplied ledger bytes, while `--changed-test` reports that
 field as `not_applicable`; a changed ledger is disclosed as
-`input_changed:selector_ledger_hash`. The targeted-rerun item remains open for
-any remaining graph attribution and campaign closeout. The current-main
-benchmark revalidation is recorded in #1547.
+`input_changed:selector_ledger_hash`. The current-main benchmark revalidation
+is recorded in #1547. The graph-provenance follow-up then merged as #1550 and
+completed the targeted-rerun work item; only the explicitly blocked CallPresence
+producer evidence and receipt-backed dogfood closeout remain.
 
 ## Gate route dogfood status (2026-07-10)
 
