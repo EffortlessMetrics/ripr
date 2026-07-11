@@ -517,6 +517,7 @@ fn inventory_classified_seams_from_state_with_config(
 #[derive(Clone, Debug)]
 pub(crate) struct ScopedClassifiedSeamInventory {
     pub(crate) classified: Vec<ClassifiedSeam>,
+    pub(crate) file_fact_cache: FileFactCacheStats,
     pub(crate) total_rust_files: usize,
     pub(crate) total_production_files: usize,
     pub(crate) scoped_production_files: Vec<PathBuf>,
@@ -716,6 +717,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
 
     Ok(ScopedClassifiedSeamInventory {
         classified,
+        file_fact_cache: cached.file_fact_cache,
         total_rust_files,
         total_production_files,
         scoped_production_files,

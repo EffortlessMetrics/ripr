@@ -65,7 +65,10 @@ mod tests {
     fn execute_dispatches_rerun_parse_errors() {
         assert_eq!(
             execute(CliCommand::Rerun(Vec::new())),
-            Err("rerun requires --changed-test <path>".to_string())
+            Err(
+                "rerun requires --changed-test <path> or --gap <canonical-gap-id> --gap-ledger <path>"
+                    .to_string()
+            )
         );
     }
 

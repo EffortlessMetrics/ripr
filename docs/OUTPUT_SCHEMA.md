@@ -14329,14 +14329,16 @@ Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 
 ## Targeted rerun output
 
-`ripr rerun --changed-test <path> --json` emits the initial targeted-rerun
-receipt shape:
+`ripr rerun --changed-test <path> --json` and
+`ripr rerun --gap <canonical-gap-id> --gap-ledger <path> --json` emit the
+targeted-rerun receipt shape:
 
 ```json
 {
   "schema_version": "ripr-targeted-rerun-v1",
   "state": "current_state_only",
   "selector": {
+    "kind": "changed_test",
     "changed_test": "tests/pricing.rs",
     "selected_test_count": 1,
     "direct_call_names": ["discounted_total"]
@@ -14363,18 +14365,42 @@ receipt shape:
 }
 ```
 
-`state` is currently always `current_state_only`: this slice accepts one
-repository-relative changed-test file and returns only seams owned by uniquely
-resolved functions directly called from its parsed tests. It reuses valid file facts but recomputes
-the selected seam/test evidence. It does not infer movement, execute tests or
-mutations, or select a gap from an ambient report. `canonical_gap_id` is
-domain-supplied and nullable; it is never derived from the file, line,
-expression, or test navigation.
+For a changed-test selector, `selector.kind` is `changed_test`,
+`changed_test` names the repository-relative parsed test file, and the report
+returns only seams owned by uniquely resolved functions directly called from
+that file.
 
-The future `--gap`, test-node, explicit-`--before`, invalidation-reason, and
-benchmark-receipt surfaces remain specified by
+For a gap selector, `selector.kind` is `canonical_gap`, with
+`canonical_gap_id` and `gap_ledger`. RIPR resolves every existing ledger record
+with that domain-supplied canonical ID: one canonical gap may legitimately have
+several seam records. `matched_record_count` names that group and
+`recomputed_scope_count` names its stable-deduplicated `file`/`owner` scopes.
+RIPR recomputes each scope, returns only current seams carrying the requested
+canonical ID, and deduplicates them by `seam_id`.
+
+The optional `route` stable-deduplicates existing `verify_commands` across the
+matching records. It emits a singular `receipt_command` only when exactly one
+distinct non-empty command exists; otherwise that field is explicit JSON
+`null`. Multiple commands keep the rerun evidence and emit
+`route.receipt_command_conflict` rather than choosing one arbitrarily. Neither
+command is manufactured.
+
+Anchorless or no-longer-current records appear in `scope_limitations` with their
+matching-record index and do not hide other current scopes. The overall result
+is `limited` only when no current scope resolves. Missing, root-mismatched, or
+otherwise unresolved selectors emit `state: "limited"`, an empty `seams` array,
+and a named `limitation` such as `canonical_gap_unresolved` or
+`stale_gap_ledger`. They never fall back to an unrelated workspace scan.
+
+Both selectors reuse valid file facts but recompute the selected evidence. A
+`canonical_gap_id` is domain-supplied and nullable; it is never derived from a
+file, line, expression, or test navigation. The command does not infer movement,
+execute tests or mutations, or discover an ambient report as its before state.
+
+Test-node, explicit-`--before`, detailed invalidation-reason, and benchmark
+receipt surfaces remain specified by
 [RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md), not implemented by
-this initial changed-test report.
+this initial targeted-rerun report.
 
 ## Stability Rules
 

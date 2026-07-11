@@ -61,11 +61,17 @@ ripr rerun --changed-test <test-path-or-node> [--before <path>] [--root <path>] 
 ```
 
 Exactly one selector is required. `--gap` resolves the existing
-domain-supplied canonical identity from an explicit ledger; it must not derive
-an ID from rendered location or test text. `--changed-test` accepts a
+domain-supplied canonical identity from an explicit ledger; it selects every
+matching ledger record because one canonical behavioral gap can have several
+seam records. It must not derive an ID from rendered location or test text.
+Matching records are grouped into stable-deduplicated anchored `file`/`owner`
+scopes; each scope is recomputed and the resulting seams are deduplicated by
+domain seam identity. `--changed-test` accepts a
 repository-relative test file or an unambiguous test node within that file.
-An absent, ambiguous, out-of-root, or stale selector is a named limitation,
-not a broad silent fallback.
+An absent, out-of-root, or stale selector is a named limitation, not a broad
+silent fallback. An anchorless or stale record in an otherwise usable canonical
+group is a named per-scope limitation, not a reason to discard the group's
+current evidence.
 
 `--before` is an explicit prior rerun, repo-exposure, or compatible receipt
 artifact. When it is absent, the result is `current_state_only` and may not
@@ -154,8 +160,10 @@ The benchmark does not justify a universal latency claim.
 
 ## Test Mapping
 
-- Targeted selection tests prove a unique canonical gap resolves only through
-  supplied domain identity and an ambiguous or stale ledger fails closed.
+- Targeted selection tests prove a canonical gap resolves only through supplied
+  domain identity, groups all matching seam records, deduplicates recomputation
+  scopes and returned seams, preserves current scopes beside named stale or
+  anchorless records, and fails closed for an absent or stale ledger.
 - Changed-test tests prove an exact repository-relative file or node selects
   only its affected seam/test edges.
 - File-fact cache tests prove unchanged files hit, changed files miss, and a

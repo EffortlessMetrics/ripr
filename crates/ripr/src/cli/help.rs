@@ -269,6 +269,7 @@ mod tests {
         assert!(OUTCOME_HELP.contains("--before PATH"));
         assert!(RERUN_HELP.starts_with("Re-evaluate static evidence affected"));
         assert!(RERUN_HELP.contains("Usage: ripr rerun --changed-test PATH"));
+        assert!(RERUN_HELP.contains("gap selector groups"));
         assert!(RERUN_HELP.contains("current_state_only"));
         assert!(DIFF_HELP.starts_with("Analyze the changed surface first"));
         assert!(DIFF_HELP.contains("--head REV"));
