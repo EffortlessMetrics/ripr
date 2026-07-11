@@ -49,6 +49,10 @@ The contract is:
   in decision metadata when present in inputs;
 - imported runtime mutation calibration is confidence evidence only; the gate
   never runs a mutation tool;
+- when targeted mutation is routed, the evidence packet carries a structured
+  producer-owned candidate and bounded command or a named static limitation;
+  a bare `requires_targeted_mutation` boolean is never the complete repair
+  route;
 - static decisions use RIPR static evidence vocabulary and never claim runtime
   adequacy;
 - every gate run writes deterministic JSON and Markdown before returning a
@@ -505,6 +509,9 @@ Calibrated gates must not:
   suppressed or not applicable.
 - Ambiguous mutation calibration does not raise confidence enough to block.
 - Missing optional mutation calibration does not invent runtime confidence.
+- A severe RIPR gap with a safe Rust predicate/operator fact emits a bounded
+  targeted-mutation candidate; unsupported or ambiguous seam families emit a
+  named `static_limitation` instead.
 
 ## Test Mapping
 
@@ -514,6 +521,9 @@ Initial implementation should add tests for:
 - decision JSON and Markdown rendering;
 - acknowledgement label handling;
 - baseline comparison behavior;
+- `pr_evidence` candidate and limitation projection for targeted mutation;
+- `impacted_evidence` preserves the same targeted-mutation route without
+  executing a mutation engine;
 - high-confidence candidate filtering;
 - configured severity and suppression behavior;
 - missing and malformed input reports;

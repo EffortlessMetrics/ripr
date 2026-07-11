@@ -140,6 +140,14 @@ The PR evidence summary should keep these field names stable:
 | `requires_targeted_mutation` | Whether targeted mutation is routed for this PR. |
 | `ripr_severe_gap` | Whether RIPR identified a severe gap that participates in routing. |
 | `routing_reason` | Nullable string explaining why targeted mutation was or was not routed. |
+| `targeted_mutation_route` | Structured candidate or named limitation. A required route is never represented by a bare `requires_targeted_mutation` boolean. |
+
+`targeted_mutation_route.status` is one of `not_required`, `candidate`, or
+`static_limitation`. Candidates are derived only from producer-owned probe facts
+and include the source location, mutation kind, from/to values, bounded
+`cargo mutants` command, and expected static observation. Unsupported or
+ambiguous seams use `static_limitation`; RIPR does not execute mutation testing
+by default.
 
 Targeted mutation routing should be justified by explicit evidence:
 

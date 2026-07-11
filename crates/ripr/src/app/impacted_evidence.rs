@@ -124,6 +124,21 @@ fn impacted_evidence_packet(repo: &Path, options: &ImpactedEvidenceOptions) -> V
         .and_then(|value| value.pointer("/summary/requires_targeted_mutation"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let targeted_mutation_route = input
+        .value
+        .as_ref()
+        .and_then(|value| value.pointer("/summary/targeted_mutation_route"))
+        .cloned()
+        .unwrap_or_else(|| {
+            json!({
+                "status": "static_limitation",
+                "candidates": [],
+                "limitations": [{
+                    "kind": "route_unavailable",
+                    "message": "PR evidence did not provide a targeted mutation route"
+                }]
+            })
+        });
     let decision = routing_decision(&options.labels, ripr_severe_gap || pr_requires_targeted);
     let warnings = input.warning(&options.pr_evidence);
 
@@ -142,7 +157,8 @@ fn impacted_evidence_packet(repo: &Path, options: &ImpactedEvidenceOptions) -> V
             "requires_targeted_mutation": decision.requires_targeted_mutation,
             "requires_full_owner_mutation": decision.requires_full_owner_mutation,
             "ripr_severe_gap": ripr_severe_gap,
-            "routing_reason": decision.reason
+            "routing_reason": decision.reason,
+            "targeted_mutation_route": targeted_mutation_route
         },
         "artifacts": [
             {
@@ -315,6 +331,60 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
         "- routing_reason: `{}`\n\n",
         summary_string_or_null(summary, "routing_reason")
     ));
+    if let Some(route) = summary
+        .and_then(|summary| summary.get("targeted_mutation_route"))
+        .and_then(Value::as_object)
+    {
+        out.push_str(&format!(
+            "- targeted_mutation_route: `{}`\n",
+            route
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+        ));
+        if let Some(candidate) = route
+            .get("candidates")
+            .and_then(Value::as_array)
+            .and_then(|candidates| candidates.first())
+            .and_then(Value::as_object)
+        {
+            out.push_str(&format!(
+                "- candidate: `{}`:{} {} -> {}\n- command: `{}`\n",
+                md_escape(
+                    candidate
+                        .get("file")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                ),
+                candidate.get("line").and_then(Value::as_u64).unwrap_or(0),
+                candidate.get("from").and_then(Value::as_str).unwrap_or("?"),
+                candidate.get("to").and_then(Value::as_str).unwrap_or("?"),
+                md_escape(
+                    candidate
+                        .get("command")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                )
+            ));
+        }
+        if let Some(limitation) = route
+            .get("limitations")
+            .and_then(Value::as_array)
+            .and_then(|limitations| limitations.first())
+            .and_then(Value::as_object)
+        {
+            out.push_str(&format!(
+                "- limitation: `{}`\n",
+                md_escape(
+                    limitation
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                )
+            ));
+        }
+        out.push('\n');
+    }
 
     out.push_str("## Inputs\n\n");
     out.push_str(&format!(
@@ -501,6 +571,85 @@ mod tests {
             ]
         );
         assert!(parsed.check);
+        Ok(())
+    }
+
+    #[test]
+    fn impacted_evidence_preserves_targeted_mutation_route() -> Result<(), String> {
+        let repo = env::temp_dir().join(format!(
+            "ripr-impacted-evidence-route-{}",
+            std::process::id()
+        ));
+        let input = repo.join("target/ripr/pr/repo-exposure.json");
+        if repo.exists() {
+            fs::remove_dir_all(&repo).map_err(|err| format!("remove {}: {err}", repo.display()))?;
+        }
+        fs::create_dir_all(
+            input
+                .parent()
+                .ok_or_else(|| "missing input parent".to_string())?,
+        )
+        .map_err(|err| format!("create {}: {err}", repo.display()))?;
+        let value = json!({
+            "summary": {
+                "ripr_severe_gap": true,
+                "requires_targeted_mutation": true,
+                "targeted_mutation_route": {
+                    "status": "candidate",
+                    "candidates": [{
+                        "file": "src/lib.rs",
+                        "line": 8,
+                        "kind": "predicate_operator_flip",
+                        "from": ">=",
+                        "to": ">",
+                        "command": "cargo mutants --file \"src/lib.rs\"",
+                        "expected_observation": "boundary test observes operator flip"
+                    }],
+                    "limitations": [{
+                        "kind": "no_safe_candidate",
+                        "message": "helper dispatch remains static limitation"
+                    }]
+                }
+            }
+        });
+        fs::write(
+            &input,
+            serde_json::to_vec(&value).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write {}: {err}", input.display()))?;
+        let packet = impacted_evidence_packet(
+            &repo,
+            &ImpactedEvidenceOptions {
+                pr_evidence: "target/ripr/pr/repo-exposure.json".to_string(),
+                labels: Vec::new(),
+                check: false,
+            },
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["candidates"][0]["command"],
+            "cargo mutants --file \"src/lib.rs\""
+        );
+        let markdown = render_impacted_evidence_markdown(&packet);
+        assert!(markdown.contains("cargo mutants --file"));
+        assert!(markdown.contains("helper dispatch remains static limitation"));
+        fs::write(
+            &input,
+            br#"{"summary":{"ripr_severe_gap":true,"requires_targeted_mutation":true}}"#,
+        )
+        .map_err(|err| format!("rewrite {}: {err}", input.display()))?;
+        let fallback = impacted_evidence_packet(
+            &repo,
+            &ImpactedEvidenceOptions {
+                pr_evidence: "target/ripr/pr/repo-exposure.json".to_string(),
+                labels: Vec::new(),
+                check: false,
+            },
+        );
+        assert_eq!(
+            fallback["summary"]["targeted_mutation_route"]["status"],
+            "static_limitation"
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
 }

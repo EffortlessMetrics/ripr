@@ -12,6 +12,7 @@
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace, render_check};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -366,6 +367,7 @@ fn pr_evidence_packet(
     } else {
         Value::Null
     };
+    let targeted_mutation_route = targeted_mutation_route(check_value, ripr_severe_gap);
 
     json!({
         "schema_version": "0.1",
@@ -387,7 +389,8 @@ fn pr_evidence_packet(
             "severe_gaps": severe_gaps,
             "requires_targeted_mutation": ripr_severe_gap,
             "ripr_severe_gap": ripr_severe_gap,
-            "routing_reason": routing_reason
+            "routing_reason": routing_reason,
+            "targeted_mutation_route": targeted_mutation_route
         },
         "artifacts": [
             {
@@ -422,6 +425,107 @@ fn pr_evidence_packet(
     })
 }
 
+fn targeted_mutation_route(check_value: &Value, required: bool) -> Value {
+    let mut candidates = Vec::new();
+    let mut limitations = Vec::new();
+    let mut seen = BTreeSet::new();
+    for finding in check_value
+        .get("findings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(classification) = finding.get("classification").and_then(Value::as_str) else {
+            continue;
+        };
+        if !matches!(
+            classification,
+            "weakly_exposed" | "reachable_unrevealed" | "no_static_path"
+        ) {
+            continue;
+        }
+        let Some(probe) = finding.get("probe").and_then(Value::as_object) else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "message": "finding has no producer-owned probe facts from which to derive a safe mutation candidate"
+            }));
+            continue;
+        };
+        let family = probe
+            .get("family")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let file = probe.get("file").and_then(Value::as_str);
+        let line = probe.get("line").and_then(Value::as_u64);
+        let expression = probe.get("expression").and_then(Value::as_str);
+        let Some((from, to)) = (family == "predicate")
+            .then(|| expression.and_then(predicate_operator_flip))
+            .flatten()
+        else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": format!("no safe concrete mutation candidate could be derived for {family} producer evidence")
+            }));
+            continue;
+        };
+        let Some(file) = file.filter(|file| !file.trim().is_empty()) else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": "predicate mutation candidate has no producer-owned source file"
+            }));
+            continue;
+        };
+        let Some(line) = line else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": "predicate mutation candidate has no unambiguous source line"
+            }));
+            continue;
+        };
+        let key = format!("{file}:{line}:{from}:{to}");
+        if !seen.insert(key) {
+            continue;
+        }
+        candidates.push(json!({
+            "file": file,
+            "line": line,
+            "kind": "predicate_operator_flip",
+            "from": from,
+            "to": to,
+            "command": format!("cargo mutants --file \"{}\"", file.replace('"', "\\\"")),
+            "expected_observation": format!("the focused boundary test should observe the predicate change {from} -> {to}")
+        }));
+    }
+    let status = if !required {
+        "not_required"
+    } else if candidates.is_empty() {
+        "static_limitation"
+    } else {
+        "candidate"
+    };
+    json!({
+        "status": status,
+        "candidates": candidates,
+        "limitations": limitations
+    })
+}
+
+fn predicate_operator_flip(expression: &str) -> Option<(&'static str, &'static str)> {
+    [
+        (">=", ">"),
+        ("<=", "<"),
+        ("==", "!="),
+        ("!=", "=="),
+        (">", ">="),
+        ("<", "<="),
+    ]
+    .into_iter()
+    .find_map(|(from, to)| expression.contains(from).then_some((from, to)))
+}
+
 fn pr_evidence_error_packet(
     options: &PrEvidenceOptions,
     changed_files: &[String],
@@ -447,7 +551,12 @@ fn pr_evidence_error_packet(
             "severe_gaps": 0,
             "requires_targeted_mutation": false,
             "ripr_severe_gap": false,
-            "routing_reason": null
+            "routing_reason": null,
+            "targeted_mutation_route": {
+                "status": "not_required",
+                "candidates": [],
+                "limitations": []
+            }
         },
         "artifacts": [
             {
@@ -565,6 +674,7 @@ fn validate_packet_value(
     {
         violations.push("summary.routing_reason is missing or not string/null".to_string());
     }
+    validate_targeted_mutation_route(summary, &mut violations);
 
     validate_artifacts(packet, &mut violations);
     if !markdown_exists {
@@ -579,6 +689,31 @@ fn validate_packet_value(
         None => violations.push("advisory_limits is missing or not an array".to_string()),
     }
     violations
+}
+
+fn validate_targeted_mutation_route(summary: &Map<String, Value>, violations: &mut Vec<String>) {
+    let Some(route) = summary
+        .get("targeted_mutation_route")
+        .and_then(Value::as_object)
+    else {
+        violations.push("summary.targeted_mutation_route is missing or not an object".to_string());
+        return;
+    };
+    match route.get("status").and_then(Value::as_str) {
+        Some("not_required" | "candidate" | "static_limitation") => {}
+        Some(other) => violations.push(format!(
+            "summary.targeted_mutation_route.status {other:?} is not contract-valid"
+        )),
+        None => violations
+            .push("summary.targeted_mutation_route.status is missing or not a string".to_string()),
+    }
+    for key in ["candidates", "limitations"] {
+        if !route.get(key).is_some_and(Value::is_array) {
+            violations.push(format!(
+                "summary.targeted_mutation_route.{key} is missing or not an array"
+            ));
+        }
+    }
 }
 
 fn expect_string(packet: &Value, key: &str, expected: &str, violations: &mut Vec<String>) {
@@ -664,6 +799,10 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         "- routing_reason: `{}`\n\n",
         md_escape(routing_reason)
     ));
+    render_targeted_mutation_route(
+        &mut out,
+        summary.and_then(|summary| summary.get("targeted_mutation_route")),
+    );
 
     out.push_str("## Artifacts\n\n");
     out.push_str("| Artifact | Path | Scope | Available |\n");
@@ -704,6 +843,62 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         "\n_This packet is diff-scoped and advisory. Do not copy it into public badge state._\n",
     );
     out
+}
+
+fn render_targeted_mutation_route(out: &mut String, route: Option<&Value>) {
+    let Some(route) = route.and_then(Value::as_object) else {
+        return;
+    };
+    let status = route
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    out.push_str(&format!("- route: `{status}`\n"));
+    if let Some(candidates) = route.get("candidates").and_then(Value::as_array) {
+        for candidate in candidates {
+            let Some(candidate) = candidate.as_object() else {
+                continue;
+            };
+            out.push_str(&format!(
+                "- candidate: `{}`:{} {} -> {}\n- command: `{}`\n- expected: {}\n",
+                md_escape(
+                    candidate
+                        .get("file")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                ),
+                candidate.get("line").and_then(Value::as_u64).unwrap_or(0),
+                candidate.get("from").and_then(Value::as_str).unwrap_or("?"),
+                candidate.get("to").and_then(Value::as_str).unwrap_or("?"),
+                md_escape(
+                    candidate
+                        .get("command")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                ),
+                md_escape(
+                    candidate
+                        .get("expected_observation")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                )
+            ));
+        }
+    }
+    if let Some(limitations) = route.get("limitations").and_then(Value::as_array) {
+        for limitation in limitations {
+            out.push_str(&format!(
+                "- limitation: `{}`\n",
+                md_escape(
+                    limitation
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("no safe candidate")
+                )
+            ));
+        }
+    }
+    out.push('\n');
 }
 
 fn bool_field(summary: Option<&Map<String, Value>>, key: &str) -> bool {
@@ -778,7 +973,16 @@ mod tests {
                 "weakly_exposed": 2,
                 "reachable_unrevealed": 1,
                 "no_static_path": 0
-            }
+            },
+            "findings": [{
+                "classification": "weakly_exposed",
+                "probe": {
+                    "family": "predicate",
+                    "file": "src/lib.rs",
+                    "line": 8,
+                    "expression": "amount >= threshold"
+                }
+            }]
         });
         let changed = vec!["src/lib.rs".to_string(), "tests/lib.rs".to_string()];
         let packet = pr_evidence_packet(&options(), &changed, &check);
@@ -788,6 +992,112 @@ mod tests {
         assert_eq!(packet["summary"]["severe_gaps"], 3);
         assert_eq!(packet["summary"]["requires_targeted_mutation"], true);
         assert_eq!(packet["summary"]["routing_reason"], "ripr severe gap");
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["status"],
+            "candidate"
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["candidates"][0]["from"],
+            ">="
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["candidates"][0]["to"],
+            ">"
+        );
+    }
+
+    #[test]
+    fn packet_names_limitation_when_severe_finding_has_no_safe_candidate() {
+        let packet = pr_evidence_packet(
+            &options(),
+            &["src/lib.rs".to_string()],
+            &json!({
+                "summary": {"weakly_exposed": 1, "reachable_unrevealed": 0, "no_static_path": 0},
+                "findings": [{
+                    "classification": "weakly_exposed",
+                    "probe": {"family": "call_presence", "file": "src/lib.rs", "line": 8, "expression": "publish(event)"}
+                }]
+            }),
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["status"],
+            "static_limitation"
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["candidates"]
+                .as_array()
+                .map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["limitations"][0]["kind"],
+            "no_safe_candidate"
+        );
+        assert!(validate_packet_value(&packet, &options(), 1, true).is_empty());
+    }
+
+    #[test]
+    fn targeted_mutation_route_covers_operator_variants_and_fail_closed_inputs() {
+        let mut findings = vec![
+            (">=", ">"),
+            ("<=", "<"),
+            ("==", "!="),
+            ("!=", "=="),
+            (">", ">="),
+            ("<", "<=")
+        ]
+        .into_iter()
+        .map(|(operator, _)| {
+            json!({
+                "classification": "weakly_exposed",
+                "probe": {"family": "predicate", "file": "src/lib.rs", "line": 8, "expression": format!("value {operator} limit")}
+            })
+        })
+        .collect::<Vec<_>>();
+        findings.push(json!({
+            "classification": "weakly_exposed",
+            "probe": {"family": "predicate", "file": "src/lib.rs", "line": 8, "expression": "value >= limit"}
+        }));
+        findings.push(json!({
+            "classification": "weakly_exposed",
+            "probe": {"family": "call_presence", "file": "src/lib.rs", "line": 9, "expression": "publish(value)"}
+        }));
+        findings.push(json!({"classification": "weakly_exposed"}));
+        findings.push(json!({
+            "classification": "weakly_exposed",
+            "probe": {"family": "predicate", "line": 10, "expression": "value >= limit"}
+        }));
+        findings.push(json!({
+            "classification": "weakly_exposed",
+            "probe": {"family": "predicate", "file": "src/lib.rs", "expression": "value >= limit"}
+        }));
+        findings.push(json!({
+            "classification": "weakly_exposed",
+            "probe": {"family": "predicate", "file": "src/lib.rs", "line": 11, "expression": "value + limit"}
+        }));
+        let route = targeted_mutation_route(&json!({"findings": findings}), true);
+        assert_eq!(route["status"], "candidate");
+        assert_eq!(route["candidates"].as_array().map(Vec::len), Some(6));
+        assert_eq!(route["limitations"].as_array().map(Vec::len), Some(5));
+    }
+
+    #[test]
+    fn markdown_renders_targeted_mutation_candidate_and_limitation() {
+        let packet = pr_evidence_packet(
+            &options(),
+            &["src/lib.rs".to_string()],
+            &json!({
+                "summary": {"weakly_exposed": 1, "reachable_unrevealed": 0, "no_static_path": 0},
+                "findings": [
+                    {"classification": "weakly_exposed", "probe": {"family": "predicate", "file": "src/lib.rs", "line": 8, "expression": "value >= limit"}},
+                    {"classification": "weakly_exposed", "probe": {"family": "call_presence", "file": "src/lib.rs", "line": 9, "expression": "publish(value)"}}
+                ]
+            }),
+        );
+        let markdown = render_pr_evidence_markdown(&packet);
+        assert!(markdown.contains("route: `candidate`"));
+        assert!(markdown.contains("cargo mutants --file"));
+        assert!(markdown.contains("no safe concrete mutation candidate"));
     }
 
     #[test]
@@ -795,6 +1105,10 @@ mod tests {
         let packet = pr_evidence_packet(&options(), &[], &json!({}));
         assert_eq!(packet["status"], "incomplete");
         assert_eq!(packet["warnings"][0]["kind"], "invalid_json");
+        assert_eq!(
+            packet["summary"]["targeted_mutation_route"]["status"],
+            "not_required"
+        );
     }
 
     #[test]

@@ -1112,6 +1112,9 @@ tests = [
   "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_safe_gap_ledger_candidate",
   "crates/ripr/src/output/gate.rs::tests::gate_gap_ledger_static_unknown_only_stays_report_only",
   "crates/ripr/src/output/gate.rs::tests::calibrated_gate_fixture_matrix_matches_checked_outputs",
+  "crates/ripr/src/app/pr_evidence.rs::tests::packet_maps_check_summary_to_routing_fields",
+  "crates/ripr/src/app/pr_evidence.rs::tests::packet_names_limitation_when_severe_finding_has_no_safe_candidate",
+  "crates/ripr/src/app/impacted_evidence.rs::tests::impacted_evidence_preserves_targeted_mutation_route",
   "xtask/src/main.rs::tests::dogfood_reports_are_advisory",
   "xtask/src/main.rs::tests::dogfood_gate_adoption_scenarios_have_checked_receipts",
 ]
@@ -1126,6 +1129,8 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/parse.rs",
   "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/app/pr_evidence.rs",
+  "crates/ripr/src/app/impacted_evidence.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
