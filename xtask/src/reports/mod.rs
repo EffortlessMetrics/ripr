@@ -24,6 +24,7 @@ mod release;
 mod repo;
 mod review_comments;
 mod sarif;
+mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
 
@@ -60,6 +61,7 @@ pub(crate) use repo::{
 };
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
+pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
 

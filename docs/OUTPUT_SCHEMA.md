@@ -14452,6 +14452,23 @@ When static evidence changes between incomparable same-rank classes, movement
 is `limited` with `movement_indeterminate` rather than being mislabeled as an
 incompatible before artifact.
 
+## Targeted rerun benchmark receipt
+
+`cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>`
+writes `target/ripr/reports/targeted-rerun-benchmark.{json,md}`. The JSON
+schema is `ripr-targeted-rerun-benchmark-v1` and records the named root,
+changed-test selector, revision, analyzer version, runner class, sample count,
+exact command templates, cold full/cold targeted/warm targeted timing series,
+an explicit file-fact cache-reset invalidation series, and a separate parity
+result. The report is scoped to the named repository, revision, configuration,
+and runner; it does not claim universal latency, runtime mutation behavior,
+correctness, coverage adequacy, or complete broader-input invalidation.
+
+`status: "pass"` requires matched parity, successful samples, warm targeted
+p50 no greater than 30 seconds, and a cold-full-to-warm-targeted p50 speedup of
+at least 5x. Otherwise the receipt remains `inconclusive` and preserves the
+measured values.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

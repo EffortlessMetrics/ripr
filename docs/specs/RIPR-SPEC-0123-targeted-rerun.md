@@ -137,6 +137,19 @@ cold full repair pipeline with a warm targeted rerun on the same selected
 repair. The receipt records exact commands, commit, hardware or runner class,
 input revision, sample count, p50, p95, cache state, and invalidation case.
 
+Run the benchmark through the repo-facing proof executor:
+
+```text
+cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]
+```
+
+It writes `target/ripr/reports/targeted-rerun-benchmark.{json,md}` using an
+isolated `RIPR_CACHE_DIR`, performs cold full, cold targeted, warm targeted,
+explicit cache-reset invalidation, and parity samples, and cleans the
+temporary cache after writing the receipt. A cache reset is intentionally
+reported as an explicit invalidation case; broader input invalidation remains
+named `not_available` until the analyzer can attribute it from owned facts.
+
 The proposed acceptance target is both:
 
 - warm targeted p50 no greater than 30 seconds; and
@@ -167,7 +180,8 @@ The benchmark does not justify a universal latency claim.
   continuity, and stale-evidence refusal.
 - An explicit parity test compares a selected changed-test rerun with the full
   static inventory and fails closed on a selected-seam mismatch.
-- A benchmark definition and checked receipt record the cold/warm comparison.
+- A benchmark definition and checked receipt record the cold/warm comparison,
+  explicit cache-reset invalidation, and parity result.
 - `cargo xtask check-output-contracts`, fixture/golden/traceability gates, and
   `cargo xtask check-pr` pass.
 

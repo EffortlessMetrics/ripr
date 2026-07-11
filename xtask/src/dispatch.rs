@@ -31,6 +31,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
         XtaskCommand::RepoExposureSummaryReport => super::reports::repo_exposure_summary_report(),
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
+        XtaskCommand::TargetedRerunBenchmark(args) => {
+            super::reports::targeted_rerun_benchmark(&args)
+        }
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
         XtaskCommand::PrBody(args) => super::pr_body(&args),
         XtaskCommand::Closeout(args) => super::closeout(&args),

@@ -441,6 +441,15 @@ reason = "Fixture workspaces may intentionally contain analyzed source files."
 covered_by = ["cargo xtask check-fixture-contracts", "cargo xtask fixtures"]
 
 [[allow]]
+glob = "benchmarks/targeted_rerun_benchmark/**"
+kind = "benchmark_fixture"
+owner = "targeted-rerun"
+surface = "fixtures"
+classification = "fixture"
+reason = "Controlled Rust workspace used by the SPEC-0123 targeted-rerun benchmark receipt."
+covered_by = ["cargo xtask targeted-rerun-benchmark", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "tests/fixtures/verification/**/*.json"
 kind = "verification_contract_fixture"
 owner = "contracts"

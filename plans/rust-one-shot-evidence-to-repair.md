@@ -66,6 +66,19 @@ a bounded candidate and command or a named limitation. Value-flow additions are
 conservative and fixture-first. Targeted reruns disclose cache reuse and
 invalidation, never silently serving stale evidence.
 
+## Targeted rerun benchmark slice (2026-07-11)
+
+The benchmark receipt command and controlled fixture are now available through
+`cargo xtask targeted-rerun-benchmark`. The registered local receipt records a
+matched parity result, warm targeted p50 of 104 ms, and 5.8173x cold-full to
+warm-targeted p50 speedup on commit `6755b357`. It also exercises an explicit
+file-fact cache reset and records `recomputed_file_facts`.
+
+This closes only the benchmark-receipt slice. Broader input invalidation
+attribution, test-node selectors, and full campaign closeout remain pending;
+the active `perf/targeted-rerun` item stays open until those requirements are
+demonstrated.
+
 ## Gate route dogfood status (2026-07-10)
 
 The structured route and shared human/generated-CI projection are shipped. A

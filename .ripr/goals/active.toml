@@ -132,7 +132,7 @@ status = "ready"
 branch = "perf/targeted-rerun"
 stackable = false
 acceptance = "A safe first-class targeted rerun documents cache keys/invalidation, reports reuse status, preserves identity/receipt semantics, and records a reproducible benchmark."
-commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
+commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "dogfood/route-quality-closeout"
