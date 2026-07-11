@@ -28,7 +28,7 @@ control-plane PR records cargo-allow doctor, audit, and worklist outputs.
 The profile is advisory while its findings are made low-noise. The sole RIPR
 execution manifest at `.ripr/goals/active.toml` is deliberately not enforced
 until cargo-allow issue #2119 can validate its dialect without creating a second
-active goal or discarding execution metadata. The installed cargo-allow 0.1.8
+active goal or discarding execution metadata. The installed cargo-allow 0.1.10
 requires `--config .allow/profiles/spec-system.toml` for this owned profile;
 cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 
@@ -80,6 +80,20 @@ the active `perf/targeted-rerun` item stays open until those requirements are
 demonstrated. PR #1532 additionally ships explicit `path::test_node`
 selection for changed-test reruns; broader input invalidation attribution and
 full campaign closeout remain pending.
+
+## Targeted rerun invalidation and parity slices (2026-07-11)
+
+PR #1534 merged file-content invalidation disclosure. When a prior same-path
+file-fact envelope exists under a different content key, the rerun receipt now
+reports `file_content_changed` and names the affected path; cold misses and
+broader input families remain explicitly `not_available`.
+
+PR #1535 merged targeted/full parity evidence expansion. `--check-parity` now
+compares producer-owned related-test and missing-discriminator evidence in
+addition to canonical identity, class, file, and owner, and emits per-seam
+`parity.mismatches[]` fields before failing closed. The targeted-rerun item
+remains open for broader manifest/package/config invalidation attribution,
+expanded parity over those inputs, and final campaign closeout.
 
 ## Gate route dogfood status (2026-07-10)
 
