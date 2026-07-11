@@ -95,20 +95,28 @@ commands = ["cargo xtask check-output-contracts", "cargo xtask check-traceabilit
 
 [[work_item]]
 id = "gate/exact-repair-route"
-status = "ready"
+status = "done"
 branch = "gate/exact-repair-route"
 stackable = false
-acceptance = "A policy-eligible gate decision exposes exact seam, missing discriminator, test intent, local verify/receipt commands, and explain route without artifact download."
+acceptance = "The shipped structural gate route exposes exact seam, missing discriminator, test intent, local verify/receipt commands, and producer-owned inspection route without artifact download; unsupported producer evidence remains fail-closed. Real CallPresence producer eligibility is tracked separately."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "gate/concrete-targeted-mutation"
-status = "blocked"
+status = "ready"
 branch = "gate/concrete-targeted-mutation"
 stackable = false
-blocked_by = ["gate/exact-repair-route"]
 acceptance = "Targeted mutation emits a bounded reproducible candidate and command, or a named no-safe-candidate limitation; it never executes by default."
 commands = ["cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "analysis/call-presence-gate-producer"
+status = "blocked"
+branch = "analysis/call-presence-gate-producer"
+stackable = false
+blocked_by = ["gate/exact-repair-route"]
+acceptance = "Close the remaining #1440 producer gap with an authorized real CallPresence fixture or receipt that yields a complete policy-eligible route for an unambiguous caller/observer, while method-string, dynamic, helper-only, and ambiguous cases remain named static limitations. Tracked in issue #1543."
+commands = ["cargo test -p ripr test_grip_evidence --lib", "cargo test -p ripr output::gate --lib", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "analysis/field-constant-observation"

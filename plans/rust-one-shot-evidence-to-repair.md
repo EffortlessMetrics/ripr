@@ -121,13 +121,16 @@ CLI-backed calibrated blocking receipt now pins the full route directly in
 `gate-decision.{json,md}` and rejects artifact-download or PR-guidance lookup as
 the repair step.
 
-The #1440 call-observation acceptance is not yet closed. Real current
-CallPresence probes exercised through `ripr review-comments` remain
-`static_limitation` when propagation to a side-effect/call-effect sink is
-unknown; they therefore do not carry a policy-eligible receipt. Keep
-`gate/exact-repair-route` open and fail closed rather than synthesizing a
-blocking call-observation receipt. Resolving that producer limitation belongs
-in an analysis-authority slice, not a gate renderer.
+The structural #1440 gate-route delivery is complete: policy-eligible
+decisions now carry a self-contained repair route and producer-owned inspection
+command without artifact archaeology. The remaining real CallPresence
+acceptance is tracked separately in issue #1543. Current CallPresence probes
+exercised through `ripr review-comments` can remain `static_limitation` when
+propagation to a side-effect/call-effect sink is unknown; they therefore do not
+carry a policy-eligible receipt. Keep those cases fail-closed rather than
+synthesizing a blocking call-observation receipt. Resolving that producer
+limitation belongs in the `analysis/call-presence-gate-producer` slice, not a
+gate renderer.
 
 ## Boundaries and closeout
 
