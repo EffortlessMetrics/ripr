@@ -105,6 +105,20 @@ struct TargetedRerunInputFingerprint {
     toolchain_hash: String,
     seam_limit_key: String,
     selector_ledger_hash: String,
+    #[serde(default)]
+    graph_provenance: TargetedRerunGraphProvenance,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct TargetedRerunGraphProvenance {
+    package_graph_status: String,
+    package_graph_hash: Option<String>,
+    package_graph_detail: Option<String>,
+    feature_graph_status: String,
+    feature_graph_hash: Option<String>,
+    feature_graph_detail: Option<String>,
+    external_dependency_graph_status: String,
+    external_dependency_graph_detail: String,
 }
 
 impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInputFingerprint {
@@ -123,8 +137,34 @@ impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInput
             toolchain_hash: key.toolchain_hash.clone(),
             seam_limit_key: key.seam_limit_key.clone(),
             selector_ledger_hash: "not_applicable".to_string(),
+            graph_provenance: TargetedRerunGraphProvenance::default(),
         }
     }
+}
+
+impl From<&crate::analysis::seam_cache::WorkspaceGraphProvenance> for TargetedRerunGraphProvenance {
+    fn from(provenance: &crate::analysis::seam_cache::WorkspaceGraphProvenance) -> Self {
+        Self {
+            package_graph_status: provenance.package_graph_status.clone(),
+            package_graph_hash: provenance.package_graph_hash.clone(),
+            package_graph_detail: provenance.package_graph_detail.clone(),
+            feature_graph_status: provenance.feature_graph_status.clone(),
+            feature_graph_hash: provenance.feature_graph_hash.clone(),
+            feature_graph_detail: provenance.feature_graph_detail.clone(),
+            external_dependency_graph_status: provenance.external_dependency_graph_status.clone(),
+            external_dependency_graph_detail: provenance.external_dependency_graph_detail.clone(),
+        }
+    }
+}
+
+fn input_fingerprint_for(
+    root: &Path,
+    key: &crate::analysis::seam_cache::RepoSeamCacheKey,
+) -> TargetedRerunInputFingerprint {
+    let mut fingerprint: TargetedRerunInputFingerprint = key.into();
+    fingerprint.graph_provenance =
+        (&crate::analysis::seam_cache::workspace_graph_provenance(root)).into();
+    fingerprint
 }
 
 #[derive(Serialize)]
@@ -367,7 +407,8 @@ fn rerun_changed_test(
         None,
         Vec::new(),
     );
-    report.cache.input_fingerprint = Some((&inventory.workspace_cache_key).into());
+    report.cache.input_fingerprint =
+        Some(input_fingerprint_for(root, &inventory.workspace_cache_key));
     Ok(report)
 }
 
@@ -460,7 +501,8 @@ fn rerun_gap(
             &changed_files,
             &changed_owner_names,
         )?;
-        input_fingerprint.get_or_insert_with(|| (&inventory.workspace_cache_key).into());
+        input_fingerprint
+            .get_or_insert_with(|| input_fingerprint_for(root, &inventory.workspace_cache_key));
         add_cache_stats(&mut cache, &inventory.file_fact_cache);
         let scoped_record_seam_ids = seam_ids_for_scope(&records, &scope);
         let scope_seams = inventory
@@ -735,9 +777,9 @@ fn apply_full_pipeline_parity(
         return Ok(());
     }
     let (full, limit_info) = inventory_classified_seams_at_with_config(root, config)?;
-    let input_mismatches = match workspace_cache_key_at_with_config(root, config) {
+    let mut input_mismatches = match workspace_cache_key_at_with_config(root, config) {
         Ok(full_key) => {
-            let full_fingerprint: TargetedRerunInputFingerprint = (&full_key).into();
+            let full_fingerprint = input_fingerprint_for(root, &full_key);
             report.cache.input_fingerprint.as_ref().map_or_else(
                 || vec!["input_fingerprint"],
                 |targeted| input_fingerprint_changes(targeted, &full_fingerprint),
@@ -745,6 +787,13 @@ fn apply_full_pipeline_parity(
         }
         Err(_) => vec!["input_fingerprint_unavailable"],
     };
+    if let Some(fingerprint) = report.cache.input_fingerprint.as_ref() {
+        for field in graph_provenance_unavailable_fields(fingerprint) {
+            if !input_mismatches.contains(&field) {
+                input_mismatches.push(field);
+            }
+        }
+    }
     let full_by_id = full
         .iter()
         .map(seam_from)
@@ -818,6 +867,19 @@ fn apply_full_pipeline_parity(
         });
     }
     Ok(())
+}
+
+fn graph_provenance_unavailable_fields(
+    fingerprint: &TargetedRerunInputFingerprint,
+) -> Vec<&'static str> {
+    let mut fields = Vec::new();
+    if fingerprint.graph_provenance.package_graph_status != "complete" {
+        fields.push("package_graph_provenance_unavailable");
+    }
+    if fingerprint.graph_provenance.feature_graph_status != "complete" {
+        fields.push("feature_graph_provenance_unavailable");
+    }
+    fields
 }
 
 fn parity_mismatch_fields(
@@ -993,10 +1055,36 @@ fn input_fingerprint_changes(
             &current.selector_ledger_hash,
         ),
     ];
-    fields
+    let mut changed = fields
         .into_iter()
         .filter_map(|(name, before, current)| (before != current).then_some(name))
-        .collect()
+        .collect::<Vec<_>>();
+    let package_graph_changed = before.graph_provenance.package_graph_status
+        != current.graph_provenance.package_graph_status
+        || before.graph_provenance.package_graph_hash
+            != current.graph_provenance.package_graph_hash
+        || before.graph_provenance.package_graph_detail
+            != current.graph_provenance.package_graph_detail;
+    if package_graph_changed && !changed.contains(&"package_graph_provenance") {
+        changed.push("package_graph_provenance");
+    }
+    let feature_graph_changed = before.graph_provenance.feature_graph_status
+        != current.graph_provenance.feature_graph_status
+        || before.graph_provenance.feature_graph_hash
+            != current.graph_provenance.feature_graph_hash
+        || before.graph_provenance.feature_graph_detail
+            != current.graph_provenance.feature_graph_detail;
+    if feature_graph_changed && !changed.contains(&"feature_graph_provenance") {
+        changed.push("feature_graph_provenance");
+    }
+    if before.graph_provenance.external_dependency_graph_status
+        != current.graph_provenance.external_dependency_graph_status
+        || before.graph_provenance.external_dependency_graph_detail
+            != current.graph_provenance.external_dependency_graph_detail
+    {
+        changed.push("external_dependency_graph_provenance");
+    }
+    changed
 }
 
 fn set_before_limitation(report: &mut TargetedRerunReport, kind: &'static str, message: String) {
@@ -1266,12 +1354,12 @@ fn render_human(report: &TargetedRerunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RerunSelector, TargetedRerunCache, TargetedRerunInputFingerprint,
-        TargetedRerunMissingDiscriminator, TargetedRerunMovement, TargetedRerunRelatedTest,
-        TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector, cache_from,
-        entry_matches_selected_gap, input_fingerprint_changes, parity_mismatch_fields,
-        parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
-        scopes_from_gap_records,
+        RerunSelector, TargetedRerunCache, TargetedRerunGraphProvenance,
+        TargetedRerunInputFingerprint, TargetedRerunMissingDiscriminator, TargetedRerunMovement,
+        TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
+        cache_from, entry_matches_selected_gap, graph_provenance_unavailable_fields,
+        input_fingerprint_changes, parity_mismatch_fields, parse_options, render_human,
+        resolve_gap_records, route_from_gap_records, same_root, scopes_from_gap_records,
     };
     use crate::analysis::seam_cache::FileFactCacheStats;
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
@@ -1671,6 +1759,48 @@ mod tests {
         );
     }
 
+    #[test]
+    fn input_fingerprint_changes_name_graph_provenance_inputs() {
+        let before = sample_input_fingerprint();
+        let mut current = before.clone();
+        current.graph_provenance.package_graph_hash = Some("changed-package-graph".to_string());
+        current.graph_provenance.feature_graph_status = "limited".to_string();
+        assert_eq!(
+            input_fingerprint_changes(&before, &current),
+            vec!["package_graph_provenance", "feature_graph_provenance"]
+        );
+        current.graph_provenance.external_dependency_graph_detail =
+            "metadata became available".to_string();
+        assert_eq!(
+            input_fingerprint_changes(&before, &current),
+            vec![
+                "package_graph_provenance",
+                "feature_graph_provenance",
+                "external_dependency_graph_provenance"
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_graph_provenance_is_explicitly_unavailable() -> Result<(), String> {
+        let mut value = serde_json::to_value(sample_input_fingerprint())
+            .map_err(|err| format!("serialize fingerprint: {err}"))?;
+        value
+            .as_object_mut()
+            .ok_or_else(|| "fingerprint should serialize as an object".to_string())?
+            .remove("graph_provenance");
+        let missing: TargetedRerunInputFingerprint = serde_json::from_value(value)
+            .map_err(|err| format!("deserialize legacy fingerprint: {err}"))?;
+        assert_eq!(
+            graph_provenance_unavailable_fields(&missing),
+            vec![
+                "package_graph_provenance_unavailable",
+                "feature_graph_provenance_unavailable"
+            ]
+        );
+        Ok(())
+    }
+
     fn sample_input_fingerprint() -> TargetedRerunInputFingerprint {
         TargetedRerunInputFingerprint {
             schema_version: "0.3".to_string(),
@@ -1686,6 +1816,17 @@ mod tests {
             toolchain_hash: "toolchain".to_string(),
             seam_limit_key: "unlimited".to_string(),
             selector_ledger_hash: "not_applicable".to_string(),
+            graph_provenance: TargetedRerunGraphProvenance {
+                package_graph_status: "complete".to_string(),
+                package_graph_hash: Some("package-graph".to_string()),
+                package_graph_detail: None,
+                feature_graph_status: "complete".to_string(),
+                feature_graph_hash: Some("feature-graph".to_string()),
+                feature_graph_detail: None,
+                external_dependency_graph_status: "unavailable".to_string(),
+                external_dependency_graph_detail: "external dependency metadata is not resolved"
+                    .to_string(),
+            },
         }
     }
 

@@ -1168,6 +1168,125 @@ pub(crate) fn stable_input_hash(bytes: &[u8]) -> String {
     hash_bytes(bytes)
 }
 
+/// Producer-owned provenance for the local Cargo package and feature graphs.
+/// External dependency metadata is never resolved here: targeted reruns must
+/// not perform network work or imply that registry graph facts were observed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WorkspaceGraphProvenance {
+    pub(crate) package_graph_status: String,
+    pub(crate) package_graph_hash: Option<String>,
+    pub(crate) package_graph_detail: Option<String>,
+    pub(crate) feature_graph_status: String,
+    pub(crate) feature_graph_hash: Option<String>,
+    pub(crate) feature_graph_detail: Option<String>,
+    pub(crate) external_dependency_graph_status: String,
+    pub(crate) external_dependency_graph_detail: String,
+}
+
+/// Read local Cargo manifests and derive deterministic package/feature graph
+/// facts without invoking Cargo, rustc, a registry, or a network client.
+pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenance {
+    let mut manifests = Vec::new();
+    collect_named_workspace_files(root, root, "Cargo.toml", &mut manifests);
+    manifests.sort_by(|left, right| left.0.cmp(&right.0));
+
+    if manifests.is_empty() {
+        return WorkspaceGraphProvenance {
+            package_graph_status: "unavailable".to_string(),
+            package_graph_detail: Some("no local Cargo.toml manifest was found".to_string()),
+            feature_graph_status: "unavailable".to_string(),
+            feature_graph_detail: Some("no local Cargo.toml manifest was found".to_string()),
+            external_dependency_graph_status: "unavailable".to_string(),
+            external_dependency_graph_detail:
+                "external dependency metadata is not resolved; no network access was used"
+                    .to_string(),
+            ..WorkspaceGraphProvenance::default()
+        };
+    }
+
+    let mut package_facts = Vec::new();
+    let mut feature_facts = Vec::new();
+    let mut parse_errors = Vec::new();
+    for (path, bytes) in &manifests {
+        let path_text = path.to_string_lossy().replace('\\', "/");
+        let value = match std::str::from_utf8(bytes)
+            .map_err(|err| err.to_string())
+            .and_then(|text| toml::from_str::<toml::Value>(text).map_err(|err| err.to_string()))
+        {
+            Ok(value) => value,
+            Err(err) => {
+                parse_errors.push(format!("{path_text}: {err}"));
+                continue;
+            }
+        };
+        let package = value.get("package").and_then(toml::Value::as_table);
+        let package_name = package
+            .and_then(|table| table.get("name"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or("<workspace-only>");
+        let workspace_members = value
+            .get("workspace")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("members"))
+            .map(canonical_toml_value)
+            .unwrap_or_default();
+        let dependencies = ["dependencies", "dev-dependencies", "build-dependencies"]
+            .into_iter()
+            .filter_map(|section| value.get(section).and_then(toml::Value::as_table))
+            .flat_map(|table| table.keys().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        package_facts.push(format!(
+            "{path_text}\0package={package_name}\0members={workspace_members}\0dependencies={dependencies:?}"
+        ));
+
+        let feature_values = value
+            .get("features")
+            .and_then(toml::Value::as_table)
+            .map(|table| {
+                table
+                    .iter()
+                    .map(|(name, value)| format!("{name}={}", canonical_toml_value(value)))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        feature_facts.push(format!("{path_text}\0features={feature_values:?}"));
+    }
+
+    let parse_detail = (!parse_errors.is_empty()).then(|| parse_errors.join("; "));
+    let package_graph_status = if package_facts.is_empty() {
+        "unavailable"
+    } else if parse_detail.is_some() {
+        "limited"
+    } else {
+        "complete"
+    };
+    let feature_graph_status = if parse_detail.is_some() {
+        "limited"
+    } else {
+        "complete"
+    };
+    package_facts.sort();
+    feature_facts.sort();
+    WorkspaceGraphProvenance {
+        package_graph_status: package_graph_status.to_string(),
+        package_graph_hash: (!package_facts.is_empty())
+            .then(|| stable_input_hash(package_facts.join("\n").as_bytes())),
+        package_graph_detail: parse_detail.clone(),
+        feature_graph_status: feature_graph_status.to_string(),
+        feature_graph_hash: Some(stable_input_hash(feature_facts.join("\n").as_bytes())),
+        feature_graph_detail: parse_detail,
+        external_dependency_graph_status: "unavailable".to_string(),
+        external_dependency_graph_detail:
+            "external dependency metadata is not resolved; no network access was used".to_string(),
+    }
+}
+
+fn canonical_toml_value(value: &toml::Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "<unserializable>".to_string())
+}
+
 fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a_64(bytes))
 }
@@ -1706,6 +1825,70 @@ mod tests {
         );
         assert_ne!(baseline.lockfile_hash, updated.lockfile_hash);
         assert_ne!(baseline.filename(), updated.filename());
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn graph_provenance_reports_local_package_and_feature_facts_without_network()
+    -> Result<(), String> {
+        let root = isolated_dir("graph-provenance");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("crates/app"))
+            .map_err(|err| format!("create workspace: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )
+        .map_err(|err| format!("write root manifest: {err}"))?;
+        std::fs::write(
+            root.join("crates/app/Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[features]\ndefault = []\nfast = []\n",
+        )
+        .map_err(|err| format!("write member manifest: {err}"))?;
+
+        let first = workspace_graph_provenance(&root);
+        assert_eq!(first.package_graph_status, "complete");
+        assert_eq!(first.feature_graph_status, "complete");
+        assert!(first.package_graph_hash.is_some());
+        assert!(first.feature_graph_hash.is_some());
+        assert_eq!(first.external_dependency_graph_status, "unavailable");
+        assert!(
+            first
+                .external_dependency_graph_detail
+                .contains("no network")
+        );
+
+        std::fs::write(
+            root.join("crates/app/Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[features]\ndefault = []\nslow = []\n",
+        )
+        .map_err(|err| format!("change feature manifest: {err}"))?;
+        let second = workspace_graph_provenance(&root);
+        assert_ne!(first.feature_graph_hash, second.feature_graph_hash);
+        assert_eq!(first.package_graph_hash, second.package_graph_hash);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn graph_provenance_names_unavailable_or_malformed_manifests() -> Result<(), String> {
+        let root = isolated_dir("graph-provenance-limited");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        let missing = workspace_graph_provenance(&root);
+        assert_eq!(missing.package_graph_status, "unavailable");
+        assert_eq!(missing.feature_graph_status, "unavailable");
+
+        std::fs::write(root.join("Cargo.toml"), "[package\nname = \"broken\"\n")
+            .map_err(|err| format!("write malformed manifest: {err}"))?;
+        let malformed = workspace_graph_provenance(&root);
+        assert_eq!(malformed.package_graph_status, "unavailable");
+        assert_eq!(malformed.feature_graph_status, "limited");
+        assert!(malformed.package_graph_detail.is_some());
+        assert!(malformed.feature_graph_detail.is_some());
+
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }

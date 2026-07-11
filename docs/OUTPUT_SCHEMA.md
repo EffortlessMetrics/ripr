@@ -14367,7 +14367,17 @@ targeted-rerun receipt shape:
       "lockfile_hash": "…",
       "toolchain_hash": "…",
       "seam_limit_key": "limit_10000",
-      "selector_ledger_hash": "not_applicable"
+      "selector_ledger_hash": "not_applicable",
+      "graph_provenance": {
+        "package_graph_status": "complete",
+        "package_graph_hash": "…",
+        "package_graph_detail": null,
+        "feature_graph_status": "complete",
+        "feature_graph_hash": "…",
+        "feature_graph_detail": null,
+        "external_dependency_graph_status": "unavailable",
+        "external_dependency_graph_detail": "external dependency metadata is not resolved; no network access was used"
+      }
     }
   },
   "seams": [
@@ -14463,6 +14473,15 @@ is never inferred from an ambient cache or report. Cold runs and before
 artifacts without fingerprints remain `not_available`; a miss remains an
 observed cache result, not a fabricated claim about which workspace input
 changed.
+
+`input_fingerprint.graph_provenance` records local package/member and feature
+facts with `complete`, `limited`, or `unavailable` statuses. External
+dependency metadata is explicitly unavailable because targeted rerun does not
+use network or ambient Cargo metadata. Graph changes are named as
+`input_changed:package_graph_provenance` or
+`input_changed:feature_graph_provenance` or
+`input_changed:external_dependency_graph_provenance`; parity fails closed when
+required local graph provenance is unavailable.
 
 Pass `--check-parity` to request an explicit full-inventory comparison. The
 optional `parity` object reports `matched` only when every selected seam has
