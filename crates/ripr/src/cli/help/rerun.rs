@@ -8,6 +8,7 @@ Options:
   --gap ID             Canonical gap identity from the explicit gap ledger.
   --gap-ledger PATH    Gap decision ledger required by --gap.
   --before PATH        Explicit prior targeted-rerun, repo-exposure, or compatible static snapshot.
+  --check-parity       Compare selected current seams with a full static inventory; explicit and potentially expensive.
   --root PATH          Workspace root. Defaults to current directory.
   --json               Emit the structured current-state report.
   --out PATH           Write the report to a file instead of stdout.

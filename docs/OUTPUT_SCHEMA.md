@@ -14432,6 +14432,17 @@ intentional until the analyzer owns complete broader-input invalidation
 attribution. A miss remains an observed cache result, not a fabricated claim
 about which workspace input changed.
 
+Pass `--check-parity` to request an explicit full-inventory comparison. The
+optional `parity` object reports `matched` only when every selected seam has
+the same canonical gap ID, seam ID, static class, file, and owner in the
+current full pipeline.
+A difference changes the overall report to `limited` with
+`full_pipeline_parity_mismatch`; it is never rendered as a successful targeted
+result. This diagnostic is opt-in because it intentionally runs the broad
+pipeline and is not an interactive default. If the full inventory is capped,
+the report instead uses `full_pipeline_parity_incomplete` because an absent
+seam may simply lie outside the analyzed prefix.
+
 For a `--gap` receipt, the ledger may carry an explicit nullable `seam_id`
 beside its behavioral `canonical_gap_id`. RIPR uses that typed producer-owned
 identity only to retain the selected source seam when it becomes strongly

@@ -2766,6 +2766,82 @@ fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Res
 }
 
 #[test]
+fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--check-parity",
+        "--json",
+    ]);
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|err| format!("parse parity rerun JSON: {err}"))?;
+    if report["state"] != "current_state_only"
+        || report["parity"]["state"] != "matched"
+        || report["parity"]["selected_seam_count"] != report["parity"]["matched_seam_count"]
+        || report["parity"]["selected_seam_count"] != serde_json::json!(1)
+        || report
+            .get("limitation")
+            .is_some_and(|value| !value.is_null())
+    {
+        return Err(format!("unexpected parity rerun receipt: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_check_parity_names_capped_inventory_and_suppresses_movement() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/observation_verified_field_construction/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/item_tests.rs",
+        "--json",
+    ]);
+    assert_success(&before);
+    let workspace = unique_temp_workspace("parity-before");
+    std::fs::create_dir_all(&workspace).map_err(|err| format!("create before workspace: {err}"))?;
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write before receipt: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/item_tests.rs",
+            "--before",
+            &before_arg,
+            "--check-parity",
+            "--json",
+        ],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse capped parity rerun JSON: {err}"))?;
+    if report["state"] != "limited"
+        || report["parity"]["state"] != "limited"
+        || report["limitation"]["kind"] != "full_pipeline_parity_incomplete"
+        || report.get("movement").is_some_and(|value| !value.is_null())
+    {
+        return Err(format!("unexpected capped parity rerun receipt: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Result<(), String> {
     let root = workspace_root().join("fixtures/boundary_gap/input");
     let root_arg = root.to_string_lossy().into_owned();

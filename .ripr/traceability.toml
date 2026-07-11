@@ -6682,6 +6682,7 @@ tests = [
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_gap_selector_with_explicit_ledger",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_changed_test_json_output",
   "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_explicit_before_artifact",
+  "crates/ripr/src/cli/rerun.rs::tests::rerun_parses_explicit_full_pipeline_parity_check",
   "crates/ripr/src/cli/rerun.rs::tests::human_rerun_report_names_current_state_only_boundary",
   "crates/ripr/src/cli/rerun.rs::tests::human_rerun_report_names_explicit_static_movement",
   "crates/ripr/src/cli/rerun.rs::tests::canonical_gap_records_preserve_multiple_anchored_scopes",
@@ -6693,6 +6694,8 @@ tests = [
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_rerun_movement_names_same_rank_change_as_limited",
   "crates/ripr/tests/cli_smoke.rs::rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger",
   "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_uses_explicit_before_receipt_for_static_movement",
+  "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap",
+  "crates/ripr/tests/cli_smoke.rs::rerun_check_parity_names_capped_inventory_and_suppresses_movement",
   "crates/ripr/tests/cli_smoke.rs::rerun_gap_groups_multiple_current_seams",
 ]
 fixtures = [

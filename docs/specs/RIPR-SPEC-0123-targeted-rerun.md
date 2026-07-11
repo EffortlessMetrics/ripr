@@ -84,6 +84,17 @@ test facts and the affected seam/test edges, then emits the current selected
 gap classifications and the same canonical-gap and receipt identities used by
 the full pipeline. Rendered artifacts are never cache inputs.
 
+An explicit `--check-parity` opt-in runs the full static seam inventory for the
+same root and configuration, then compares the selected canonical gap and seam
+identities plus their file, owner, and static classification fields. A mismatch
+is named as `full_pipeline_parity_mismatch` and fails the targeted result closed
+into a
+`limited` state. The full inventory is deliberately opt-in because it can be
+expensive; omitting the flag does not imply parity was checked. If the full
+inventory is seam-capped, the result is instead limited with
+`full_pipeline_parity_incomplete`, because an absent seam may be outside the
+analyzed prefix rather than a true mismatch.
+
 ### Cache correctness and disclosure
 
 Every result records:
@@ -154,6 +165,8 @@ The benchmark does not justify a universal latency claim.
   and cold-fallback disclosure.
 - Contract tests pin required JSON fields, named limitations, identity/receipt
   continuity, and stale-evidence refusal.
+- An explicit parity test compares a selected changed-test rerun with the full
+  static inventory and fails closed on a selected-seam mismatch.
 - A benchmark definition and checked receipt record the cold/warm comparison.
 - `cargo xtask check-output-contracts`, fixture/golden/traceability gates, and
   `cargo xtask check-pr` pass.

@@ -1,5 +1,6 @@
 use crate::analysis::{
     canonical_gap::canonical_gap_identity, inventory_changed_test_classified_seams_at_with_config,
+    inventory_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
@@ -18,6 +19,7 @@ struct RerunOptions {
     json: bool,
     out: Option<PathBuf>,
     before: Option<PathBuf>,
+    check_parity: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -38,6 +40,8 @@ struct TargetedRerunReport {
     seams: Vec<TargetedRerunSeam>,
     #[serde(skip_serializing_if = "Option::is_none")]
     movement: Option<TargetedRerunMovement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parity: Option<TargetedRerunParity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     route: Option<TargetedRerunRoute>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,6 +101,13 @@ struct TargetedRerunMovement {
 }
 
 #[derive(Serialize)]
+struct TargetedRerunParity {
+    state: &'static str,
+    selected_seam_count: usize,
+    matched_seam_count: usize,
+}
+
+#[derive(Serialize)]
 struct TargetedRerunRoute {
     verify_commands: Vec<String>,
     receipt_command: Option<String>,
@@ -143,6 +154,9 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
             gap_ledger,
         } => rerun_gap(&input.root, &config, &canonical_gap_id, &gap_ledger)?,
     };
+    if options.check_parity {
+        apply_full_pipeline_parity(&mut report, &input.root, &config)?;
+    }
     if let Some(before) = options.before.as_deref() {
         apply_before(&mut report, before);
     }
@@ -170,6 +184,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
     let mut json = false;
     let mut out = None;
     let mut before = None;
+    let mut check_parity = false;
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
@@ -204,6 +219,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
                 index += 1;
                 before = Some(PathBuf::from(expect_value(args, index, "--before")?));
             }
+            "--check-parity" => check_parity = true,
             other => return Err(format!("unknown rerun argument {other:?}")),
         }
         index += 1;
@@ -234,6 +250,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
         json,
         out,
         before,
+        check_parity,
     })
 }
 
@@ -608,11 +625,69 @@ fn report(
         cache,
         seams,
         movement: None,
+        parity: None,
         route,
         limitation,
         scope_limitations,
         authority_boundary: "static evidence only; no before snapshot was supplied, so gap movement is not inferred",
     }
+}
+
+fn apply_full_pipeline_parity(
+    report: &mut TargetedRerunReport,
+    root: &Path,
+    config: &crate::config::RiprConfig,
+) -> Result<(), String> {
+    if report.state == "limited" {
+        return Ok(());
+    }
+    let (full, limit_info) = inventory_classified_seams_at_with_config(root, config)?;
+    let full_by_id = full
+        .iter()
+        .map(seam_from)
+        .map(|seam| (seam.seam_id.clone(), seam))
+        .collect::<BTreeMap<_, _>>();
+    let mismatches = report
+        .seams
+        .iter()
+        .filter(|targeted| {
+            full_by_id.get(&targeted.seam_id).is_none_or(|full| {
+                full.canonical_gap_id != targeted.canonical_gap_id
+                    || full.static_class != targeted.static_class
+                    || full.file != targeted.file
+                    || full.owner != targeted.owner
+            })
+        })
+        .count();
+    let matched = report.seams.len().saturating_sub(mismatches);
+    report.parity = Some(TargetedRerunParity {
+        state: if limit_info.is_none() && mismatches == 0 {
+            "matched"
+        } else {
+            "limited"
+        },
+        selected_seam_count: report.seams.len(),
+        matched_seam_count: matched,
+    });
+    if let Some(limit_info) = limit_info {
+        report.state = "limited";
+        report.limitation = Some(TargetedRerunLimitation {
+            kind: "full_pipeline_parity_incomplete",
+            message: format!(
+                "full pipeline analyzed {} of {} seams under the configured limit; parity is inconclusive",
+                limit_info.analyzed, limit_info.total
+            ),
+        });
+    } else if mismatches > 0 {
+        report.state = "limited";
+        report.limitation = Some(TargetedRerunLimitation {
+            kind: "full_pipeline_parity_mismatch",
+            message: format!(
+                "{mismatches} selected seam(s) differed from the full pipeline; targeted evidence is not a successful parity result"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
@@ -1175,6 +1250,19 @@ mod tests {
     }
 
     #[test]
+    fn rerun_parses_explicit_full_pipeline_parity_check() -> Result<(), String> {
+        let options = parse_options(&args(&[
+            "--changed-test",
+            "tests/pricing.rs",
+            "--check-parity",
+        ]))?;
+        if !options.check_parity {
+            return Err("expected explicit parity check option".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn human_rerun_report_names_current_state_only_boundary() -> Result<(), String> {
         let report = TargetedRerunReport {
             schema_version: "ripr-targeted-rerun-v1",
@@ -1210,6 +1298,7 @@ mod tests {
                 static_class: "weakly_gripped".to_string(),
             }],
             movement: None,
+            parity: None,
             route: None,
             limitation: None,
             scope_limitations: Vec::new(),
@@ -1262,6 +1351,7 @@ mod tests {
                 before_seam_count: 1,
                 matched_seam_count: 1,
             }),
+            parity: None,
             route: None,
             limitation: None,
             scope_limitations: Vec::new(),
