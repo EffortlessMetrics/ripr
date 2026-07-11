@@ -70,14 +70,16 @@ invalidation, never silently serving stale evidence.
 
 The benchmark receipt command and controlled fixture are now available through
 `cargo xtask targeted-rerun-benchmark`. The registered local receipt records a
-matched parity result, warm targeted p50 of 104 ms, and 5.8173x cold-full to
-warm-targeted p50 speedup on commit `6755b357`. It also exercises an explicit
-file-fact cache reset and records `recomputed_file_facts`.
+matched parity result, warm targeted p50 of 204 ms, and 6.4069x cold-full to
+warm-targeted p50 speedup on benchmark revision `29130a95`. It also exercises
+an explicit file-fact cache reset and records `recomputed_file_facts`.
 
 This closes only the benchmark-receipt slice. Broader input invalidation
 attribution, test-node selectors, and full campaign closeout remain pending;
 the active `perf/targeted-rerun` item stays open until those requirements are
-demonstrated.
+demonstrated. PR #1532 additionally ships explicit `path::test_node`
+selection for changed-test reruns; broader input invalidation attribution and
+full campaign closeout remain pending.
 
 ## Gate route dogfood status (2026-07-10)
 
