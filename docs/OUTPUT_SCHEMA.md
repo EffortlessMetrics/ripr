@@ -14329,7 +14329,7 @@ Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
 
 ## Targeted rerun output
 
-`ripr rerun --changed-test <path> [--before <path>] --json` and
+`ripr rerun --changed-test <path>[::<test_node>] [--before <path>] --json` and
 `ripr rerun --gap <canonical-gap-id> --gap-ledger <path> [--before <path>] --json` emit the
 targeted-rerun receipt shape:
 
@@ -14339,7 +14339,7 @@ targeted-rerun receipt shape:
   "state": "current_state_only",
   "selector": {
     "kind": "changed_test",
-    "changed_test": "tests/pricing.rs",
+    "changed_test": "tests/pricing.rs::discounted_total_case",
     "selected_test_count": 1,
     "direct_call_names": ["discounted_total"]
   },
@@ -14369,10 +14369,12 @@ targeted-rerun receipt shape:
 }
 ```
 
-For a changed-test selector, `selector.kind` is `changed_test`,
-`changed_test` names the repository-relative parsed test file, and the report
-returns only seams owned by uniquely resolved functions directly called from
-that file.
+For a changed-test selector, `selector.kind` is `changed_test`. `changed_test`
+names the repository-relative parsed test file and may append
+`::<test_node>` to select one test function within that file. An unknown or
+ambiguous node is a named limitation. Without a node, all parsed tests in the
+file participate. The report returns only seams owned by uniquely resolved
+functions directly called from the selected test scope.
 
 For a gap selector, `selector.kind` is `canonical_gap`, with
 `canonical_gap_id` and `gap_ledger`. RIPR resolves every existing ledger record

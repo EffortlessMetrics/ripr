@@ -1,10 +1,11 @@
 pub(super) const RERUN_HELP: &str = r#"Re-evaluate static evidence affected by one edited Rust test.
 
-Usage: ripr rerun --changed-test PATH [--before PATH] [--root PATH] [--json] [--out PATH]
+Usage: ripr rerun --changed-test PATH[::TEST_NODE] [--before PATH] [--root PATH] [--json] [--out PATH]
        ripr rerun --gap CANONICAL_GAP_ID --gap-ledger PATH [--before PATH] [--root PATH] [--json] [--out PATH]
 
 Options:
-  --changed-test PATH  Edited Rust integration or unit-test file. Required.
+  --changed-test PATH[::TEST_NODE]
+                       Edited Rust integration or unit-test file, optionally narrowed to one parsed test node. Required.
   --gap ID             Canonical gap identity from the explicit gap ledger.
   --gap-ledger PATH    Gap decision ledger required by --gap.
   --before PATH        Explicit prior targeted-rerun, repo-exposure, or compatible static snapshot.
@@ -14,7 +15,8 @@ Options:
   --out PATH           Write the report to a file instead of stdout.
 
 The changed-test selector recomputes only seams owned by uniquely resolved
-functions directly called from the selected test file. The gap selector groups
+functions directly called from the selected test file or test node. An unknown
+or ambiguous node is a named limitation. The gap selector groups
 every supplied ledger record with that canonical identity, scopes recomputation
 to each unique anchored file/owner, and returns only current seams with that
 same domain ID. Missing, stale, anchorless, or root-mismatched ledger selections

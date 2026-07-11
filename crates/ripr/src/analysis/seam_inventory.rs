@@ -540,10 +540,11 @@ pub(crate) struct TargetedTestClassifiedSeamInventory {
     pub(crate) file_fact_cache: FileFactCacheStats,
 }
 
-pub(crate) fn inventory_changed_test_classified_seams_at_with_config(
+pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
     root: &Path,
     config: &RiprConfig,
     changed_test: &Path,
+    test_node: Option<&str>,
 ) -> Result<TargetedTestClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
     let changed_test = normalized_inventory_path(changed_test);
@@ -556,10 +557,13 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config(
         .tests
         .iter()
         .filter(|test| normalized_inventory_path(&test.file) == changed_test)
+        .filter(|test| test_node.is_none_or(|node| test.name == node))
         .collect::<Vec<_>>();
     if selected_tests.is_empty() {
         return Err(format!(
-            "targeted rerun changed test `{changed_test}` did not resolve to a parsed test"
+            "targeted rerun changed test `{}`{} did not resolve to a parsed test",
+            changed_test,
+            test_node.map_or(String::new(), |node| format!("::{node}"))
         ));
     }
 
@@ -2535,10 +2539,11 @@ fn discounted_total_case() {
 "#,
         )?;
 
-        let inventory = inventory_changed_test_classified_seams_at_with_config(
+        let inventory = inventory_changed_test_classified_seams_at_with_config_node(
             &root,
             &RiprConfig::default(),
             Path::new("tests/pricing.rs"),
+            None,
         )?;
         if inventory.selected_test_count != 1 {
             return Err(format!(
@@ -2566,10 +2571,11 @@ fn discounted_total_case() {
             return Err("cold targeted run should record file-fact misses".to_string());
         }
 
-        let warm = inventory_changed_test_classified_seams_at_with_config(
+        let warm = inventory_changed_test_classified_seams_at_with_config_node(
             &root,
             &RiprConfig::default(),
             Path::new("tests/pricing.rs"),
+            None,
         )?;
         if warm.file_fact_cache.hits == 0 || warm.file_fact_cache.misses != 0 {
             return Err(format!(
@@ -2579,6 +2585,73 @@ fn discounted_total_case() {
         }
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
+    }
+
+    #[test]
+    fn changed_test_inventory_selects_one_test_node_within_a_file() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-node-selection")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32) -> i32 { if amount >= 100 { amount - 10 } else { amount } }
+pub fn surcharge_total(amount: i32) -> i32 { if amount >= 50 { amount + 5 } else { amount } }
+"#,
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn discounted_total_case() { assert_eq!(discounted_total(100), 90); }
+#[test]
+fn surcharge_total_case() { assert_eq!(surcharge_total(50), 55); }
+"#,
+        )?;
+
+        let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            Some("discounted_total_case"),
+        )?;
+        if inventory.selected_test_count != 1
+            || inventory.direct_call_names != ["discounted_total".to_string()]
+            || inventory
+                .classified
+                .iter()
+                .any(|entry| entry.seam.owner().ends_with("::surcharge_total"))
+        {
+            return Err(format!(
+                "test-node selector did not isolate the requested test: count={} calls={:?}",
+                inventory.selected_test_count, inventory.direct_call_names
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn changed_test_inventory_rejects_unknown_test_node() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-node-missing")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            "pub fn discounted_total(amount: i32) -> i32 { amount }",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test] fn discounted_total_case() { assert_eq!(discounted_total(1), 1); }",
+        )?;
+        let result = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            Some("missing_case"),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        match result {
+            Err(message) if message.contains("::missing_case") => Ok(()),
+            Err(message) => Err(format!("unexpected missing-node diagnostic: {message}")),
+            Ok(_) => Err("unknown test node must fail closed".to_string()),
+        }
     }
 
     #[test]
@@ -2597,10 +2670,11 @@ fn discounted_total_case() {
             "#[test] fn same_name_case() { assert_eq!(same_name(1), 1); }",
         )?;
 
-        let result = inventory_changed_test_classified_seams_at_with_config(
+        let result = inventory_changed_test_classified_seams_at_with_config_node(
             &root,
             &RiprConfig::default(),
             Path::new("tests/pricing.rs"),
+            None,
         );
         let _ = std::fs::remove_dir_all(&root);
         match result {

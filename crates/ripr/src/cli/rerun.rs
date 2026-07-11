@@ -1,5 +1,6 @@
 use crate::analysis::{
-    canonical_gap::canonical_gap_identity, inventory_changed_test_classified_seams_at_with_config,
+    canonical_gap::canonical_gap_identity,
+    inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
 };
@@ -24,7 +25,10 @@ struct RerunOptions {
 
 #[derive(Debug, PartialEq, Eq)]
 enum RerunSelector {
-    ChangedTest(PathBuf),
+    ChangedTest {
+        file: PathBuf,
+        node: Option<String>,
+    },
     Gap {
         canonical_gap_id: String,
         gap_ledger: PathBuf,
@@ -146,8 +150,8 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
     ensure_command_root(&options.root, "rerun")?;
     let (input, config) = load_root_input_and_config(&options.root)?;
     let mut report = match options.selector {
-        RerunSelector::ChangedTest(changed_test) => {
-            rerun_changed_test(&input.root, &config, &changed_test)?
+        RerunSelector::ChangedTest { file, node } => {
+            rerun_changed_test(&input.root, &config, &file, node.as_deref())?
         }
         RerunSelector::Gap {
             canonical_gap_id,
@@ -197,7 +201,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
                 if changed_test.is_some() || canonical_gap_id.is_some() {
                     return Err("rerun accepts exactly one selector".to_string());
                 }
-                changed_test = Some(PathBuf::from(expect_value(args, index, "--changed-test")?));
+                changed_test = Some(expect_value(args, index, "--changed-test")?.to_string());
             }
             "--gap" => {
                 index += 1;
@@ -225,7 +229,10 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
         index += 1;
     }
     let selector = match (changed_test, canonical_gap_id, gap_ledger) {
-        (Some(changed_test), None, None) => RerunSelector::ChangedTest(changed_test),
+        (Some(changed_test), None, None) => {
+            let (file, node) = parse_changed_test_selector(&changed_test)?;
+            RerunSelector::ChangedTest { file, node }
+        }
         (Some(_), None, Some(_)) => {
             return Err("rerun --gap-ledger requires --gap".to_string());
         }
@@ -258,15 +265,23 @@ fn rerun_changed_test(
     root: &Path,
     config: &crate::config::RiprConfig,
     changed_test: &Path,
+    test_node: Option<&str>,
 ) -> Result<TargetedRerunReport, String> {
     let changed_test = normalize_changed_test(root, changed_test)?;
-    let inventory =
-        inventory_changed_test_classified_seams_at_with_config(root, config, &changed_test)?;
+    let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+        root,
+        config,
+        &changed_test,
+        test_node,
+    )?;
     Ok(report(
         "current_state_only",
         TargetedRerunSelector {
             kind: "changed_test",
-            changed_test: Some(display_path(&changed_test)),
+            changed_test: Some(match test_node {
+                Some(test_node) => format!("{}::{test_node}", display_path(&changed_test)),
+                None => display_path(&changed_test),
+            }),
             canonical_gap_id: None,
             gap_ledger: None,
             matched_record_count: None,
@@ -858,6 +873,23 @@ fn normalize_changed_test(root: &Path, changed_test: &Path) -> Result<PathBuf, S
     Ok(changed_test.to_path_buf())
 }
 
+fn parse_changed_test_selector(selector: &str) -> Result<(PathBuf, Option<String>), String> {
+    let (file, node) = selector
+        .split_once("::")
+        .map_or((selector, None), |(file, node)| (file, Some(node)));
+    if file.trim().is_empty() {
+        return Err("rerun --changed-test requires a file path".to_string());
+    }
+    let node = node
+        .map(str::trim)
+        .filter(|node| !node.is_empty())
+        .map(str::to_string);
+    if selector.contains("::") && node.is_none() {
+        return Err("rerun --changed-test test node must not be empty".to_string());
+    }
+    Ok((PathBuf::from(file), node))
+}
+
 fn resolve_output_path(root: &Path, out: &Path) -> PathBuf {
     if out.is_absolute() {
         out.to_path_buf()
@@ -1225,7 +1257,11 @@ mod tests {
             "target/rerun.json",
         ]))?;
         if options.root.as_path() != Path::new("workspace")
-            || options.selector != RerunSelector::ChangedTest(PathBuf::from("tests/pricing.rs"))
+            || options.selector
+                != (RerunSelector::ChangedTest {
+                    file: PathBuf::from("tests/pricing.rs"),
+                    node: None,
+                })
             || !options.json
             || options.out != Some(PathBuf::from("target/rerun.json"))
             || options.before.is_some()
@@ -1233,6 +1269,31 @@ mod tests {
             return Err(format!("unexpected rerun options: {options:?}"));
         }
         Ok(())
+    }
+
+    #[test]
+    fn rerun_parses_changed_test_node_selector() -> Result<(), String> {
+        let options = parse_options(&args(&[
+            "--changed-test",
+            "tests/pricing.rs::discounted_total_case",
+        ]))?;
+        if options.selector
+            != (RerunSelector::ChangedTest {
+                file: PathBuf::from("tests/pricing.rs"),
+                node: Some("discounted_total_case".to_string()),
+            })
+        {
+            return Err(format!("unexpected node selector: {:?}", options.selector));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rerun_rejects_empty_changed_test_node() -> Result<(), String> {
+        parse_options(&args(&["--changed-test", "tests/pricing.rs::"]))
+            .is_err()
+            .then_some(())
+            .ok_or_else(|| "empty changed-test node should be rejected".to_string())
     }
 
     #[test]
