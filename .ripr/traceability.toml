@@ -6708,6 +6708,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_uses_explicit_before_receipt_for_static_movement",
   "crates/ripr/tests/cli_smoke.rs::rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap",
   "crates/ripr/tests/cli_smoke.rs::rerun_before_receipt_names_toolchain_fingerprint_change",
+  "crates/ripr/tests/cli_smoke.rs::rerun_gap_before_receipt_names_selector_ledger_change",
   "crates/ripr/tests/cli_smoke.rs::rerun_check_parity_names_capped_inventory_and_suppresses_movement",
   "crates/ripr/tests/cli_smoke.rs::rerun_gap_groups_multiple_current_seams",
   "xtask/src/reports/targeted_rerun.rs::tests::parse_options_requires_root_and_changed_test",

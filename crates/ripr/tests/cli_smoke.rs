@@ -2860,6 +2860,115 @@ fn rerun_before_receipt_names_toolchain_fingerprint_change() -> Result<(), Strin
 }
 
 #[test]
+fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String> {
+    let root_arg = "fixtures/boundary_gap/input";
+    let changed = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ])
+    .map_err(|err| format!("run changed-test rerun: {err}"))?;
+    assert_success(&changed);
+    let changed_json: serde_json::Value = serde_json::from_slice(&changed.stdout)
+        .map_err(|err| format!("parse changed-test rerun JSON: {err}"))?;
+    let seam = changed_json["seams"]
+        .as_array()
+        .and_then(|seams| seams.first())
+        .ok_or_else(|| "changed-test rerun emitted no seam".to_string())?;
+    let canonical_gap_id = seam["canonical_gap_id"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks canonical_gap_id".to_string())?;
+    let file = seam["file"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks file".to_string())?;
+    let owner = seam["owner"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks owner".to_string())?;
+
+    let workspace = unique_temp_workspace("rerun-ledger-fingerprint");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|err| format!("create ledger fingerprint workspace: {err}"))?;
+    let ledger = workspace.join("gap-ledger.json");
+    let ledger_json = serde_json::json!({
+        "kind": "gap_decision_ledger",
+        "root": root_arg,
+        "records": [{
+            "canonical_gap_id": canonical_gap_id,
+            "anchor": { "file": file, "owner": owner },
+            "verification_commands": ["cargo test -p pricing boundary"],
+            "receipt_command": "ripr receipt write --gap first"
+        }]
+    });
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&ledger_json)
+            .map_err(|err| format!("serialize ledger fingerprint input: {err}"))?,
+    )
+    .map_err(|err| format!("write ledger fingerprint input: {err}"))?;
+    let ledger_arg = ledger.to_string_lossy().into_owned();
+    let before = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run ledger fingerprint before rerun: {err}"))?;
+    assert_success(&before);
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write ledger fingerprint before receipt: {err}"))?;
+
+    let mut changed_ledger = ledger_json;
+    changed_ledger["records"][0]["receipt_command"] =
+        serde_json::Value::String("ripr receipt write --gap second".to_string());
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&changed_ledger)
+            .map_err(|err| format!("serialize changed ledger fingerprint input: {err}"))?,
+    )
+    .map_err(|err| format!("write changed ledger fingerprint input: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--before",
+        &before_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run ledger fingerprint after rerun: {err}"))?;
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse ledger fingerprint after JSON: {err}"))?;
+    if report["cache"]["invalidation_status"] != "workspace_input_changed"
+        || !report["cache"]["recomputation_reasons"]
+            .as_array()
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some("input_changed:selector_ledger_hash"))
+            })
+    {
+        return Err(format!(
+            "unexpected selector ledger fingerprint disclosure: {report}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn rerun_check_parity_names_capped_inventory_and_suppresses_movement() -> Result<(), String> {
     let root = workspace_root().join("fixtures/observation_verified_field_construction/input");
     let root_arg = root.to_string_lossy().into_owned();

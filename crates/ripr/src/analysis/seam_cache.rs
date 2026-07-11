@@ -1164,6 +1164,10 @@ fn hash_str(s: &str) -> String {
     hash_bytes(s.as_bytes())
 }
 
+pub(crate) fn stable_input_hash(bytes: &[u8]) -> String {
+    hash_bytes(bytes)
+}
+
 fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a_64(bytes))
 }

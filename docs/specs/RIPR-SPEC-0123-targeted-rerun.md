@@ -123,7 +123,10 @@ Every result records:
 Every targeted receipt also carries an `input_fingerprint` containing owned
 hashes for the cache schema, analyzer version, workspace root, Rust file set,
 `RIPR_CFG_FEATURES` when supplied, RIPR config, test intent, suppressions,
-workspace manifests, lockfile, toolchain selector, and seam limit. When an explicit
+workspace manifests, lockfile, toolchain selector, and seam limit. A `--gap`
+selector additionally fingerprints the exact explicit ledger bytes; a changed
+ledger is named as `input_changed:selector_ledger_hash`. For a
+`--changed-test` selector that field is `not_applicable`. When an explicit
 `--before` receipt contains the same shape, changed components are named as
 `input_changed:<field>` recomputation reasons and the receipt uses
 `invalidation_status: "workspace_input_changed"`. A missing fingerprint is

@@ -14366,7 +14366,8 @@ targeted-rerun receipt shape:
       "workspace_manifests_hash": "…",
       "lockfile_hash": "…",
       "toolchain_hash": "…",
-      "seam_limit_key": "limit_10000"
+      "seam_limit_key": "limit_10000",
+      "selector_ledger_hash": "not_applicable"
     }
   },
   "seams": [
@@ -14452,7 +14453,9 @@ Every targeted receipt also carries `cache.input_fingerprint`, an owned hash
 summary for the analyzer/cache schema, analyzer version, workspace root, Rust
 file set, `RIPR_CFG_FEATURES` when supplied, RIPR config, test intent,
 suppressions, workspace manifests, lockfile, toolchain selector, and seam
-limit. When an explicit
+limit. For a `--gap` selector it also fingerprints the explicit ledger bytes;
+changed ledger content is named `input_changed:selector_ledger_hash`. For a
+changed-test selector the field is `not_applicable`. When an explicit
 `--before` receipt carries the same fingerprint shape, changed components are
 added to `cache.recomputation_reasons` as `input_changed:<field>` and the
 receipt uses `invalidation_status: "workspace_input_changed"`. This comparison

@@ -2,7 +2,8 @@ use crate::analysis::{
     canonical_gap::canonical_gap_identity,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config, workspace_cache_key_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config, seam_cache::stable_input_hash,
+    workspace_cache_key_at_with_config,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::help;
@@ -103,6 +104,7 @@ struct TargetedRerunInputFingerprint {
     lockfile_hash: String,
     toolchain_hash: String,
     seam_limit_key: String,
+    selector_ledger_hash: String,
 }
 
 impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInputFingerprint {
@@ -120,6 +122,7 @@ impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInput
             lockfile_hash: key.lockfile_hash.clone(),
             toolchain_hash: key.toolchain_hash.clone(),
             seam_limit_key: key.seam_limit_key.clone(),
+            selector_ledger_hash: "not_applicable".to_string(),
         }
     }
 }
@@ -510,6 +513,9 @@ fn rerun_gap(
         scope_limitations,
     );
     report.cache.input_fingerprint = input_fingerprint;
+    if let Some(fingerprint) = report.cache.input_fingerprint.as_mut() {
+        fingerprint.selector_ledger_hash = stable_input_hash(contents.as_bytes());
+    }
     Ok(report)
 }
 
@@ -980,6 +986,11 @@ fn input_fingerprint_changes(
             "seam_limit_key",
             &before.seam_limit_key,
             &current.seam_limit_key,
+        ),
+        (
+            "selector_ledger_hash",
+            &before.selector_ledger_hash,
+            &current.selector_ledger_hash,
         ),
     ];
     fields
@@ -1674,6 +1685,7 @@ mod tests {
             lockfile_hash: "lockfile".to_string(),
             toolchain_hash: "toolchain".to_string(),
             seam_limit_key: "unlimited".to_string(),
+            selector_ledger_hash: "not_applicable".to_string(),
         }
     }
 
