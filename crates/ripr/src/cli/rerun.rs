@@ -813,6 +813,12 @@ fn cache_from(
     if cache.store_errors > 0 {
         recomputation_reasons.push("file_fact_store_error".to_string());
     }
+    recomputation_reasons.extend(
+        cache
+            .invalidated_files
+            .iter()
+            .map(|path| format!("file_content_changed:{}", display_path(path))),
+    );
     TargetedRerunCache {
         schema_version: crate::analysis::seam_cache::FILE_FACT_CACHE_SCHEMA_VERSION,
         reuse_state: if cache.misses == 0 && cache.corrupt_ignored == 0 {
@@ -829,7 +835,11 @@ fn cache_from(
         stores: cache.stores,
         store_errors: cache.store_errors,
         recomputation_reasons,
-        invalidation_status: "not_available",
+        invalidation_status: if cache.invalidated_files.is_empty() {
+            "not_available"
+        } else {
+            "file_content_changed"
+        },
     }
 }
 
@@ -1075,6 +1085,22 @@ mod tests {
         {
             return Err(format!(
                 "unexpected fallback cache disclosure: {fallback:?}"
+            ));
+        }
+        let mut invalidated_stats = FileFactCacheStats::default();
+        invalidated_stats
+            .invalidated_files
+            .insert(PathBuf::from("tests/pricing.rs"));
+        let invalidated = cache_from(&invalidated_stats, ["selected_test_scope_recomputed"]);
+        if invalidated.invalidation_status != "file_content_changed"
+            || invalidated.recomputation_reasons
+                != vec![
+                    "selected_test_scope_recomputed",
+                    "file_content_changed:tests/pricing.rs",
+                ]
+        {
+            return Err(format!(
+                "unexpected content invalidation disclosure: {invalidated:?}"
             ));
         }
         Ok(())

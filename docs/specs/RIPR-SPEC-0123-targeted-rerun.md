@@ -148,8 +148,10 @@ It writes `target/ripr/reports/targeted-rerun-benchmark.{json,md}` using an
 isolated `RIPR_CACHE_DIR`, performs cold full, cold targeted, warm targeted,
 explicit cache-reset invalidation, and parity samples, and cleans the
 temporary cache after writing the receipt. A cache reset is intentionally
-reported as an explicit invalidation case; broader input invalidation remains
-named `not_available` until the analyzer can attribute it from owned facts.
+reported as an explicit invalidation case. File-fact misses additionally
+report `file_content_changed` when a prior same-path envelope proves that the
+content key changed; broader input invalidation remains named `not_available`
+until the analyzer can attribute it from owned facts.
 
 The proposed acceptance target is both:
 

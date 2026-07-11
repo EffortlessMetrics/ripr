@@ -3,6 +3,7 @@ use super::model::RustIndex;
 use crate::analysis::seam_cache::{
     CacheLoad, FileFactCacheStats, RepoFileFactCache, RepoFileFactCacheKey,
 };
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
@@ -33,6 +34,7 @@ fn build_index_from_loaded_files_with_cache_and_adapters(
     fallback: &dyn RustSyntaxAdapter,
 ) -> Result<CachedRustIndex, String> {
     let cache = RepoFileFactCache::at(root);
+    let known_cached_file_paths: HashSet<PathBuf> = cache.known_file_paths();
     let mut stats = FileFactCacheStats::default();
     let mut index = RustIndex::default();
     for (file, bytes) in files {
@@ -44,6 +46,9 @@ fn build_index_from_loaded_files_with_cache_and_adapters(
             }
             CacheLoad::Miss => {
                 stats.misses += 1;
+                if known_cached_file_paths.contains(file) {
+                    stats.invalidated_files.insert(file.clone());
+                }
                 let facts = summarize_loaded_file(root, file, bytes, adapter, fallback)?;
                 match cache.store_file_facts(&key, &facts) {
                     Ok(()) => stats.stores += 1,
@@ -351,6 +356,7 @@ pub fn check(x: i32) -> bool {
         assert_eq!(changed.file_fact_cache.hits, 0);
         assert_eq!(changed.file_fact_cache.misses, 1);
         assert_eq!(changed.file_fact_cache.stores, 1);
+        assert!(changed.file_fact_cache.invalidated_files.contains(&file));
         assert!(
             changed
                 .index

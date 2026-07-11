@@ -41,6 +41,7 @@ use super::seam_classification::ClassifiedSeam;
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
 use super::seam_inventory::{SeamLimitSource, repo_exposure_seam_limit};
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 /// On-disk representation of seam-limit metadata embedded in the cache envelope.
@@ -644,6 +645,11 @@ pub(crate) struct FileFactCacheStats {
     pub(crate) corrupt_ignored: usize,
     pub(crate) stores: usize,
     pub(crate) store_errors: usize,
+    /// Files whose current content missed the keyed entry while an older
+    /// envelope for the same path was present. This is the narrow, owned
+    /// content-invalidation signal; other input families remain explicit
+    /// `not_available` limitations until they have equivalent provenance.
+    pub(crate) invalidated_files: BTreeSet<PathBuf>,
 }
 
 impl FileFactCacheStats {
@@ -694,6 +700,29 @@ impl RepoFileFactCache {
             }
             Err(reason) => CacheLoad::CorruptIgnored { reason },
         }
+    }
+
+    /// Snapshot paths with valid cached envelopes before a build starts. The
+    /// caller uses this set for O(1) miss attribution and deliberately does not
+    /// observe entries created during the same build.
+    pub(crate) fn known_file_paths(&self) -> HashSet<PathBuf> {
+        let mut paths = HashSet::new();
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return paths;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            if let Ok(envelope) = codec::decode_file_facts(&bytes) {
+                paths.insert(envelope.file_path);
+            }
+        }
+        paths
     }
 
     pub(crate) fn store_file_facts(
@@ -1758,6 +1787,9 @@ mod tests {
         cache
             .store_file_facts(&original_key, &facts)
             .map_err(|err| format!("store original file facts: {err}"))?;
+        if !cache.known_file_paths().contains(&path) {
+            return Err("changed content should identify a prior same-path version".to_string());
+        }
 
         let result = match cache.load_file_facts(&changed_key) {
             CacheLoad::Miss => Ok(()),
@@ -1777,6 +1809,7 @@ mod tests {
             corrupt_ignored: 1,
             stores: 3,
             store_errors: 0,
+            invalidated_files: BTreeSet::new(),
         };
         assert_eq!(
             stats.status_label(),

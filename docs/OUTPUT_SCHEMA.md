@@ -14428,11 +14428,14 @@ specified by [RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md).
 `cache.schema_version` names the file-fact cache codec contract and
 `cache.reuse_state` is one of `reused_file_facts`, `mixed_file_fact_reuse`,
 `recomputed_file_facts`, or `not_run`. `recomputation_reasons` names the
-selected scope and observed corrupt-entry/store-error fallbacks that caused
-this command to rebuild facts. `invalidation_status: "not_available"` is
-intentional until the analyzer owns complete broader-input invalidation
-attribution. A miss remains an observed cache result, not a fabricated claim
-about which workspace input changed.
+selected scope, observed corrupt-entry/store-error fallbacks, and owned
+content invalidations that caused this command to rebuild facts.
+`invalidation_status: "file_content_changed"` is emitted only when a prior
+same-path file-fact envelope is found under a different content key.
+`invalidation_status: "not_available"` remains intentional for cold misses and
+broader input families until the analyzer owns their attribution. A miss
+remains an observed cache result, not a fabricated claim about which workspace
+input changed.
 
 Pass `--check-parity` to request an explicit full-inventory comparison. The
 optional `parity` object reports `matched` only when every selected seam has
