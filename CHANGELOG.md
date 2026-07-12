@@ -9,6 +9,30 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.10.1 - Bounded subprocess adapter analysis
+
+Release date: staged (unreleased).
+
+RIPR 0.10.1 adds a narrow, deny-by-default boundary for recognizing bounded
+allowlisted subprocess adapters as observable side effects during static
+analysis. The boundary preserves strict exposure behavior for dynamic, shell,
+unbounded, or otherwise unsupported subprocess shapes.
+
+### Fixed
+
+- **Bounded subprocess adapter classification** (RIPR-SPEC-0112, #1454):
+  receipt-producing adapters with a literal allowlisted command, arguments,
+  timeout, captured output, cleanup, and explicit error handling can use the
+  existing `side_effect` probe family. Dynamic command names and shell-shaped
+  dispatch remain unclassified and continue through the conservative exposure
+  path.
+
+### Non-claims
+
+- RIPR remains static mutation-exposure analysis; this release does not execute
+  subprocesses, prove runtime subprocess safety, run mutation testing, or add a
+  network client.
+
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 
 Release date: staged (unreleased).
