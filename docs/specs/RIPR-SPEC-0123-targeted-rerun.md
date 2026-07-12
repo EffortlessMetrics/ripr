@@ -1,6 +1,6 @@
 # RIPR-SPEC-0123: Targeted Rust Rerun
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -24,7 +24,25 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- [#1531](https://github.com/EffortlessMetrics/ripr-swarm/pull/1531) - adds
+  the reproducible targeted-rerun benchmark receipt.
+- [#1532](https://github.com/EffortlessMetrics/ripr-swarm/pull/1532) - adds
+  changed-test file and test-node selectors.
+- [#1534](https://github.com/EffortlessMetrics/ripr-swarm/pull/1534) - names
+  file-content invalidation.
+- [#1535](https://github.com/EffortlessMetrics/ripr-swarm/pull/1535) - adds
+  targeted/full parity evidence.
+- [#1537](https://github.com/EffortlessMetrics/ripr-swarm/pull/1537) - adds
+  owned workspace-input fingerprints and invalidation disclosure.
+- [#1539](https://github.com/EffortlessMetrics/ripr-swarm/pull/1539) - makes
+  parity fail closed on workspace-input mismatch.
+- [#1540](https://github.com/EffortlessMetrics/ripr-swarm/pull/1540) - adds
+  explicit selector-ledger fingerprints.
+- [#1542](https://github.com/EffortlessMetrics/ripr-swarm/pull/1542) and
+  [#1547](https://github.com/EffortlessMetrics/ripr-swarm/pull/1547) - refresh
+  the current-main benchmark receipt.
+- [#1550](https://github.com/EffortlessMetrics/ripr-swarm/pull/1550) - adds
+  local package, feature, and external-graph provenance disclosure.
 
 Support-tier impact:
 
@@ -39,9 +57,9 @@ Policy impact:
 
 - Register this spec in `policy/doc-artifacts.toml` and
   `.ripr/traceability.toml`.
-- The eventual implementation may add a CLI and JSON artifact, but must not
-  add a dependency, database, network call, automatic test execution, source
-  edit, or default CI authority.
+- The shipped CLI and JSON/Markdown receipts must not add a dependency,
+  database, network call, automatic test execution, source edit, or default CI
+  authority.
 
 ## Problem
 

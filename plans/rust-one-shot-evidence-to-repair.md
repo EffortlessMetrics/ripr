@@ -69,10 +69,11 @@ invalidation, never silently serving stale evidence.
 ## Targeted rerun benchmark slice (2026-07-11)
 
 The benchmark receipt command and controlled fixture are now available through
-`cargo xtask targeted-rerun-benchmark`. The current-main receipt records a
-matched parity result, warm targeted p50 of 204 ms, and 5.9216x cold-full to
-warm-targeted p50 speedup on benchmark revision `3e4a44c2`. It also exercises
-an explicit file-fact cache reset and records `recomputed_file_facts`.
+`cargo xtask targeted-rerun-benchmark`. The current-main receipt on
+`5aecff41` uses five samples and records matched parity, warm targeted p50 of
+228 ms, cold-full p50 of 1512 ms, and a 6.6316x cold-full to warm-targeted p50
+speedup. It also exercises an explicit file-fact cache reset and records
+`recomputed_file_facts`.
 
 This closes the benchmark-receipt slice on current main. PR #1532 additionally
 ships explicit `path::test_node` selection for changed-test reruns.
