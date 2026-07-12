@@ -47,3 +47,21 @@ excluded from the eligible denominator and retained as validation errors.
 Synthetic fixtures may exercise the validator but must not be loaded as
 real-repository attempts. Fewer than three authorized repositories or twenty
 eligible attempts keeps the report `limited` with explicit denominators.
+
+## Exclusions
+
+Pilot observations that cannot become counted attempts are recorded in the
+corpus `exclusions` array instead of disappearing from the scorecard. Each
+exclusion names the exact analyzed SHA, source PR or run, evidence artifact,
+command, reason, and claim boundary. The closed reason vocabulary is:
+
+- `analysis_timeout`
+- `diff_scope_oversized`
+- `static_limitation_no_repair_packet`
+- `false_actionability`
+- `production_test_path_rejected`
+- `verification_failed`
+- `no_current_behavior_change`
+
+Exclusions never enter attempt or improvement denominators. They are evidence
+about route availability and analyzer boundaries, not successful repairs.

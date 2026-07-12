@@ -52,7 +52,7 @@ cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 | 4B | `analysis/constructor-field-observation` | 2B | same-crate ambiguity corpus |
 | 5 | `perf/targeted-rerun` | 4A, 4B | complete infrastructure: SPEC-0123, parity, invalidation, graph provenance, and benchmark receipt |
 | 6A | `analysis/call-presence-gate-producer` | 3B | authorized real/current-repository caller-to-effect-sink receipt or named limitation |
-| 6B | `dogfood/rust-route-quality-corpus` | 3B, 5 | authorized three-repository corpus, six-attempt pilot, then 20 receipt-backed attempts |
+| 6B | `dogfood/rust-route-quality-corpus` | 3B, 5 | authorized three-repository corpus, exclusion-backed pilot audit, six-attempt pilot, then 20 receipt-backed attempts |
 | 6C | `dogfood/route-quality-closeout` | 6A, 6B | support review and campaign closeout after corpus completion and CallPresence disposition |
 
 Work items 1A and 2A may use isolated worktrees. Items 4A and 4B may be
@@ -87,7 +87,11 @@ authorized Rust repositories. Each attempt records its repository and revision,
 canonical gap and seam, before receipt, test-only repair intent and changed
 files, verification command/result, after receipt, movement outcome, and
 limitations. Only `closed`, `improved`, `unchanged`, `regressed`, and `limited`
-are counted; synthetic fixture rows are not real-repository evidence.
+are counted; synthetic fixture rows are not real-repository evidence. Real
+pilot observations that cannot become counted attempts are retained in the
+corpus `exclusions` array with exact SHA, source reference, evidence artifact,
+command, closed exclusion reason, and claim boundary; exclusions never enter
+attempt or improvement denominators.
 
 Corpus collection is independent of CallPresence closure. The corpus packet
 may proceed once repository authorization is recorded and must measure

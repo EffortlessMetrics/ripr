@@ -8,6 +8,15 @@ const CORPUS_PATH: &str = "metrics/rust-repair-trust/corpus.json";
 const MIN_REPOSITORIES: usize = 3;
 const MIN_ATTEMPTS: usize = 20;
 const MOVEMENTS: [&str; 5] = ["closed", "improved", "unchanged", "regressed", "limited"];
+const EXCLUSION_REASONS: [&str; 7] = [
+    "analysis_timeout",
+    "diff_scope_oversized",
+    "static_limitation_no_repair_packet",
+    "false_actionability",
+    "production_test_path_rejected",
+    "verification_failed",
+    "no_current_behavior_change",
+];
 const REQUIRED_ROUTE_FIELDS: [&str; 19] = [
     "attempt_id",
     "repository",
@@ -126,8 +135,15 @@ fn build_report(corpus: &Value) -> Value {
         validation_errors.push("cases must be an array".to_string());
     }
     let cases = cases.cloned().unwrap_or_default();
+    let exclusions = corpus
+        .get("exclusions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let mut case_ids = BTreeSet::new();
+    let mut exclusion_ids = BTreeSet::new();
     let mut movements = BTreeMap::<String, usize>::new();
+    let mut exclusion_reason_counts = BTreeMap::<String, usize>::new();
     let mut repository_names = BTreeSet::new();
     let mut eligible_attempts = 0usize;
     let mut groups = BTreeMap::<(String, String), Vec<(usize, String)>>::new();
@@ -222,6 +238,34 @@ fn build_report(corpus: &Value) -> Value {
         }
     }
 
+    let mut valid_exclusions = 0usize;
+    for (index, exclusion) in exclusions.iter().enumerate() {
+        let prefix = format!("exclusions[{index}]");
+        let mut errors = exclusion_errors(exclusion, &authorized_repositories);
+        let id = exclusion
+            .get("exclusion_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !id.is_empty() && !exclusion_ids.insert(id.to_string()) {
+            errors.push(format!("duplicate exclusion id {id}"));
+        }
+        if !id.is_empty() && case_ids.contains(id) {
+            errors.push(format!("exclusion id {id} collides with an attempt id"));
+        }
+        if errors.is_empty() {
+            valid_exclusions += 1;
+            if let Some(reason) = exclusion.get("reason").and_then(Value::as_str) {
+                *exclusion_reason_counts
+                    .entry(reason.to_string())
+                    .or_default() += 1;
+            }
+        } else {
+            for error in errors {
+                validation_errors.push(format!("{prefix}: {error}"));
+            }
+        }
+    }
+
     let mut movement_counts = Map::new();
     for movement in MOVEMENTS {
         movement_counts.insert(
@@ -303,6 +347,8 @@ fn build_report(corpus: &Value) -> Value {
         "authorized_repository_count": authorized_repositories.len(),
         "attempt_count": cases.len(),
         "eligible_attempt_count": eligible_attempts,
+        "exclusion_count": exclusions.len(),
+        "valid_exclusion_count": valid_exclusions,
         "requirements": {
             "minimum_repositories": MIN_REPOSITORIES,
             "minimum_attempts": MIN_ATTEMPTS,
@@ -312,6 +358,7 @@ fn build_report(corpus: &Value) -> Value {
             "exact_revision_required": true
         },
         "movement_counts": movement_counts,
+        "exclusion_reason_counts": exclusion_reason_counts,
         "scorecard": {
             "one_attempt_improvement_rate": one_attempt_improvement_rate,
             "one_attempt_improvement_numerator": one_attempt_improvement_numerator,
@@ -444,6 +491,49 @@ fn case_errors(case: &Value, authorized_repositories: &BTreeSet<String>) -> Vec<
     errors
 }
 
+fn exclusion_errors(exclusion: &Value, authorized_repositories: &BTreeSet<String>) -> Vec<String> {
+    let mut errors = Vec::new();
+    for field in [
+        "exclusion_id",
+        "repository",
+        "analyzed_head_sha",
+        "source_ref",
+        "reason",
+        "evidence_ref",
+        "command",
+        "claim_boundary",
+    ] {
+        if exclusion
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            errors.push(format!("{field} must be a non-empty string"));
+        }
+    }
+    if let Some(repository) = exclusion.get("repository").and_then(Value::as_str)
+        && !authorized_repositories.contains(repository)
+    {
+        errors.push(format!("repository {repository} is not authorized"));
+    }
+    if let Some(revision) = exclusion.get("analyzed_head_sha").and_then(Value::as_str)
+        && (revision.len() != 40
+            || !revision
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()))
+    {
+        errors.push("revision must be a 40-character commit SHA".to_string());
+    }
+    if let Some(reason) = exclusion.get("reason").and_then(Value::as_str)
+        && !EXCLUSION_REASONS.contains(&reason)
+    {
+        errors.push(format!(
+            "reason {reason} is not in the exclusion vocabulary"
+        ));
+    }
+    errors
+}
+
 fn markdown_report(report: &Value) -> String {
     let status = report
         .get("status")
@@ -469,11 +559,19 @@ fn markdown_report(report: &Value) -> String {
         .get("authorized_repository_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
+    let exclusion_count = report
+        .get("exclusion_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let valid_exclusion_count = report
+        .get("valid_exclusion_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
     let mut body =
         format!("# Rust repair trust report\n\nStatus: `{status}`\nRun status: `{run_status}`\n\n");
     body.push_str("## Denominators\n\n");
     body.push_str(&format!(
-        "- Attempts supplied: {attempt_count}\n- Eligible attempts: {eligible}\n- Repositories supplied: {repository_count}\n- Authorized repositories: {authorized}\n\n"
+        "- Attempts supplied: {attempt_count}\n- Eligible attempts: {eligible}\n- Exclusions supplied: {exclusion_count}\n- Valid exclusions: {valid_exclusion_count}\n- Repositories supplied: {repository_count}\n- Authorized repositories: {authorized}\n\n"
     ));
     body.push_str("## Movement\n\n| Movement | Count |\n| --- | ---: |\n");
     if let Some(counts) = report.get("movement_counts").and_then(Value::as_object) {
@@ -486,6 +584,15 @@ fn markdown_report(report: &Value) -> String {
     if let Some(limitations) = report.get("limitations").and_then(Value::as_array) {
         for limitation in limitations.iter().filter_map(Value::as_str) {
             body.push_str(&format!("- `{limitation}`\n"));
+        }
+    }
+    body.push_str("\n## Exclusions\n\n");
+    if let Some(reasons) = report
+        .get("exclusion_reason_counts")
+        .and_then(Value::as_object)
+    {
+        for (reason, count) in reasons {
+            body.push_str(&format!("- `{reason}`: {}\n", count.as_u64().unwrap_or(0)));
         }
     }
     body.push_str("\n## Route-quality scorecard\n\n");
@@ -677,6 +784,58 @@ mod tests {
         }
         if report["scorecard"]["missing_route_fields"]["seam_id"] != 1 {
             return Err("missing route fields must be counted by field".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn exclusions_are_validated_and_stay_out_of_attempt_denominators() -> Result<(), String> {
+        let mut corpus: Value = serde_json::from_str(include_str!(
+            "../../../metrics/rust-repair-trust/corpus.json"
+        ))
+        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        corpus["exclusions"] = json!([
+            {
+                "exclusion_id": "pilot-timeout",
+                "repository": "EffortlessMetrics/ub-review",
+                "analyzed_head_sha": "9838259a704a5cf3748eb81af29536b99bf7cf3b",
+                "source_ref": "pilot",
+                "reason": "analysis_timeout",
+                "evidence_ref": "target/ripr/pilot/pilot-summary.json",
+                "command": "ripr pilot --timeout-ms 120000",
+                "claim_boundary": "timeout is not a route result"
+            },
+            {
+                "exclusion_id": "bad",
+                "repository": "not-authorized",
+                "analyzed_head_sha": "short",
+                "source_ref": "pilot",
+                "reason": "invented",
+                "evidence_ref": "receipt",
+                "command": "command",
+                "claim_boundary": "boundary"
+            }
+        ]);
+
+        let report = build_report(&corpus);
+        if report["exclusion_count"] != 2 || report["valid_exclusion_count"] != 1 {
+            return Err("only complete exclusions should be accepted".to_string());
+        }
+        if report["exclusion_reason_counts"]["analysis_timeout"] != 1 {
+            return Err("valid exclusion reasons must be counted".to_string());
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err("exclusions must not enter the attempt denominator".to_string());
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("exclusions[1]") && error.contains("not authorized"))
+        {
+            return Err("invalid exclusion must retain its repository error".to_string());
         }
         Ok(())
     }

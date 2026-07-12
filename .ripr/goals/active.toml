@@ -224,10 +224,10 @@ commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask c
 
 [[work_item]]
 id = "dogfood/rust-route-quality-corpus"
-status = "ready"
+status = "active"
 branch = "dogfood/rust-route-quality-corpus"
 stackable = false
-acceptance = "Issue #1560 is mechanically governable: three internal adopting Rust repositories have explicit authorization records, the corpus schema requires exact current-head receipts and test-only routes, malformed or excluded rows cannot enter denominators, and the six-attempt pilot can begin before CallPresence is resolved. Collect at least 20 eligible attempts across the three repositories using only closed, improved, unchanged, regressed, or limited outcomes."
+acceptance = "Issue #1560 is mechanically governable: three internal adopting Rust repositories have explicit authorization records, the corpus schema requires exact current-head receipts and test-only routes, malformed or excluded rows cannot enter denominators, and the first pilot audit records real exclusions without inflating the denominator. Collect at least 20 eligible attempts across the three repositories using only closed, improved, unchanged, regressed, or limited outcomes."
 commands = ["cargo xtask rust-repair-trust-report", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]
 
 [[work_item]]

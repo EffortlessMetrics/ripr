@@ -9,7 +9,7 @@
       {
         "name": "EffortlessMetrics/ripr-swarm",
         "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
-        "authorized_revision_or_branch": "origin/main@79efe8d217730e67be538b87df3612a724da433c",
+        "authorized_revision_or_branch": "origin/main@a53d815416785c37e0d0e067c3b10d3bbfd04a8d",
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
         "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
@@ -18,7 +18,7 @@
       {
         "name": "EffortlessMetrics/perl-lsp-swarm",
         "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
-        "authorized_revision_or_branch": "origin/main@899c383b18b36b027e47693030c7ddcce84c65a7",
+        "authorized_revision_or_branch": "origin/main@724bfe819d4e0ba6a5a31a0d5499cc9855f2c231",
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
         "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
@@ -35,5 +35,137 @@
       }
     ]
   },
-  "cases": []
+  "cases": [],
+  "exclusions": [
+    {
+      "exclusion_id": "pilot-ripr-main-timeout",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "a53d815416785c37e0d0e067c3b10d3bbfd04a8d",
+      "source_ref": "current-main-pilot-2026-07-12",
+      "reason": "analysis_timeout",
+      "evidence_ref": "target/ripr/pilot/pilot-summary.json",
+      "command": "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 20 --timeout-ms 120000",
+      "claim_boundary": "Repo-wide pilot timed out; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "pilot-perl-main-timeout",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "724bfe819d4e0ba6a5a31a0d5499cc9855f2c231",
+      "source_ref": "current-main-pilot-2026-07-12",
+      "reason": "analysis_timeout",
+      "evidence_ref": "target/ripr/pilot/pilot-summary.json",
+      "command": "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 20 --timeout-ms 120000",
+      "claim_boundary": "Repo-wide pilot timed out; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "pilot-ub-main-timeout",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "9838259a704a5cf3748eb81af29536b99bf7cf3b",
+      "source_ref": "current-main-pilot-2026-07-12",
+      "reason": "analysis_timeout",
+      "evidence_ref": "target/ripr/pilot/pilot-summary.json",
+      "command": "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 20 --timeout-ms 120000",
+      "claim_boundary": "Repo-wide pilot timed out; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "ripr-1555-static-limitation",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "b3a148cb680ed7ec23bd61cef4a070ea322b16b3",
+      "source_ref": "PR #1555",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/ripr1555-crate-comments.json",
+      "command": "ripr review-comments --root crates/ripr --base b921b69adc8572fbb9702869e4e0bb6490ab9f1a --head HEAD",
+      "claim_boundary": "Changed analyzer code produced predicate limitations; no complete test-only route was counted."
+    },
+    {
+      "exclusion_id": "perl-3939-static-limitation",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "899c383b18b36b027e47693030c7ddcce84c65a7",
+      "source_ref": "PR #3939",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/perl3939-parser-comments.json",
+      "command": "ripr review-comments --root crates/perl-parser-core --base b13b3b0260e6f4b77b522528361991fb714de5fa --head HEAD",
+      "claim_boundary": "Parser change produced activation/call-presence limitations; no complete test-only route was counted."
+    },
+    {
+      "exclusion_id": "perl-3908-static-limitation",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "4d7436bb1703d6950c80a57f5f1487262889de59",
+      "source_ref": "PR #3908",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/perl3908-comments.json",
+      "command": "ripr review-comments --root crates/perl-parser-core --base 19df2108b88c7413c50d6b19791d3193451b5511 --head HEAD",
+      "claim_boundary": "Parser change produced activation-unknown limitations; no complete test-only route was counted."
+    },
+    {
+      "exclusion_id": "ub-751-callpresence-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "458fa3535972c463da1532062a939f97c04828b4",
+      "source_ref": "PR #751",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/pr751-comments.json",
+      "command": "ripr review-comments --root . --base 6d2837252793720de9e79415261d174442e6ff43e --head HEAD",
+      "claim_boundary": "CallPresence seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ub-749-callpresence-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "5b01e6d19554cb4e5fe94559d487a16455d98235",
+      "source_ref": "PR #749",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/ub749-comments.json",
+      "command": "ripr review-comments --root . --base fc486dc2be564c34b3047e4b5e90accc853ec13e --head HEAD",
+      "claim_boundary": "CallPresence seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ub-750-callpresence-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "6d2837252793720de9e79415261d174442e6ff43",
+      "source_ref": "PR #750",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/ub750-comments.json",
+      "command": "ripr review-comments --root . --base 5b01e6d19554cb4e5fe94559d487a16455d98235e5 --head HEAD",
+      "claim_boundary": "CallPresence seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ub-742-static-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "01204a3c9a82a40b072b31495ffd612c36dd5a40",
+      "source_ref": "PR #742",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/ub742-comments.json",
+      "command": "ripr review-comments --root . --base 0f69c8253e80b0612fc4abe8effb1fd0806dbaca --head HEAD",
+      "claim_boundary": "Enable-path return/call seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ub-747-static-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "fc486dc2be564c34b3047e4b5e90accc853ec13e",
+      "source_ref": "PR #747",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/workflow/ub747-full-comments.json",
+      "command": "ripr review-comments --root . --base 23f94aa263e6b847c79078b519a76a16a7d1d14d --head HEAD",
+      "claim_boundary": "Proof-planner predicate seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ub-757-false-actionability",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "9838259a704a5cf3748eb81af29536b99bf7cf3b",
+      "source_ref": "PR #757",
+      "reason": "false_actionability",
+      "evidence_ref": "target/ripr/workflow/pr757-comments.md",
+      "command": "ripr review-comments --root . --base 9365f6aa4f030ea60dc2405362a660e10f94a77d --head HEAD",
+      "claim_boundary": "Actionable-looking field seams did not align to the changed scheduler behavior and were excluded from the repair denominator."
+    },
+    {
+      "exclusion_id": "ub-740-production-test-boundary",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "0f69c8253e80b0612fc4abe8effb1fd0806dbaca",
+      "source_ref": "PR #740",
+      "reason": "production_test_path_rejected",
+      "evidence_ref": "target/ripr/workflow/ub740-before-comments.json",
+      "command": "ripr rerun --changed-test src/enable.rs --root . --json --out target/ripr/workflow/ub740-targeted-rerun.json",
+      "claim_boundary": "The suggested test lived in a production source path; targeted rerun rejected the ambiguous direct production owner."
+    }
+  ]
 }
