@@ -283,7 +283,10 @@ The JSON report uses schema version `0.1`:
   `source_location` for navigable Markdown and JSON parity.
 - `suppressed[]` - bounded records for recommendations hidden by caps or nearby
   test changes.
-- `warnings[]` - selection warnings from the agent brief selection path.
+- `warnings[]` - structured selection warnings from the agent brief selection
+  path. Each warning carries `kind` (the closed vocabulary from
+  `schemas/ripr/review-comments.schema.json`), a non-empty `message`, and an
+  optional `path`.
 - `limits_note` - static-evidence boundary text for downstream summaries.
 
 ## GitHub Projection

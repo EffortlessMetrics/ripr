@@ -185,6 +185,13 @@ fn validate_packet_value(
             violations.push(format!("{key} is missing or not an array"));
         }
     }
+    if let Some(warnings) = packet.get("warnings").and_then(Value::as_array) {
+        for (index, warning) in warnings.iter().enumerate() {
+            if !warning.is_object() {
+                violations.push(format!("warnings[{index}] is not an object"));
+            }
+        }
+    }
     if !packet.get("limits_note").is_some_and(non_empty_string) {
         violations.push("limits_note is missing or empty".to_string());
     }

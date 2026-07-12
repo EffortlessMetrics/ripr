@@ -6059,7 +6059,9 @@ Field contract:
   forbidden per RIPR-SPEC-0068; adding a new token requires amending the spec.
 - `suppressed[]` - bounded records for recommendations hidden by caps or
   nearby test changes.
-- `warnings[]` - selection warnings from the agent brief selection path.
+- `warnings[]` - structured selection warnings from the agent brief selection
+  path. Each warning has a closed-vocabulary `kind`, a non-empty `message`, and
+  an optional `path`.
 - `limits_note` - static-evidence boundary text for downstream summaries.
 
 Default CI projection runs `ripr review-comments` on pull requests, writes

@@ -158,7 +158,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         })
         .collect::<Vec<_>>();
     let suppressed_repo_fallback = !selection.top_seams.is_empty() && actionable.is_empty();
-    let mut warnings = if suppressed_repo_fallback {
+    let mut warning_messages = if suppressed_repo_fallback {
         selection
             .warnings
             .iter()
@@ -169,11 +169,15 @@ pub(crate) fn render_review_comments_json_with_scope(
         selection.warnings.clone()
     };
     if suppressed_repo_fallback {
-        warnings.push(
+        warning_messages.push(
             "repo-actionable fallback seams were suppressed because PR guidance requires a changed working-set match"
                 .to_string(),
         );
     }
+    let warnings = warning_messages
+        .iter()
+        .map(|message| warning_json(message))
+        .collect::<Vec<_>>();
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
         let recommendation =
@@ -256,6 +260,14 @@ pub(crate) fn render_review_comments_json_with_scope(
     });
 
     super::json::render_pretty(&value, "review comments")
+}
+
+fn warning_json(message: &str) -> Value {
+    json!({
+        "kind": "other",
+        "message": message,
+        "path": null,
+    })
 }
 
 pub(crate) fn render_gap_record_review_comments_json(
@@ -1729,9 +1741,12 @@ mod tests {
         assert_eq!(value["summary"]["summary_only"], 0);
         assert!(
             value["warnings"][0]
-                .as_str()
+                .get("message")
+                .and_then(Value::as_str)
                 .is_some_and(|warning| warning.contains("fallback seams were suppressed"))
         );
+        assert_eq!(value["warnings"][0]["kind"], "other");
+        assert!(value["warnings"][0]["path"].is_null());
         Ok(())
     }
 
@@ -2476,7 +2491,7 @@ mod tests {
                 assert!(
                     warnings
                         .iter()
-                        .filter_map(Value::as_str)
+                        .filter_map(|warning| warning.get("message").and_then(Value::as_str))
                         .any(|warning| warning.contains(seam_id)),
                     "{} warnings should mention {}",
                     artifact,
