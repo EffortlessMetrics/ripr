@@ -696,7 +696,7 @@ fn warning_matches(value: &Value, case: &ExpectedCase) -> bool {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(Value::as_str)
+        .filter_map(|warning| warning.get("message").and_then(Value::as_str))
         .any(|warning| warning.contains(&case.seam_id))
 }
 
