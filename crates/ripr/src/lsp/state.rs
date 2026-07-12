@@ -90,7 +90,10 @@ impl AnalysisSnapshot {
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && self.findings.len() + surfacable_seams + gap_diagnostics == diagnostic_count
+            && super::diagnostics::canonical_finding_groups(&self.findings).len()
+                + surfacable_seams
+                + gap_diagnostics
+                == diagnostic_count
             && self
                 .gap_artifacts
                 .iter()
@@ -122,6 +125,18 @@ impl AnalysisSnapshot {
 
     pub(super) fn finding_count(&self) -> usize {
         self.findings.len()
+    }
+
+    pub(super) fn canonical_finding_count(&self) -> usize {
+        super::diagnostics::canonical_finding_groups(&self.findings).len()
+    }
+
+    pub(super) fn actionable_diagnostic_count(&self) -> usize {
+        self.diagnostics_by_uri
+            .values()
+            .flatten()
+            .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "canonical_gap_id"))
+            .count()
     }
 
     pub(super) fn seam_diagnostic_count(&self) -> usize {

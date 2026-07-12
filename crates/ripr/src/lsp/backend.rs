@@ -742,7 +742,9 @@ impl Backend {
 
         let total_diagnostics = snapshot.diagnostic_count();
         let files = snapshot.diagnostic_uri_count();
-        let findings = snapshot.finding_count();
+        let raw_signals = snapshot.finding_count();
+        let canonical_items = snapshot.canonical_finding_count();
+        let actionable_diagnostics = snapshot.actionable_diagnostic_count();
         let seam_diagnostics = snapshot.seam_diagnostic_count();
         let gap_artifacts = snapshot.gap_artifacts.len();
         let actionable_gap_artifacts = snapshot
@@ -773,7 +775,10 @@ impl Backend {
                     "diagnostics": {
                         "total": total_diagnostics,
                         "files": files,
-                        "findings": findings,
+                        "findings": raw_signals,
+                        "raw_signals": raw_signals,
+                        "canonical_items": canonical_items,
+                        "actionable_diagnostics": actionable_diagnostics,
                         "seam_diagnostics": seam_diagnostics,
                         "gap_artifacts": gap_artifacts,
                         "actionable_gap_artifacts": actionable_gap_artifacts,
@@ -800,7 +805,10 @@ impl Backend {
             "diagnostics": {
                 "total": total_diagnostics,
                 "files": files,
-                "findings": findings,
+                "findings": raw_signals,
+                "raw_signals": raw_signals,
+                "canonical_items": canonical_items,
+                "actionable_diagnostics": actionable_diagnostics,
                 "seam_diagnostics": seam_diagnostics,
                 "gap_artifacts": gap_artifacts,
                 "actionable_gap_artifacts": actionable_gap_artifacts,

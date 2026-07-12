@@ -5,9 +5,10 @@ use super::backend::{
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
-    DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
-    diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
-    workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
+    DiagnosticBatch, WorkspaceDiagnostics, add_canonical_group_data, canonical_finding_groups,
+    canonical_group_has_mixed_classes, diagnostic_for_classified_seam, diagnostic_for_finding,
+    diagnostic_refresh_plan, diagnostic_severity_for_class, finding_diagnostics_by_uri,
+    take_all_uris, workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
     workspace_diagnostics_with_config,
 };
 use super::gap_artifacts::{
@@ -826,6 +827,24 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
     let backend = service.inner();
     let mut finding = sample_finding();
     finding.canonical_gap = Some(sample_canonical_gap());
+    finding.evidence = vec!["related evidence".to_string()];
+    finding.missing = vec!["missing exact discriminator".to_string()];
+    finding.recommended_next_step = Some("Add the exact assertion.".to_string());
+    finding.activation.missing_discriminators = vec![crate::domain::MissingDiscriminatorFact {
+        value: "threshold equality".to_string(),
+        reason: "the equality boundary is not observed".to_string(),
+        flow_sink: None,
+    }];
+    finding.related_tests = vec![RelatedTest {
+        name: "pricing::discount_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 12,
+        oracle: Some("assert_eq".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let canonical_gap_id = diagnostic
         .data
@@ -836,6 +855,72 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
     assert_eq!(
         canonical_gap_id,
         "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+    );
+    let mut raw_finding = finding.clone();
+    raw_finding.id = "probe:pricing:89:predicate".to_string();
+    raw_finding.probe.id = ProbeId(raw_finding.id.clone());
+    raw_finding.probe.location.line = 89;
+    let mut grouped_diagnostic = diagnostic.clone();
+    add_canonical_group_data(
+        Path::new("/workspace"),
+        &mut grouped_diagnostic,
+        &finding,
+        &[finding.clone(), raw_finding],
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_signal_count"].as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_findings"].as_array())
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["related_tests"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    let mut no_data_diagnostic = tower_lsp_server::ls_types::Diagnostic::default();
+    add_canonical_group_data(
+        Path::new("/workspace"),
+        &mut no_data_diagnostic,
+        &finding,
+        std::slice::from_ref(&finding),
+    );
+    assert!(no_data_diagnostic.data.is_none());
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["evidence"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["missing"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["recommended_next_steps"].as_array())
+            .map(Vec::len),
+        Some(1)
     );
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
     let diagnostics = sample_workspace_diagnostics(
@@ -4319,6 +4404,86 @@ fn initialize_params(
     }
 }
 
+#[test]
+fn canonical_finding_groups_collapse_same_gap_and_preserve_raw_signals() -> Result<(), String> {
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.id = "probe:pricing:89:predicate".to_string();
+    second.probe.id = ProbeId(second.id.clone());
+    second.probe.location.line = 89;
+
+    let groups = canonical_finding_groups(&[first, second]);
+
+    assert_eq!(groups.len(), 1, "one canonical gap should yield one group");
+    assert_eq!(groups[0].1.len(), 2, "raw findings must remain attached");
+    assert_eq!(
+        groups[0]
+            .0
+            .canonical_gap
+            .as_ref()
+            .map(|gap| gap.id.as_str()),
+        Some(
+            "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn canonical_group_mixed_classes_are_detected_without_promotion() {
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.class = ExposureClass::StaticUnknown;
+
+    assert!(canonical_group_has_mixed_classes(&[first, second]));
+    assert!(!canonical_group_has_mixed_classes(std::slice::from_ref(
+        &sample_finding()
+    )));
+}
+
+#[test]
+fn finding_projection_emits_one_limited_diagnostic_for_mixed_canonical_group() -> Result<(), String>
+{
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.id = "probe:pricing:89:predicate".to_string();
+    second.probe.id = ProbeId(second.id.clone());
+    second.probe.location.line = 89;
+    second.class = ExposureClass::StaticUnknown;
+    let config = LspAnalysisConfig::default();
+    let grouped = finding_diagnostics_by_uri(
+        Path::new("/workspace"),
+        &[first, second],
+        config.repo_config().severity(),
+        true,
+    )?;
+    let diagnostics = grouped.values().flatten().collect::<Vec<_>>();
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].severity,
+        Some(DiagnosticSeverity::INFORMATION)
+    );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_signal_count"].as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data["canonical_limitation"].as_str()),
+        Some("mixed_static_classes")
+    );
+    Ok(())
+}
+
 fn sample_finding() -> Finding {
     Finding {
         id: "probe:pricing:88:predicate".to_string(),
@@ -5353,6 +5518,12 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
             status["diagnostics"]["findings"].as_u64(),
             Some(1),
             "expected findings count of 1"
+        );
+        assert_eq!(status["diagnostics"]["raw_signals"].as_u64(), Some(1));
+        assert_eq!(status["diagnostics"]["canonical_items"].as_u64(), Some(1));
+        assert_eq!(
+            status["diagnostics"]["actionable_diagnostics"].as_u64(),
+            Some(0)
         );
         assert_eq!(status["refresh_command"], REFRESH_COMMAND);
         assert!(

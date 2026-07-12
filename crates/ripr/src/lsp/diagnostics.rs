@@ -105,6 +105,240 @@ pub(super) fn canonicalize_diagnostic_batches(
     batches
 }
 
+/// Group diff findings by the producer-owned canonical gap identity used by
+/// the CLI/report alignment layer. Findings without that identity remain
+/// individual report items; LSP must not invent a semantic grouping key.
+pub(super) fn canonical_finding_groups(findings: &[Finding]) -> Vec<(Finding, Vec<Finding>)> {
+    let mut grouped = BTreeMap::<String, Vec<Finding>>::new();
+    for finding in findings {
+        let key = finding
+            .canonical_gap
+            .as_ref()
+            .map(|gap| format!("canonical:{}", gap.id))
+            .unwrap_or_else(|| format!("raw:{}", finding.id));
+        grouped.entry(key).or_default().push(finding.clone());
+    }
+
+    grouped
+        .into_values()
+        .filter_map(|mut group| {
+            group.sort_by_key(finding_primary_sort_key);
+            let primary = group.first().cloned()?;
+            Some((primary, group))
+        })
+        .collect()
+}
+
+fn finding_primary_sort_key(finding: &Finding) -> String {
+    let canonical_file = finding
+        .canonical_gap
+        .as_ref()
+        .map(|gap| gap.file.as_str())
+        .unwrap_or("");
+    let file = finding
+        .probe
+        .location
+        .file
+        .to_string_lossy()
+        .replace('\\', "/");
+    let owner = finding
+        .probe
+        .owner
+        .as_ref()
+        .map(|owner| owner.0.as_str())
+        .unwrap_or("");
+    format!(
+        "{}\0{}\0{}\0{:010}\0{}",
+        if file == canonical_file { "0" } else { "1" },
+        if owner.is_empty() { "1" } else { "0" },
+        file,
+        finding.probe.location.line,
+        finding.id
+    )
+}
+
+pub(super) fn add_canonical_group_data(
+    root: &Path,
+    diagnostic: &mut Diagnostic,
+    primary: &Finding,
+    raw_findings: &[Finding],
+) {
+    let Some(data) = diagnostic
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    let mut raw = raw_findings
+        .iter()
+        .map(|finding| {
+            serde_json::json!({
+                "finding_id": finding.id,
+                "file": display_repo_path(root, &finding.probe.location.file),
+                "line": finding.probe.location.line,
+                "class": finding.class.as_str(),
+                "probe_family": finding.probe.family.as_str(),
+                "probe_id": finding.probe.id.to_string(),
+                "missing_discriminators": finding
+                    .activation
+                    .missing_discriminators
+                    .iter()
+                    .map(|fact| serde_json::json!({ "value": fact.value, "reason": fact.reason }))
+                    .collect::<Vec<_>>(),
+                "related_tests": finding
+                    .related_tests
+                    .iter()
+                    .map(|test| serde_json::json!({
+                        "name": test.name,
+                        "file": display_repo_path(root, &test.file),
+                        "line": test.line,
+                        "oracle_kind": test.oracle_kind.as_str(),
+                        "oracle_strength": test.oracle_strength.as_str(),
+                    }))
+                    .collect::<Vec<_>>(),
+                "evidence": finding.evidence,
+                "missing": finding.missing,
+                "recommended_next_step": finding.recommended_next_step,
+            })
+        })
+        .collect::<Vec<_>>();
+    raw.sort_by_key(|finding| {
+        finding
+            .get("finding_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    });
+    let related_tests = sorted_unique_json_values(raw.iter().flat_map(|finding| {
+        finding
+            .get("related_tests")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .cloned()
+    }));
+    let evidence = sorted_unique_json_values(raw.iter().flat_map(|finding| {
+        finding
+            .get("evidence")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .cloned()
+    }));
+    let missing = sorted_unique_json_values(raw.iter().flat_map(|finding| {
+        finding
+            .get("missing")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .cloned()
+    }));
+    let recommended_next_steps = sorted_unique_json_values(
+        raw.iter()
+            .filter_map(|finding| finding.get("recommended_next_step"))
+            .filter(|value| !value.is_null())
+            .cloned(),
+    );
+    let owner = primary
+        .canonical_gap
+        .as_ref()
+        .map(|gap| gap.owner.clone())
+        .or_else(|| primary.probe.owner.as_ref().map(|owner| owner.0.clone()));
+    data.insert("raw_signal_count".to_string(), serde_json::json!(raw.len()));
+    data.insert(
+        "group_reason".to_string(),
+        serde_json::json!(if raw.len() > 1 {
+            "same_canonical_owner_and_missing_discriminator"
+        } else {
+            "single_canonical_item"
+        }),
+    );
+    data.insert(
+        "primary_anchor".to_string(),
+        serde_json::json!({
+            "file": display_repo_path(root, &primary.probe.location.file),
+            "line": primary.probe.location.line,
+            "owner": owner,
+        }),
+    );
+    data.insert("raw_findings".to_string(), serde_json::Value::Array(raw));
+    data.insert(
+        "related_tests".to_string(),
+        serde_json::Value::Array(related_tests),
+    );
+    data.insert("evidence".to_string(), serde_json::Value::Array(evidence));
+    data.insert("missing".to_string(), serde_json::Value::Array(missing));
+    data.insert(
+        "recommended_next_steps".to_string(),
+        serde_json::Value::Array(recommended_next_steps),
+    );
+}
+
+fn sorted_unique_json_values(
+    values: impl IntoIterator<Item = serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let mut keyed = BTreeMap::<String, serde_json::Value>::new();
+    for value in values {
+        if let Ok(key) = serde_json::to_string(&value) {
+            keyed.entry(key).or_insert(value);
+        }
+    }
+    keyed.into_values().collect()
+}
+
+pub(super) fn canonical_group_has_mixed_classes(raw_findings: &[Finding]) -> bool {
+    raw_findings
+        .iter()
+        .map(|finding| finding.class.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+        > 1
+}
+
+pub(super) fn finding_diagnostics_by_uri(
+    root: &Path,
+    findings: &[Finding],
+    severity: &SeverityConfig,
+    is_full_run: bool,
+) -> Result<BTreeMap<Uri, Vec<Diagnostic>>, String> {
+    let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
+    for (primary, raw_findings) in canonical_finding_groups(findings) {
+        let path = absolute_finding_path(root, &primary);
+        let uri = file_uri_for_path(&path)?;
+        let mut diagnostic = diagnostic_for_finding_with_config(root, &primary, severity);
+        if primary.canonical_gap.is_some() {
+            add_canonical_group_data(root, &mut diagnostic, &primary, &raw_findings);
+            if canonical_group_has_mixed_classes(&raw_findings) {
+                diagnostic.severity = Some(DiagnosticSeverity::INFORMATION);
+                diagnostic.message = format!(
+                    "{}; canonical group contains mixed static classes; inspect raw findings",
+                    diagnostic.message
+                );
+                if let Some(data) = diagnostic
+                    .data
+                    .as_mut()
+                    .and_then(serde_json::Value::as_object_mut)
+                {
+                    data.insert(
+                        "canonical_limitation".to_string(),
+                        serde_json::json!("mixed_static_classes"),
+                    );
+                }
+            }
+        }
+        // Policy: clamp advisory findings to INFORMATION (never WARNING).
+        // Also downgrade WARNING to INFORMATION when run is not "full".
+        if diagnostic.severity == Some(DiagnosticSeverity::WARNING)
+            && (finding_is_advisory(&primary) || !is_full_run)
+        {
+            diagnostic.severity = Some(DiagnosticSeverity::INFORMATION);
+        }
+        grouped.entry(uri).or_default().push(diagnostic);
+    }
+    Ok(grouped)
+}
+
 /// Return a root-independent digest of a canonical diagnostic payload.
 ///
 /// Navigation URIs remain absolute in the LSP wire payload, but the cache
@@ -266,21 +500,12 @@ pub(super) fn workspace_diagnostics_with_config(
     );
     let is_full_run = run_status == "full";
 
-    let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
-    for finding in &findings {
-        let path = absolute_finding_path(&root, finding);
-        let uri = file_uri_for_path(&path)?;
-        let mut diagnostic =
-            diagnostic_for_finding_with_config(&root, finding, config.repo_config().severity());
-        // Policy: clamp advisory findings to INFORMATION (never WARNING).
-        // Also downgrade WARNING to INFORMATION when run is not "full".
-        if diagnostic.severity == Some(DiagnosticSeverity::WARNING)
-            && (finding_is_advisory(finding) || !is_full_run)
-        {
-            diagnostic.severity = Some(DiagnosticSeverity::INFORMATION);
-        }
-        grouped.entry(uri).or_default().push(diagnostic);
-    }
+    let mut grouped = finding_diagnostics_by_uri(
+        &root,
+        &findings,
+        config.repo_config().severity(),
+        is_full_run,
+    )?;
 
     // Repo seam evidence diagnostics. Enabled by built-in defaults for the
     // saved-workspace editor model; explicit LSP options or repo policy can
