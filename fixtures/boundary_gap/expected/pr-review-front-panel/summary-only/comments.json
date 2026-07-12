@@ -26,6 +26,10 @@
   ],
   "suppressed": [],
   "warnings": [
-    "summary-only guidance because changed-line placement is unsafe"
+    {
+      "kind": "other",
+      "message": "summary-only guidance because changed-line placement is unsafe",
+      "path": null
+    }
   ]
 }

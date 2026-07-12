@@ -67,7 +67,9 @@ The JSON separates recommendations by review placement:
 - `summary_only[]` contains useful guidance without a safe changed-line target.
 - `suppressed[]` records candidates hidden by caps, nearby changed tests,
   configured severity, suppression policy, or missing guidance.
-- `warnings[]` carries bounded selection warnings from the agent brief path.
+- `warnings[]` carries bounded structured selection warnings from the agent
+  brief path. Each entry has a closed-vocabulary `kind`, a non-empty `message`,
+  and an optional `path`.
 
 Each line-placeable item carries the seam ID or gap ID, severity, static reason,
 missing discriminator when known, suggested test shape, and bounded LLM handoff
