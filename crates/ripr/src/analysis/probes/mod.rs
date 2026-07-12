@@ -5,6 +5,7 @@ mod family;
 mod ids;
 mod lexical;
 mod repo;
+mod subprocess;
 
 pub use diff::probes_for_file;
 pub(crate) use expectations::{expected_sinks, required_oracles};

@@ -8,6 +8,7 @@
 # logic unnoticed.
 
 crates/ripr/src/analysis/diff/load.rs|Command::new|15|analysis/diff|RIPR-SPEC-0084: git diff adapter resolves the real default base branch (symbolic-ref, origin/main, origin/master, local main/master) and fail-closes with a named message; production helpers (run_git_diff, git_symbolic_ref_quiet, git_ref_exists) plus test module temp-repo setup.
+crates/ripr/src/analysis/probes/subprocess.rs|Command::new|7|analysis/probes|RIPR-SPEC-0112: bounded subprocess adapter recognizer inspects source text and fixture bodies for one literal allowlisted command; it does not execute a subprocess or broaden the runtime command surface.
 crates/ripr/src/analysis/diff/load.rs|use std::process::Command|2|analysis/diff|Git diff adapter and its test module both import Command directly.
 crates/ripr/src/cli/commands.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
 crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|First-pr setup preflight validates git worktree, base/head refs, and diff range before assigning repair work; unit tests initialize temp git repos for those fail-closed packets.

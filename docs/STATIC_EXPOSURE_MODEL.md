@@ -26,6 +26,7 @@ Examples:
 | error variant changed | `error_path` | exact error variant assertion |
 | returned field changed | `field_construction` or `return_value` | field, whole-object, or snapshot assertion |
 | side effect added | `side_effect` | mock, event, state, persistence, or metric oracle |
+| bounded allowlisted subprocess adapter changed | `side_effect` | receipt, output, or process-effect oracle; only after the adapter boundary contract is satisfied |
 | match arm changed | `match_arm` | input selecting arm plus exact assertion |
 
 The current MVP probe families are:
