@@ -55,6 +55,8 @@ struct TargetedRerunReport {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     scope_limitations: Vec<TargetedRerunScopeLimitation>,
     authority_boundary: &'static str,
+    #[serde(skip)]
+    parity_scope: Option<ResolvedRerunScope>,
 }
 
 #[derive(Serialize)]
@@ -167,7 +169,7 @@ fn input_fingerprint_for(
     fingerprint
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct TargetedRerunSeam {
     canonical_gap_id: Option<String>,
     seam_id: String,
@@ -179,7 +181,7 @@ struct TargetedRerunSeam {
     missing_discriminators: Vec<TargetedRerunMissingDiscriminator>,
 }
 
-#[derive(Serialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 struct TargetedRerunRelatedTest {
     test_name: String,
     file: String,
@@ -191,7 +193,7 @@ struct TargetedRerunRelatedTest {
     relation_confidence: String,
 }
 
-#[derive(Serialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 struct TargetedRerunMissingDiscriminator {
     value: String,
     reason: String,
@@ -208,13 +210,19 @@ struct TargetedRerunMovement {
 #[derive(Serialize)]
 struct TargetedRerunParity {
     state: &'static str,
+    basis: &'static str,
+    targeted_seam_count: usize,
+    full_selected_seam_count: usize,
     selected_seam_count: usize,
     matched_seam_count: usize,
+    missing_from_targeted: Vec<String>,
+    unexpected_in_targeted: Vec<String>,
+    differing: Vec<TargetedRerunParityMismatch>,
     mismatches: Vec<TargetedRerunParityMismatch>,
     input_mismatches: Vec<&'static str>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct TargetedRerunParityMismatch {
     seam_id: String,
     fields: Vec<&'static str>,
@@ -245,6 +253,16 @@ struct TargetedRerunScopeLimitation {
 struct GapRerunScope {
     file: PathBuf,
     owner: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ResolvedRerunScope {
+    canonical_gap_id: Option<String>,
+    explicit_seam_ids: BTreeSet<String>,
+    files: BTreeSet<PathBuf>,
+    owners: BTreeSet<String>,
+    changed_test: Option<PathBuf>,
+    direct_call_names: BTreeSet<String>,
 }
 
 pub(super) fn run(args: &[String]) -> Result<(), String> {
@@ -383,6 +401,7 @@ fn rerun_changed_test(
         &changed_test,
         test_node,
     )?;
+    let direct_call_names = inventory.direct_call_names.clone();
     let mut report = report(
         "current_state_only",
         TargetedRerunSelector {
@@ -409,6 +428,21 @@ fn rerun_changed_test(
     );
     report.cache.input_fingerprint =
         Some(input_fingerprint_for(root, &inventory.workspace_cache_key));
+    report.parity_scope = Some(ResolvedRerunScope {
+        files: inventory
+            .classified
+            .iter()
+            .map(|entry| entry.seam.file().to_path_buf())
+            .collect(),
+        owners: inventory
+            .classified
+            .iter()
+            .map(|entry| entry.seam.owner().to_string())
+            .collect(),
+        changed_test: Some(changed_test),
+        direct_call_names: direct_call_names.iter().cloned().collect(),
+        ..ResolvedRerunScope::default()
+    });
     Ok(report)
 }
 
@@ -558,6 +592,23 @@ fn rerun_gap(
     if let Some(fingerprint) = report.cache.input_fingerprint.as_mut() {
         fingerprint.selector_ledger_hash = stable_input_hash(contents.as_bytes());
     }
+    report.parity_scope = Some(ResolvedRerunScope {
+        canonical_gap_id: Some(canonical_gap_id.to_string()),
+        explicit_seam_ids: records
+            .iter()
+            .filter_map(|(_, record)| record.seam_id.clone())
+            .collect(),
+        files: scopes_from_gap_records(&records)
+            .0
+            .into_iter()
+            .map(|scope| scope.file)
+            .collect(),
+        owners: records
+            .iter()
+            .filter_map(|(_, record)| record.anchor.as_ref()?.owner.clone())
+            .collect(),
+        ..ResolvedRerunScope::default()
+    });
     Ok(report)
 }
 
@@ -765,6 +816,7 @@ fn report(
         limitation,
         scope_limitations,
         authority_boundary: "static evidence only; no before snapshot was supplied, so gap movement is not inferred",
+        parity_scope: None,
     }
 }
 
@@ -799,30 +851,14 @@ fn apply_full_pipeline_parity(
         .map(seam_from)
         .map(|seam| (seam.seam_id.clone(), seam))
         .collect::<BTreeMap<_, _>>();
-    let mismatches = report
-        .seams
-        .iter()
-        .filter_map(|targeted| {
-            let full = full_by_id.get(&targeted.seam_id)?;
-            let fields = parity_mismatch_fields(targeted, full);
-            (!fields.is_empty()).then(|| TargetedRerunParityMismatch {
-                seam_id: targeted.seam_id.clone(),
-                fields,
-            })
-        })
-        .collect::<Vec<_>>();
-    let missing_from_full = report
-        .seams
-        .iter()
-        .filter(|targeted| !full_by_id.contains_key(&targeted.seam_id))
-        .map(|targeted| TargetedRerunParityMismatch {
-            seam_id: targeted.seam_id.clone(),
-            fields: vec!["seam_id"],
-        });
-    let mut mismatches = mismatches;
-    mismatches.extend(missing_from_full);
-    let mismatch_count = mismatches.len();
-    let matched = report.seams.len().saturating_sub(mismatch_count);
+    let scope = report.parity_scope.clone().unwrap_or_default();
+    let expected_full = full_by_id
+        .values()
+        .filter(|seam| seam_matches_resolved_scope(seam, &scope))
+        .map(|seam| (seam.seam_id.clone(), seam))
+        .collect::<BTreeMap<_, _>>();
+    let comparison = compare_selector_scoped_seams(&report.seams, &expected_full);
+    let mismatch_count = comparison.mismatches.len();
     let has_mismatches = mismatch_count > 0;
     report.parity = Some(TargetedRerunParity {
         state: if limit_info.is_none() && !has_mismatches && input_mismatches.is_empty() {
@@ -830,9 +866,15 @@ fn apply_full_pipeline_parity(
         } else {
             "limited"
         },
+        basis: "selected_classified_seams",
+        targeted_seam_count: report.seams.len(),
+        full_selected_seam_count: expected_full.len(),
         selected_seam_count: report.seams.len(),
-        matched_seam_count: matched,
-        mismatches,
+        matched_seam_count: comparison.matched_seam_count,
+        missing_from_targeted: comparison.missing_from_targeted,
+        unexpected_in_targeted: comparison.unexpected_in_targeted,
+        differing: comparison.differing,
+        mismatches: comparison.mismatches,
         input_mismatches,
     });
     if let Some(limit_info) = limit_info {
@@ -869,6 +911,96 @@ fn apply_full_pipeline_parity(
     Ok(())
 }
 
+fn seam_matches_resolved_scope(seam: &TargetedRerunSeam, scope: &ResolvedRerunScope) -> bool {
+    if scope.explicit_seam_ids.contains(&seam.seam_id) {
+        return true;
+    }
+    if let Some(canonical_gap_id) = scope.canonical_gap_id.as_deref() {
+        return seam.canonical_gap_id.as_deref() == Some(canonical_gap_id);
+    }
+    if scope.changed_test.is_none() {
+        return false;
+    }
+    let owner_name = seam.owner.rsplit("::").next().unwrap_or(&seam.owner);
+    scope.direct_call_names.contains(owner_name)
+        || scope.owners.contains(&seam.owner)
+        || (scope.direct_call_names.is_empty()
+            && scope.owners.is_empty()
+            && scope.files.contains(Path::new(&seam.file)))
+}
+
+#[derive(Debug, Default)]
+struct SelectorScopedParityComparison {
+    matched_seam_count: usize,
+    missing_from_targeted: Vec<String>,
+    unexpected_in_targeted: Vec<String>,
+    differing: Vec<TargetedRerunParityMismatch>,
+    mismatches: Vec<TargetedRerunParityMismatch>,
+}
+
+fn compare_selector_scoped_seams(
+    targeted: &[TargetedRerunSeam],
+    expected_full: &BTreeMap<String, &TargetedRerunSeam>,
+) -> SelectorScopedParityComparison {
+    let targeted_by_id = targeted
+        .iter()
+        .map(|seam| (seam.seam_id.clone(), seam))
+        .collect::<BTreeMap<_, _>>();
+    let missing_from_targeted = expected_full
+        .keys()
+        .filter(|seam_id| !targeted_by_id.contains_key(*seam_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let unexpected_in_targeted = targeted_by_id
+        .keys()
+        .filter(|seam_id| !expected_full.contains_key(*seam_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let differing = targeted_by_id
+        .iter()
+        .filter_map(|(seam_id, targeted)| {
+            let full = expected_full.get(seam_id)?;
+            let fields = parity_mismatch_fields(targeted, full);
+            (!fields.is_empty()).then(|| TargetedRerunParityMismatch {
+                seam_id: seam_id.clone(),
+                fields,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut mismatches = missing_from_targeted
+        .iter()
+        .map(|seam_id| TargetedRerunParityMismatch {
+            seam_id: seam_id.clone(),
+            fields: vec!["missing_from_targeted"],
+        })
+        .collect::<Vec<_>>();
+    mismatches.extend(
+        unexpected_in_targeted
+            .iter()
+            .map(|seam_id| TargetedRerunParityMismatch {
+                seam_id: seam_id.clone(),
+                fields: vec!["unexpected_in_targeted"],
+            }),
+    );
+    mismatches.extend(differing.clone());
+    let matched_seam_count = expected_full
+        .keys()
+        .filter(|seam_id| {
+            targeted_by_id
+                .get(*seam_id)
+                .zip(expected_full.get(*seam_id))
+                .is_some_and(|(targeted, full)| parity_mismatch_fields(targeted, full).is_empty())
+        })
+        .count();
+    SelectorScopedParityComparison {
+        matched_seam_count,
+        missing_from_targeted,
+        unexpected_in_targeted,
+        differing,
+        mismatches,
+    }
+}
+
 fn graph_provenance_unavailable_fields(
     fingerprint: &TargetedRerunInputFingerprint,
 ) -> Vec<&'static str> {
@@ -895,6 +1027,9 @@ fn parity_mismatch_fields(
     }
     if targeted.file != full.file {
         fields.push("file");
+    }
+    if targeted.line != full.line {
+        fields.push("line");
     }
     if targeted.owner != full.owner {
         fields.push("owner");
@@ -1354,12 +1489,13 @@ fn render_human(report: &TargetedRerunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        RerunSelector, TargetedRerunCache, TargetedRerunGraphProvenance,
+        RerunSelector, ResolvedRerunScope, TargetedRerunCache, TargetedRerunGraphProvenance,
         TargetedRerunInputFingerprint, TargetedRerunMissingDiscriminator, TargetedRerunMovement,
         TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
-        cache_from, entry_matches_selected_gap, graph_provenance_unavailable_fields,
-        input_fingerprint_changes, parity_mismatch_fields, parse_options, render_human,
-        resolve_gap_records, route_from_gap_records, same_root, scopes_from_gap_records,
+        cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
+        graph_provenance_unavailable_fields, input_fingerprint_changes, parity_mismatch_fields,
+        parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
+        scopes_from_gap_records, seam_matches_resolved_scope,
     };
     use crate::analysis::seam_cache::FileFactCacheStats;
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
@@ -1746,6 +1882,97 @@ mod tests {
     }
 
     #[test]
+    fn parity_detects_missing_expected_targeted_seam() {
+        let first = baseline_fields();
+        let second = TargetedRerunSeam {
+            seam_id: "seam:second".to_string(),
+            ..baseline_fields()
+        };
+        let expected = [(&first.seam_id, &first), (&second.seam_id, &second)]
+            .into_iter()
+            .map(|(id, seam)| (id.clone(), seam))
+            .collect();
+        let comparison = compare_selector_scoped_seams(std::slice::from_ref(&first), &expected);
+        assert_eq!(comparison.missing_from_targeted, vec!["seam:second"]);
+        assert!(comparison.unexpected_in_targeted.is_empty());
+        assert_eq!(comparison.matched_seam_count, 1);
+    }
+
+    #[test]
+    fn parity_detects_unexpected_targeted_seam() {
+        let expected_seam = baseline_fields();
+        let unexpected = TargetedRerunSeam {
+            seam_id: "seam:unexpected".to_string(),
+            ..baseline_fields()
+        };
+        let expected = [(&expected_seam.seam_id, &expected_seam)]
+            .into_iter()
+            .map(|(id, seam)| (id.clone(), seam))
+            .collect();
+        let comparison =
+            compare_selector_scoped_seams(&[expected_seam.clone(), unexpected], &expected);
+        assert_eq!(comparison.unexpected_in_targeted, vec!["seam:unexpected"]);
+        assert!(comparison.missing_from_targeted.is_empty());
+    }
+
+    #[test]
+    fn parity_reports_differing_static_class_owner_and_file() {
+        let targeted = TargetedRerunSeam {
+            file: "src/other.rs".to_string(),
+            owner: "pricing::other_total".to_string(),
+            static_class: "exposed".to_string(),
+            ..baseline_fields()
+        };
+        let mut full = baseline_fields();
+        full.seam_id = targeted.seam_id.clone();
+        full.file = "src/lib.rs".to_string();
+        full.owner = "pricing::discounted_total".to_string();
+        full.static_class = "weakly_gripped".to_string();
+        let expected = [(&full.seam_id, &full)]
+            .into_iter()
+            .map(|(id, seam)| (id.clone(), seam))
+            .collect();
+        let comparison = compare_selector_scoped_seams(&[targeted], &expected);
+        assert_eq!(
+            comparison.differing[0].fields,
+            vec!["static_class", "file", "owner"]
+        );
+    }
+
+    #[test]
+    fn resolved_scope_matches_canonical_gap_or_typed_seam_identity() {
+        let seam = baseline_fields();
+        let canonical = ResolvedRerunScope {
+            canonical_gap_id: Some("gap:example".to_string()),
+            ..ResolvedRerunScope::default()
+        };
+        assert!(seam_matches_resolved_scope(&seam, &canonical));
+        let mut closed = seam.clone();
+        closed.canonical_gap_id = None;
+        let typed = ResolvedRerunScope {
+            explicit_seam_ids: [closed.seam_id.clone()].into_iter().collect(),
+            ..ResolvedRerunScope::default()
+        };
+        assert!(seam_matches_resolved_scope(&closed, &typed));
+
+        let changed = ResolvedRerunScope {
+            files: [PathBuf::from("src/lib.rs")].into_iter().collect(),
+            owners: ["pricing::discounted_total".to_string()]
+                .into_iter()
+                .collect(),
+            changed_test: Some(PathBuf::from("tests/pricing.rs")),
+            direct_call_names: ["discounted_total".to_string()].into_iter().collect(),
+            ..ResolvedRerunScope::default()
+        };
+        assert!(seam_matches_resolved_scope(&seam, &changed));
+        let unrelated = TargetedRerunSeam {
+            owner: "pricing::unrelated_total".to_string(),
+            ..seam
+        };
+        assert!(!seam_matches_resolved_scope(&unrelated, &changed));
+    }
+
+    #[test]
     fn input_fingerprint_changes_name_owned_workspace_inputs() {
         let before = sample_input_fingerprint();
         let mut current = before.clone();
@@ -1887,6 +2114,7 @@ mod tests {
             limitation: None,
             scope_limitations: Vec::new(),
             authority_boundary: "static evidence only; no before snapshot was supplied, so gap movement is not inferred",
+            parity_scope: None,
         };
         let rendered = render_human(&report);
         for expected in [
@@ -1941,6 +2169,7 @@ mod tests {
             limitation: None,
             scope_limitations: Vec::new(),
             authority_boundary: "static before/after evidence only",
+            parity_scope: None,
         };
         let rendered = render_human(&report);
         for expected in [

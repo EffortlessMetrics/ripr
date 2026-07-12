@@ -104,12 +104,15 @@ gap classifications and the same canonical-gap and receipt identities used by
 the full pipeline. Rendered artifacts are never cache inputs.
 
 An explicit `--check-parity` opt-in runs the full static seam inventory for the
-same root and configuration, then compares the selected canonical gap and seam
-identities plus their file, owner, static classification, related-test, and
-missing-discriminator evidence. A mismatch is named as
+same root and configuration, then compares the same selector-scoped seam set
+on both sides. The expected full set is derived from the resolved selector:
+canonical-gap identity matches plus any typed ledger `seam_id` identities for
+gap selectors, and the same affected owner/file/test closure for changed-test
+selectors. A mismatch is named as
 `full_pipeline_parity_mismatch` and fails the targeted result closed into a
-`limited` state. The report identifies each mismatching seam and evidence field
-so parity failures are actionable. The full inventory is deliberately opt-in
+`limited` state. The report identifies missing-from-targeted seams,
+unexpected-in-targeted seams, and each differing seam field so parity failures
+are actionable. The full inventory is deliberately opt-in
 because it can be expensive; omitting the flag does not imply parity was
 checked. If the full inventory is seam-capped, the result is instead limited
 with `full_pipeline_parity_incomplete`, because an absent seam may be outside

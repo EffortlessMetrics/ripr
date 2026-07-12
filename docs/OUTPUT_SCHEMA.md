@@ -14484,14 +14484,16 @@ use network or ambient Cargo metadata. Graph changes are named as
 required local graph provenance is unavailable.
 
 Pass `--check-parity` to request an explicit full-inventory comparison. The
-optional `parity` object reports `matched` only when every selected seam has
-the same canonical gap ID, seam ID, static class, file, owner, related-test
-evidence, and missing-discriminator evidence in the current full pipeline.
-A difference changes the overall report to `limited` with
+optional `parity` object reports `matched` only when the targeted and expected
+full selector-scoped seam sets are identical and every shared seam has the
+same canonical gap ID, seam ID, static class, file, owner, related-test
+evidence, and missing-discriminator evidence. It records
+`missing_from_targeted`, `unexpected_in_targeted`, and `differing` details;
+a difference changes the overall report to `limited` with
 `full_pipeline_parity_mismatch`; it is never rendered as a successful targeted
-result. `parity.mismatches[]` identifies the seam and the evidence fields that
-differ, so a mismatch is actionable rather than an unexplained count. This
-also includes `parity.input_mismatches[]` when the targeted and full pipeline
+result. `parity.mismatches[]` retains a unified actionable view of those
+differences rather than an unexplained count. This also includes
+`parity.input_mismatches[]` when the targeted and full pipeline
 workspace fingerprints differ; that condition is named
 `full_pipeline_parity_input_mismatch` and fails closed.
 diagnostic is opt-in because it intentionally runs the broad pipeline and is
