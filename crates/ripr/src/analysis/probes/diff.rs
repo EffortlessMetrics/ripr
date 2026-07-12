@@ -8,6 +8,7 @@ use super::expectations::{expected_sinks, required_oracles};
 use super::family::delta_for_family;
 use super::ids::{diff_probe_id, normalize_expression};
 use super::lexical::classify_changed_line;
+use super::subprocess::bounded_subprocess_family;
 use crate::domain::{Probe, ProbeFamily, SourceLocation};
 use std::path::Path;
 
@@ -38,8 +39,12 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if changed_line_owned_by_test(index, &changed.path, added.new_side_line) {
             continue;
         }
-        let families = classify_changed_syntax(index, &changed.path, added.new_side_line, text)
-            .unwrap_or_else(|| classify_changed_line(text));
+        let families = bounded_subprocess_family(index, &changed.path, added.new_side_line, text)
+            .map(|family| vec![family])
+            .unwrap_or_else(|| {
+                classify_changed_syntax(index, &changed.path, added.new_side_line, text)
+                    .unwrap_or_else(|| classify_changed_line(text))
+            });
         for family in families {
             probes.push(build_probe(
                 &build_context,

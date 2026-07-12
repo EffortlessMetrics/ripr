@@ -6070,6 +6070,30 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0112"
+name = "bounded subprocess adapter boundary"
+spec = "docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md"
+tests = [
+  "crates/ripr/src/analysis/probes/subprocess.rs::tests::bounded_literal_curl_adapter_is_an_observable_effect",
+  "crates/ripr/src/analysis/probes/subprocess.rs::tests::dynamic_or_shell_commands_remain_unclassified",
+  "crates/ripr/src/analysis/probes/subprocess.rs::tests::probes_for_file_emits_side_effect_for_bounded_adapter_line",
+]
+fixtures = [
+  "crates/ripr/src/analysis/probes/subprocess.rs",
+]
+code = [
+  "crates/ripr/src/analysis/probes/subprocess.rs",
+  "crates/ripr/src/analysis/probes/diff.rs",
+]
+outputs = [
+  "docs/STATIC_EXPOSURE_MODEL.md",
+  "docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0111"
 name = "gate new_unsuppressed receipt field"
 spec = "docs/specs/RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md"
