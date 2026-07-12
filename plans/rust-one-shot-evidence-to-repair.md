@@ -1,17 +1,20 @@
-# Rust One-Shot Evidence-to-Repair Plan
+# Rust Evidence-Bound Repair Trust and Adoption Plan
 
 Status: active  
 Owner: product-swarm  
 Plan artifact: RIPR-PLAN-0062  
 Linked goal: `.ripr/goals/active.toml`  
-Linked issues: #1423, #1424, #1425, #1427, #1440  
+Linked issues: #1423, #1424, #1425, #1427, #1440, #1543, #1560
 Starting PRs: #1489, #1487, #1483
 
 ## Outcome
 
-Make RIPR's Rust pull-request loop turn changed behavior into one exact, safe,
-test-only repair and a verified before/after receipt. Avoid artifact archaeology,
-known-ineffective recommendations, silent limitations, and full pipeline replay.
+Make RIPR the default evidence-to-repair protocol for Rust pull requests: one
+changed behavior becomes one exact, safe, test-only repair and a current-state
+before/after receipt, while unsupported cases remain explicit limitations rather
+than plausible-looking recommendations. The accepted targeted-rerun contract is
+now regression-protected infrastructure inside this trust and adoption goal,
+not the long-range destination.
 
 This supersedes RIPR-PLAN-0061 as the active execution sequence. Its accepted
 contracts remain useful historical source, but its pending statuses and
@@ -47,12 +50,71 @@ cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 | 3B | `gate/concrete-targeted-mutation` | 3A | candidate/limitation matrix |
 | 4A | `analysis/field-constant-observation` | 2B | positive and adversarial corpus |
 | 4B | `analysis/constructor-field-observation` | 2B | same-crate ambiguity corpus |
-| 5 | `perf/targeted-rerun` | 4A, 4B | benchmark and cache receipt |
-| 6 | `dogfood/route-quality-closeout` | 3B, 5 | authorized receipts and support review |
+| 5 | `perf/targeted-rerun` | 4A, 4B | complete infrastructure: SPEC-0123, parity, invalidation, graph provenance, and benchmark receipt |
+| 6A | `analysis/call-presence-gate-producer` | 3B | authorized real/current-repository caller-to-effect-sink receipt or named limitation |
+| 6B | `dogfood/rust-route-quality-corpus` | 3B, 5 | authorized three-repository corpus, six-attempt pilot, then 20 receipt-backed attempts |
+| 6C | `dogfood/route-quality-closeout` | 6A, 6B | support review and campaign closeout after corpus completion and CallPresence disposition |
 
 Work items 1A and 2A may use isolated worktrees. Items 4A and 4B may be
 parallel only after their file/contract overlap is checked. Dependencies are
 landing dependencies, not approval gates.
+
+## Trust and adoption phase (2026-07-12)
+
+The remaining campaign asks whether developers can trust the shipped route on
+real Rust work. Every actionable result must carry producer-owned
+`canonical_gap_id`, `seam_id`, `file:line`, `gap_state`, changed behavior,
+missing discriminator, related test or production caller, focused test intent,
+verify command, targeted-rerun command, receipt command, inspection command,
+and authority boundary. If any fact is unavailable, the result is a named
+limitation with a concrete investigation route; no renderer or path heuristic
+may manufacture it.
+
+The CallPresence packet is complete only when an authorized real or
+current-repository receipt proves `production caller -> exact call seam ->
+observable call/effect sink -> matching observing test -> complete route`.
+Dynamic or unresolved receivers, method-name strings, ambiguous aliases or
+owners, helper-only reachability, unrelated assertions, and opaque
+macro-generated calls remain limitations unless producer evidence becomes
+unambiguous.
+The current blocked packet is recorded in
+`docs/handoffs/2026-07-12-call-presence-evidence-packet.md`; its synthetic
+positive analyzer tests and stale bounded repository scan are explicitly
+excluded from promotion.
+
+The dogfood packet requires at least 20 real repair attempts across at least 3
+authorized Rust repositories. Each attempt records its repository and revision,
+canonical gap and seam, before receipt, test-only repair intent and changed
+files, verification command/result, after receipt, movement outcome, and
+limitations. Only `closed`, `improved`, `unchanged`, `regressed`, and `limited`
+are counted; synthetic fixture rows are not real-repository evidence.
+
+Corpus collection is independent of CallPresence closure. The corpus packet
+may proceed once repository authorization is recorded and must measure
+CallPresence limitations when they occur; final route-quality closeout waits
+for both the corpus threshold and a CallPresence proof or durable limitation
+disposition.
+
+The governed input is `metrics/rust-repair-trust/corpus.json`. Run
+`cargo xtask rust-repair-trust-report` to write the JSON and Markdown scorecard
+under `target/ripr/reports/`. Missing authorization, malformed rows, or
+under-threshold denominators remain `limited`; the report must not reinterpret
+the legacy `fixtures/real-repair-attempts/corpus.json` as Rust adoption
+evidence.
+
+Targeted rerun remains governed by the accepted SPEC-0123 contract: exact
+selector identity, explicit before state, cache/invalidation disclosure,
+selector-scoped parity, input fingerprints, graph provenance, and closed
+movement vocabulary. The registered benchmark remains a floor (warm p50 <= 30
+seconds, at least 5x faster than registered cold full, matched selected-scope
+parity); faster without parity is limited.
+
+Certification is current-head evidence. Receipts name the exact head SHA, later
+mutation invalidates prior certification, and a reviewer who changes the branch
+acts as a fixer rather than an independent reviewer for that pass. Cargo-allow
+remains advisory structural authority, RIPR xtask remains proof executor, and
+`.ripr/goals/active.toml` remains the sole execution manifest until #2119 is
+resolved.
 
 ## Contract
 

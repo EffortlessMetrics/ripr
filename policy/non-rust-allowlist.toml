@@ -340,6 +340,15 @@ reason = "Machine-readable capability and metrics metadata."
 covered_by = ["cargo xtask check-capabilities"]
 
 [[allow]]
+glob = "metrics/rust-repair-trust/*.json"
+kind = "trust_corpus_metadata"
+owner = "ripr/repair-trust"
+surface = "repo"
+classification = "metadata"
+reason = "Governed receipt-backed Rust repair-trust corpus input; empty or incomplete input remains limited."
+covered_by = ["cargo xtask rust-repair-trust-report", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "policy/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"

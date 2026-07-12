@@ -21,6 +21,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Fixtures(name) => super::reports::fixtures(name.as_ref()),
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
+        XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),
         XtaskCommand::TestOracleReport => super::reports::test_oracle_report(),
         XtaskCommand::TestEfficiencyReport => super::reports::test_efficiency_report(),
         XtaskCommand::BadgeArtifacts => super::reports::badge_artifacts(),
@@ -146,5 +147,23 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         }
         XtaskCommand::Help(args) => print_help(&args),
         XtaskCommand::Unknown(command) => Err(unknown_command_message(&command)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::execute;
+    use crate::command::XtaskCommand;
+
+    #[test]
+    fn rust_repair_trust_report_is_reachable_from_dispatch() -> Result<(), String> {
+        let original_dir = std::env::current_dir().map_err(|error| error.to_string())?;
+        let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have a repository parent".to_string())?;
+        std::env::set_current_dir(repository_root).map_err(|error| error.to_string())?;
+        let result = execute(XtaskCommand::RustRepairTrustReport);
+        std::env::set_current_dir(original_dir).map_err(|error| error.to_string())?;
+        result
     }
 }

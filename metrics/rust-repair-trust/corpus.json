@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_repair_trust_corpus",
+  "description": "Governed real-repository Rust repair attempts for trust and adoption evidence.",
+  "authorization": {
+    "status": "complete",
+    "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
+    "repositories": [
+      {
+        "name": "EffortlessMetrics/ripr-swarm",
+        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
+        "authorized_revision_or_branch": "origin/main@79efe8d217730e67be538b87df3612a724da433c",
+        "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
+        "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
+        "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
+        "authorization_date": "2026-07-12"
+      },
+      {
+        "name": "EffortlessMetrics/perl-lsp-swarm",
+        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
+        "authorized_revision_or_branch": "origin/main@899c383b18b36b027e47693030c7ddcce84c65a7",
+        "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
+        "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
+        "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
+        "authorization_date": "2026-07-12"
+      },
+      {
+        "name": "EffortlessMetrics/ub-review",
+        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
+        "authorized_revision_or_branch": "origin/main@9838259a704a5cf3748eb81af29536b99bf7cf3b",
+        "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
+        "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
+        "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
+        "authorization_date": "2026-07-12"
+      }
+    ]
+  },
+  "cases": []
+}

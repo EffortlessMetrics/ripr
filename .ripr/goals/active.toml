@@ -1,32 +1,39 @@
-# Selected 2026-07-09 after reconciling the completed 0.9.0 release with the
-# stale use-case-spec-spine manifest. This campaign owns the Rust repair loop.
+# Selected 2026-07-12 after reconciling the accepted targeted-rerun contract
+# with the remaining Rust repair trust and adoption work. This campaign owns
+# the Rust evidence-to-repair protocol.
 #
 # Spec-system authority: cargo-allow's advisory spec-system profile owns
 # structural artifact governance and its ledger. RIPR xtask executes product
 # proof; it must not become a second structural graph authority. The sole RIPR
 # active manifest remains excluded from cargo-allow native validation until
 # cargo-allow #2119 can preserve this execution dialect without duplication.
+# active_goal_required = false for cargo-allow native validation during that
+# interval; this file remains the sole RIPR execution manifest.
 id = "rust-one-shot-evidence-to-repair"
-title = "Rust One-Shot Evidence-to-Repair Product Closure"
+title = "Rust Evidence-Bound Repair Trust and Adoption"
 status = "active"
 lane = "lane1"
 issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/1440"
 no_current_goal = false
 
 objective = """
-Make RIPR's Rust pull-request workflow turn changed behavior into one exact,
-safe, test-only repair and a verified before/after receipt. Unsupported analysis
-must fail closed into a named limitation with a concrete route rather than
-recommend a repair RIPR cannot credit.
+Make RIPR the default evidence-to-repair protocol for Rust pull requests.
+One changed behavior must become one exact, safe, test-only repair and a
+current-state before/after receipt. Actionability may be promoted only from
+producer-owned evidence that survives adversarial review and authorized
+real-repository use. Unsupported analysis must fail closed into a named
+limitation with a concrete investigation route rather than recommend a repair
+RIPR cannot credit.
 """
 
 end_state = [
-  "Default Rust human output presents one bounded start-here route while exhaustive and machine evidence remain explicitly available.",
-  "Actionable Rust packets carry canonical identity and complete repair/verify/receipt fields, or fail closed.",
-  "Gate failures name the exact repair route without artifact archaeology; targeted-mutation routes are concrete or limited.",
-  "Known Rust field-constant and same-crate construction false-actionability cases have positive and adversarial regression coverage.",
-  "Targeted reruns preserve canonical identity and receipt semantics, with explicit cache reuse and invalidation.",
-  "Receipt-backed Rust dogfood and route-quality results support only the reviewed support-tier claim.",
+  "Every actionable Rust result carries producer-owned identity, navigation, causality, command, and authority facts; incomplete routes are named limitations.",
+  "CallPresence is receipt-proved for an unambiguous real/current-repository route or remains a durable fail-closed limitation with explicit negative controls.",
+  "At least 20 receipt-backed real repair attempts across at least 3 authorized Rust repositories have before/after and verification provenance using closed movement outcomes.",
+  "Targeted rerun remains regression-protected infrastructure with canonical identity, before state, invalidation disclosure, selector-scoped parity, and the registered benchmark floor.",
+  "Review and proof receipts certify the exact current head SHA; later mutation invalidates prior certification and requires fresh independent challenge.",
+  "Cargo-allow remains advisory structural authority, RIPR xtask remains proof executor, and .ripr/goals/active.toml remains the sole execution manifest until #2119 is resolved.",
+  "The support-tier claim, active manifest, plan, specs, metrics, issues, receipts, and closeout agree with observed real-repository evidence and remaining limitations.",
 ]
 
 non_goals = [
@@ -34,6 +41,7 @@ non_goals = [
   "Automatic test generation, mutation execution by default, or consumer production edits.",
   "Default CI blocking, badge/baseline authority changes, release, signing, publishing, credentials, or workspace reshaping.",
   "Coverage, runtime mutation, correctness, or complete test-quality claims from static evidence.",
+  "Universal performance claims, support promotion from fixtures alone, labels or agent roles as proof, or a duplicate cargo-allow active-goal source.",
 ]
 
 [[work_item]]
@@ -114,9 +122,9 @@ id = "analysis/call-presence-gate-producer"
 status = "blocked"
 branch = "analysis/call-presence-gate-producer"
 stackable = false
-blocked_reason = "Issue #1543 still requires an authorized real CallPresence fixture or current-repo receipt proving an unambiguous caller/observer route; existing synthetic/unit evidence is not enough for policy eligibility."
-acceptance = "Close the remaining #1440 producer gap with an authorized real CallPresence fixture or receipt that yields a complete policy-eligible route for an unambiguous caller/observer, while method-string, dynamic, helper-only, and ambiguous cases remain named static limitations. Tracked in issue #1543."
-commands = ["cargo test -p ripr test_grip_evidence --lib", "cargo test -p ripr output::gate --lib", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-pr"]
+blocked_reason = "Issue #1543 and docs/handoffs/2026-07-12-call-presence-evidence-packet.md record that the current positive cases are synthetic unit evidence and the latest bounded repository scan is stale negative evidence; an authorized real/current-repository receipt with a direct production caller, exact call seam, observable effect sink, matching observing test, and complete policy-eligible route is still missing."
+acceptance = "Compile and, only with authorized evidence, close #1543 with repository/revision, changed PR or fixture basis, production caller, exact CallPresence seam, effect sink, observing test, negative controls, expected gate route, proof commands, and claim boundary. The complete route must carry canonical gap identity, seam, file:line, changed behavior, missing discriminator, focused test intent, verify/targeted-rerun/receipt/inspection commands, and authority boundary. Method-string, dynamic-receiver, ambiguous-owner, helper-only, unrelated-assertion, and macro-opaque cases remain named static limitations."
+commands = ["cargo test -p ripr test_grip_evidence --lib", "cargo test -p ripr output::gate --lib", "cargo xtask check-evidence-promotion-honesty", "cargo xtask dogfood", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "analysis/field-constant-observation"
@@ -139,7 +147,7 @@ id = "perf/targeted-rerun"
 status = "done"
 branch = "perf/targeted-rerun"
 stackable = false
-acceptance = "The first targeted-rerun delivery provides canonical selectors, explicit before/after movement, producer-owned file-fact cache disclosure, explicit selector-ledger fingerprints, and a registered current-main benchmark receipt; classification parity, invalidation attribution, evidence parity, and closeout remain separate packets below."
+acceptance = "Accepted RIPR-SPEC-0123 is shipped: canonical-gap and changed-test selectors, explicit before/after movement, producer-owned cache and invalidation disclosure, input fingerprints, local graph provenance, selector-scoped classification/evidence parity, and the registered benchmark receipt are regression-protected infrastructure inside the larger Rust repair-trust protocol."
 commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
@@ -176,40 +184,34 @@ commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo test -p
 
 [[work_item]]
 id = "perf/rerun-evidence-parity"
-status = "blocked"
+status = "done"
 branch = "perf/rerun-evidence-parity"
 stackable = false
-blocked_by = ["perf/rerun-classification-parity"]
-blocked_reason = "Typed producer evidence parity must follow classification parity so route and oracle comparisons use the same selected seam set."
-acceptance = "Compare selected gap state, missing discriminator, observing tests, oracle strength, and verify/receipt routes from typed producer facts without using rendered artifacts."
+acceptance = "PR #1535 and the subsequent selector-scoped parity delivery compare selected gap state, missing discriminator, observing tests, oracle strength, and verify/receipt routes from typed producer facts without using rendered artifacts; mismatches fail closed with retained details."
 commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "perf/rerun-invalidation-attribution"
-status = "ready"
+status = "done"
 branch = "perf/rerun-invalidation-attribution"
 stackable = false
-acceptance = "Attribute selected-analysis input fingerprints and invalidation reasons for source, test, workspace, configuration, policy, schema, and selector-ledger changes without conflating file-fact cache hits with input equivalence."
+acceptance = "PRs #1534, #1537, #1539, and #1540 attribute selected-analysis input fingerprints and invalidation reasons for file, workspace, configuration, graph, schema, and selector-ledger changes without conflating file-fact cache hits with input equivalence."
 commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "perf/rerun-benchmark"
-status = "blocked"
+status = "done"
 branch = "perf/rerun-benchmark"
 stackable = false
-blocked_by = ["perf/rerun-evidence-parity", "perf/rerun-invalidation-attribution"]
-blocked_reason = "The benchmark must be bound to trustworthy parity and explicit invalidation attribution before speed claims are promoted."
-acceptance = "Record cold full, cold targeted, warm targeted, and explicit invalidation runs with p50/p95, cache state, parity, revision, and runner class; warm p50 is <=30 seconds and >=5x faster than the registered cold full pipeline."
+acceptance = "PR #1531/#1547 registered a current-main benchmark with cold full, cold targeted, warm targeted, explicit invalidation, p50/p95, cache state, parity, revision, and runner class; the recorded fixture receipt is 228 ms warm p50, 1,512 ms cold-full p50, matched parity, and 6.63x speedup."
 commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path> --samples 5", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "perf/rerun-closeout"
-status = "blocked"
+status = "done"
 branch = "perf/rerun-closeout"
 stackable = false
-blocked_by = ["perf/rerun-benchmark"]
-blocked_reason = "Closeout depends on a trustworthy benchmark receipt and the completed parity/invalidation packets."
-acceptance = "Update SPEC-0123, plan, issue #1424, benchmark receipt, support review, remaining limitations, and current-main closeout after all targeted-rerun packets land."
+acceptance = "SPEC-0123 is accepted; issue #1424 is closed as completed with a final closeout comment linking the merged parity, invalidation, graph-provenance, benchmark, support-boundary, and remaining-limitation evidence; the plan and current-main source truth record targeted rerun as complete infrastructure rather than the long-range campaign destination."
 commands = ["cargo xtask check-goals", "cargo xtask check-traceability", "cargo xtask check-pr"]
 
 [[work_item]]
@@ -221,11 +223,18 @@ acceptance = "Close #1548 by attributing package and feature graph provenance in
 commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-traceability", "cargo xtask check-pr"]
 
 [[work_item]]
+id = "dogfood/rust-route-quality-corpus"
+status = "ready"
+branch = "dogfood/rust-route-quality-corpus"
+stackable = false
+acceptance = "Issue #1560 is mechanically governable: three internal adopting Rust repositories have explicit authorization records, the corpus schema requires exact current-head receipts and test-only routes, malformed or excluded rows cannot enter denominators, and the six-attempt pilot can begin before CallPresence is resolved. Collect at least 20 eligible attempts across the three repositories using only closed, improved, unchanged, regressed, or limited outcomes."
+commands = ["cargo xtask rust-repair-trust-report", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]
+
+[[work_item]]
 id = "dogfood/route-quality-closeout"
 status = "blocked"
 branch = "dogfood/rust-route-quality-closeout"
 stackable = false
-blocked_by = ["analysis/call-presence-gate-producer"]
-blocked_reason = "The required receipt-backed corpus across at least three authorized Rust repositories is not present; do not substitute synthetic fixture rows or claim route-quality closure."
-acceptance = "Record authorized receipt-backed Rust attempts, closed outcomes, route-quality scorecard, support-tier review, remaining limitations, and closeout; write a blocked report rather than fabricate evidence."
-commands = ["cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]
+blocked_reason = "Final closeout depends on both the authorized corpus reaching at least 20 eligible attempts across 3 repositories and the separate CallPresence issue being proved by a qualifying receipt or explicitly dispositioned as a durable limitation; corpus collection is not blocked by CallPresence."
+acceptance = "After the corpus and CallPresence disposition are complete, review exclusions, scorecard denominators, targeted-rerun parity and benchmark evidence, current-head protected proof, support-tier wording, and agreement among the active manifest, plan, specs, metrics, issues, receipts, and closeout."
+commands = ["cargo xtask rust-repair-trust-report", "cargo xtask metrics", "cargo xtask check-support-tiers", "cargo xtask check-capabilities", "cargo xtask check-pr"]

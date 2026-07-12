@@ -5429,7 +5429,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 # alpha gate (Phase D PR 18): the CPAN-style end-to-end fixture proves all three outcomes
 ```
 
-## Campaign 32: Rust One-Shot Evidence-to-Repair Product Closure
+## Campaign 32: Rust Evidence-Bound Repair Trust and Adoption
 
 Campaign ID: `rust-one-shot-evidence-to-repair`
 
@@ -5439,15 +5439,17 @@ Tracker: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) ·
 `.ripr/goals/active.toml` · issues #1423, #1424, #1425, #1427, #1440
 
 The completed 0.9.0 release made Campaign 29's post-release activation gate
-obsolete. The current crate is 0.10.0, while the old manifest still described
-implementation as paused. This campaign reconciles that state and focuses the
-next Rust product wave on one obvious, safe repair rather than broad evidence.
+obsolete. The current crate is 0.10.0, and the accepted targeted-rerun contract
+is now shipped infrastructure rather than the long-range destination. This
+campaign establishes trust in one exact, safe, test-only repair and current
+before/after receipt on real Rust work while keeping unsupported analysis
+explicitly limited.
 
-The queue begins by refreshing existing aligned PRs: #1489 bounded human output,
-#1487 README first screen after behavior ships, and #1483 card-level oracle
-projection. It then completes canonical working-set identity, self-explanatory
-gate routes, concrete targeted-mutation routes, the two Rust analysis dogfood
-gaps, targeted reruns, and receipt-backed route-quality closeout.
+The queue preserves the shipped bounded-output, canonical-identity, gate-route,
+targeted-mutation, and targeted-rerun contracts. Remaining work is the
+authorized real CallPresence evidence packet and a receipt-backed route-quality
+corpus across at least three Rust repositories; synthetic fixtures remain
+separate from adoption evidence.
 
 | Work item | Status | Summary |
 | --- | --- | --- |
@@ -5460,20 +5462,21 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `review/canonical-working-set-id` | done | #1505 merged: working-set cards now carry domain-supplied canonical gap identity. |
 | `gate/exact-repair-route` | done | Structural route shipped: policy-eligible decisions expose the exact seam, missing discriminator, focused test intent, verify/receipt commands, and producer-owned inspection route without artifact archaeology. Real CallPresence producer eligibility remains a separate fail-closed follow-up. |
 | `gate/concrete-targeted-mutation` | done | #1545 merged: PR-evidence and impacted-evidence now carry a bounded producer-owned predicate/operator candidate and command, or an explicit no-safe-candidate limitation; mutation execution remains opt-in. |
-| `analysis/call-presence-gate-producer` | blocked | #1543 remains blocked on an authorized real/current-repo CallPresence receipt proving an unambiguous caller/observer route; helper-only, dynamic, method-string, and ambiguous cases stay named limitations. |
+| `analysis/call-presence-gate-producer` | blocked | #1543 remains blocked on an authorized real/current-repo CallPresence receipt proving an unambiguous caller/observer route; `docs/handoffs/2026-07-12-call-presence-evidence-packet.md` records why synthetic positive tests and stale bounded scans do not qualify; helper-only, dynamic, method-string, and ambiguous cases stay named limitations. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
-| `perf/targeted-rerun` | done | The first targeted-rerun delivery is complete as landed slices; the remaining parity, invalidation-attribution, benchmark, and closeout work is compiled below as separate packets. |
+| `perf/targeted-rerun` | done | Accepted RIPR-SPEC-0123 is shipped as regression-protected infrastructure: canonical-gap and changed-test selection, before/after movement, cache and invalidation disclosure, input fingerprints, graph provenance, selector-scoped parity, and the registered benchmark. |
 | `perf/rerun-gap-selection` | done | #1524 treats one canonical gap as a behavioral-debt group, deduplicates anchored scopes, preserves partial success, and names stale or conflicting route data. |
 | `perf/rerun-before-movement` | done | #1527 adds explicit before/after movement receipts with typed seam continuity and honest indeterminate states. |
 | `perf/rerun-cache-disclosure` | done | #1529 discloses producer-owned file-fact cache reuse and recomputation without inventing unavailable whole-analysis invalidation reasons. |
 | `perf/rerun-classification-parity` | done | #1558 adds opt-in two-sided selector-scoped comparison against the typed full inventory; missing, unexpected, and differing seams fail closed with retained details. |
-| `perf/rerun-evidence-parity` | blocked | Blocked by classification parity; compare typed route, oracle, discriminator, and command evidence only after the selected seam set is trustworthy. |
-| `perf/rerun-invalidation-attribution` | ready | Add producer-owned selected-input fingerprints and explicit invalidation reasons without conflating file-fact cache hits with analysis-input equivalence. |
-| `perf/rerun-benchmark` | blocked | Blocked by evidence parity and invalidation attribution; benchmark receipts must bind speed claims to trustworthy results. |
-| `perf/rerun-closeout` | blocked | Blocked by the benchmark packet; update SPEC-0123, issue #1424, receipts, support review, and closeout only after proof lands. |
+| `perf/rerun-evidence-parity` | done | Typed selected-scope route and oracle evidence parity is shipped and fails closed with retained mismatch details. |
+| `perf/rerun-invalidation-attribution` | done | Selected-input fingerprints and explicit invalidation reasons are shipped for file, workspace, configuration, graph, and selector-ledger changes. |
+| `perf/rerun-benchmark` | done | The registered current-main receipt records matched parity, 228 ms warm p50, 1,512 ms cold-full p50, and 6.63x speedup on the benchmark fixture. |
+| `perf/rerun-closeout` | done | SPEC-0123, plan, and issue #1424's completed closeout comment reconcile the targeted-rerun lane as complete infrastructure, with merged parity, invalidation, graph-provenance, benchmark, support-boundary, and remaining-limitation evidence. |
 | `perf/targeted-rerun-graph-provenance` | done | #1550 merged: receipts attribute local package/member and feature graph provenance, name unavailable external metadata, and fail parity closed on required graph mismatch without network inference. |
-| `dogfood/route-quality-closeout` | blocked | Required multi-repository receipt corpus is unavailable; keep synthetic fixtures separate and do not claim route-quality closure. Depends on the explicit CallPresence blocker. |
+| `dogfood/rust-route-quality-corpus` | ready | #1560 now has explicit authorization for the three internal adopting Rust repositories; the schema, validator, and denominator-preserving scorecard are ready for a six-attempt pilot and then 20 eligible attempts. Corpus collection is independent of CallPresence closure. |
+| `dogfood/route-quality-closeout` | blocked | Final closeout waits for the #1560 corpus threshold and #1543 CallPresence proof or durable limitation disposition; `metrics/rust-repair-trust/corpus.json` and `cargo xtask rust-repair-trust-report` preserve missing denominators as `limited`; keep synthetic fixtures separate and do not claim route-quality closure. |
 
 Hard boundaries: preview lanes remain preview; mutation execution stays explicit;
 there is no automatic test or consumer-source editing, default gate hardening,
