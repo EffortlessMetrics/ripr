@@ -146,6 +146,9 @@ impl Backend {
         };
         let published_uri_count = refresh.publish_batches.len();
         let cleared_uri_count = refresh.clear_uris.len();
+        let unchanged_uri_count = refresh.unchanged_uri_count;
+        let published_payload_bytes = refresh.published_payload_bytes;
+        let suppressed_payload_bytes = refresh.suppressed_payload_bytes;
         for batch in refresh.publish_batches {
             self.client
                 .publish_diagnostics(batch.uri, batch.diagnostics, None)
@@ -154,8 +157,15 @@ impl Backend {
         for uri in refresh.clear_uris {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
         }
-        self.log_refresh_completed(summary, published_uri_count, cleared_uri_count)
-            .await;
+        self.log_refresh_completed(
+            summary,
+            published_uri_count,
+            unchanged_uri_count,
+            cleared_uri_count,
+            published_payload_bytes,
+            suppressed_payload_bytes,
+        )
+        .await;
     }
 
     pub(super) async fn report_refresh_failure_after(&self, message: String, duration: Duration) {
@@ -187,13 +197,9 @@ impl Backend {
         if snapshot.diagnostics_by_uri != diagnostics_by_uri_from_batches(&batches) {
             return None;
         }
-        let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
+        let refresh = diagnostic_refresh_plan(&last_diagnostics, batches);
         debug_assert!(snapshot.is_consistent());
-        *last_diagnostics = refresh
-            .publish_batches
-            .iter()
-            .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
-            .collect();
+        *last_diagnostics = snapshot.diagnostics_by_uri.clone();
         *last_diagnostic_uris = refresh.current_uris.clone();
         *latest_analysis = Some(snapshot);
         Some(refresh)
@@ -454,25 +460,54 @@ impl Backend {
         &self,
         summary: RefreshLogSummary,
         published_uri_count: usize,
+        unchanged_uri_count: usize,
         cleared_uri_count: usize,
+        published_payload_bytes: usize,
+        suppressed_payload_bytes: usize,
     ) {
         self.client
             .log_message(
                 MessageType::INFO,
-                refresh_completed_log_message(&summary, published_uri_count, cleared_uri_count),
+                refresh_completed_log_message_with_telemetry(
+                    &summary,
+                    published_uri_count,
+                    unchanged_uri_count,
+                    cleared_uri_count,
+                    published_payload_bytes,
+                    suppressed_payload_bytes,
+                ),
             )
             .await;
     }
 }
 
+#[cfg(test)]
 pub(super) fn refresh_completed_log_message(
     summary: &RefreshLogSummary,
     published_uri_count: usize,
     cleared_uri_count: usize,
 ) -> String {
+    refresh_completed_log_message_with_telemetry(
+        summary,
+        published_uri_count,
+        0,
+        cleared_uri_count,
+        0,
+        0,
+    )
+}
+
+fn refresh_completed_log_message_with_telemetry(
+    summary: &RefreshLogSummary,
+    published_uri_count: usize,
+    unchanged_uri_count: usize,
+    cleared_uri_count: usize,
+    published_payload_bytes: usize,
+    suppressed_payload_bytes: usize,
+) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, gap_artifacts={}, actionable_gap_artifacts={}, preview_gap_artifacts={}, no_action_gap_artifacts={}, gap_static_limits={}, gap_artifact_rejections={}, gap_artifact_rejection_kinds={}, enabled_languages={}, enabled_language_names={}, published_files={}, cleared_files={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, gap_artifacts={}, actionable_gap_artifacts={}, preview_gap_artifacts={}, no_action_gap_artifacts={}, gap_static_limits={}, gap_artifact_rejections={}, gap_artifact_rejection_kinds={}, enabled_languages={}, enabled_language_names={}, computed_files={}, published_files={}, unchanged_files={}, cleared_files={}, published_payload_bytes={}, suppressed_payload_bytes={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
@@ -489,8 +524,12 @@ pub(super) fn refresh_completed_log_message(
         summary.gap_artifact_rejection_kinds.join("|"),
         summary.enabled_languages,
         summary.enabled_language_names.join("|"),
+        summary.files,
         published_uri_count,
-        cleared_uri_count
+        unchanged_uri_count,
+        cleared_uri_count,
+        published_payload_bytes,
+        suppressed_payload_bytes
     )
 }
 

@@ -3057,15 +3057,15 @@ fn diagnostic_severity_tracks_static_exposure_class() {
 fn diagnostic_refresh_plan_clears_stale_previous_uris() -> Result<(), String> {
     let stale_uri = test_uri("file:///workspace/src/stale.rs")?;
     let current_uri = test_uri("file:///workspace/src/current.rs")?;
-    let mut previous_uris = BTreeSet::new();
-    previous_uris.insert(stale_uri.clone());
-    previous_uris.insert(current_uri.clone());
+    let mut previous = BTreeMap::new();
+    previous.insert(stale_uri.clone(), Vec::new());
+    previous.insert(current_uri.clone(), Vec::new());
 
     let plan = diagnostic_refresh_plan(
-        &previous_uris,
+        &previous,
         vec![DiagnosticBatch {
             uri: current_uri.clone(),
-            diagnostics: Vec::new(),
+            diagnostics: vec![gap_action_diagnostic()],
         }],
     );
 
@@ -3073,6 +3073,40 @@ fn diagnostic_refresh_plan_clears_stale_previous_uris() -> Result<(), String> {
     assert_eq!(plan.publish_batches[0].uri, current_uri);
     assert_eq!(plan.clear_uris, vec![stale_uri]);
     assert_eq!(plan.current_uris.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri() -> Result<(), String>
+{
+    let uri = test_uri("file:///workspace/src/current.rs")?;
+    let first = gap_action_diagnostic();
+    let mut previous = BTreeMap::new();
+    previous.insert(uri.clone(), vec![first.clone()]);
+
+    let unchanged = diagnostic_refresh_plan(
+        &previous,
+        vec![DiagnosticBatch {
+            uri: uri.clone(),
+            diagnostics: vec![first.clone()],
+        }],
+    );
+    assert!(unchanged.publish_batches.is_empty());
+    assert_eq!(unchanged.unchanged_uri_count, 1);
+    assert!(unchanged.suppressed_payload_bytes > 0);
+
+    let mut changed = first;
+    changed.message.push_str("; changed");
+    let changed_plan = diagnostic_refresh_plan(
+        &previous,
+        vec![DiagnosticBatch {
+            uri,
+            diagnostics: vec![changed],
+        }],
+    );
+    assert_eq!(changed_plan.publish_batches.len(), 1);
+    assert_eq!(changed_plan.unchanged_uri_count, 0);
+    assert!(changed_plan.published_payload_bytes > 0);
     Ok(())
 }
 

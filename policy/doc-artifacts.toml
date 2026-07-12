@@ -594,3 +594,11 @@ path = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Accepted and shipped targeted Rust rerun contract: explicit canonical-gap or changed-test selection, content-keyed fact reuse, named invalidation and cold fallback, identity and receipt continuity, local graph provenance, and a reproducible cold-versus-warm benchmark receipt. No dependency, runtime mutation, source edit, default gate, or support-tier promotion."
+
+[[artifact]]
+id = "RIPR-SPEC-0124"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Accepted contract for #1565: canonical per-URI diagnostic ordering, root-independent diagnostic identities, unchanged publication suppression, removed-URI clearing, normalized equivalent-root digest comparison, and server-side publication telemetry. No editor prompt-cache, latency, runtime mutation, or test-adequacy claim."

@@ -5,6 +5,8 @@ use super::gap_artifacts::{
 };
 use super::state::{AnalysisSnapshot, RefreshMetadata};
 use super::uri::file_uri_for_path;
+#[cfg(test)]
+use super::uri::path_from_file_uri;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
@@ -18,6 +20,7 @@ use crate::output::next_step::reconcile_next_step;
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -42,25 +45,168 @@ pub(super) struct DiagnosticRefreshPlan {
     pub(super) publish_batches: Vec<DiagnosticBatch>,
     pub(super) clear_uris: Vec<Uri>,
     pub(super) current_uris: BTreeSet<Uri>,
+    pub(super) unchanged_uri_count: usize,
+    pub(super) published_payload_bytes: usize,
+    pub(super) suppressed_payload_bytes: usize,
 }
 
 pub(super) fn diagnostic_refresh_plan(
-    previous_uris: &BTreeSet<Uri>,
+    previous: &BTreeMap<Uri, Vec<Diagnostic>>,
     batches: Vec<DiagnosticBatch>,
 ) -> DiagnosticRefreshPlan {
-    let current_uris = batches
+    let batches = canonicalize_diagnostic_batches(batches);
+    let current = batches
         .iter()
-        .map(|batch| batch.uri.clone())
-        .collect::<BTreeSet<_>>();
+        .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let current_uris = current.keys().cloned().collect::<BTreeSet<_>>();
+    let previous_uris = previous.keys().cloned().collect::<BTreeSet<_>>();
     let clear_uris = previous_uris
         .difference(&current_uris)
         .cloned()
         .collect::<Vec<_>>();
+    let mut publish_batches = Vec::new();
+    let mut unchanged_uri_count = 0;
+    let mut published_payload_bytes: usize = 0;
+    let mut suppressed_payload_bytes: usize = 0;
+    for batch in batches {
+        let payload_bytes = diagnostic_payload_bytes(&batch.diagnostics);
+        if previous.get(&batch.uri) == Some(&batch.diagnostics) {
+            unchanged_uri_count += 1;
+            suppressed_payload_bytes = suppressed_payload_bytes.saturating_add(payload_bytes);
+        } else {
+            published_payload_bytes = published_payload_bytes.saturating_add(payload_bytes);
+            publish_batches.push(batch);
+        }
+    }
     DiagnosticRefreshPlan {
-        publish_batches: batches,
+        publish_batches,
         clear_uris,
         current_uris,
+        unchanged_uri_count,
+        published_payload_bytes,
+        suppressed_payload_bytes,
     }
+}
+
+/// Canonicalize the order and exact duplicates in every URI's diagnostic list.
+///
+/// The analysis pipeline is allowed to discover evidence in implementation
+/// order. LSP publication and refresh comparison are not: they need a stable
+/// semantic order so traversal or map-order changes do not create churn.
+pub(super) fn canonicalize_diagnostic_batches(
+    mut batches: Vec<DiagnosticBatch>,
+) -> Vec<DiagnosticBatch> {
+    for batch in &mut batches {
+        batch.diagnostics.sort_by_key(diagnostic_sort_key);
+        batch.diagnostics.dedup();
+    }
+    batches.sort_by(|left, right| left.uri.cmp(&right.uri));
+    batches
+}
+
+/// Return a root-independent digest of a canonical diagnostic payload.
+///
+/// Navigation URIs remain absolute in the LSP wire payload, but the cache
+/// identity must be comparable for equivalent checkouts. Path-bearing data is
+/// therefore rewritten to `repo://` relative paths before hashing.
+#[cfg(test)]
+pub(super) fn normalized_diagnostic_payload_digest(
+    root: &Path,
+    diagnostics: &[Diagnostic],
+) -> String {
+    let normalized = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            serde_json::to_value(diagnostic).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "debug": format!("{diagnostic:?}")
+                })
+            })
+        })
+        .map(|mut value| {
+            normalize_path_values(root, &mut value, None);
+            value
+        })
+        .collect::<Vec<_>>();
+    let serialized = serde_json::to_vec(&normalized).unwrap_or_else(|_| Vec::new());
+    let digest = Sha256::digest(serialized);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+fn normalize_path_values(root: &Path, value: &mut serde_json::Value, key: Option<&str>) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (child_key, child_value) in object {
+                normalize_path_values(root, child_value, Some(child_key.as_str()));
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                normalize_path_values(root, child, key);
+            }
+        }
+        serde_json::Value::String(string) => {
+            if matches!(key, Some("file" | "gap_ledger")) {
+                *string = display_repo_path(root, Path::new(string)).to_string();
+            } else if key == Some("uri")
+                && let Ok(uri) = string.parse::<Uri>()
+                && let Some(path) = path_from_file_uri(&uri)
+            {
+                *string = format!("repo://{}", display_repo_path(root, &path));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn diagnostic_sort_key(diagnostic: &Diagnostic) -> String {
+    let diagnostic_id = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("diagnostic_id"))
+        .and_then(serde_json::Value::as_str)
+        .or(match diagnostic.code.as_ref() {
+            Some(NumberOrString::String(value)) => Some(value.as_str()),
+            _ => None,
+        })
+        .unwrap_or("");
+    let serialized =
+        serde_json::to_string(diagnostic).unwrap_or_else(|_| format!("{diagnostic:?}"));
+    format!(
+        "{diagnostic_id}\0{:010}:{:010}:{:010}:{:010}\0{serialized}",
+        diagnostic.range.start.line,
+        diagnostic.range.start.character,
+        diagnostic.range.end.line,
+        diagnostic.range.end.character
+    )
+}
+
+fn diagnostic_payload_bytes(diagnostics: &[Diagnostic]) -> usize {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            serde_json::to_vec(diagnostic)
+                .map(|payload| payload.len())
+                .unwrap_or_else(|_| format!("{diagnostic:?}").len())
+        })
+        .sum()
+}
+
+fn stable_diagnostic_id<'a>(prefix: &str, parts: impl IntoIterator<Item = &'a str>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(prefix.as_bytes());
+    hasher.update([0]);
+    for part in parts {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
+    }
+    let digest = hasher.finalize();
+    format!(
+        "{prefix}:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7]
+    )
 }
 
 pub(super) fn take_all_uris(uris: &mut BTreeSet<Uri>) -> Vec<Uri> {
@@ -227,10 +373,15 @@ pub(super) fn workspace_diagnostics_with_config(
         );
     }
 
-    let diagnostics_by_uri = grouped.clone();
-    let batches = grouped
-        .into_iter()
-        .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
+    let batches = canonicalize_diagnostic_batches(
+        grouped
+            .into_iter()
+            .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
+            .collect(),
+    );
+    let diagnostics_by_uri = batches
+        .iter()
+        .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
         .collect();
     let snapshot = AnalysisSnapshot {
         root,
@@ -401,7 +552,7 @@ fn diagnostic_for_gap_record(
         message: gap_record_diagnostic_message(record),
         related_information: None,
         tags: None,
-        data: Some(gap_record_diagnostic_data(ledger_path, record)),
+        data: Some(gap_record_diagnostic_data(root, ledger_path, record)),
     };
     Some((uri, diagnostic))
 }
@@ -416,6 +567,12 @@ fn absolute_gap_anchor_path(root: &Path, path: &Path) -> PathBuf {
 
 fn display_lsp_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn display_repo_path(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(display_lsp_path)
+        .unwrap_or_else(|_| display_lsp_path(path))
 }
 
 /// A finding is advisory when it carries a static limit or a preview language
@@ -479,11 +636,28 @@ fn gap_record_diagnostic_message(record: &GapRecord) -> String {
     message
 }
 
-fn gap_record_diagnostic_data(ledger_path: &Path, record: &GapRecord) -> serde_json::Value {
-    serde_json::json!({
+fn gap_record_diagnostic_data(
+    root: &Path,
+    ledger_path: &Path,
+    record: &GapRecord,
+) -> serde_json::Value {
+    let diagnostic_id = if !record.canonical_gap_id.trim().is_empty() {
+        record.canonical_gap_id.clone()
+    } else {
+        stable_diagnostic_id(
+            "gap",
+            [
+                record.gap_id.as_str(),
+                record.kind.as_str(),
+                record.language.as_str(),
+            ],
+        )
+    };
+    let mut data = serde_json::json!({
         "schema_version": "0.1",
         "source": "gap_decision_ledger",
-        "gap_ledger": display_lsp_path(ledger_path),
+        "gap_ledger": display_repo_path(root, ledger_path),
+        "diagnostic_id": diagnostic_id,
         "gap_id": record.gap_id,
         "canonical_gap_id": record.canonical_gap_id,
         "gap_kind": record.kind,
@@ -505,7 +679,16 @@ fn gap_record_diagnostic_data(ledger_path: &Path, record: &GapRecord) -> serde_j
         "receipt_command": record.receipt_command,
         "receipt": record.receipt,
         "authority_boundary": record.authority_boundary,
-    })
+    });
+    if let Some(object) = data.as_object_mut()
+        && let Some(anchor) = object.get_mut("anchor")
+        && let Some(anchor_object) = anchor.as_object_mut()
+        && let Some(file) = anchor_object.get("file").and_then(|value| value.as_str())
+    {
+        let file = display_repo_path(root, Path::new(file));
+        anchor_object.insert("file".to_string(), serde_json::Value::String(file));
+    }
+    data
 }
 
 fn non_empty(value: &str) -> Option<&str> {
@@ -571,6 +754,15 @@ pub(super) fn diagnostic_for_classified_seam_with_config(
             character: MAX_DIAGNOSTIC_RANGE_WIDTH,
         },
     };
+    let diagnostic_id = stable_diagnostic_id(
+        "seam",
+        [
+            seam.owner(),
+            seam.kind().as_str(),
+            seam.expected_sink().as_str(),
+            seam.expression(),
+        ],
+    );
     Some(Diagnostic {
         range,
         severity: Some(severity),
@@ -585,6 +777,7 @@ pub(super) fn diagnostic_for_classified_seam_with_config(
         tags: None,
         data: Some(serde_json::json!({
             "schema_version": "0.1",
+            "diagnostic_id": diagnostic_id,
             "seam_id": seam.id().as_str(),
             "seam_kind": seam.kind().as_str(),
             "grip_class": entry.class.as_str(),
@@ -648,15 +841,38 @@ pub(super) fn diagnostic_for_finding_with_config(
     finding: &Finding,
     config: &SeverityConfig,
 ) -> Diagnostic {
+    let file = display_repo_path(root, &finding.probe.location.file);
+    let owner = finding
+        .probe
+        .owner
+        .as_ref()
+        .map(|owner| owner.0.as_str())
+        .unwrap_or("");
+    let diagnostic_id = finding
+        .canonical_gap
+        .as_ref()
+        .map(|gap| gap.id.clone())
+        .unwrap_or_else(|| {
+            stable_diagnostic_id(
+                "finding",
+                [
+                    file.as_str(),
+                    finding.probe.family.as_str(),
+                    owner,
+                    finding.probe.expression.as_str(),
+                ],
+            )
+        });
     let mut data = serde_json::json!({
         "schema_version": "0.1",
+        "diagnostic_id": diagnostic_id,
         "finding_id": finding.id.as_str(),
         "probe_id": finding.probe.id.to_string(),
         "classification": finding.class.as_str(),
         "probe_family": finding.probe.family.as_str(),
         "confidence": finding.confidence,
         "source_range": {
-            "file": finding.probe.location.file.display().to_string(),
+            "file": file,
             "line": finding.probe.location.line,
             "column": finding.probe.location.column,
         },
@@ -989,8 +1205,10 @@ mod seam_diagnostic_tests {
     #[test]
     fn diagnostic_data_field_carries_seam_id_and_grip_class() -> Result<(), String> {
         let entry = classified(SeamGripClass::WeaklyGripped);
-        let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+        let diag = diagnostic_for_classified_seam(Path::new("/repo-a"), &entry)
             .ok_or_else(|| "expected diagnostic".to_string())?;
+        let equivalent = diagnostic_for_classified_seam(Path::new("/repo-b"), &entry)
+            .ok_or_else(|| "expected equivalent diagnostic".to_string())?;
         let data = diag
             .data
             .as_ref()
@@ -1009,6 +1227,13 @@ mod seam_diagnostic_tests {
         if grip_class != "weakly_gripped" {
             return Err(format!("grip_class mismatch: {grip_class}"));
         }
+        assert_eq!(
+            data["diagnostic_id"],
+            equivalent
+                .data
+                .as_ref()
+                .ok_or_else(|| "missing equivalent data".to_string())?["diagnostic_id"]
+        );
         Ok(())
     }
 
@@ -1885,5 +2110,111 @@ mod lsp_next_step_parity_tests {
             !message.contains("the repair packet is complete and delegatable"),
             "LSP diagnostic must NOT say actionable for blocked packet; got: {message}"
         );
+    }
+}
+
+#[cfg(test)]
+mod delivery_tests {
+    use super::*;
+
+    fn diagnostic(id: &str, line: u32) -> Diagnostic {
+        Diagnostic {
+            range: Range {
+                start: Position { line, character: 0 },
+                end: Position {
+                    line,
+                    character: 10,
+                },
+            },
+            severity: Some(DiagnosticSeverity::INFORMATION),
+            code: Some(NumberOrString::String("ripr-test".to_string())),
+            code_description: None,
+            source: Some("ripr".to_string()),
+            message: format!("diagnostic {id}"),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({ "diagnostic_id": id })),
+        }
+    }
+
+    #[test]
+    fn canonicalization_sorts_by_stable_diagnostic_id() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        let batches = canonicalize_diagnostic_batches(vec![DiagnosticBatch {
+            uri: uri.clone(),
+            diagnostics: vec![diagnostic("b", 1), diagnostic("a", 2)],
+        }]);
+        let ids = batches
+            .first()
+            .ok_or_else(|| "missing batch".to_string())?
+            .diagnostics
+            .iter()
+            .map(|diagnostic| {
+                diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("diagnostic_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["a", "b"]);
+        Ok(())
+    }
+
+    #[test]
+    fn canonicalization_removes_exact_duplicate_payloads() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        let repeated = diagnostic("same", 1);
+        let batches = canonicalize_diagnostic_batches(vec![DiagnosticBatch {
+            uri,
+            diagnostics: vec![repeated.clone(), repeated],
+        }]);
+        assert_eq!(
+            batches
+                .first()
+                .ok_or_else(|| "missing batch".to_string())?
+                .diagnostics
+                .len(),
+            1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_payload_digest_ignores_equivalent_checkout_roots() -> Result<(), String> {
+        let root_a = PathBuf::from("/tmp/ripr-root-a");
+        let root_b = PathBuf::from("/tmp/ripr-root-b");
+        let first = path_sensitive_diagnostic(&root_a)?;
+        let second = path_sensitive_diagnostic(&root_b)?;
+
+        assert_eq!(
+            normalized_diagnostic_payload_digest(&root_a, &[first]),
+            normalized_diagnostic_payload_digest(&root_b, &[second])
+        );
+        Ok(())
+    }
+
+    fn path_sensitive_diagnostic(root: &Path) -> Result<Diagnostic, String> {
+        let mut diagnostic = diagnostic("root-independent", 1);
+        let related_uri = file_uri_for_path(&root.join("tests/lib.rs"))?;
+        diagnostic.related_information = Some(vec![DiagnosticRelatedInformation {
+            location: Location {
+                uri: related_uri,
+                range: diagnostic.range,
+            },
+            message: "related test".to_string(),
+        }]);
+        diagnostic.data = Some(serde_json::json!({
+            "diagnostic_id": "gap:stable",
+            "source_range": { "file": root.join("src/lib.rs") },
+            "gap_ledger": root.join("target/ripr/reports/gap.json"),
+        }));
+        Ok(diagnostic)
     }
 }

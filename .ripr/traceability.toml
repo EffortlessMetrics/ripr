@@ -6743,3 +6743,36 @@ metrics = [
   "targeted_rerun_warm_p95_ms",
   "targeted_rerun_cache_hit_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0124"
+name = "LSP diagnostic delivery stability"
+spec = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::diagnostic_refresh_plan_clears_stale_previous_uris",
+  "crates/ripr/src/lsp/tests.rs::diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri",
+  "crates/ripr/src/lsp/diagnostics.rs::delivery_tests::canonicalization_sorts_by_stable_diagnostic_id",
+  "crates/ripr/src/lsp/diagnostics.rs::delivery_tests::canonicalization_removes_exact_duplicate_payloads",
+  "crates/ripr/src/lsp/diagnostics.rs::delivery_tests::normalized_payload_digest_ignores_equivalent_checkout_roots",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_data_field_carries_seam_id_and_grip_class",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+]
+code = [
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/tests.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md",
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+]
+metrics = [
+  "lsp_diagnostic_computed_files",
+  "lsp_diagnostic_published_files",
+  "lsp_diagnostic_unchanged_files",
+  "lsp_diagnostic_cleared_files",
+  "lsp_diagnostic_published_payload_bytes",
+  "lsp_diagnostic_suppressed_payload_bytes",
+]
