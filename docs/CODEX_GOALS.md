@@ -84,6 +84,24 @@ Codex Goals runs should use repository artifacts instead of chat history:
 - `.ripr/goals/active.toml`
 - `target/ripr/reports/`
 
+## Issue Compilation Contract
+
+Before an implementation worker starts, the orchestrator compiles the work
+into a bounded issue packet containing verified repository state, one invariant
+or production delta, exact source-of-truth links, intended files or ownership
+seam, positive acceptance cases, adversarial and negative controls, explicit
+non-goals, proof commands, dependency and land order, and stop conditions for
+contradicted premises or architectural expansion.
+
+The implementation worker repairs concrete review or CI defects within that
+packet. When the packet premise is contradicted, required scope expands, or
+several workers repeat the same failure, return the work to orchestration for
+recompilation rather than escalating models or improvising architecture.
+
+Execution waves are limited by CI and merge capacity, not available model
+quota. Do not release another conflicting wave while protected-run queues,
+fixture runners, or integration collisions are saturated.
+
 ## Multiple PRs
 
 A Codex goal may create multiple scoped PRs in one run only when the work items

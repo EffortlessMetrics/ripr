@@ -5463,7 +5463,15 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `analysis/call-presence-gate-producer` | blocked | #1543 remains blocked on an authorized real/current-repo CallPresence receipt proving an unambiguous caller/observer route; helper-only, dynamic, method-string, and ambiguous cases stay named limitations. |
 | `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
 | `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
-| `perf/targeted-rerun` | done | #1531, #1532, #1534, #1535, #1537, #1539, #1540, #1542, and #1547 shipped canonical selectors, before/after movement, invalidation, parity, workspace-input, explicit-ledger fingerprints, and a current-main benchmark receipt. |
+| `perf/targeted-rerun` | done | The first targeted-rerun delivery is complete as landed slices; the remaining parity, invalidation-attribution, benchmark, and closeout work is compiled below as separate packets. |
+| `perf/rerun-gap-selection` | done | #1524 treats one canonical gap as a behavioral-debt group, deduplicates anchored scopes, preserves partial success, and names stale or conflicting route data. |
+| `perf/rerun-before-movement` | done | #1527 adds explicit before/after movement receipts with typed seam continuity and honest indeterminate states. |
+| `perf/rerun-cache-disclosure` | done | #1529 discloses producer-owned file-fact cache reuse and recomputation without inventing unavailable whole-analysis invalidation reasons. |
+| `perf/rerun-classification-parity` | ready | Add opt-in two-sided selector-scoped comparison against the typed full inventory; missing, unexpected, and differing seams fail closed with details. |
+| `perf/rerun-evidence-parity` | blocked | Blocked by classification parity; compare typed route, oracle, discriminator, and command evidence only after the selected seam set is trustworthy. |
+| `perf/rerun-invalidation-attribution` | ready | Add producer-owned selected-input fingerprints and explicit invalidation reasons without conflating file-fact cache hits with analysis-input equivalence. |
+| `perf/rerun-benchmark` | blocked | Blocked by evidence parity and invalidation attribution; benchmark receipts must bind speed claims to trustworthy results. |
+| `perf/rerun-closeout` | blocked | Blocked by the benchmark packet; update SPEC-0123, issue #1424, receipts, support review, and closeout only after proof lands. |
 | `perf/targeted-rerun-graph-provenance` | done | #1550 merged: receipts attribute local package/member and feature graph provenance, name unavailable external metadata, and fail parity closed on required graph mismatch without network inference. |
 | `dogfood/route-quality-closeout` | blocked | Required multi-repository receipt corpus is unavailable; keep synthetic fixtures separate and do not claim route-quality closure. Depends on the explicit CallPresence blocker. |
 

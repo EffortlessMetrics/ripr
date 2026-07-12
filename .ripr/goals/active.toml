@@ -139,8 +139,78 @@ id = "perf/targeted-rerun"
 status = "done"
 branch = "perf/targeted-rerun"
 stackable = false
-acceptance = "Merged targeted-rerun slices provide canonical selectors, explicit before/after movement, cache reuse and invalidation disclosure, full-pipeline parity, explicit selector-ledger fingerprints, and a current-main benchmark receipt; remaining graph provenance is split into a dedicated follow-up."
-commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+acceptance = "The first targeted-rerun delivery provides canonical selectors, explicit before/after movement, producer-owned file-fact cache disclosure, explicit selector-ledger fingerprints, and a registered current-main benchmark receipt; classification parity, invalidation attribution, evidence parity, and closeout remain separate packets below."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-gap-selection"
+status = "done"
+branch = "perf/targeted-rerun"
+stackable = false
+acceptance = "#1524 selects every ledger record for one canonical behavioral gap, deduplicates anchored scopes, preserves partial success, and names stale or conflicting route data without arbitrary selection."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-before-movement"
+status = "done"
+branch = "perf/targeted-rerun"
+stackable = false
+acceptance = "#1527 records explicit before/after movement with typed seam continuity and closed movement vocabulary; absent or incomparable before state remains current_state_only or movement_indeterminate."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-cache-disclosure"
+status = "done"
+branch = "perf/targeted-rerun"
+stackable = false
+acceptance = "#1529 reports producer-owned file-fact cache reuse, recomputation, corruption, and store outcomes without claiming unavailable whole-analysis invalidation attribution."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-classification-parity"
+status = "ready"
+branch = "perf/rerun-classification-parity"
+stackable = false
+acceptance = "Prove opt-in two-sided selector-scoped classification parity between targeted rerun and the typed full inventory; missing, unexpected, and differing seams fail closed with retained mismatch details."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo test -p ripr --test cli_smoke rerun_parity -- --test-threads=1", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-evidence-parity"
+status = "blocked"
+branch = "perf/rerun-evidence-parity"
+stackable = false
+blocked_by = ["perf/rerun-classification-parity"]
+blocked_reason = "Typed producer evidence parity must follow classification parity so route and oracle comparisons use the same selected seam set."
+acceptance = "Compare selected gap state, missing discriminator, observing tests, oracle strength, and verify/receipt routes from typed producer facts without using rendered artifacts."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-invalidation-attribution"
+status = "ready"
+branch = "perf/rerun-invalidation-attribution"
+stackable = false
+acceptance = "Attribute selected-analysis input fingerprints and invalidation reasons for source, test, workspace, configuration, policy, schema, and selector-ledger changes without conflating file-fact cache hits with input equivalence."
+commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask check-output-contracts", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-benchmark"
+status = "blocked"
+branch = "perf/rerun-benchmark"
+stackable = false
+blocked_by = ["perf/rerun-evidence-parity", "perf/rerun-invalidation-attribution"]
+blocked_reason = "The benchmark must be bound to trustworthy parity and explicit invalidation attribution before speed claims are promoted."
+acceptance = "Record cold full, cold targeted, warm targeted, and explicit invalidation runs with p50/p95, cache state, parity, revision, and runner class; warm p50 is <=30 seconds and >=5x faster than the registered cold full pipeline."
+commands = ["cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path> --samples 5", "cargo xtask check-pr"]
+
+[[work_item]]
+id = "perf/rerun-closeout"
+status = "blocked"
+branch = "perf/rerun-closeout"
+stackable = false
+blocked_by = ["perf/rerun-benchmark"]
+blocked_reason = "Closeout depends on a trustworthy benchmark receipt and the completed parity/invalidation packets."
+acceptance = "Update SPEC-0123, plan, issue #1424, benchmark receipt, support review, remaining limitations, and current-main closeout after all targeted-rerun packets land."
+commands = ["cargo xtask check-goals", "cargo xtask check-traceability", "cargo xtask check-pr"]
 
 [[work_item]]
 id = "perf/targeted-rerun-graph-provenance"
