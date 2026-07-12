@@ -43,6 +43,9 @@ Linked PRs:
   the current-main benchmark receipt.
 - [#1550](https://github.com/EffortlessMetrics/ripr-swarm/pull/1550) - adds
   local package, feature, and external-graph provenance disclosure.
+- [#1558](https://github.com/EffortlessMetrics/ripr-swarm/pull/1558) - proves
+  two-sided selector-scoped classification parity and fails closed on missing,
+  unexpected, or differing selected seams.
 
 Support-tier impact:
 

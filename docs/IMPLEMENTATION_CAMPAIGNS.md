@@ -5467,7 +5467,7 @@ gaps, targeted reruns, and receipt-backed route-quality closeout.
 | `perf/rerun-gap-selection` | done | #1524 treats one canonical gap as a behavioral-debt group, deduplicates anchored scopes, preserves partial success, and names stale or conflicting route data. |
 | `perf/rerun-before-movement` | done | #1527 adds explicit before/after movement receipts with typed seam continuity and honest indeterminate states. |
 | `perf/rerun-cache-disclosure` | done | #1529 discloses producer-owned file-fact cache reuse and recomputation without inventing unavailable whole-analysis invalidation reasons. |
-| `perf/rerun-classification-parity` | ready | Add opt-in two-sided selector-scoped comparison against the typed full inventory; missing, unexpected, and differing seams fail closed with details. |
+| `perf/rerun-classification-parity` | done | #1558 adds opt-in two-sided selector-scoped comparison against the typed full inventory; missing, unexpected, and differing seams fail closed with retained details. |
 | `perf/rerun-evidence-parity` | blocked | Blocked by classification parity; compare typed route, oracle, discriminator, and command evidence only after the selected seam set is trustworthy. |
 | `perf/rerun-invalidation-attribution` | ready | Add producer-owned selected-input fingerprints and explicit invalidation reasons without conflating file-fact cache hits with analysis-input equivalence. |
 | `perf/rerun-benchmark` | blocked | Blocked by evidence parity and invalidation attribution; benchmark receipts must bind speed claims to trustworthy results. |

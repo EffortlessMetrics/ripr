@@ -168,10 +168,10 @@ commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo xtask c
 
 [[work_item]]
 id = "perf/rerun-classification-parity"
-status = "ready"
+status = "done"
 branch = "perf/rerun-classification-parity"
 stackable = false
-acceptance = "Prove opt-in two-sided selector-scoped classification parity between targeted rerun and the typed full inventory; missing, unexpected, and differing seams fail closed with retained mismatch details."
+acceptance = "#1558 proves opt-in two-sided selector-scoped classification parity between targeted rerun and the typed full inventory; missing, unexpected, and differing seams fail closed with retained mismatch details."
 commands = ["cargo test -p ripr rerun --lib -- --test-threads=1", "cargo test -p ripr --test cli_smoke rerun_parity -- --test-threads=1", "cargo xtask check-pr"]
 
 [[work_item]]
