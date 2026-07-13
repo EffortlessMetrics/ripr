@@ -36,6 +36,14 @@ ripr gate evaluate \
   --out-md target/ripr/reports/gate-decision.md
 ```
 
+When `target/ripr/pr/canonical-delta.json` exists, the gate also consumes that
+versioned producer-owned comparison. Only `introduced_by_change`,
+`weakened_by_change`, and `reintroduced_by_change` can contribute to a causal
+blocking count. Resolved, existing, adjacent, baseline, and unknown
+attributions remain visible but non-blocking. Missing, ambiguous, or low
+coverage comparison evidence is disclosed and fails closed rather than being
+treated as a complete causal comparison.
+
 Only `--pr-guidance`, `--mode`, `--out`, and `--out-md` are required for the
 smallest local run. Other inputs refine the decision when available:
 

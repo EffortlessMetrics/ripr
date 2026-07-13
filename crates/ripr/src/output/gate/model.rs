@@ -1,4 +1,5 @@
 use super::super::gap_decision_ledger::GapRepairRoute;
+use crate::domain::DeltaAttribution;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -69,6 +70,7 @@ pub(crate) struct GateDecisionReport {
     pub(super) decisions: Vec<GateDecision>,
     pub(super) warnings: Vec<String>,
     pub(super) config_errors: Vec<String>,
+    pub(super) causal_delta: Option<super::causal::CausalDeltaAuthority>,
     /// Exception-ledger evaluation (#1442). `Some` only when the caller
     /// passed `--exception-policy`; absent otherwise so existing
     /// gate-decision consumers and goldens see identical output.
@@ -152,6 +154,7 @@ pub(super) struct GateDecision {
     /// Always `true` for diff-scoped modes (no baseline).
     /// Used when computing `new_unsuppressed.count` in baseline mode.
     pub(super) is_baseline_new: bool,
+    pub(super) delta_attribution: Option<DeltaAttribution>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

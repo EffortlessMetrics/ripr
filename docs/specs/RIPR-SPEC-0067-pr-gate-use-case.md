@@ -383,6 +383,17 @@ manufactured block and never a silent pass.
   path, baseline state, and the local `ripr gate evaluate ...`
   reproduction command; artifacts upload before the job fails.
 
+### Causal attribution authority
+
+When the producer-owned `target/ripr/pr/canonical-delta.json` artifact is
+available, gate and baseline thresholding use its canonical identities and
+closed `delta_attribution` values. Only `introduced_by_change`,
+`weakened_by_change`, and `reintroduced_by_change` are PR-caused blocking debt.
+`resolved_by_change`, `changed_surface_existing`, `adjacent_preexisting`,
+`baseline_existing`, and `comparison_unknown` remain visible context and do not
+block by themselves. Incomplete, ambiguous, or unknown comparison coverage is
+disclosed and fails closed; it is never treated as a complete causal comparison.
+
 ### Resolved and regressed evidence
 
 - The PR retires one canonical gap (resolved) and weakens a receipt

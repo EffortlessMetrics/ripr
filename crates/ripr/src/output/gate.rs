@@ -1,3 +1,4 @@
+mod causal;
 mod exception_policy;
 mod input;
 mod model;
@@ -5,6 +6,8 @@ mod presentation;
 mod repair_route;
 
 use super::gap_decision_ledger::{self, GapRecord};
+use crate::domain::DeltaAttribution;
+use causal::CausalDeltaAuthority;
 #[cfg(test)]
 use input::baseline_index_from_value;
 use model::*;
@@ -108,6 +111,18 @@ pub(crate) fn build_gate_decision_report(
     let recommendation_calibration = read_recommendation_calibration(input, &mut warnings);
     let mutation_calibration = read_mutation_calibration(input, &mut warnings);
     let baseline = read_baseline(input, &mut warnings, &mut config_errors);
+    let causal_delta = match CausalDeltaAuthority::load(&input.root) {
+        Ok(authority) => authority,
+        Err(error) => {
+            config_errors.push(error);
+            None
+        }
+    };
+    if let Some(authority) = &causal_delta
+        && !authority.is_complete()
+    {
+        warnings.push(authority.disclosure());
+    }
     // #1442: an explicitly requested exception ledger fails closed — a
     // missing or malformed ledger is a config_error, never a silently
     // ignored input. Warn-severity violations (past-due review under
@@ -157,12 +172,18 @@ pub(crate) fn build_gate_decision_report(
                 &recommendation_calibration,
                 &mutation_calibration,
                 &baseline,
+                causal_delta.as_ref(),
             )
         })
         .collect::<Vec<_>>();
     decisions.sort_by(|left, right| left.id.cmp(&right.id));
     let summary = summarize_decisions(&decisions);
-    let new_unsuppressed = compute_new_unsuppressed(&decisions, &config_errors, input.mode);
+    let new_unsuppressed = compute_new_unsuppressed(
+        &decisions,
+        &config_errors,
+        input.mode,
+        causal_delta.as_ref(),
+    );
     let exception_blocking = exception_policy
         .as_ref()
         .map(|report| report.blocking_count())
@@ -208,6 +229,7 @@ pub(crate) fn build_gate_decision_report(
         decisions,
         warnings,
         config_errors,
+        causal_delta,
         exception_policy,
     })
 }
@@ -450,6 +472,7 @@ fn gate_decision(
     recommendation_calibration: &CalibrationIndex,
     mutation_calibration: &CalibrationIndex,
     baseline: &BaselineIndex,
+    causal_delta: Option<&CausalDeltaAuthority>,
 ) -> GateDecision {
     let recommendation_calibration =
         calibration_for_candidate(candidate, recommendation_calibration);
@@ -461,6 +484,11 @@ fn gate_decision(
         .iter()
         .any(|identity| baseline.identities.contains(identity));
     let acknowledgement_label = acknowledgement_label(policy, labels);
+    let causal_attribution = causal_delta
+        .map(|authority| authority.attribution_for(candidate.canonical_gap_id.as_deref()));
+    let causal_allows_blocking = causal_attribution
+        .map(CausalDeltaAuthority::allows_blocking)
+        .unwrap_or(true);
     let would_block = candidate_would_block(
         candidate,
         policy.mode,
@@ -468,6 +496,7 @@ fn gate_decision(
         is_baseline_new,
         &recommendation_calibration,
         &mutation_calibration,
+        causal_allows_blocking,
     );
     let route_limited = candidate_is_policy_eligible_without_route(candidate)
         && !gate_repair_route_is_complete(candidate);
@@ -540,6 +569,7 @@ fn gate_decision(
         },
         repair_route,
         is_baseline_new,
+        delta_attribution: causal_attribution,
     }
 }
 
@@ -676,8 +706,9 @@ fn candidate_would_block(
     is_baseline_new: bool,
     recommendation_calibration: &CalibrationEvidence,
     mutation_calibration: &CalibrationEvidence,
+    causal_allows_blocking: bool,
 ) -> bool {
-    if !eligible {
+    if !eligible || !causal_allows_blocking {
         return false;
     }
     match mode {
@@ -840,6 +871,7 @@ fn compute_new_unsuppressed(
     decisions: &[GateDecision],
     config_errors: &[String],
     mode: GateMode,
+    causal_delta: Option<&CausalDeltaAuthority>,
 ) -> NewUnsuppressed {
     // Fail-closed: analysis did not run.
     if let Some(first_error) = config_errors.first() {
@@ -868,13 +900,21 @@ fn compute_new_unsuppressed(
             candidate_class_is_policy_eligible(d.static_class.as_deref())
                 && matches!(d.decision.as_str(), "blocking" | "advisory")
                 && d.repair_route.limitation.is_none()
+                && causal_delta
+                    .map(|_| {
+                        CausalDeltaAuthority::allows_blocking(
+                            d.delta_attribution
+                                .unwrap_or(DeltaAttribution::ComparisonUnknown),
+                        )
+                    })
+                    .unwrap_or(true)
                 && (!use_baseline_basis || d.is_baseline_new)
         })
         .count();
     NewUnsuppressed {
         basis: Some(basis.to_string()),
         count: count as u64,
-        reason: None,
+        reason: causal_delta.map(CausalDeltaAuthority::disclosure),
     }
 }
 
