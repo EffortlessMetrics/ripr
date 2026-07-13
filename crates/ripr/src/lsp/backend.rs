@@ -10,6 +10,9 @@ use super::hover::{
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
 use super::lens::code_lens_response;
+use super::refresh_scheduler::{
+    RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler, RefreshScope,
+};
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -34,7 +37,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::Notify;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Diagnostic,
@@ -52,8 +55,9 @@ pub(super) struct Backend {
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     latest_analysis: Mutex<Option<AnalysisSnapshot>>,
-    refresh_generation: Mutex<u64>,
-    refresh_in_flight: AsyncMutex<()>,
+    refresh_scheduler: RefreshScheduler,
+    workspace_revision: Mutex<u64>,
+    refresh_idle: Notify,
 }
 
 impl Backend {
@@ -66,8 +70,9 @@ impl Backend {
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
             latest_analysis: Mutex::new(None),
-            refresh_generation: Mutex::new(0),
-            refresh_in_flight: AsyncMutex::new(()),
+            refresh_scheduler: RefreshScheduler::default(),
+            workspace_revision: Mutex::new(0),
+            refresh_idle: Notify::new(),
         }
     }
 
@@ -87,24 +92,70 @@ impl Backend {
     ///   diagnostics present.
     ///
     /// See RIPR-SPEC-0105 for the design rationale.
-    pub(super) async fn refresh_diagnostics(&self, defer_seam_inventory: bool) {
-        let Some(generation) = self.next_refresh_generation() else {
-            return;
-        };
-        self.log_refresh_queued(generation).await;
-        let _refresh_guard = self.refresh_in_flight.lock().await;
-        if !self.is_current_refresh_generation(generation) {
-            return;
-        }
+    pub(super) async fn refresh_diagnostics(&self, scope: RefreshScope, reason: RefreshReason) {
         let Some(root) = self.root() else {
             return;
         };
         let Some(config) = self.analysis_config() else {
             return;
         };
-        let enabled_languages = config.repo_config().languages().enabled().to_vec();
+        let workspace_revision = self.workspace_revision();
+        let decision =
+            self.refresh_scheduler
+                .request(root, config, workspace_revision, scope, reason);
+        let mut request = match decision {
+            RefreshDecision::Start(request) => *request,
+            RefreshDecision::Queued { generation } => {
+                self.log_refresh_queued(generation).await;
+                loop {
+                    if self.refresh_scheduler.is_idle() {
+                        break;
+                    }
+                    let notified = self.refresh_idle.notified();
+                    tokio::pin!(notified);
+                    notified.as_mut().enable();
+                    if self.refresh_scheduler.is_idle() {
+                        break;
+                    }
+                    notified.await;
+                }
+                return;
+            }
+            RefreshDecision::Deduplicated | RefreshDecision::Stopped => return,
+        };
+        let mut cancellation_guard = RefreshCancellationGuard::new(
+            &self.refresh_scheduler,
+            &self.refresh_idle,
+            request.clone(),
+        );
+
+        loop {
+            let completed_authoritatively = self.run_refresh_request(&request).await;
+            let Some(next) = self
+                .refresh_scheduler
+                .finish(&request, completed_authoritatively)
+            else {
+                cancellation_guard.disarm();
+                self.refresh_idle.notify_waiters();
+                return;
+            };
+            request = next;
+            cancellation_guard.update(request.clone());
+        }
+    }
+
+    async fn run_refresh_request(&self, request: &RefreshRequest) -> bool {
+        let generation = request.generation;
+        self.log_refresh_queued(generation).await;
+        if !self.refresh_scheduler.is_current_generation(generation) {
+            return false;
+        }
+        let enabled_languages = request.config.repo_config().languages().enabled().to_vec();
         let started = Instant::now();
         self.log_refresh_started(generation).await;
+        let root = request.root.clone();
+        let config = request.config.clone();
+        let defer_seam_inventory = request.scope.defer_seam_inventory();
         let diagnostics = match tokio::task::spawn_blocking(move || {
             workspace_diagnostics_with_config(&root, &config, defer_seam_inventory)
         })
@@ -118,21 +169,25 @@ impl Backend {
                 diagnostics
             }
             Ok(Err(err)) => {
-                self.report_refresh_failure_after(err, started.elapsed())
-                    .await;
-                return;
+                if self.refresh_scheduler.is_current_generation(generation) {
+                    self.report_refresh_failure_after(err, started.elapsed())
+                        .await;
+                }
+                return false;
             }
             Err(err) => {
-                self.report_refresh_failure_after(
-                    format!("analysis task failed: {err}"),
-                    started.elapsed(),
-                )
-                .await;
-                return;
+                if self.refresh_scheduler.is_current_generation(generation) {
+                    self.report_refresh_failure_after(
+                        format!("analysis task failed: {err}"),
+                        started.elapsed(),
+                    )
+                    .await;
+                }
+                return false;
             }
         };
-        if !self.is_current_refresh_generation(generation) {
-            return;
+        if !self.refresh_scheduler.is_current_generation(generation) {
+            return false;
         }
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
             .with_enabled_languages(&enabled_languages);
@@ -142,7 +197,7 @@ impl Backend {
                 started.elapsed(),
             )
             .await;
-            return;
+            return false;
         };
         let published_uri_count = refresh.publish_batches.len();
         let cleared_uri_count = refresh.clear_uris.len();
@@ -166,6 +221,7 @@ impl Backend {
             suppressed_payload_bytes,
         )
         .await;
+        true
     }
 
     pub(super) async fn report_refresh_failure_after(&self, message: String, duration: Duration) {
@@ -218,19 +274,27 @@ impl Backend {
         take_all_uris(&mut last_diagnostic_uris)
     }
 
+    #[cfg(test)]
     pub(super) fn next_refresh_generation(&self) -> Option<u64> {
-        let Ok(mut generation) = self.refresh_generation.lock() else {
-            return None;
-        };
-        *generation = generation.saturating_add(1);
-        Some(*generation)
+        self.refresh_scheduler.next_generation_for_test()
     }
 
+    #[cfg(test)]
     pub(super) fn is_current_refresh_generation(&self, generation: u64) -> bool {
-        let Ok(current) = self.refresh_generation.lock() else {
-            return false;
-        };
-        *current == generation
+        self.refresh_scheduler.is_current_generation(generation)
+    }
+
+    fn workspace_revision(&self) -> u64 {
+        self.workspace_revision
+            .lock()
+            .map(|revision| *revision)
+            .unwrap_or(0)
+    }
+
+    fn advance_workspace_revision(&self) {
+        if let Ok(mut revision) = self.workspace_revision.lock() {
+            *revision = revision.saturating_add(1);
+        }
     }
 
     fn root(&self) -> Option<PathBuf> {
@@ -338,6 +402,40 @@ impl Backend {
         };
         let diagnostics = last_diagnostics.get(uri)?;
         diagnostic_at_position(diagnostics, position).map(diagnostic_hover_response)
+    }
+}
+
+struct RefreshCancellationGuard<'a> {
+    scheduler: &'a RefreshScheduler,
+    idle: &'a Notify,
+    request: RefreshRequest,
+    armed: bool,
+}
+
+impl<'a> RefreshCancellationGuard<'a> {
+    fn new(scheduler: &'a RefreshScheduler, idle: &'a Notify, request: RefreshRequest) -> Self {
+        Self {
+            scheduler,
+            idle,
+            request,
+            armed: true,
+        }
+    }
+
+    fn update(&mut self, request: RefreshRequest) {
+        self.request = request;
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RefreshCancellationGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed && self.scheduler.cancel(&self.request) {
+            self.idle.notify_waiters();
+        }
     }
 }
 
@@ -574,14 +672,18 @@ impl LanguageServer for Backend {
     }
 
     async fn shutdown(&self) -> LspResult<()> {
+        self.refresh_scheduler.stop();
+        self.refresh_idle.notify_waiters();
         Ok(())
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         self.open_document(params);
+        self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
         // Diff-scoped findings are complete; seams run on explicit refresh only.
-        self.refresh_diagnostics(true).await;
+        self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::DidOpen)
+            .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -590,14 +692,18 @@ impl LanguageServer for Backend {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.close_document(params);
+        self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
-        self.refresh_diagnostics(true).await;
+        self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::DidClose)
+            .await;
     }
 
     async fn did_save(&self, _: DidSaveTextDocumentParams) {
+        self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
         // Diff-scoped findings are complete; seams run on explicit refresh only.
-        self.refresh_diagnostics(true).await;
+        self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::DidSave)
+            .await;
     }
 
     async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
@@ -639,7 +745,8 @@ impl LanguageServer for Backend {
             // Explicit refresh: run the full seam inventory (RIPR-SPEC-0105).
             // This is the demand path that transitions a seams_deferred snapshot
             // to full/limited with complete seam evidence.
-            self.refresh_diagnostics(false).await;
+            self.refresh_diagnostics(RefreshScope::Full, RefreshReason::ExplicitRefresh)
+                .await;
             return Ok(None);
         }
         if params.command == COLLECT_CONTEXT_COMMAND {

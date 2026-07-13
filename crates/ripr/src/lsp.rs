@@ -6,6 +6,7 @@ mod diagnostics;
 mod gap_artifacts;
 mod hover;
 mod lens;
+mod refresh_scheduler;
 mod state;
 #[cfg(test)]
 mod tests;

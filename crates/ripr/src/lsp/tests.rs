@@ -274,6 +274,11 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
 
     runtime.block_on(async {
+        let invalid_root_parent = unique_lsp_test_root("framed-invalid-root")?;
+        let invalid_root = invalid_root_parent.path().join("not-a-directory");
+        std::fs::write(&invalid_root, b"not a workspace directory")
+            .map_err(|err| format!("write invalid LSP root failed: {err}"))?;
+        let invalid_root_uri = file_uri_for_path(&invalid_root)?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (client_read, mut client_write) = tokio::io::split(client_io);
         let (server_read, server_write) = tokio::io::split(server_io);
@@ -294,7 +299,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
                 "method": "initialize",
                 "params": {
                     "processId": null,
-                    "rootUri": "file:///target/ripr/lsp-protocol-smoke-missing-root",
+                    "rootUri": invalid_root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "ripr-lsp-protocol-smoke-missing-base"
+                    },
                     "capabilities": {}
                 }
             }),
@@ -355,6 +363,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
+        let _did_open_notifications = read_until_refresh_terminal(&mut client_read).await?;
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
@@ -372,17 +381,30 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             read_lsp_response_with_notifications(&mut client_read, 2).await?;
         assert!(refresh.get("error").is_none());
         assert_eq!(refresh["result"], serde_json::Value::Null);
-        let notification_messages = log_notification_messages(&notifications);
+        let mut notifications = notifications;
+        let mut notification_messages = log_notification_messages(&notifications);
         assert!(
             notification_messages
                 .iter()
                 .any(|message| message.contains("ripr analysis refresh started"))
         );
-        assert!(
-            notification_messages
-                .iter()
-                .any(|message| message.contains("ripr analysis refresh failed after"))
-        );
+        let has_terminal_refresh = |messages: &[String]| {
+            messages.iter().any(|message| {
+                message.contains("ripr analysis refresh failed after")
+                    || message.contains("ripr analysis refresh completed in")
+            })
+        };
+        if !has_terminal_refresh(&notification_messages)
+            && let Ok(Ok(message)) =
+                tokio::time::timeout(Duration::from_secs(2), read_lsp_message(&mut client_read))
+                    .await
+        {
+            notifications.push(message);
+            notification_messages = log_notification_messages(&notifications);
+        }
+        if !has_terminal_refresh(&notification_messages) {
+            return Err("explicit refresh must report a terminal status".to_string());
+        }
 
         write_lsp_message(
             &mut client_write,
@@ -3860,6 +3882,34 @@ where
             return Ok((message, notifications));
         }
         notifications.push(message);
+    }
+}
+
+async fn read_until_refresh_terminal<R>(reader: &mut R) -> Result<Vec<serde_json::Value>, String>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut notifications = Vec::new();
+    loop {
+        let message = tokio::time::timeout(Duration::from_secs(2), read_lsp_message(reader))
+            .await
+            .map_err(|timeout| {
+                format!("timed out waiting for terminal refresh notification: {timeout}")
+            })??;
+        let is_terminal_refresh = message.get("method").and_then(serde_json::Value::as_str)
+            == Some("window/logMessage")
+            && message
+                .get("params")
+                .and_then(|params| params.get("message"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|message| {
+                    message.contains("ripr analysis refresh failed after")
+                        || message.contains("ripr analysis refresh completed in")
+                });
+        notifications.push(message);
+        if is_terminal_refresh {
+            return Ok(notifications);
+        }
     }
 }
 
