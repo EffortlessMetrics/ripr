@@ -4,12 +4,16 @@
   "description": "Governed real-repository Rust repair attempts for trust and adoption evidence.",
   "authorization": {
     "status": "complete",
-    "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
+    "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
     "repositories": [
       {
         "name": "EffortlessMetrics/ripr-swarm",
-        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
-        "authorized_revision_or_branch": "origin/main@a53d815416785c37e0d0e067c3b10d3bbfd04a8d",
+        "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
+        "authorized_revision_or_branch": "origin/main@37cfb922f5789555e066d43b9164cd6e0e08ee3c",
+        "authorized_observation_heads": [
+          "0db4754aa57845d9473ada2e73f40ede2d75138f",
+          "11192c85cbf5016aaf45d44abd9ce53e0b7557d7"
+        ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
         "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
@@ -17,8 +21,12 @@
       },
       {
         "name": "EffortlessMetrics/perl-lsp-swarm",
-        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
-        "authorized_revision_or_branch": "origin/main@724bfe819d4e0ba6a5a31a0d5499cc9855f2c231",
+        "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
+        "authorized_revision_or_branch": "origin/main@778dee6658345dcb410ffb0d5fd91524aceaf1f4",
+        "authorized_observation_heads": [
+          "f4b3095e81f16a2e931acccaf2a5d479719fbdfc",
+          "81025bcc89515eb30659e1e7388927d2bb1f9d99"
+        ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
         "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
@@ -26,8 +34,12 @@
       },
       {
         "name": "EffortlessMetrics/ub-review",
-        "authorization_ref": "user-direction:2026-07-12-internal-adopting-test-repositories",
-        "authorized_revision_or_branch": "origin/main@9838259a704a5cf3748eb81af29536b99bf7cf3b",
+        "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
+        "authorized_revision_or_branch": "origin/main@7abfb093a32bad67019f94b8d33bf04ec2b0621d",
+        "authorized_observation_heads": [
+          "98aea1868f92c6c0ffe89d9faae83fba11de3019",
+          "fc486dc2be564c34b3047e4b5e90accc853ec13e"
+        ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
         "write_policy": "RIPR does not edit production code or push consumer changes; test-only edits require per-attempt operator approval.",
@@ -142,10 +154,65 @@
       "repository": "EffortlessMetrics/ub-review",
       "analyzed_head_sha": "fc486dc2be564c34b3047e4b5e90accc853ec13e",
       "source_ref": "PR #747",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#747",
       "reason": "static_limitation_no_repair_packet",
       "evidence_ref": "target/ripr/workflow/ub747-full-comments.json",
       "command": "ripr review-comments --root . --base 23f94aa263e6b847c79078b519a76a16a7d1d14d --head HEAD",
       "claim_boundary": "Proof-planner predicate seams remained static_limitation; no repair receipt was run."
+    },
+    {
+      "exclusion_id": "ripr-1545-static-limitation",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "0db4754aa57845d9473ada2e73f40ede2d75138f",
+      "source_ref": "PR #1545",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1545",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "command": "ripr review-comments --root crates/ripr --base 76b9cec019c986e97fac0229c184fe6f2ff3bb15 --head 0db4754aa57845d9473ada2e73f40ede2d75138f",
+      "claim_boundary": "Fresh analysis-only scout reported a static limitation with no producer-owned test-only repair packet; no attempt was counted."
+    },
+    {
+      "exclusion_id": "ripr-1515-analysis-timeout",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "11192c85cbf5016aaf45d44abd9ce53e0b7557d7",
+      "source_ref": "PR #1515",
+      "reason": "analysis_timeout",
+      "evidence_ref": "issue-comment:4950688510",
+      "command": "ripr review-comments --root crates/ripr --base a0b650f9a27ab6ff7b60521240eed6e45351c40f --head 11192c85cbf5016aaf45d44abd9ce53e0b7557d7",
+      "claim_boundary": "Fresh analysis-only scout timed out; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "perl-3703-static-limitation",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "f4b3095e81f16a2e931acccaf2a5d479719fbdfc",
+      "source_ref": "PR #3703",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#3703",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "command": "ripr review-comments --root crates/perl-parser-core --base c334d80743545d56ecd41ec712566a53c7b414f1 --head f4b3095e81f16a2e931acccaf2a5d479719fbdfc",
+      "claim_boundary": "Fresh analysis-only scout reported a static limitation with no producer-owned test-only repair packet; no attempt was counted."
+    },
+    {
+      "exclusion_id": "perl-3738-static-limitation",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "81025bcc89515eb30659e1e7388927d2bb1f9d99",
+      "source_ref": "PR #3738",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#3738",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "command": "ripr review-comments --root crates/perl-parser-core --base 1bb61150e4f9fbdd7bda0c5f9bc1efead1e9b28e --head 81025bcc89515eb30659e1e7388927d2bb1f9d99",
+      "claim_boundary": "Fresh analysis-only scout reported a static limitation with no producer-owned test-only repair packet; no attempt was counted."
+    },
+    {
+      "exclusion_id": "ub-738-static-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "98aea1868f92c6c0ffe89d9faae83fba11de3019",
+      "source_ref": "PR #738",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#738",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "command": "ripr review-comments --root . --base 4ca240144ebc7b3b070d4936821993dfa0cbb667 --head 98aea1868f92c6c0ffe89d9faae83fba11de3019",
+      "claim_boundary": "Fresh analysis-only scout reported a static limitation with no producer-owned test-only repair packet; no attempt was counted."
     },
     {
       "exclusion_id": "ub-757-false-actionability",
@@ -166,6 +233,75 @@
       "evidence_ref": "target/ripr/workflow/ub740-before-comments.json",
       "command": "ripr rerun --changed-test src/enable.rs --root . --json --out target/ripr/workflow/ub740-targeted-rerun.json",
       "claim_boundary": "The suggested test lived in a production source path; targeted rerun rejected the ambiguous direct production owner."
+    }
+  ],
+  "observations": [
+    {
+      "observation_id": "follow-up-ripr-1545",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "0db4754aa57845d9473ada2e73f40ede2d75138f",
+      "source_ref": "PR #1545",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1545",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "new_exclusion",
+      "claim_boundary": "Follow-up observation corresponds to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "follow-up-ripr-1515",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "11192c85cbf5016aaf45d44abd9ce53e0b7557d7",
+      "source_ref": "PR #1515",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1515",
+      "reason": "analysis_timeout",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "new_exclusion",
+      "claim_boundary": "Timeout is not a route or eligible-attempt result."
+    },
+    {
+      "observation_id": "follow-up-perl-3703",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "f4b3095e81f16a2e931acccaf2a5d479719fbdfc",
+      "source_ref": "PR #3703",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#3703",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "new_exclusion",
+      "claim_boundary": "Follow-up observation corresponds to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "follow-up-perl-3738",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "81025bcc89515eb30659e1e7388927d2bb1f9d99",
+      "source_ref": "PR #3738",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#3738",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "new_exclusion",
+      "claim_boundary": "Follow-up observation corresponds to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "follow-up-ub-738",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "98aea1868f92c6c0ffe89d9faae83fba11de3019",
+      "source_ref": "PR #738",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#738",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "new_exclusion",
+      "claim_boundary": "Follow-up observation corresponds to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "follow-up-ub-747-duplicate",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "fc486dc2be564c34b3047e4b5e90accc853ec13e",
+      "source_ref": "PR #747",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#747",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "issue-comment:4950688510",
+      "classification": "duplicate_observation",
+      "duplicate_of": "ub-747-static-limitation",
+      "claim_boundary": "Repeated observation of the existing #747 repository/head/candidate; it adds no exclusion or attempt."
     }
   ]
 }

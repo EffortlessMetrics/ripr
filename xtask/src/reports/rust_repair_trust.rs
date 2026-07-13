@@ -17,6 +17,7 @@ const EXCLUSION_REASONS: [&str; 7] = [
     "verification_failed",
     "no_current_behavior_change",
 ];
+const OBSERVATION_CLASSIFICATIONS: [&str; 2] = ["new_exclusion", "duplicate_observation"];
 const REQUIRED_ROUTE_FIELDS: [&str; 19] = [
     "attempt_id",
     "repository",
@@ -115,6 +116,30 @@ fn build_report(corpus: &Value) -> Value {
                 .collect::<BTreeSet<_>>()
         })
         .unwrap_or_default();
+    let authorized_observation_heads = authorization
+        .and_then(|value| value.get("repositories"))
+        .and_then(Value::as_array)
+        .map(|repositories| {
+            repositories
+                .iter()
+                .filter_map(|repository| {
+                    let name = repository.get("name").and_then(Value::as_str)?;
+                    let heads = repository
+                        .get("authorized_observation_heads")
+                        .and_then(Value::as_array)
+                        .map(|heads| {
+                            heads
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect::<BTreeSet<_>>()
+                        })
+                        .unwrap_or_default();
+                    Some((name.to_string(), heads))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
     if authorization_repository_count != authorized_repositories.len() {
         validation_errors.push(
             "every authorization repository requires revision/branch, artifact paths, analysis actions, write policy, and date"
@@ -140,8 +165,14 @@ fn build_report(corpus: &Value) -> Value {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    let observations = corpus
+        .get("observations")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let mut case_ids = BTreeSet::new();
     let mut exclusion_ids = BTreeSet::new();
+    let mut valid_exclusion_ids = BTreeSet::new();
     let mut movements = BTreeMap::<String, usize>::new();
     let mut exclusion_reason_counts = BTreeMap::<String, usize>::new();
     let mut repository_names = BTreeSet::new();
@@ -254,10 +285,68 @@ fn build_report(corpus: &Value) -> Value {
         }
         if errors.is_empty() {
             valid_exclusions += 1;
+            valid_exclusion_ids.insert(id.to_string());
+            if let Some(repository) = exclusion.get("repository").and_then(Value::as_str) {
+                repository_names.insert(repository.to_string());
+            }
             if let Some(reason) = exclusion.get("reason").and_then(Value::as_str) {
                 *exclusion_reason_counts
                     .entry(reason.to_string())
                     .or_default() += 1;
+            }
+        } else {
+            for error in errors {
+                validation_errors.push(format!("{prefix}: {error}"));
+            }
+        }
+    }
+
+    let mut valid_observations = 0usize;
+    let mut duplicate_observations = 0usize;
+    let mut new_exclusion_observations = 0usize;
+    let mut duplicate_timeout_observations = 0usize;
+    let mut observation_classification_counts = BTreeMap::<String, usize>::new();
+    let mut observation_ids = BTreeSet::new();
+    let timeout_exclusion_count = exclusion_reason_counts
+        .get("analysis_timeout")
+        .copied()
+        .unwrap_or(0);
+    for (index, observation) in observations.iter().enumerate() {
+        let prefix = format!("observations[{index}]");
+        let mut errors = observation_errors(
+            observation,
+            &authorized_repositories,
+            &authorized_observation_heads,
+            &exclusions,
+            &valid_exclusion_ids,
+        );
+        let id = observation
+            .get("observation_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !id.is_empty() && !observation_ids.insert(id.to_string()) {
+            errors.push(format!("duplicate observation id {id}"));
+        }
+        if errors.is_empty() {
+            valid_observations += 1;
+            if let Some(repository) = observation.get("repository").and_then(Value::as_str) {
+                repository_names.insert(repository.to_string());
+            }
+            let classification = observation
+                .get("classification")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            *observation_classification_counts
+                .entry(classification.clone())
+                .or_default() += 1;
+            if classification == "duplicate_observation" {
+                duplicate_observations += 1;
+                if observation.get("reason").and_then(Value::as_str) == Some("analysis_timeout") {
+                    duplicate_timeout_observations += 1;
+                }
+            } else if classification == "new_exclusion" {
+                new_exclusion_observations += 1;
             }
         } else {
             for error in errors {
@@ -349,6 +438,12 @@ fn build_report(corpus: &Value) -> Value {
         "eligible_attempt_count": eligible_attempts,
         "exclusion_count": exclusions.len(),
         "valid_exclusion_count": valid_exclusions,
+        "observation_count": valid_exclusions + valid_observations - new_exclusion_observations,
+        "valid_observation_count": valid_observations,
+        "unique_exclusion_count": valid_exclusions,
+        "duplicate_observation_count": duplicate_observations,
+        "timeout_observation_count": timeout_exclusion_count + duplicate_timeout_observations,
+        "observation_classification_counts": observation_classification_counts,
         "requirements": {
             "minimum_repositories": MIN_REPOSITORIES,
             "minimum_attempts": MIN_ATTEMPTS,
@@ -534,6 +629,113 @@ fn exclusion_errors(exclusion: &Value, authorized_repositories: &BTreeSet<String
     errors
 }
 
+fn observation_errors(
+    observation: &Value,
+    authorized_repositories: &BTreeSet<String>,
+    authorized_observation_heads: &BTreeMap<String, BTreeSet<String>>,
+    exclusions: &[Value],
+    exclusion_ids: &BTreeSet<String>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    for field in [
+        "observation_id",
+        "repository",
+        "analyzed_head_sha",
+        "source_ref",
+        "canonical_candidate_id",
+        "reason",
+        "evidence_ref",
+        "classification",
+        "claim_boundary",
+    ] {
+        if observation
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            errors.push(format!("{field} must be a non-empty string"));
+        }
+    }
+    let Some(repository) = observation.get("repository").and_then(Value::as_str) else {
+        return errors;
+    };
+    if !authorized_repositories.contains(repository) {
+        errors.push(format!("repository {repository} is not authorized"));
+    }
+    let Some(revision) = observation.get("analyzed_head_sha").and_then(Value::as_str) else {
+        return errors;
+    };
+    if revision.len() != 40
+        || !revision
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        errors.push("revision must be a 40-character commit SHA".to_string());
+    }
+    match authorized_observation_heads.get(repository) {
+        None => errors.push(format!(
+            "repository {repository} has no authorized observation heads"
+        )),
+        Some(heads) if heads.is_empty() => errors.push(format!(
+            "repository {repository} has an empty authorized observation head allowlist"
+        )),
+        Some(heads) if !heads.contains(revision) => errors.push(format!(
+            "revision {revision} is not explicitly authorized for observation"
+        )),
+        Some(_) => {}
+    }
+    if let Some(reason) = observation.get("reason").and_then(Value::as_str)
+        && !EXCLUSION_REASONS.contains(&reason)
+    {
+        errors.push(format!(
+            "reason {reason} is not in the exclusion vocabulary"
+        ));
+    }
+    let Some(classification) = observation.get("classification").and_then(Value::as_str) else {
+        return errors;
+    };
+    if !OBSERVATION_CLASSIFICATIONS.contains(&classification) {
+        errors.push(format!(
+            "classification {classification} is not in the observation vocabulary"
+        ));
+    }
+    let duplicate_of = observation.get("duplicate_of").and_then(Value::as_str);
+    if classification == "duplicate_observation" {
+        let Some(duplicate_of) = duplicate_of else {
+            errors.push("duplicate_of is required for duplicate observations".to_string());
+            return errors;
+        };
+        let Some(target) = exclusions.iter().find(|exclusion| {
+            exclusion.get("exclusion_id").and_then(Value::as_str) == Some(duplicate_of)
+        }) else {
+            errors.push(format!(
+                "duplicate_of {duplicate_of} does not name an exclusion"
+            ));
+            return errors;
+        };
+        if !exclusion_ids.contains(duplicate_of) {
+            errors.push(format!(
+                "duplicate_of {duplicate_of} names an invalid exclusion"
+            ));
+        }
+        for field in ["repository", "analyzed_head_sha", "source_ref"] {
+            if observation.get(field) != target.get(field) {
+                errors.push(format!(
+                    "duplicate observation does not match exclusion {duplicate_of} field {field}"
+                ));
+            }
+        }
+        if observation.get("canonical_candidate_id") != target.get("canonical_candidate_id") {
+            errors.push(format!(
+                "duplicate observation does not match exclusion {duplicate_of} candidate identity"
+            ));
+        }
+    } else if duplicate_of.is_some() {
+        errors.push("duplicate_of is only valid for duplicate observations".to_string());
+    }
+    errors
+}
+
 fn markdown_report(report: &Value) -> String {
     let status = report
         .get("status")
@@ -545,6 +747,22 @@ fn markdown_report(report: &Value) -> String {
         .unwrap_or("limited_incomplete_input");
     let attempt_count = report
         .get("attempt_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let observation_count = report
+        .get("observation_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let unique_exclusion_count = report
+        .get("unique_exclusion_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let duplicate_observation_count = report
+        .get("duplicate_observation_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let timeout_observation_count = report
+        .get("timeout_observation_count")
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let eligible = report
@@ -571,7 +789,7 @@ fn markdown_report(report: &Value) -> String {
         format!("# Rust repair trust report\n\nStatus: `{status}`\nRun status: `{run_status}`\n\n");
     body.push_str("## Denominators\n\n");
     body.push_str(&format!(
-        "- Attempts supplied: {attempt_count}\n- Eligible attempts: {eligible}\n- Exclusions supplied: {exclusion_count}\n- Valid exclusions: {valid_exclusion_count}\n- Repositories supplied: {repository_count}\n- Authorized repositories: {authorized}\n\n"
+        "- Attempts supplied: {attempt_count}\n- Eligible attempts: {eligible}\n- Observed runs: {observation_count}\n- Exclusions supplied: {exclusion_count}\n- Valid/unique exclusions: {valid_exclusion_count} / {unique_exclusion_count}\n- Duplicate observations: {duplicate_observation_count}\n- Timeout observations: {timeout_observation_count}\n- Repositories supplied: {repository_count}\n- Authorized repositories: {authorized}\n\n"
     ));
     body.push_str("## Movement\n\n| Movement | Count |\n| --- | ---: |\n");
     if let Some(counts) = report.get("movement_counts").and_then(Value::as_object) {
@@ -836,6 +1054,121 @@ mod tests {
             .any(|error| error.contains("exclusions[1]") && error.contains("not authorized"))
         {
             return Err("invalid exclusion must retain its repository error".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repeated_observations_do_not_inflate_unique_exclusions_or_timeouts() -> Result<(), String> {
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../../metrics/rust-repair-trust/corpus.json"
+        ))
+        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        let report = build_report(&corpus);
+        for (field, expected) in [
+            ("observation_count", 19),
+            ("unique_exclusion_count", 18),
+            ("duplicate_observation_count", 1),
+            ("timeout_observation_count", 4),
+            ("eligible_attempt_count", 0),
+            ("repository_count", 3),
+        ] {
+            if report.get(field).and_then(Value::as_u64) != Some(expected) {
+                return Err(format!("{field} must be {expected}: {}", report[field]));
+            }
+        }
+        if report["observation_classification_counts"]["new_exclusion"] != 5 {
+            return Err("five follow-up observations must map to new exclusions".to_string());
+        }
+        if report["observation_classification_counts"]["duplicate_observation"] != 1 {
+            return Err("the repeated #747 observation must remain a duplicate".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn observations_require_non_empty_authorized_head_allowlists() -> Result<(), String> {
+        let mut corpus: Value = serde_json::from_str(include_str!(
+            "../../../metrics/rust-repair-trust/corpus.json"
+        ))
+        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        corpus["authorization"]["repositories"][0]["authorized_observation_heads"] = json!([]);
+
+        let report = build_report(&corpus);
+        let observation_count = corpus
+            .get("observations")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "observations must be an array".to_string())?
+            .len() as u64;
+        if report["valid_observation_count"]
+            .as_u64()
+            .is_some_and(|count| count >= observation_count)
+        {
+            return Err(
+                "an observation must not count without an authorized head allowlist".to_string(),
+            );
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("empty authorized observation head allowlist"))
+        {
+            return Err("missing empty observation-head allowlist error".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_observations_require_valid_exclusion_targets() -> Result<(), String> {
+        let mut corpus: Value = serde_json::from_str(include_str!(
+            "../../../metrics/rust-repair-trust/corpus.json"
+        ))
+        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        let exclusions = corpus
+            .get_mut("exclusions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "exclusions must be an array".to_string())?;
+        exclusions.push(json!({
+            "exclusion_id": "invalid-target",
+            "repository": "EffortlessMetrics/ub-review",
+            "analyzed_head_sha": "98aea1868f92c6c0ffe89d9faae83fba11de3019",
+            "source_ref": "pilot",
+            "reason": "not-a-governed-reason",
+            "evidence_ref": "target/ripr/pilot/invalid.json",
+            "command": "ripr pilot",
+            "claim_boundary": "invalid exclusion"
+        }));
+        let duplicate_source = corpus
+            .get("observations")
+            .and_then(Value::as_array)
+            .and_then(|observations| observations.get(5))
+            .cloned()
+            .ok_or_else(|| "expected duplicate observation fixture".to_string())?;
+        let mut duplicate = duplicate_source;
+        duplicate["observation_id"] = json!("duplicate-invalid-target");
+        duplicate["duplicate_of"] = json!("invalid-target");
+        corpus
+            .get_mut("observations")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "observations must be an array".to_string())?
+            .push(duplicate);
+
+        let report = build_report(&corpus);
+        if report["duplicate_observation_count"] != 1 {
+            return Err("duplicate of an invalid exclusion must not count".to_string());
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("duplicate_of invalid-target names an invalid exclusion"))
+        {
+            return Err("missing invalid duplicate target error".to_string());
         }
         Ok(())
     }

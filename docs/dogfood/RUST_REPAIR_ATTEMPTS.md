@@ -65,3 +65,11 @@ command, reason, and claim boundary. The closed reason vocabulary is:
 
 Exclusions never enter attempt or improvement denominators. They are evidence
 about route availability and analyzer boundaries, not successful repairs.
+
+Repeated audits are recorded separately in the corpus `observations` ledger.
+An observation must name the exact repository, head, source candidate, and
+reason. A repeated repository/head/candidate identity points to its existing
+exclusion and is counted as a duplicate observation, not as another exclusion
+or eligible attempt. The generated report exposes observed runs, unique
+exclusions, duplicate observations, timeout observations, and eligible attempts
+as separate counts.

@@ -5,7 +5,7 @@
   "description": "Authorized, receipt-backed Rust repair attempts used to measure route quality. Synthetic and preview cases are not production corpus entries.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "kind", "description", "authorization", "cases", "exclusions"],
+  "required": ["schema_version", "kind", "description", "authorization", "cases", "exclusions", "observations"],
   "properties": {
     "schema_version": { "const": "0.1" },
     "kind": { "const": "rust_repair_trust_corpus" },
@@ -18,6 +18,10 @@
     "exclusions": {
       "type": "array",
       "items": { "$ref": "#/$defs/exclusion" }
+    },
+    "observations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/observation" }
     }
   },
   "$defs": {
@@ -55,6 +59,7 @@
         "name": { "$ref": "#/$defs/non_empty_string" },
         "authorization_ref": { "$ref": "#/$defs/non_empty_string" },
         "authorized_revision_or_branch": { "$ref": "#/$defs/non_empty_string" },
+        "authorized_observation_heads": { "$ref": "#/$defs/string_array" },
         "allowed_artifact_paths": { "$ref": "#/$defs/string_array" },
         "allowed_analysis_actions": { "$ref": "#/$defs/string_array" },
         "write_policy": { "$ref": "#/$defs/non_empty_string" },
@@ -158,6 +163,7 @@
       "properties": {
         "exclusion_id": { "$ref": "#/$defs/non_empty_string" },
         "repository": { "$ref": "#/$defs/non_empty_string" },
+        "canonical_candidate_id": { "$ref": "#/$defs/non_empty_string" },
         "analyzed_head_sha": {
           "type": "string",
           "pattern": "^[0-9a-fA-F]{40}$"
@@ -178,6 +184,54 @@
         "command": { "$ref": "#/$defs/non_empty_string" },
         "claim_boundary": { "$ref": "#/$defs/non_empty_string" }
       }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "repository",
+        "analyzed_head_sha",
+        "source_ref",
+        "canonical_candidate_id",
+        "reason",
+        "evidence_ref",
+        "classification",
+        "claim_boundary"
+      ],
+      "properties": {
+        "observation_id": { "$ref": "#/$defs/non_empty_string" },
+        "repository": { "$ref": "#/$defs/non_empty_string" },
+        "analyzed_head_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{40}$"
+        },
+        "source_ref": { "$ref": "#/$defs/non_empty_string" },
+        "canonical_candidate_id": { "$ref": "#/$defs/non_empty_string" },
+        "reason": {
+          "enum": [
+            "analysis_timeout",
+            "diff_scope_oversized",
+            "static_limitation_no_repair_packet",
+            "false_actionability",
+            "production_test_path_rejected",
+            "verification_failed",
+            "no_current_behavior_change"
+          ]
+        },
+        "evidence_ref": { "$ref": "#/$defs/non_empty_string" },
+        "classification": {
+          "enum": ["new_exclusion", "duplicate_observation"]
+        },
+        "duplicate_of": { "$ref": "#/$defs/non_empty_string" },
+        "claim_boundary": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "classification": { "const": "duplicate_observation" } } },
+          "then": { "required": ["duplicate_of"] }
+        }
+      ]
     }
   }
 }
