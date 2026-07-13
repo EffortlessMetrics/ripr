@@ -5,6 +5,7 @@ use crate::analysis::{
     inventory_diff_scoped_classified_seams_at_with_config, seam_cache::stable_input_hash,
     workspace_cache_key_at_with_config,
 };
+use crate::app::repair_route_readiness;
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::help;
 use crate::cli::parse::expect_value;
@@ -177,6 +178,7 @@ struct TargetedRerunSeam {
     line: usize,
     owner: String,
     static_class: String,
+    repair_route_readiness: crate::analysis::repair_route::RepairRouteReadiness,
     related_tests: Vec<TargetedRerunRelatedTest>,
     missing_discriminators: Vec<TargetedRerunMissingDiscriminator>,
 }
@@ -1034,6 +1036,9 @@ fn parity_mismatch_fields(
     if targeted.owner != full.owner {
         fields.push("owner");
     }
+    if targeted.repair_route_readiness != full.repair_route_readiness {
+        fields.push("repair_route_readiness");
+    }
     if targeted.related_tests != full.related_tests {
         fields.push("related_tests");
     }
@@ -1317,6 +1322,7 @@ fn seams_from(entries: &[crate::analysis::ClassifiedSeam]) -> Vec<TargetedRerunS
 }
 
 fn seam_from(entry: &crate::analysis::ClassifiedSeam) -> TargetedRerunSeam {
+    let repair_route_readiness = repair_route_readiness(entry);
     TargetedRerunSeam {
         canonical_gap_id: canonical_gap_identity(entry).map(|identity| identity.id),
         seam_id: entry.seam.id().as_str().to_string(),
@@ -1324,6 +1330,7 @@ fn seam_from(entry: &crate::analysis::ClassifiedSeam) -> TargetedRerunSeam {
         line: entry.seam.display_line(),
         owner: entry.seam.owner().to_string(),
         static_class: entry.class.as_str().to_string(),
+        repair_route_readiness,
         related_tests: entry
             .evidence
             .related_tests
@@ -1497,7 +1504,13 @@ mod tests {
         parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
         scopes_from_gap_records, seam_matches_resolved_scope,
     };
+    use crate::analysis::repair_route::{
+        NewTestKind, NewTestProposalProvenance, NewTestTargetProposal,
+        REPAIR_ROUTE_AUTHORITY_BOUNDARY, RepairRouteReadiness, RepairRouteState,
+        RepairTargetSelection,
+    };
     use crate::analysis::seam_cache::FileFactCacheStats;
+    use crate::domain::OracleKind;
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
@@ -1854,6 +1867,7 @@ mod tests {
             line: 8,
             owner: "pricing::discounted_total".to_string(),
             static_class: "weakly_gripped".to_string(),
+            repair_route_readiness: baseline_readiness(),
             related_tests: Vec::new(),
             missing_discriminators: Vec::new(),
         };
@@ -1937,6 +1951,49 @@ mod tests {
             comparison.differing[0].fields,
             vec!["static_class", "file", "owner"]
         );
+    }
+
+    #[test]
+    fn parity_reports_repair_route_readiness_drift() {
+        let targeted = baseline_fields();
+        let mut full = baseline_fields();
+        full.repair_route_readiness.state = RepairRouteState::StaticLimitation;
+        let expected = [(&full.seam_id, &full)]
+            .into_iter()
+            .map(|(id, seam)| (id.clone(), seam))
+            .collect();
+        let comparison = compare_selector_scoped_seams(&[targeted], &expected);
+        assert_eq!(
+            comparison.differing[0].fields,
+            vec!["repair_route_readiness"]
+        );
+    }
+
+    #[test]
+    fn targeted_rerun_serializes_static_limitation_route_state() -> Result<(), String> {
+        let mut seam = baseline_fields();
+        seam.static_class = "activation_unknown".to_string();
+        seam.repair_route_readiness.state = RepairRouteState::StaticLimitation;
+        seam.repair_route_readiness.required_evidence = vec![
+            "producer-owned missing discriminator fact".to_string(),
+            "safe test target".to_string(),
+            "incomplete evidence stage: activation".to_string(),
+        ];
+        seam.repair_route_readiness.present_evidence = vec![
+            "producer-owned missing discriminator fact".to_string(),
+            "safe test target".to_string(),
+        ];
+        seam.repair_route_readiness.missing_evidence =
+            vec!["incomplete evidence stage: activation".to_string()];
+
+        let value = serde_json::to_value(seam)
+            .map_err(|error| format!("serialize targeted rerun seam: {error}"))?;
+        if value["repair_route_readiness"]["state"] != "static_limitation" {
+            return Err(format!(
+                "targeted rerun must serialize static_limitation: {value}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
@@ -2065,8 +2122,30 @@ mod tests {
             line: 8,
             owner: "pricing::discounted_total".to_string(),
             static_class: "weakly_gripped".to_string(),
+            repair_route_readiness: baseline_readiness(),
             related_tests: Vec::new(),
             missing_discriminators: Vec::new(),
+        }
+    }
+
+    fn baseline_readiness() -> RepairRouteReadiness {
+        RepairRouteReadiness {
+            state: RepairRouteState::Ready,
+            seam_id: "seam:example".to_string(),
+            canonical_gap_id: Some("gap:example".to_string()),
+            required_evidence: vec!["producer-owned missing discriminator fact".to_string()],
+            present_evidence: vec!["producer-owned missing discriminator fact".to_string()],
+            missing_evidence: Vec::new(),
+            target_selection: RepairTargetSelection::Proposed(NewTestTargetProposal {
+                kind: NewTestKind::Integration,
+                file: "tests/example.rs".into(),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            test_target: None,
+            proposed_oracle: Some(OracleKind::ExactValue),
+            current_oracle: None,
+            authority_boundary: REPAIR_ROUTE_AUTHORITY_BOUNDARY,
         }
     }
 
@@ -2105,6 +2184,7 @@ mod tests {
                 line: 8,
                 owner: "pricing::discounted_total".to_string(),
                 static_class: "weakly_gripped".to_string(),
+                repair_route_readiness: baseline_readiness(),
                 related_tests: Vec::new(),
                 missing_discriminators: Vec::new(),
             }],

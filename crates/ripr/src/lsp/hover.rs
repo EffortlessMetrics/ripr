@@ -1024,6 +1024,13 @@ mod seam_hover_tests {
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(
+                    crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                        "below_threshold_has_no_discount",
+                        std::path::Path::new("tests/pricing.rs"),
+                        12,
+                    ),
+                ),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
@@ -1376,7 +1383,7 @@ mod seam_hover_tests {
             "## Suggested test shape",
             "- file: `tests/pricing.rs`",
             "- name: `discounted_total_boundary_discriminator`",
-            "- candidate value: `input that hits the boundary: amount >= discount_threshold`",
+            "- candidate value: `discount_threshold (equality boundary)`",
             "- assertion shape: assert_eq!(discounted_total",
             "- assertion template: `assert_eq!(discounted_total",
         ] {

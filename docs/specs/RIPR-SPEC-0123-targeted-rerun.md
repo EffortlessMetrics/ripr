@@ -126,8 +126,16 @@ with the full-pipeline fingerprint. Differences are listed in
 `parity.input_mismatches[]` and fail closed as
 `full_pipeline_parity_input_mismatch`.
 
-Targeted seam entries carry the producer-owned related-test and
-missing-discriminator summaries used by this comparison. Verify and receipt
+Targeted seam entries carry the producer-owned repair-route readiness result,
+related-test, and missing-discriminator summaries used by this comparison.
+The readiness result is serialized unchanged from the shared analysis/domain
+authority and includes state, required/present/missing evidence, target
+selection (`existing`, explicit `proposed`, or `missing`), current/proposed
+oracle, canonical identity, and authority boundary. `ready` requires an
+existing or explicit proposed target; `already_gripped` and `policy_excluded`
+are terminal non-repair states, while unresolved producer facts remain
+`static_limitation`.
+Verify and receipt
 commands remain the explicit route supplied by the selected gap ledger; the
 rerun does not manufacture commands from a seam's file or line.
 

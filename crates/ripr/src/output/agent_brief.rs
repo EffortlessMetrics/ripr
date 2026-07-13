@@ -230,6 +230,13 @@ mod tests {
                     test_name: "below_threshold_has_no_discount".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 12,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "below_threshold_has_no_discount",
+                            std::path::Path::new("tests/pricing.rs"),
+                            12,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "exact returned value assertion".to_string(),
@@ -307,7 +314,7 @@ mod tests {
         );
         assert_eq!(
             value["top_seams"][0]["candidate_values"][0]["value"],
-            "input that hits the boundary: amount >= discount_threshold"
+            "discount_threshold (equality boundary)"
         );
         assert!(
             value["top_seams"][0]["verification"]["after_snapshot_command"]

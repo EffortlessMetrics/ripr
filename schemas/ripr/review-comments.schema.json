@@ -545,10 +545,16 @@
           }
         },
         "assertion_shape": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "assertion_kind": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "recommended_file": {
           "type": "string"
@@ -597,8 +603,7 @@
       "additionalProperties": true,
       "required": [
         "prompt",
-        "command",
-        "verify_command"
+        "command"
       ],
       "properties": {
         "prompt": {
@@ -610,7 +615,10 @@
           "minLength": 1
         },
         "verify_command": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "minLength": 1
         }
       }

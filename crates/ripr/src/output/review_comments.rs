@@ -13,8 +13,8 @@ use crate::output::agent_seam_packets;
 use crate::output::agent_seam_packets::missing_discriminator_records_for as missing_records_for;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
-    actionability_for, canonical_receipt_command_for, cross_language_test_target_unresolved,
-    gap_state_for, static_limitations_for,
+    EvidenceRecordStaticLimitation, actionability_for, canonical_receipt_command_for,
+    cross_language_test_target_unresolved, gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
@@ -820,24 +820,6 @@ fn review_recommendation_json(
         Value::Null
     };
 
-    let llm_guidance = if target_unresolved {
-        json!({
-            "prompt": limitation_prompt(navigation_target.as_ref()),
-            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
-        })
-    } else {
-        json!({
-            "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
-            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
-            "verify_command": agent_verify_command(
-                &root_display,
-                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-                None,
-            ),
-        })
-    };
-
     // Structured related-test object {name, file, line} per RIPR-SPEC-0068:
     // the navigational location of the nearest strong related test, or null
     // when no strong related test resolves.
@@ -850,6 +832,58 @@ fn review_recommendation_json(
             })
         })
         .unwrap_or(Value::Null);
+
+    let llm_guidance = if target_unresolved {
+        json!({
+            "prompt": limitation_prompt(navigation_target.as_ref()),
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
+    } else if gap_state == "actionable" {
+        json!({
+            "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            "verify_command": agent_verify_command(
+                &root_display,
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                None,
+            ),
+        })
+    } else if gap_state == "static_limitation" {
+        json!({
+            "prompt": limitation_prompt_for(static_limitations.first()),
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
+    } else {
+        json!({
+            "prompt": "No repair packet is available for this finding. Inspect the producer-owned evidence and policy state before taking action.",
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
+    };
+
+    let suggested_test = if gap_state == "actionable" {
+        json!({
+            "intent": suggested_test_intent(assertion_shape.kind),
+            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
+            "assertion_shape": assertion_shape.example,
+            "assertion_kind": assertion_shape.kind,
+            "recommended_file": recommended.file.as_str(),
+            "recommended_name": recommended.name.as_str(),
+            "near_test": nearest.map(|test| test.test_name.clone()),
+            "related_test": related_test,
+        })
+    } else {
+        json!({
+            "intent": "Inspect the named static limitation.",
+            "candidate_values": [],
+            "assertion_shape": null,
+            "assertion_kind": null,
+            "recommended_file": "not_applicable",
+            "recommended_name": "not_applicable",
+            "near_test": null,
+            "related_test": null,
+        })
+    };
 
     // Card-level oracle (RIPR-SPEC-0068): the representative oracle for this
     // seam — the nearest strong related test if one resolves, else the
@@ -887,16 +921,7 @@ fn review_recommendation_json(
         "source_location": source_location_json(&seam_file, Some(seam_line)),
         "reason": reason_for(selected, missing_value.as_deref()),
         "missing_discriminator": missing_value,
-        "suggested_test": {
-            "intent": suggested_test_intent(assertion_shape.kind),
-            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
-            "assertion_shape": assertion_shape.example,
-            "assertion_kind": assertion_shape.kind,
-            "recommended_file": recommended.file.as_str(),
-            "recommended_name": recommended.name.as_str(),
-            "near_test": nearest.map(|test| test.test_name.clone()),
-            "related_test": related_test,
-        },
+        "suggested_test": suggested_test,
         "llm_guidance": llm_guidance,
     });
 
@@ -1132,6 +1157,16 @@ fn limitation_prompt(
     )
 }
 
+fn limitation_prompt_for(limitation: Option<&EvidenceRecordStaticLimitation>) -> String {
+    match limitation {
+        Some(limitation) => format!(
+            "Do not write a repair test or infer an edit surface from this finding. Inspect static limitation `{}`: {}. Route investigation through `{}`.",
+            limitation.category, limitation.reason, limitation.repair_route
+        ),
+        None => "Do not write a repair test or infer an edit surface from this finding. The producer-owned repair route is incomplete; inspect the evidence before taking action.".to_string(),
+    }
+}
+
 fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Value>) {
     lines.push(format!("## {heading}"));
     lines.push(String::new());
@@ -1312,7 +1347,9 @@ mod tests {
         AgentBriefSelectedSeam, AgentBriefSelection, AgentBriefWhyNow, AgentBriefWhyNowConfidence,
         AgentBriefWhyNowReason,
     };
-    use crate::domain::{Confidence, OracleKind, OracleStrength, StageEvidence, StageState};
+    use crate::domain::{
+        Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
+    };
     use serde_json::Value;
     use std::fs;
     use std::path::PathBuf;
@@ -1344,6 +1381,13 @@ mod tests {
                     test_name: "above_threshold_gets_discount".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 12,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "above_threshold_gets_discount",
+                            std::path::Path::new("tests/pricing.rs"),
+                            12,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "exact returned value assertion".to_string(),
@@ -1356,9 +1400,33 @@ mod tests {
                 observe: stage(StageState::Yes),
                 discriminate: stage(StageState::Weak),
                 observed_values: Vec::new(),
-                missing_discriminators: Vec::new(),
+                missing_discriminators: vec![MissingDiscriminatorFact {
+                    value: "amount == discount_threshold".to_string(),
+                    reason: "producer identified the equality boundary as missing".to_string(),
+                    flow_sink: None,
+                }],
             },
         }
+    }
+
+    fn field_classified_without_discriminator() -> ClassifiedSeam {
+        let mut entry = classified(88);
+        let seam = RepoSeam::new(
+            "src/config.rs",
+            "config::build_options",
+            SeamKind::FieldConstruction,
+            42,
+            88,
+            "options.provider = provider",
+            RequiredDiscriminator::FieldValue {
+                field: "provider".to_string(),
+            },
+            ExpectedSink::OutputField,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.evidence.missing_discriminators.clear();
+        entry.seam = seam;
+        entry
     }
 
     fn cross_language_classified_with_external_observer() -> ClassifiedSeam {
@@ -1384,6 +1452,7 @@ mod tests {
                     test_name: "blob copies resizable buffers".to_string(),
                     file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
                     line: 41,
+                    test_target: None,
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "configured TypeScript bridge exact value observer"
@@ -1425,6 +1494,7 @@ mod tests {
                     test_name: "markdown snapshots resizable ArrayBuffer input".to_string(),
                     file: PathBuf::from("test/js/bun/md/md-edge-cases.test.ts"),
                     line: 42,
+                    test_target: None,
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "configured TypeScript bridge exact markdown output observer"
@@ -1982,6 +2052,29 @@ mod tests {
     }
 
     #[test]
+    fn review_comments_do_not_project_static_limitation_as_repair_guidance() -> Result<(), String> {
+        let seams = [field_classified_without_discriminator()];
+        let selected = selection(&seams);
+        let item = review_recommendation_json(
+            Path::new("."),
+            &Mode::Draft,
+            &RiprConfig::default(),
+            &selected.top_seams[0],
+        );
+
+        assert_eq!(item["gap_state"], "static_limitation");
+        assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
+        assert!(item["receipt_command"].is_null());
+        assert!(item["llm_guidance"].get("verify_command").is_none());
+        assert!(
+            item["llm_guidance"]["prompt"]
+                .as_str()
+                .is_some_and(|prompt| prompt.contains("missing_discriminator_evidence"))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_markdownobject_external_observer_never_suggests_wrong_rust_target()
     -> Result<(), String> {
         let seams = [markdown_object_classified_with_external_observer()];
@@ -2377,6 +2470,10 @@ mod tests {
     #[test]
     fn review_comments_pr_guidance_fixtures_pin_required_cases() -> Result<(), String> {
         let exact_seams = [classified(88)];
+        assert_eq!(
+            missing_records_for(&exact_seams[0])[0].value,
+            "amount == discount_threshold"
+        );
         let exact = AgentBriefResolvedWorkingSet::base(
             "main",
             vec![AgentBriefLine::new("src/pricing.rs", 88)],

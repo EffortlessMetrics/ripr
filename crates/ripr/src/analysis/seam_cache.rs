@@ -63,7 +63,10 @@ pub(crate) struct CachedSeamLimitInfo {
 /// Old envelopes lack those fields and would fail serde deserialization
 /// of the new shape; the version bump routes new entries to a fresh
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.3";
+/// `0.3` → `0.4`: `RelatedTestGrip` gained producer-owned
+/// `TestTargetEvidence`; old envelopes deserialize with a missing target and
+/// would incorrectly turn valid indexed tests into static limitations.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.4";
 const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Compact-classified seam cache schema. This cache stores the same

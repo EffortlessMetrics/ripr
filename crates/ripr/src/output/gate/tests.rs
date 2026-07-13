@@ -960,7 +960,7 @@ fn gate_markdown_projects_complete_repair_route_for_ci_summary() -> Result<(), S
         ),
         (
             "missing discriminator",
-            "  - Why it remains open: input that hits the boundary: amount == discount_threshold",
+            "  - Why it remains open: amount == discount_threshold",
         ),
         (
             "related test",

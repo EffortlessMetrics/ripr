@@ -2793,6 +2793,7 @@ fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Res
             test_name: "nearby_smoke_reaches_owner".to_string(),
             file: PathBuf::from("tests/smoke.rs"),
             line: 7,
+            test_target: None,
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
             evidence_summary: "smoke-only assertion".to_string(),
@@ -2803,6 +2804,7 @@ fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Res
             test_name: "below_threshold_has_no_discount".to_string(),
             file: PathBuf::from("tests/pricing.rs"),
             line: 12,
+            test_target: None,
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
             evidence_summary: "exact value assertion".to_string(),
@@ -2851,6 +2853,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "opaque_fixture_hint".to_string(),
             file: PathBuf::from("tests/opaque.rs"),
             line: 3,
+            test_target: None,
             oracle_kind: OracleKind::Unknown,
             oracle_strength: OracleStrength::None,
             evidence_summary: "opaque relation".to_string(),
@@ -2861,6 +2864,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "low_confidence_smoke".to_string(),
             file: PathBuf::from("tests/low.rs"),
             line: 5,
+            test_target: None,
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
             evidence_summary: "smoke-only assertion".to_string(),
@@ -2871,6 +2875,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "medium_confidence_property".to_string(),
             file: PathBuf::from("tests/medium.rs"),
             line: 9,
+            test_target: None,
             oracle_kind: OracleKind::RelationalCheck,
             oracle_strength: OracleStrength::Medium,
             evidence_summary: "medium oracle".to_string(),
@@ -2881,6 +2886,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "high_confidence_weak_assertion".to_string(),
             file: PathBuf::from("tests/high.rs"),
             line: 11,
+            test_target: None,
             oracle_kind: OracleKind::RelationalCheck,
             oracle_strength: OracleStrength::Weak,
             evidence_summary: "weak oracle".to_string(),
@@ -2955,8 +2961,37 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
 }
 
 #[test]
-fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assertion()
--> Result<(), String> {
+fn unknown_stage_value_route_omits_suggested_assertion_action() -> Result<(), String> {
+    use crate::analysis::seams::SeamGripClass;
+
+    let mut seam = sample_classified_seam();
+    seam.class = SeamGripClass::ActivationUnknown;
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let commands = code_action_commands(&actions)?;
+
+    if commands
+        .iter()
+        .any(|(_, command, _)| command == COPY_SUGGESTED_ASSERTION_COMMAND)
+    {
+        return Err(format!(
+            "unknown-stage route must not offer suggested assertion: {commands:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_keep_navigation_when_related_test_is_unresolved() -> Result<(), String> {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason,
     };
@@ -2966,6 +3001,7 @@ fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assert
         test_name: "publish_event_emits_bus_message".to_string(),
         file: PathBuf::from("tests/service.rs"),
         line: 21,
+        test_target: None,
         oracle_kind: OracleKind::SmokeOnly,
         oracle_strength: OracleStrength::Smoke,
         evidence_summary: "related smoke test reaches event publishing".to_string(),
@@ -2988,8 +3024,8 @@ fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assert
     assert!(
         commands
             .iter()
-            .any(|(_, command, _)| command == COPY_TARGETED_TEST_BRIEF_COMMAND),
-        "expected targeted-test brief action when a related test exists, got {commands:?}"
+            .all(|(_, command, _)| command != COPY_TARGETED_TEST_BRIEF_COMMAND),
+        "unresolved related-test evidence must not produce a repair brief: {commands:?}"
     );
     assert!(
         commands
@@ -4584,7 +4620,7 @@ fn sample_classified_seam() -> crate::analysis::ClassifiedSeam {
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
     };
     use crate::analysis::test_grip_evidence::{
-        RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
+        RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
     };
     use crate::domain::{MissingDiscriminatorFact, ValueContext, ValueFact};
 
@@ -4609,6 +4645,11 @@ fn sample_classified_seam() -> crate::analysis::ClassifiedSeam {
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(TestTargetEvidence::fixture(
+                    "below_threshold_has_no_discount",
+                    Path::new("tests/pricing.rs"),
+                    12,
+                )),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),

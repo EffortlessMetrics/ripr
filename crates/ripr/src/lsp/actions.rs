@@ -9,6 +9,7 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::repair_route::repair_projection_ready;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::domain::OracleStrength;
 use crate::output::agent_seam_packets::{
@@ -170,7 +171,9 @@ fn push_seam_actions(
     if cross_language_test_target_unresolved(context.seam) {
         return;
     }
-    if suggested_assertion.is_some() || related_test.is_some() {
+    if repair_projection_ready(context.seam)
+        && (suggested_assertion.is_some() || related_test.is_some())
+    {
         actions.push(copy_targeted_test_brief_action(
             context.seam,
             targeted_test_brief_for_classified_seam(context.seam),

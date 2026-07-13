@@ -1635,3 +1635,21 @@ contract freeze adds sink fields), and a `perl-lsp-swarm` CI scratch-GC fix
 but the per-run dirs nest under `/mnt/ci-scratch/perl-lsp-swarm/ripr-*` and
 `/mnt/ci-scratch/tmp/ripr-*` — `ripr-swarm`'s own `scratch-gc.yml` does the
 sweep correctly and is the reference pattern).
+
+## 2026-07-12: A related test is not a repair route without producer facts
+
+The first authorized internal-repository pilot found a real false-actionable
+shape in `ub-review`: a field-construction seam was rendered `actionable` even
+though producer evidence supplied no concrete missing discriminator, and the
+suggested test selection resolved to a production source file. The targeted
+rerun correctly rejected that selector as ambiguous, but the earlier review
+projection had already made the route look safe.
+
+The shared Rust evidence-record decision now fails closed when either invariant
+is absent: no producer-owned discriminator means `static_limitation`, and a
+test target equal to the production seam means `static_limitation`. Review
+comments project the same decision: limitations have no repair target, verify
+command, or receipt command; they carry the named investigation route instead.
+Keep the real pilot row excluded until the corrected analyzer produces a
+complete before/after route. A plausible test name or weak related-test match
+is context, not permission to mutate.

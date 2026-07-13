@@ -14388,6 +14388,32 @@ targeted-rerun receipt shape:
       "line": 2,
       "owner": "src/lib.rs::discounted_total",
       "static_class": "weakly_gripped",
+      "repair_route_readiness": {
+        "state": "ready",
+        "seam_id": "67fc764ba37d77bd",
+        "canonical_gap_id": "gap:4b5fdc1a2a157b0d",
+        "required_evidence": [
+          "producer-owned missing discriminator fact: amount >= discount_threshold",
+          "safe test target"
+        ],
+        "present_evidence": [
+          "producer-owned missing discriminator fact: amount >= discount_threshold",
+          "safe test target"
+        ],
+        "missing_evidence": [],
+        "target_selection": {
+          "proposed": {
+            "kind": "integration",
+            "file": "tests/example.rs",
+            "owner": "pricing::discounted_total",
+            "provenance": "producer_owned"
+          }
+        },
+        "test_target": null,
+        "proposed_oracle": "ExactValue",
+        "current_oracle": null,
+        "authority_boundary": "analysis/producer-owned-repair-route-readiness"
+      },
       "related_tests": [],
       "missing_discriminators": []
     }
@@ -14496,6 +14522,15 @@ differences rather than an unexplained count. This also includes
 `parity.input_mismatches[]` when the targeted and full pipeline
 workspace fingerprints differ; that condition is named
 `full_pipeline_parity_input_mismatch` and fails closed.
+
+Targeted seam entries carry `repair_route_readiness` unchanged from the
+analysis authority. It records the readiness state, canonical identity,
+required/present/missing evidence, target selection (`existing`, explicit
+`proposed`, or `missing`), current/proposed oracle, and authority boundary; the
+rerun renderer does not reconstruct those facts. A `ready` route must carry an
+existing or explicit proposed target. `already_gripped` and `policy_excluded`
+are terminal non-repair states; unresolved producer facts are
+`static_limitation`.
 diagnostic is opt-in because it intentionally runs the broad pipeline and is
 not an interactive default. If the full inventory is capped, the report
 instead uses `full_pipeline_parity_incomplete` because an absent seam may

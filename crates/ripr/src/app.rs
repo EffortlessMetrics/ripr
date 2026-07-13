@@ -22,6 +22,7 @@ pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input
 /// (`cli::commands`) reference this single source of truth via
 /// `crate::app::PERL_FACT_PACKET_SCHEMA`.
 pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
+pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 pub(crate) use check::{
     check_workspace_repo_with_config, check_workspace_with_config,
     check_workspace_worktree_with_config,

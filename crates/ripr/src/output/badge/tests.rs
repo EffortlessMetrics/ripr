@@ -10,13 +10,15 @@ use crate::analysis::PreviewLanguageAdvisory;
 use crate::analysis::seams::{
     ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
 };
-use crate::analysis::test_grip_evidence::TestGripEvidence;
+use crate::analysis::test_grip_evidence::{
+    RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
+};
 use crate::app::{CheckInput, CheckOutput, Mode};
 use crate::config::RiprConfig;
 use crate::domain::{
-    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength,
-    Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
-    StageEvidence, StageState, Summary,
+    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, MissingDiscriminatorFact,
+    OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
 };
 use std::path::PathBuf;
 
@@ -120,14 +122,32 @@ fn classified_seam(class: SeamGripClass) -> ClassifiedSeam {
     ClassifiedSeam {
         evidence: TestGripEvidence {
             seam_id: seam.id().clone(),
-            related_tests: Vec::new(),
+            related_tests: vec![RelatedTestGrip {
+                test_name: "discounted_total_boundary".to_string(),
+                file: PathBuf::from("tests/pricing.rs"),
+                line: 8,
+                test_target: Some(TestTargetEvidence::fixture(
+                    "discounted_total_boundary",
+                    std::path::Path::new("tests/pricing.rs"),
+                    8,
+                )),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                evidence_summary: "exact return assertion".to_string(),
+                relation_reason: RelationReason::DirectOwnerCall,
+                relation_confidence: RelationConfidence::High,
+            }],
             reach: stage(StageState::Yes),
             activate: stage(StageState::Yes),
             propagate: stage(StageState::Yes),
             observe: stage(StageState::Yes),
             discriminate: stage(StageState::Weak),
             observed_values: Vec::new(),
-            missing_discriminators: Vec::new(),
+            missing_discriminators: vec![MissingDiscriminatorFact {
+                value: "amount == threshold".to_string(),
+                reason: "producer identified the equality boundary as missing".to_string(),
+                flow_sink: None,
+            }],
         },
         seam,
         class,

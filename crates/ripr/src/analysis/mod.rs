@@ -7,6 +7,7 @@ mod facts;
 mod language;
 mod pipeline;
 mod probes;
+pub(crate) mod repair_route;
 mod rust_index;
 pub(crate) mod seam_cache;
 mod seam_classification;
@@ -26,6 +27,8 @@ pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
+#[cfg(test)]
+pub(crate) use seam_classification::classify_seam;
 pub(crate) use seam_inventory::{
     DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
     SeamLimitSource, apply_pilot_seam_budget,
