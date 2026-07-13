@@ -1066,10 +1066,10 @@ mod tests {
         .map_err(|error| format!("parse corpus fixture: {error}"))?;
         let report = build_report(&corpus);
         for (field, expected) in [
-            ("observation_count", 19),
-            ("unique_exclusion_count", 18),
+            ("observation_count", 25),
+            ("unique_exclusion_count", 24),
             ("duplicate_observation_count", 1),
-            ("timeout_observation_count", 4),
+            ("timeout_observation_count", 6),
             ("eligible_attempt_count", 0),
             ("repository_count", 3),
         ] {
@@ -1077,8 +1077,10 @@ mod tests {
                 return Err(format!("{field} must be {expected}: {}", report[field]));
             }
         }
-        if report["observation_classification_counts"]["new_exclusion"] != 5 {
-            return Err("five follow-up observations must map to new exclusions".to_string());
+        if report["observation_classification_counts"]["new_exclusion"] != 11 {
+            return Err(
+                "eleven follow-up/pilot observations must map to new exclusions".to_string(),
+            );
         }
         if report["observation_classification_counts"]["duplicate_observation"] != 1 {
             return Err("the repeated #747 observation must remain a duplicate".to_string());

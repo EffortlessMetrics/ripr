@@ -9,10 +9,12 @@
       {
         "name": "EffortlessMetrics/ripr-swarm",
         "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
-        "authorized_revision_or_branch": "origin/main@37cfb922f5789555e066d43b9164cd6e0e08ee3c",
+        "authorized_revision_or_branch": "origin/main@ce595af48015526318df596d8a73b0174ee17b7b",
         "authorized_observation_heads": [
           "0db4754aa57845d9473ada2e73f40ede2d75138f",
-          "11192c85cbf5016aaf45d44abd9ce53e0b7557d7"
+          "11192c85cbf5016aaf45d44abd9ce53e0b7557d7",
+          "86fbe048eeedd0eeb6090db96355791c40b3486b",
+          "2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f"
         ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
@@ -22,10 +24,12 @@
       {
         "name": "EffortlessMetrics/perl-lsp-swarm",
         "authorization_ref": "user-direction:2026-07-13-internal-adopting-test-repositories-refresh",
-        "authorized_revision_or_branch": "origin/main@778dee6658345dcb410ffb0d5fd91524aceaf1f4",
+        "authorized_revision_or_branch": "origin/main@22c61245c3e80ef2d07eaf196d94f6fdd3f0d68a",
         "authorized_observation_heads": [
           "f4b3095e81f16a2e931acccaf2a5d479719fbdfc",
-          "81025bcc89515eb30659e1e7388927d2bb1f9d99"
+          "81025bcc89515eb30659e1e7388927d2bb1f9d99",
+          "968464954e5da8e69a0b6b55de8ac349056924f6",
+          "6f175766ee03921a7ae13887d915ce9331647516"
         ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
@@ -38,7 +42,9 @@
         "authorized_revision_or_branch": "origin/main@7abfb093a32bad67019f94b8d33bf04ec2b0621d",
         "authorized_observation_heads": [
           "98aea1868f92c6c0ffe89d9faae83fba11de3019",
-          "fc486dc2be564c34b3047e4b5e90accc853ec13e"
+          "fc486dc2be564c34b3047e4b5e90accc853ec13e",
+          "217633ca232120a021c7dc975973abdcb5056d39",
+          "84a365e4f509c866e01b51cbd5e5ae0c22b7302b"
         ],
         "allowed_artifact_paths": ["target/ripr/**", "target/receipts/**"],
         "allowed_analysis_actions": ["read_source", "run_ripr", "run_targeted_rerun", "run_focused_verification", "write_receipt"],
@@ -233,6 +239,72 @@
       "evidence_ref": "target/ripr/workflow/ub740-before-comments.json",
       "command": "ripr rerun --changed-test src/enable.rs --root . --json --out target/ripr/workflow/ub740-targeted-rerun.json",
       "claim_boundary": "The suggested test lived in a production source path; targeted rerun rejected the ambiguous direct production owner."
+    },
+    {
+      "exclusion_id": "ripr-1581-static-limitation",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "86fbe048eeedd0eeb6090db96355791c40b3486b",
+      "source_ref": "PR #1581",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1581",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-1581.json",
+      "command": "ripr review-comments --root . --base 77ecba84c7b226929ceb0fa53e4d8c836445dcaf --head 86fbe048eeedd0eeb6090db96355791c40b3486b --out target/ripr/fresh-pilot-1581.json",
+      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+    },
+    {
+      "exclusion_id": "ripr-1580-static-limitation",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f",
+      "source_ref": "PR #1580",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1580",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-1580.json",
+      "command": "ripr review-comments --root . --base 91a720f390cb96c2e6c52d08e4215f2cb30942a3 --head 2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f --out target/ripr/fresh-pilot-1580.json",
+      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+    },
+    {
+      "exclusion_id": "perl-4022-analysis-timeout",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "968464954e5da8e69a0b6b55de8ac349056924f6",
+      "source_ref": "PR #4022",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#4022",
+      "reason": "analysis_timeout",
+      "evidence_ref": "docs/dogfood/2026-07-13-rust-pilot.md#perl-lsp-4022",
+      "command": "ripr review-comments --root . --base 1a25013ad341caacbaf96ab2298edeea4f1a5e90 --head 968464954e5da8e69a0b6b55de8ac349056924f6 --out target/ripr/fresh-pilot-4022.json",
+      "claim_boundary": "Bounded analysis timed out before an eligibility result after a 900-second operator bound; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "perl-4037-analysis-timeout",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "6f175766ee03921a7ae13887d915ce9331647516",
+      "source_ref": "PR #4037",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#4037",
+      "reason": "analysis_timeout",
+      "evidence_ref": "docs/dogfood/2026-07-13-rust-pilot.md#perl-lsp-4037",
+      "command": "ripr review-comments --root . --base 26ed34f8f1357076f91aed418949dbe7288c93b3 --head 6f175766ee03921a7ae13887d915ce9331647516 --out target/ripr/fresh-pilot-4037.json",
+      "claim_boundary": "Bounded analysis timed out before an eligibility result after a 900-second operator bound; no route or attempt denominator was inferred."
+    },
+    {
+      "exclusion_id": "ub-772-static-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "217633ca232120a021c7dc975973abdcb5056d39",
+      "source_ref": "PR #772",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#772",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-772.json",
+      "command": "ripr review-comments --root . --base 9838259a704a5cf3748eb81af29536b99bf7cf3b --head 217633ca232120a021c7dc975973abdcb5056d39 --out target/ripr/fresh-pilot-772.json",
+      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+    },
+    {
+      "exclusion_id": "ub-744-static-limitation",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "84a365e4f509c866e01b51cbd5e5ae0c22b7302b",
+      "source_ref": "PR #744",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#744",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-744.json",
+      "command": "ripr review-comments --root . --base 01204a3c9a82a40b072b31495ffd612c36dd5a40 --head 84a365e4f509c866e01b51cbd5e5ae0c22b7302b --out target/ripr/fresh-pilot-744.json",
+      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
     }
   ],
   "observations": [
@@ -302,6 +374,72 @@
       "classification": "duplicate_observation",
       "duplicate_of": "ub-747-static-limitation",
       "claim_boundary": "Repeated observation of the existing #747 repository/head/candidate; it adds no exclusion or attempt."
+    },
+    {
+      "observation_id": "fresh-pilot-ripr-1581",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "86fbe048eeedd0eeb6090db96355791c40b3486b",
+      "source_ref": "PR #1581",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1581",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-1581.json",
+      "classification": "new_exclusion",
+      "claim_boundary": "Fresh analysis-only pilot observation maps to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "fresh-pilot-ripr-1580",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f",
+      "source_ref": "PR #1580",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1580",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-1580.json",
+      "classification": "new_exclusion",
+      "claim_boundary": "Fresh analysis-only pilot observation maps to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "fresh-pilot-perl-4022",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "968464954e5da8e69a0b6b55de8ac349056924f6",
+      "source_ref": "PR #4022",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#4022",
+      "reason": "analysis_timeout",
+      "evidence_ref": "docs/dogfood/2026-07-13-rust-pilot.md#perl-lsp-4022",
+      "classification": "new_exclusion",
+      "claim_boundary": "Timeout is not a route or eligible-attempt result."
+    },
+    {
+      "observation_id": "fresh-pilot-perl-4037",
+      "repository": "EffortlessMetrics/perl-lsp-swarm",
+      "analyzed_head_sha": "6f175766ee03921a7ae13887d915ce9331647516",
+      "source_ref": "PR #4037",
+      "canonical_candidate_id": "EffortlessMetrics/perl-lsp-swarm#4037",
+      "reason": "analysis_timeout",
+      "evidence_ref": "docs/dogfood/2026-07-13-rust-pilot.md#perl-lsp-4037",
+      "classification": "new_exclusion",
+      "claim_boundary": "Timeout is not a route or eligible-attempt result."
+    },
+    {
+      "observation_id": "fresh-pilot-ub-772",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "217633ca232120a021c7dc975973abdcb5056d39",
+      "source_ref": "PR #772",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#772",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-772.json",
+      "classification": "new_exclusion",
+      "claim_boundary": "Fresh analysis-only pilot observation maps to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "fresh-pilot-ub-744",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "84a365e4f509c866e01b51cbd5e5ae0c22b7302b",
+      "source_ref": "PR #744",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#744",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "target/ripr/fresh-pilot-744.json",
+      "classification": "new_exclusion",
+      "claim_boundary": "Fresh analysis-only pilot observation maps to one unique exclusion and zero eligible attempts."
     }
   ]
 }
