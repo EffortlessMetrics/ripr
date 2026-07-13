@@ -1,3 +1,4 @@
+mod causal_delta;
 mod classification;
 #[doc(hidden)]
 pub mod context_packet;
@@ -7,6 +8,10 @@ mod probe;
 mod summary;
 mod support;
 
+pub use causal_delta::{
+    AttributionBasis, CanonicalDelta, CanonicalEvidenceState, ComparisonConfidence,
+    ComparisonCoverage, DeltaAttribution, GapState, compare_fixture_delta,
+};
 pub use classification::ExposureClass;
 pub(crate) use classification::{
     LIMITATION_ANALYZER_ROUTE_PREFIX, LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,

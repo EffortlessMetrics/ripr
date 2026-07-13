@@ -467,6 +467,15 @@ classification = "fixture"
 reason = "Sample JSON packets proving portable verification schemas are executable."
 covered_by = ["cargo xtask check-verification-contracts"]
 
+[[allow]]
+glob = "crates/ripr/tests/fixtures/causal-attribution/*.json"
+kind = "causal_attribution_fixture"
+owner = "analysis/causal-attribution"
+surface = "fixtures"
+classification = "fixture"
+reason = "Fixture-backed base/head attribution rules for canonical evidence comparison."
+covered_by = ["cargo test -p ripr causal_delta", "cargo xtask check-file-policy"]
+
 # ---------------------------------------------------------------------------
 # Brand / assets
 # ---------------------------------------------------------------------------
