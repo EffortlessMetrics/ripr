@@ -1,5 +1,6 @@
 use super::super::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter};
 use super::model::RustIndex;
+use crate::analysis::cancellation;
 use crate::analysis::seam_cache::{
     CacheLoad, FileFactCacheStats, RepoFileFactCache, RepoFileFactCacheKey,
 };
@@ -38,6 +39,7 @@ fn build_index_from_loaded_files_with_cache_and_adapters(
     let mut stats = FileFactCacheStats::default();
     let mut index = RustIndex::default();
     for (file, bytes) in files {
+        cancellation::checkpoint()?;
         let key = RepoFileFactCacheKey::new(file, bytes);
         let summary = match cache.load_file_facts(&key) {
             CacheLoad::Hit(facts) => {
@@ -83,6 +85,7 @@ fn build_index_with_adapters(
 ) -> Result<RustIndex, String> {
     let mut index = RustIndex::default();
     for file in files {
+        cancellation::checkpoint()?;
         let full = root.join(file);
         let text = std::fs::read_to_string(&full)
             .map_err(|err| format!("failed to read {}: {err}", full.display()))?;

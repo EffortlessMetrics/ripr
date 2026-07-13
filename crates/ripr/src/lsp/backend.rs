@@ -3,7 +3,7 @@ use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, WorkspaceDiagnostics, diagnostic_refresh_plan,
-    take_all_uris, workspace_diagnostics_with_config,
+    take_all_uris,
 };
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
@@ -11,7 +11,8 @@ use super::hover::{
 };
 use super::lens::code_lens_response;
 use super::refresh_scheduler::{
-    RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler, RefreshScope,
+    RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler,
+    RefreshScope,
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{
@@ -21,6 +22,7 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::cancellation::{AnalysisAbortKind, is_cancellation_error};
 use crate::domain::context_packet::ContextPacket;
 use crate::domain::{StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
@@ -130,10 +132,16 @@ impl Backend {
         );
 
         loop {
-            let completed_authoritatively = self.run_refresh_request(&request).await;
+            let attempt_started = Instant::now();
+            let outcome = self.run_refresh_request(&request).await;
+            let attempt_duration = attempt_started.elapsed();
+            self.refresh_scheduler
+                .record_attempt_outcome(outcome, attempt_duration);
+            self.log_refresh_attempt_outcome(outcome, attempt_duration)
+                .await;
             let Some(next) = self
                 .refresh_scheduler
-                .finish(&request, completed_authoritatively)
+                .finish(&request, outcome == RefreshAttemptOutcome::Published)
             else {
                 cancellation_guard.disarm();
                 self.refresh_idle.notify_waiters();
@@ -144,11 +152,11 @@ impl Backend {
         }
     }
 
-    async fn run_refresh_request(&self, request: &RefreshRequest) -> bool {
+    async fn run_refresh_request(&self, request: &RefreshRequest) -> RefreshAttemptOutcome {
         let generation = request.generation;
         self.log_refresh_queued(generation).await;
         if !self.refresh_scheduler.is_current_generation(generation) {
-            return false;
+            return RefreshAttemptOutcome::NotStarted;
         }
         let enabled_languages = request.config.repo_config().languages().enabled().to_vec();
         let started = Instant::now();
@@ -156,8 +164,22 @@ impl Backend {
         let root = request.root.clone();
         let config = request.config.clone();
         let defer_seam_inventory = request.scope.defer_seam_inventory();
+        let cancellation = request.cancellation.clone();
+        let execution_gate = self.refresh_scheduler.execution_gate();
         let diagnostics = match tokio::task::spawn_blocking(move || {
-            workspace_diagnostics_with_config(&root, &config, defer_seam_inventory)
+            let _execution = match execution_gate.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            cancellation
+                .checkpoint()
+                .map_err(|error| error.to_string())?;
+            super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
+                &root,
+                &config,
+                defer_seam_inventory,
+                &cancellation,
+            )
         })
         .await
         {
@@ -169,11 +191,24 @@ impl Backend {
                 diagnostics
             }
             Ok(Err(err)) => {
-                if self.refresh_scheduler.is_current_generation(generation) {
+                if self.refresh_scheduler.is_current_generation(generation)
+                    && !is_cancellation_error(&err)
+                {
                     self.report_refresh_failure_after(err, started.elapsed())
                         .await;
+                    return RefreshAttemptOutcome::Failed;
                 }
-                return false;
+                if !is_cancellation_error(&err) {
+                    self.client
+                        .log_message(
+                            MessageType::WARNING,
+                            format!(
+                                "ripr analysis error on superseded generation {generation}: {err}"
+                            ),
+                        )
+                        .await;
+                }
+                return cancellation_outcome(request);
             }
             Err(err) => {
                 if self.refresh_scheduler.is_current_generation(generation) {
@@ -182,12 +217,21 @@ impl Backend {
                         started.elapsed(),
                     )
                     .await;
+                    return RefreshAttemptOutcome::Failed;
                 }
-                return false;
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!(
+                            "ripr analysis task failed on superseded generation {generation}: {err}"
+                        ),
+                    )
+                    .await;
+                return cancellation_outcome(request);
             }
         };
         if !self.refresh_scheduler.is_current_generation(generation) {
-            return false;
+            return cancellation_outcome(request);
         }
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
             .with_enabled_languages(&enabled_languages);
@@ -197,7 +241,7 @@ impl Backend {
                 started.elapsed(),
             )
             .await;
-            return false;
+            return RefreshAttemptOutcome::Failed;
         };
         let published_uri_count = refresh.publish_batches.len();
         let cleared_uri_count = refresh.clear_uris.len();
@@ -205,12 +249,21 @@ impl Backend {
         let published_payload_bytes = refresh.published_payload_bytes;
         let suppressed_payload_bytes = refresh.suppressed_payload_bytes;
         for batch in refresh.publish_batches {
+            if !self.refresh_scheduler.is_current_generation(generation) {
+                return cancellation_outcome(request);
+            }
             self.client
                 .publish_diagnostics(batch.uri, batch.diagnostics, None)
                 .await;
         }
         for uri in refresh.clear_uris {
+            if !self.refresh_scheduler.is_current_generation(generation) {
+                return cancellation_outcome(request);
+            }
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        }
+        if !self.refresh_scheduler.is_current_generation(generation) {
+            return cancellation_outcome(request);
         }
         self.log_refresh_completed(
             summary,
@@ -221,7 +274,7 @@ impl Backend {
             suppressed_payload_bytes,
         )
         .await;
-        true
+        RefreshAttemptOutcome::Published
     }
 
     pub(super) async fn report_refresh_failure_after(&self, message: String, duration: Duration) {
@@ -554,6 +607,33 @@ impl Backend {
             .await;
     }
 
+    async fn log_refresh_attempt_outcome(
+        &self,
+        outcome: RefreshAttemptOutcome,
+        duration: Duration,
+    ) {
+        let telemetry = self.refresh_scheduler.telemetry();
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "ripr analysis refresh attempt outcome={}, duration={}, coalesced={}, cancelled={}, superseded={}, published={}, failed={}, queue_high_water={}, last_superseded_ms={}",
+                    outcome.as_str(),
+                    format_duration(duration),
+                    telemetry.requests_coalesced,
+                    telemetry.active_attempts_cooperatively_cancelled,
+                    telemetry.completed_but_superseded,
+                    telemetry.snapshots_published,
+                    telemetry.failed_attempts,
+                    telemetry.pending_queue_high_water,
+                    telemetry
+                        .last_superseded_attempt_ms
+                        .map_or_else(|| "none".to_string(), |value| value.to_string()),
+                ),
+            )
+            .await;
+    }
+
     async fn log_refresh_completed(
         &self,
         summary: RefreshLogSummary,
@@ -636,6 +716,16 @@ pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> S
         "ripr analysis refresh failed after {}: {message}",
         format_duration(duration)
     )
+}
+
+fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
+    match request.cancellation.checkpoint() {
+        Err(error) if error.kind == AnalysisAbortKind::Cancelled => {
+            RefreshAttemptOutcome::Cancelled
+        }
+        Err(_) => RefreshAttemptOutcome::Superseded,
+        Ok(()) => RefreshAttemptOutcome::Superseded,
+    }
 }
 
 fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri, Vec<Diagnostic>> {

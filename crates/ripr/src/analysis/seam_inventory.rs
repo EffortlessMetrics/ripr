@@ -35,6 +35,7 @@ use super::seam_classification::{self, ClassifiedSeam};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
+use crate::analysis::cancellation;
 use crate::config::RiprConfig;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -462,6 +463,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
     );
     let mut cached =
         rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    cancellation::checkpoint()?;
     trace_latency_phase(
         "file_fact_cache",
         &cached.file_fact_cache.status_label(),
@@ -472,6 +474,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
     let context = test_grip_evidence::CompactGripContext::new(&cached.index);
     let mut classified = Vec::with_capacity(seams.len());
     for seam in seams {
+        cancellation::checkpoint()?;
         let evidence = test_grip_evidence::compact_evidence_for_seam(&seam, &context);
         let class = seam_classification::classify_seam(&seam, &evidence);
         classified.push(ClassifiedSeam {
@@ -510,6 +513,7 @@ fn inventory_classified_seams_from_state_with_config(
     trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
     let seams_started = Instant::now();
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
+    cancellation::checkpoint()?;
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
     let limit_info = apply_repo_exposure_seam_limit(&mut seams);
     let evidence_started = Instant::now();
@@ -519,9 +523,11 @@ fn inventory_classified_seams_from_state_with_config(
         Duration::ZERO,
     );
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    cancellation::checkpoint()?;
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
     let classified = seam_classification::classify_seams_owned(seams, evidence);
+    cancellation::checkpoint()?;
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok((classified, limit_info))
 }
@@ -959,6 +965,7 @@ fn collect_workspace_state(
     let rust_files = workspace::discover_rust_files(root)?;
     let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(rust_files.len());
     for path in rust_files {
+        cancellation::checkpoint()?;
         let bytes = std::fs::read(root.join(&path))
             .map_err(|err| format!("read {} failed: {err}", path.display()))?;
         files.push((path, bytes));

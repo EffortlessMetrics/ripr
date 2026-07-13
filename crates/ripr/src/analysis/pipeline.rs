@@ -11,6 +11,7 @@ use super::{
     AnalysisOptions, AnalysisResult, LanguageRun, LanguageRunStatus, PreviewLanguageAdvisory, diff,
     sort, summary,
 };
+use crate::analysis::cancellation;
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
 
@@ -35,6 +36,7 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         options.base.as_deref(),
         options.diff_file.as_ref(),
     )?;
+    cancellation::checkpoint()?;
     run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
 }
 
@@ -47,6 +49,7 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy(
         return Err("worktree diff mode cannot be combined with --diff".to_string());
     }
     let diff_text = diff::load_worktree_diff(&options.root, options.base.as_deref())?;
+    cancellation::checkpoint()?;
     run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
 }
 
@@ -62,6 +65,7 @@ fn run_pipeline_for_diff_text(
     let mut total_changed_files: usize = 0;
     let mut language_runs: Vec<LanguageRun> = Vec::new();
     for language in languages {
+        cancellation::checkpoint()?;
         // Non-abort contract (Campaign 31 PR 10, #1403): a preview-language
         // adapter failure must not abort the report — the failed language is
         // recorded in `language_runs` and the other languages' findings still
@@ -71,6 +75,7 @@ fn run_pipeline_for_diff_text(
         if !is_preview_language(*language) {
             // Rust (stable) failures propagate via `?`.
             let result = RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?;
+            cancellation::checkpoint()?;
             findings.extend(result.findings);
             total_changed_files += result.changed_files;
             continue;
@@ -87,6 +92,7 @@ fn run_pipeline_for_diff_text(
         };
         match attempted {
             Ok(result) => {
+                cancellation::checkpoint()?;
                 findings.extend(result.findings);
                 total_changed_files += result.changed_files;
             }
@@ -107,6 +113,7 @@ fn run_pipeline_for_diff_text(
     let preview_advisories = detect_preview_advisories(languages, preview_paths.into_iter());
 
     sort::sort_findings(&mut findings);
+    cancellation::checkpoint()?;
     let summary_result = summary::summarize_findings(total_changed_files, &findings);
 
     Ok(AnalysisResult {
@@ -126,11 +133,13 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     let mut total_production_files: usize = 0;
     let mut language_runs: Vec<LanguageRun> = Vec::new();
     for language in languages {
+        cancellation::checkpoint()?;
         // Non-abort contract (see the diff loop above): preview-language
         // failures are recorded, Rust failures still propagate.
         if !is_preview_language(*language) {
             // Rust (stable) failures propagate via `?`.
             let result = RustAdapter.analyze_repo(options, oracle_policy)?;
+            cancellation::checkpoint()?;
             findings.extend(result.findings);
             total_production_files += result.production_files;
             continue;
@@ -147,6 +156,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         };
         match attempted {
             Ok(result) => {
+                cancellation::checkpoint()?;
                 findings.extend(result.findings);
                 total_production_files += result.production_files;
             }
@@ -165,6 +175,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     let preview_advisories = detect_repo_preview_advisories(&options.root, languages);
 
     sort::sort_findings(&mut findings);
+    cancellation::checkpoint()?;
     let summary_result = summary::summarize_findings(total_production_files, &findings);
 
     Ok(AnalysisResult {

@@ -1,6 +1,8 @@
 use super::config::LspAnalysisConfig;
+use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RefreshScope {
@@ -26,6 +28,44 @@ pub(super) enum RefreshReason {
     ExplicitRefresh,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RefreshAttemptOutcome {
+    Published,
+    Failed,
+    Cancelled,
+    Superseded,
+    NotStarted,
+}
+
+impl RefreshAttemptOutcome {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Published => "published",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+            Self::NotStarted => "not_started",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct RefreshTelemetrySnapshot {
+    pub(super) did_open_requests: u64,
+    pub(super) did_save_requests: u64,
+    pub(super) did_close_requests: u64,
+    pub(super) explicit_refresh_requests: u64,
+    pub(super) analyses_started: u64,
+    pub(super) requests_coalesced: u64,
+    pub(super) active_attempts_cooperatively_cancelled: u64,
+    pub(super) completed_but_superseded: u64,
+    pub(super) snapshots_published: u64,
+    pub(super) failed_attempts: u64,
+    pub(super) pending_queue_high_water: u64,
+    pub(super) latest_save_to_snapshot_ms: Option<u128>,
+    pub(super) last_superseded_attempt_ms: Option<u128>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RefreshInputIdentity {
     root: PathBuf,
@@ -41,6 +81,7 @@ pub(super) struct RefreshRequest {
     pub(super) workspace_revision: u64,
     pub(super) scope: RefreshScope,
     pub(super) reason: RefreshReason,
+    pub(super) cancellation: AnalysisCancellationToken,
 }
 
 impl RefreshRequest {
@@ -68,11 +109,22 @@ struct SchedulerState {
     pending_latest: Option<RefreshRequest>,
     last_completed: Option<(RefreshInputIdentity, RefreshScope)>,
     stopping: bool,
+    telemetry: RefreshTelemetrySnapshot,
+    latest_save_requested_at: Option<Instant>,
 }
 
-#[derive(Default)]
 pub(super) struct RefreshScheduler {
     state: Mutex<SchedulerState>,
+    execution_gate: Arc<Mutex<()>>,
+}
+
+impl Default for RefreshScheduler {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(SchedulerState::default()),
+            execution_gate: Arc::new(Mutex::new(())),
+        }
+    }
 }
 
 impl RefreshScheduler {
@@ -89,6 +141,16 @@ impl RefreshScheduler {
         };
         if state.stopping {
             return RefreshDecision::Stopped;
+        }
+
+        match reason {
+            RefreshReason::DidOpen => state.telemetry.did_open_requests += 1,
+            RefreshReason::DidSave => {
+                state.telemetry.did_save_requests += 1;
+                state.latest_save_requested_at = Some(Instant::now());
+            }
+            RefreshReason::DidClose => state.telemetry.did_close_requests += 1,
+            RefreshReason::ExplicitRefresh => state.telemetry.explicit_refresh_requests += 1,
         }
 
         let identity = RefreshInputIdentity {
@@ -130,13 +192,26 @@ impl RefreshScheduler {
             workspace_revision,
             scope,
             reason,
+            cancellation: AnalysisCancellationToken::new(),
         };
         if state.active.is_none() {
             state.active = Some(request.clone());
+            state.telemetry.analyses_started += 1;
             RefreshDecision::Start(Box::new(request))
         } else {
+            if let Some(active) = state.active.as_ref()
+                && !(active.scope == RefreshScope::Full && scope == RefreshScope::Interactive)
+            {
+                active.cancellation.cancel(AnalysisAbortKind::Superseded);
+            }
+            if let Some(pending) = state.pending_latest.as_ref() {
+                pending.cancellation.cancel(AnalysisAbortKind::Superseded);
+            }
             let generation = request.generation;
+            state.telemetry.requests_coalesced += 1;
             state.pending_latest = Some(request);
+            state.telemetry.pending_queue_high_water =
+                state.telemetry.pending_queue_high_water.max(1);
             RefreshDecision::Queued { generation }
         }
     }
@@ -157,12 +232,14 @@ impl RefreshScheduler {
             return None;
         }
         if state.stopping {
+            request.cancellation.cancel(AnalysisAbortKind::Cancelled);
             state.active = None;
             state.pending_latest = None;
             return None;
         }
         if let Some(next) = state.pending_latest.take() {
             state.active = Some(next.clone());
+            state.telemetry.analyses_started += 1;
             return Some(next);
         }
         if completed_authoritatively {
@@ -183,6 +260,10 @@ impl RefreshScheduler {
         if !request_is_active {
             return false;
         }
+        request.cancellation.cancel(AnalysisAbortKind::Cancelled);
+        if let Some(pending) = state.pending_latest.as_ref() {
+            pending.cancellation.cancel(AnalysisAbortKind::Cancelled);
+        }
         state.active = None;
         state.pending_latest = None;
         true
@@ -194,6 +275,12 @@ impl RefreshScheduler {
         };
         state.stopping = true;
         state.next_generation = state.next_generation.saturating_add(1);
+        if let Some(active) = state.active.as_ref() {
+            active.cancellation.cancel(AnalysisAbortKind::Cancelled);
+        }
+        if let Some(pending) = state.pending_latest.as_ref() {
+            pending.cancellation.cancel(AnalysisAbortKind::Cancelled);
+        }
         state.pending_latest = None;
     }
 
@@ -209,6 +296,47 @@ impl RefreshScheduler {
             return true;
         };
         state.active.is_none() && state.pending_latest.is_none()
+    }
+
+    pub(super) fn execution_gate(&self) -> Arc<Mutex<()>> {
+        Arc::clone(&self.execution_gate)
+    }
+
+    pub(super) fn record_attempt_outcome(
+        &self,
+        outcome: RefreshAttemptOutcome,
+        duration: std::time::Duration,
+    ) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        match outcome {
+            RefreshAttemptOutcome::Published => {
+                state.telemetry.snapshots_published += 1;
+                if state.latest_save_requested_at.is_some() {
+                    state.telemetry.latest_save_to_snapshot_ms = state
+                        .latest_save_requested_at
+                        .take()
+                        .map(|started| started.elapsed().as_millis());
+                }
+            }
+            RefreshAttemptOutcome::Cancelled => {
+                state.telemetry.active_attempts_cooperatively_cancelled += 1;
+            }
+            RefreshAttemptOutcome::Superseded => {
+                state.telemetry.completed_but_superseded += 1;
+                state.telemetry.last_superseded_attempt_ms = Some(duration.as_millis());
+            }
+            RefreshAttemptOutcome::Failed => state.telemetry.failed_attempts += 1,
+            RefreshAttemptOutcome::NotStarted => {}
+        }
+    }
+
+    pub(super) fn telemetry(&self) -> RefreshTelemetrySnapshot {
+        match self.state.lock() {
+            Ok(state) => state.telemetry,
+            Err(_) => RefreshTelemetrySnapshot::default(),
+        }
     }
 
     #[cfg(test)]
@@ -302,6 +430,9 @@ mod tests {
         else {
             return Err("new saved input should remain pending".to_string());
         };
+        if active.cancellation.checkpoint().is_err() {
+            return Err("interactive input must not cancel an explicit full refresh".to_string());
+        }
         let Some(next) = scheduler.finish(&active, false) else {
             return Err("pending request should become active".to_string());
         };
@@ -360,6 +491,171 @@ mod tests {
             RefreshDecision::Start(_)
         ) {
             return Err("a later request should be able to start".to_string());
+        }
+        if !active.cancellation.checkpoint().is_err_and(|error| {
+            matches!(
+                error.kind,
+                AnalysisAbortKind::Cancelled | AnalysisAbortKind::Superseded
+            )
+        }) {
+            return Err("cancellation should signal the active token".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cancelled_blocking_analysis_cannot_overlap_the_next_analysis() -> Result<(), String> {
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::Duration;
+
+        let scheduler = RefreshScheduler::default();
+        let gate = scheduler.execution_gate();
+        let first_token = AnalysisCancellationToken::new();
+        let second_token = AnalysisCancellationToken::new();
+        let counters = Arc::new(Mutex::new((0usize, 0usize)));
+        let (first_started_tx, first_started_rx) = mpsc::channel();
+        let (first_release_tx, first_release_rx) = mpsc::channel();
+        let (first_cancelled_tx, first_cancelled_rx) = mpsc::channel();
+        let (second_started_tx, second_started_rx) = mpsc::channel();
+
+        let first_counters = Arc::clone(&counters);
+        let first_gate = Arc::clone(&gate);
+        let first_thread_token = first_token.clone();
+        let first_thread = thread::spawn(move || -> Result<(), String> {
+            let _execution = first_gate
+                .lock()
+                .map_err(|error| format!("first execution gate poisoned: {error}"))?;
+            {
+                let mut counts = first_counters
+                    .lock()
+                    .map_err(|error| format!("first counter poisoned: {error}"))?;
+                counts.0 += 1;
+                counts.1 = counts.1.max(counts.0);
+            }
+            first_started_tx
+                .send(())
+                .map_err(|error| format!("first start signal failed: {error}"))?;
+            first_release_rx
+                .recv()
+                .map_err(|error| format!("first release signal failed: {error}"))?;
+            let cancelled = first_thread_token.checkpoint().is_err();
+            first_cancelled_tx
+                .send(cancelled)
+                .map_err(|error| format!("first cancellation signal failed: {error}"))?;
+            let mut counts = first_counters
+                .lock()
+                .map_err(|error| format!("first counter poisoned on exit: {error}"))?;
+            counts.0 -= 1;
+            Ok(())
+        });
+
+        first_started_rx
+            .recv()
+            .map_err(|error| format!("first analysis did not start: {error}"))?;
+        if !first_token.cancel(AnalysisAbortKind::Superseded) {
+            return Err("first analysis should accept supersession".to_string());
+        }
+
+        let second_counters = Arc::clone(&counters);
+        let second_gate = Arc::clone(&gate);
+        let second_thread = thread::spawn(move || -> Result<(), String> {
+            let _execution = second_gate
+                .lock()
+                .map_err(|error| format!("second execution gate poisoned: {error}"))?;
+            {
+                let mut counts = second_counters
+                    .lock()
+                    .map_err(|error| format!("second counter poisoned: {error}"))?;
+                counts.0 += 1;
+                counts.1 = counts.1.max(counts.0);
+            }
+            second_started_tx
+                .send(())
+                .map_err(|error| format!("second start signal failed: {error}"))?;
+            let mut counts = second_counters
+                .lock()
+                .map_err(|error| format!("second counter poisoned on exit: {error}"))?;
+            counts.0 -= 1;
+            let _ = second_token;
+            Ok(())
+        });
+
+        if second_started_rx
+            .recv_timeout(Duration::from_millis(50))
+            .is_ok()
+        {
+            return Err("second analysis overlapped the cancelled analysis".to_string());
+        }
+        first_release_tx
+            .send(())
+            .map_err(|error| format!("failed to release first analysis: {error}"))?;
+        if !first_cancelled_rx
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|error| format!("first analysis did not observe cancellation: {error}"))?
+        {
+            return Err("first analysis should observe supersession".to_string());
+        }
+        second_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|error| format!("second analysis did not start after release: {error}"))?;
+        first_thread
+            .join()
+            .map_err(|error| format!("first analysis thread panicked: {error:?}"))??;
+        second_thread
+            .join()
+            .map_err(|error| format!("second analysis thread panicked: {error:?}"))??;
+
+        let max_executing = counters
+            .lock()
+            .map_err(|error| format!("final counter poisoned: {error}"))?
+            .1;
+        if max_executing != 1 {
+            return Err(format!(
+                "expected one executing analysis, saw {max_executing}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn telemetry_keeps_request_and_attempt_denominators_separate() -> Result<(), String> {
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = request(&scheduler, 1, RefreshScope::Interactive)
+        else {
+            return Err("first request should start".to_string());
+        };
+        let active = *active;
+        let RefreshDecision::Queued { .. } = request(&scheduler, 2, RefreshScope::Interactive)
+        else {
+            return Err("second request should be coalesced".to_string());
+        };
+        scheduler.record_attempt_outcome(
+            RefreshAttemptOutcome::Superseded,
+            std::time::Duration::from_millis(7),
+        );
+        let Some(next) = scheduler.finish(&active, false) else {
+            return Err("latest request should become active".to_string());
+        };
+        scheduler.record_attempt_outcome(
+            RefreshAttemptOutcome::Published,
+            std::time::Duration::from_millis(2),
+        );
+        if scheduler.finish(&next, true).is_some() {
+            return Err("no request should remain after publication".to_string());
+        }
+
+        let telemetry = scheduler.telemetry();
+        if telemetry.did_save_requests != 2
+            || telemetry.analyses_started != 2
+            || telemetry.requests_coalesced != 1
+            || telemetry.completed_but_superseded != 1
+            || telemetry.snapshots_published != 1
+            || telemetry.pending_queue_high_water != 1
+            || telemetry.latest_save_to_snapshot_ms.is_none()
+            || telemetry.last_superseded_attempt_ms != Some(7)
+        {
+            return Err(format!("unexpected telemetry: {telemetry:?}"));
         }
         Ok(())
     }

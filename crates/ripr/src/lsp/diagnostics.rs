@@ -8,6 +8,7 @@ use super::uri::file_uri_for_path;
 #[cfg(test)]
 use super::uri::path_from_file_uri;
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::check_workspace_with_config;
@@ -621,6 +622,20 @@ pub(super) fn workspace_diagnostics_with_config(
         seams_deferred: defer_seam_inventory,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
+}
+
+/// Run workspace diagnostics with a token installed for synchronous analysis
+/// checkpoints. The ordinary entry point remains token-free for CLI and test
+/// callers that are not owned by an LSP refresh.
+pub(super) fn workspace_diagnostics_with_config_and_cancellation(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<WorkspaceDiagnostics, String> {
+    crate::analysis::cancellation::with_token(cancellation, || {
+        workspace_diagnostics_with_config(root, config, defer_seam_inventory)
+    })
 }
 
 /// Compute the run status from findings, gap-artifact rejections, and the

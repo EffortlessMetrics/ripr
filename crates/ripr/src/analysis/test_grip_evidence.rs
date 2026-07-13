@@ -27,6 +27,7 @@ use super::rust_index::{
     extract_identifier_tokens,
 };
 use super::seams::{ExpectedSink, RepoSeam, SeamId, SeamKind};
+use crate::analysis::cancellation;
 use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     SymbolId, ValueContext, ValueFact,
@@ -159,6 +160,10 @@ pub(crate) struct OracleSemantics {
 
 /// Build evidence records for a slice of seams. Output is sorted by
 /// `seam_id` so two runs over the same input produce identical bytes.
+///
+/// A cancellation checkpoint can stop this non-fallible helper early, so a
+/// caller that runs under a cancellation context must checkpoint immediately
+/// after this function returns before using or publishing the vector.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
     let context_started = Instant::now();
     trace_latency_phase(
@@ -176,6 +181,9 @@ pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<T
     let evidence_started = Instant::now();
     let mut out: Vec<TestGripEvidence> = Vec::with_capacity(seams.len());
     for (index, seam) in seams.iter().enumerate() {
+        if cancellation::checkpoint().is_err() {
+            break;
+        }
         out.push(evidence_for_seam_with_context(seam, &context));
         let processed = index + 1;
         if processed % EVIDENCE_PROGRESS_CHUNK == 0 || processed == seams.len() {
