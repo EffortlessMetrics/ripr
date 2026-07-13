@@ -14203,6 +14203,44 @@ warnings. The TOML report uses schema `0.3` with `status = "proposal"` and is a
 copy aid only; reviewers must supply real ids, owners, expiries, and rationale
 before adopting any proposal.
 
+## Canonical PR Delta Artifact
+
+`cargo xtask ripr-pr` writes `target/ripr/pr/canonical-delta.json` after it
+materializes one canonical repo-exposure snapshot for each requested revision.
+The artifact is producer-owned and versioned independently from the check and
+repo-exposure schemas.
+
+The top-level contract is:
+
+```json
+{
+  "schema_version": "0.1",
+  "base": {"revision": "<rev>", "status": "complete", "available": true},
+  "head": {"revision": "<rev>", "status": "complete", "available": true},
+  "coverage": {
+    "base_items": 1,
+    "head_items": 1,
+    "matched_items": 1,
+    "ambiguous_items": 0,
+    "unknown_items": 0,
+    "complete": true,
+    "low_coverage_disclosed": false
+  },
+  "summary": {"attribution_counts": {"changed_surface_existing": 1}},
+  "limitations": [],
+  "deltas": []
+}
+```
+
+Each `deltas[]` entry is the serialized `CanonicalDelta` from
+`ripr::domain`, with base/head locations, seam ids, and a `match_kind` of
+`exact`, `rename_or_move`, `head_only`, `base_only`, or `ambiguous`. The typed
+attribution vocabulary is closed. Only canonical owner, behavior identity,
+discriminator identity, evidence state, and oracle state establish a match;
+line proximity never establishes causality. Missing or ambiguous snapshots
+produce `comparison_unknown`. `low_coverage_disclosed: true` is informational
+and must not be interpreted as a complete causal comparison.
+
 ## PR Evidence Summary
 
 `cargo xtask ripr-pr-summary` writes two sibling files after the legacy

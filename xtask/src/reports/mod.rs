@@ -14,6 +14,7 @@ mod module_health;
 mod mutation;
 mod operator;
 mod pr;
+mod pr_causal_delta;
 mod pr_evidence;
 mod pr_evidence_summary;
 mod proof_preflight;
