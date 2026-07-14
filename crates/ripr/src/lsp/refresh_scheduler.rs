@@ -1,4 +1,5 @@
 use super::config::LspAnalysisConfig;
+use super::input_identity::LspAnalysisInputIdentity;
 use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -89,6 +90,7 @@ struct RefreshInputIdentity {
     root: PathBuf,
     config: LspAnalysisConfig,
     workspace_revision: u64,
+    input_identity: LspAnalysisInputIdentity,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -109,6 +111,11 @@ impl RefreshRequest {
             root: self.root.clone(),
             config: self.config.clone(),
             workspace_revision: self.workspace_revision,
+            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+                self.root.clone(),
+                self.workspace_revision,
+                &self.config,
+            ),
         }
     }
 }
@@ -177,6 +184,11 @@ impl RefreshScheduler {
             root: root.clone(),
             config: config.clone(),
             workspace_revision,
+            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+                root.clone(),
+                workspace_revision,
+                &config,
+            ),
         };
 
         if reason != RefreshReason::ExplicitRefresh {

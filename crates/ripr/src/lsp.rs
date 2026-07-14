@@ -6,6 +6,7 @@ mod config;
 mod diagnostics;
 mod gap_artifacts;
 mod hover;
+mod input_identity;
 mod lens;
 mod refresh_scheduler;
 mod state;
