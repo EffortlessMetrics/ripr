@@ -419,6 +419,12 @@ fn parse_rejects_empty() {
         .iter()
         .find(|s| s.kind() == SeamKind::ErrorVariant)
         .ok_or_else(|| "expected error_variant seam".to_string())?;
+    assert_eq!(
+        error_seam.required_discriminator(),
+        &RequiredDiscriminator::ErrorVariant {
+            variant: "AuthError::RevokedToken".to_string(),
+        }
+    );
 
     let evidence = evidence_for_seam(error_seam, &index);
     if evidence.discriminate.state != StageState::Weak
@@ -468,6 +474,29 @@ fn parse_returns_revoked_token_on_empty() {
             evidence.discriminate.summary
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn given_opaque_error_variant_without_payload_evidence_then_discrimination_stays_fail_closed()
+-> Result<(), String> {
+    let seam = crate::analysis::seams::RepoSeam::new(
+        "src/parse.rs",
+        "parse",
+        SeamKind::ErrorVariant,
+        0,
+        1,
+        "return Err(make_error(reason));",
+        RequiredDiscriminator::ErrorVariant {
+            variant: "return Err(make_error(reason));".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+
+    assert!(!super::error_variant_oracle_matches_seam_variant(
+        &seam,
+        "assert_eq!(result, Err(make_error(reason)));"
+    ));
     Ok(())
 }
 

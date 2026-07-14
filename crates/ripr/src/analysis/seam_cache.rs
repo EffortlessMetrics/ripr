@@ -66,14 +66,17 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `0.3` → `0.4`: `RelatedTestGrip` gained producer-owned
 /// `TestTargetEvidence`; old envelopes deserialize with a missing target and
 /// would incorrectly turn valid indexed tests into static limitations.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.4";
+/// `0.4` → `0.5`: error-variant discriminators changed from surrounding
+/// expressions to producer-owned exact identities; old classified seams must
+/// not be reused by full or compact consumers.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.5";
 const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
 /// under a separate directory because the evidence payload is intentionally
 /// compact and must never satisfy full repo-exposure consumers.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only

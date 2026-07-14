@@ -16,6 +16,7 @@
 //!
 //! Both contracts are pinned by tests in this file.
 
+use super::classify::exact_error_variant;
 use super::rust_index::{
     self, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
@@ -1114,7 +1115,11 @@ fn required_discriminator_for(kind: SeamKind, expression: &str) -> RequiredDiscr
             description: expression.to_string(),
         },
         SeamKind::ErrorVariant => RequiredDiscriminator::ErrorVariant {
-            variant: expression.to_string(),
+            // Store the producer-owned identity, not the surrounding return
+            // expression. Activation evidence and route compatibility both
+            // speak in terms of the exact error variant. Preserve an
+            // unparseable expression so downstream checks remain fail-closed.
+            variant: exact_error_variant(expression).unwrap_or_else(|| expression.to_string()),
         },
         SeamKind::ReturnValue => RequiredDiscriminator::ReturnValue {
             description: expression.to_string(),
@@ -1300,6 +1305,30 @@ pub fn parse(value: &str) -> Result<i32, String> {
             ));
         }
         Ok(())
+    }
+
+    #[test]
+    fn error_variant_discriminator_stores_exact_variant_identity() {
+        assert_eq!(
+            required_discriminator_for(
+                SeamKind::ErrorVariant,
+                "return Err(AuthError::RevokedToken);",
+            ),
+            RequiredDiscriminator::ErrorVariant {
+                variant: "AuthError::RevokedToken".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn unparseable_error_variant_discriminator_stays_fail_closed() {
+        let expression = "return Err(format!(\"failed: {reason}\"));";
+        assert_eq!(
+            required_discriminator_for(SeamKind::ErrorVariant, expression),
+            RequiredDiscriminator::ErrorVariant {
+                variant: expression.to_string(),
+            }
+        );
     }
 
     #[test]
