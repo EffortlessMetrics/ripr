@@ -302,6 +302,26 @@ impl RefreshScheduler {
         state.pending_latest = None;
     }
 
+    /// Invalidate all work and completed-input identity without stopping the
+    /// scheduler. Root/configuration changes use this boundary so an obsolete
+    /// blocking analysis can observe cancellation and no queued request for
+    /// the prior input can start or publish.
+    pub(super) fn invalidate_input(&self) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state.next_generation = state.next_generation.saturating_add(1);
+        if let Some(active) = state.active.as_ref() {
+            active.cancellation.cancel(AnalysisAbortKind::Superseded);
+        }
+        if let Some(pending) = state.pending_latest.as_ref() {
+            pending.cancellation.cancel(AnalysisAbortKind::Superseded);
+        }
+        state.active = None;
+        state.pending_latest = None;
+        state.last_completed = None;
+    }
+
     pub(super) fn is_current_generation(&self, generation: u64) -> bool {
         let Ok(state) = self.state.lock() else {
             return false;

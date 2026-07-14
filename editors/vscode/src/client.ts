@@ -921,6 +921,27 @@ export class RiprClientController {
     }
     this.receivedTypedAnalysisStatus = true;
     this.typedAnalysisStatusState = status.state;
+    if (status.root_state && status.root_state !== 'selected_single_root') {
+      const rootDetail = analysisRootStatusDetail(status);
+      const rootKind: RiprStatusKind = status.root_state === 'workspace_ambiguous'
+        ? 'workspaceAmbiguous'
+        : status.root_state === 'root_changed'
+          ? 'stale'
+          : 'noWorkspace';
+      this.updateStatus({
+        kind: rootKind,
+        summary: status.root_state === 'workspace_ambiguous'
+          ? 'ripr workspace root is ambiguous.'
+          : status.root_state === 'root_changed'
+            ? 'ripr workspace root changed; retained evidence is unavailable.'
+            : 'ripr has no usable workspace root.',
+        detail: `${analysisStatusDetail(status)}\n${rootDetail}`,
+        nextStep: status.root_recovery_route === 'refresh'
+          ? 'Refresh the saved workspace to obtain current evidence for the new root.'
+          : 'Select one workspace folder, then restart the ripr server.'
+      });
+      return;
+    }
     const failure = status.failure && typeof status.failure === 'object'
       ? status.failure as Record<string, unknown>
       : undefined;
@@ -3139,6 +3160,12 @@ interface RiprAnalysisStatusPayload {
   retry_command?: string;
   failure?: unknown;
   pending?: boolean;
+  root_state?: string;
+  effective_root?: string | null;
+  candidate_roots?: string[];
+  root_input_identity?: string | null;
+  root_detail?: string | null;
+  root_recovery_route?: string;
 }
 
 function analysisStatusPayload(params: unknown): RiprAnalysisStatusPayload | undefined {
@@ -3167,6 +3194,17 @@ function analysisStatusDetail(status: RiprAnalysisStatusPayload): string {
     status.pending ? 'pending=latest' : undefined
   ].filter((field): field is string => Boolean(field));
   return `ripr typed analysis status: ${fields.join(', ')}`;
+}
+
+function analysisRootStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const candidates = status.candidate_roots?.filter((root) => root.length > 0) ?? [];
+  return [
+    `root_state=${status.root_state ?? 'unknown'}`,
+    status.effective_root ? `effective_root=${status.effective_root}` : undefined,
+    candidates.length > 0 ? `candidate_roots=${candidates.join('|')}` : undefined,
+    status.root_detail ?? undefined,
+    status.root_recovery_route ? `recovery=${status.root_recovery_route}` : undefined
+  ].filter((field): field is string => Boolean(field)).join(', ');
 }
 
 function isRefreshLifecycleLog(message: string): boolean {

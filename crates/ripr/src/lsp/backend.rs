@@ -1,6 +1,8 @@
 use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
-use super::capabilities::{initialize_result, root_from_initialize_params};
+use super::capabilities::{
+    WorkspaceRootResolution, initialize_result, root_from_initialize_params,
+};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, WorkspaceDiagnostics, diagnostic_refresh_plan,
@@ -17,8 +19,9 @@ use super::refresh_scheduler::{
 };
 use super::state::{
     AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, DocumentStore,
-    format_duration,
+    WorkspaceRootAuthority, WorkspaceRootState, format_duration,
 };
+use super::uri::file_uri_is_within_root;
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
     COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
@@ -41,21 +44,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::Notify;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Diagnostic,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams, InitializeParams,
-    InitializeResult, LSPAny, MessageType, Uri,
+    DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams,
+    InitializeParams, InitializeResult, LSPAny, MessageType, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
 pub(super) struct Backend {
     client: Client,
     root: Mutex<PathBuf>,
+    workspace_root: Mutex<WorkspaceRootAuthority>,
+    workspace_root_epoch: AtomicU64,
+    workspace_root_transition: AsyncMutex<()>,
     documents: Mutex<DocumentStore>,
     analysis_config: Mutex<LspAnalysisConfig>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
@@ -77,7 +84,10 @@ impl Backend {
     pub(super) fn new(client: Client, root: PathBuf) -> Self {
         Self {
             client,
-            root: Mutex::new(root),
+            root: Mutex::new(root.clone()),
+            workspace_root: Mutex::new(WorkspaceRootAuthority::selected(root)),
+            workspace_root_epoch: AtomicU64::new(0),
+            workspace_root_transition: AsyncMutex::new(()),
             documents: Mutex::new(DocumentStore::default()),
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
@@ -107,9 +117,21 @@ impl Backend {
     ///
     /// See RIPR-SPEC-0105 for the design rationale.
     pub(super) async fn refresh_diagnostics(&self, scope: RefreshScope, reason: RefreshReason) {
-        let Some(root) = self.root() else {
+        let authority = self.workspace_root_authority();
+        let Some(root) = authority.effective_root.clone() else {
             return;
         };
+        if !authority.allows_analysis() {
+            if matches!(
+                (&authority.state, scope),
+                (WorkspaceRootState::RootChanged, RefreshScope::Full)
+            ) {
+                self.apply_workspace_root_authority(WorkspaceRootAuthority::selected(root.clone()))
+                    .await;
+            } else {
+                return;
+            }
+        }
         let Some(config) = self.analysis_config() else {
             return;
         };
@@ -183,7 +205,7 @@ impl Backend {
         self.mark_attempt_running(request);
         self.publish_analysis_status().await;
         self.log_refresh_queued(generation).await;
-        if !self.refresh_scheduler.is_current_generation(generation) {
+        if !self.refresh_request_is_current(request) {
             return RefreshAttemptOutcome::NotStarted;
         }
         let enabled_languages = request.config.repo_config().languages().enabled().to_vec();
@@ -194,6 +216,7 @@ impl Backend {
         let defer_seam_inventory = request.scope.defer_seam_inventory();
         let cancellation = request.cancellation.clone();
         let execution_gate = self.refresh_scheduler.execution_gate();
+        let analysis_root = root.clone();
         let diagnostics = match tokio::task::spawn_blocking(move || {
             let _execution = match execution_gate.lock() {
                 Ok(guard) => guard,
@@ -203,7 +226,7 @@ impl Backend {
                 .checkpoint()
                 .map_err(|error| error.to_string())?;
             super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
-                &root,
+                &analysis_root,
                 &config,
                 defer_seam_inventory,
                 &cancellation,
@@ -219,9 +242,7 @@ impl Backend {
                 diagnostics
             }
             Ok(Err(err)) => {
-                if self.refresh_scheduler.is_current_generation(generation)
-                    && !is_cancellation_error(&err)
-                {
+                if self.refresh_request_is_current(request) && !is_cancellation_error(&err) {
                     self.report_refresh_failure_after(
                         request,
                         err,
@@ -244,7 +265,7 @@ impl Backend {
                 return cancellation_outcome(request);
             }
             Err(err) => {
-                if self.refresh_scheduler.is_current_generation(generation) {
+                if self.refresh_request_is_current(request) {
                     self.report_refresh_failure_after(
                         request,
                         format!("analysis task failed: {err}"),
@@ -265,8 +286,18 @@ impl Backend {
                 return cancellation_outcome(request);
             }
         };
-        if !self.refresh_scheduler.is_current_generation(generation) {
+        if !self.refresh_request_is_current(request) {
             return cancellation_outcome(request);
+        }
+        if !workspace_diagnostics_are_root_contained(&root, &diagnostics) {
+            self.report_refresh_failure_after(
+                request,
+                "diagnostic projection escaped the selected workspace root".to_string(),
+                started.elapsed(),
+                "root_projection",
+            )
+            .await;
+            return RefreshAttemptOutcome::Failed;
         }
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
             .with_enabled_languages(&enabled_languages);
@@ -291,7 +322,7 @@ impl Backend {
         let published_payload_bytes = plan.published_payload_bytes;
         let suppressed_payload_bytes = plan.suppressed_payload_bytes;
         for batch in &plan.publish_batches {
-            if !self.refresh_scheduler.is_current_generation(generation) {
+            if !self.refresh_request_is_current(request) {
                 self.rollback_refresh_transaction(&previous_diagnostics, &plan)
                     .await;
                 return cancellation_outcome(request);
@@ -301,7 +332,7 @@ impl Backend {
                 .await;
         }
         for uri in &plan.clear_uris {
-            if !self.refresh_scheduler.is_current_generation(generation) {
+            if !self.refresh_request_is_current(request) {
                 self.rollback_refresh_transaction(&previous_diagnostics, &plan)
                     .await;
                 return cancellation_outcome(request);
@@ -310,7 +341,7 @@ impl Backend {
                 .publish_diagnostics(uri.clone(), Vec::new(), None)
                 .await;
         }
-        if !self.refresh_scheduler.is_current_generation(generation) {
+        if !self.refresh_request_is_current(request) {
             self.rollback_refresh_transaction(&previous_diagnostics, &plan)
                 .await;
             return cancellation_outcome(request);
@@ -461,11 +492,29 @@ impl Backend {
         }
     }
 
-    fn root(&self) -> Option<PathBuf> {
-        let Ok(root) = self.root.lock() else {
-            return None;
-        };
-        Some(root.clone())
+    fn effective_root(&self) -> Option<PathBuf> {
+        self.workspace_root
+            .lock()
+            .ok()
+            .and_then(|authority| authority.effective_root.clone())
+    }
+
+    fn refresh_request_is_current(&self, request: &RefreshRequest) -> bool {
+        if !self
+            .refresh_scheduler
+            .is_current_generation(request.generation)
+        {
+            return false;
+        }
+        let authority = self.workspace_root_authority();
+        authority.allows_analysis() && authority.effective_root.as_ref() == Some(&request.root)
+    }
+
+    fn workspace_root_authority(&self) -> WorkspaceRootAuthority {
+        self.workspace_root
+            .lock()
+            .map(|authority| authority.clone())
+            .unwrap_or_else(|_| WorkspaceRootAuthority::unavailable("root state unavailable"))
     }
 
     pub(super) fn analysis_config(&self) -> Option<LspAnalysisConfig> {
@@ -630,6 +679,7 @@ impl Backend {
     }
 
     fn analysis_status_payload_for_health(&self, health: &AnalysisHealth) -> LSPAny {
+        let root = self.workspace_root_authority();
         let last_success_age_ms = health
             .last_success_at
             .and_then(|generated_at| generated_at.elapsed().ok())
@@ -655,7 +705,21 @@ impl Backend {
             "pending_reason": health.pending_reason,
             "pending_scope": health.pending_scope,
             "retry_command": REFRESH_COMMAND,
-            "repair_actions_available": health.allows_current_repairs(),
+            "repair_actions_available": health.allows_current_repairs()
+                && root.allows_analysis(),
+            "root_state": root.state.as_str(),
+            "effective_root": root
+                .effective_root
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string()),
+            "candidate_roots": root
+                .candidate_roots
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect::<Vec<_>>(),
+            "root_input_identity": root.input_identity(),
+            "root_detail": root.detail,
+            "root_recovery_route": root_recovery_route(&root.state),
         })
     }
 
@@ -664,6 +728,105 @@ impl Backend {
             return;
         };
         *current_root = root;
+    }
+
+    async fn apply_workspace_root_resolution(&self, resolution: WorkspaceRootResolution) {
+        let authority = match resolution {
+            WorkspaceRootResolution::Selected(root) => {
+                if !root.is_absolute() {
+                    WorkspaceRootAuthority::unavailable(format!(
+                        "workspace root is not absolute: {}",
+                        root.display()
+                    ))
+                } else if !root.is_dir() {
+                    WorkspaceRootAuthority::unavailable(format!(
+                        "workspace root is inaccessible or not a directory: {}",
+                        root.display()
+                    ))
+                } else {
+                    WorkspaceRootAuthority::selected(root)
+                }
+            }
+            WorkspaceRootResolution::Ambiguous(candidates) => {
+                if candidates
+                    .iter()
+                    .any(|root| !root.is_absolute() || !root.is_dir())
+                {
+                    WorkspaceRootAuthority::unavailable(
+                        "one or more workspace folders are inaccessible or not directories",
+                    )
+                } else {
+                    WorkspaceRootAuthority::ambiguous(candidates)
+                }
+            }
+            WorkspaceRootResolution::Unavailable(detail) => {
+                WorkspaceRootAuthority::unavailable(detail)
+            }
+        };
+
+        self.apply_workspace_root_authority(authority).await;
+    }
+
+    async fn apply_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
+        let _transition = self.workspace_root_transition.lock().await;
+        let authority_epoch = self.workspace_root_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+        let previous = self.workspace_root_authority();
+        let changed = previous.state != authority.state
+            || previous.effective_root != authority.effective_root
+            || previous.candidate_roots != authority.candidate_roots;
+        if changed {
+            self.refresh_scheduler.invalidate_input();
+            let uris = self.clear_all_diagnostic_uris();
+            for uri in uris {
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+            self.reset_health_for_input_change();
+        }
+
+        if self.workspace_root_epoch.load(Ordering::SeqCst) != authority_epoch {
+            return;
+        }
+
+        let final_authority = if changed
+            && matches!(authority.state, WorkspaceRootState::SelectedSingleRoot)
+            && previous.effective_root != authority.effective_root
+            && previous.effective_root.is_some()
+        {
+            WorkspaceRootAuthority::changed(
+                previous.effective_root.clone(),
+                authority.effective_root.clone(),
+            )
+        } else {
+            authority
+        };
+
+        if let Some(root) = final_authority.effective_root.clone() {
+            self.set_root(root);
+        }
+        self.set_workspace_root_authority(final_authority);
+        self.publish_analysis_status().await;
+        self.refresh_idle.notify_waiters();
+    }
+
+    fn set_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
+        if let Ok(mut current) = self.workspace_root.lock() {
+            *current = authority;
+        }
+    }
+
+    fn reset_health_for_input_change(&self) {
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.state = AnalysisAttemptState::Stopped;
+            health.attempt_id = None;
+            health.snapshot_id = None;
+            health.last_success_snapshot_id = None;
+            health.last_success_at = None;
+            health.snapshot_run_status = None;
+            health.failure = None;
+            health.pending_attempt_id = None;
+            health.pending_reason = None;
+            health.pending_scope = None;
+        }
     }
 
     fn set_analysis_config(&self, config: LspAnalysisConfig) {
@@ -1062,47 +1225,125 @@ fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri,
         .collect()
 }
 
+fn workspace_diagnostics_are_root_contained(
+    root: &Path,
+    diagnostics: &WorkspaceDiagnostics,
+) -> bool {
+    let snapshot_root_matches = super::uri::path_is_within_root(root, &diagnostics.snapshot.root)
+        && super::uri::path_is_within_root(&diagnostics.snapshot.root, root);
+    snapshot_root_matches
+        && diagnostics.batches.iter().all(|batch| {
+            file_uri_is_within_root(root, &batch.uri)
+                && batch.diagnostics.iter().all(|diagnostic| {
+                    diagnostic
+                        .related_information
+                        .as_ref()
+                        .is_none_or(|related| {
+                            related
+                                .iter()
+                                .all(|item| file_uri_is_within_root(root, &item.location.uri))
+                        })
+                })
+        })
+}
+
+fn root_recovery_route(state: &WorkspaceRootState) -> &'static str {
+    match state {
+        WorkspaceRootState::SelectedSingleRoot => "refresh",
+        WorkspaceRootState::WorkspaceAmbiguous => "select_root_and_restart",
+        WorkspaceRootState::RootUnavailable => "select_root_and_restart",
+        WorkspaceRootState::RootRemoved => "select_root_and_restart",
+        WorkspaceRootState::RootChanged => "refresh",
+    }
+}
+
+fn root_authority_block_reason(state: &WorkspaceRootState) -> &'static str {
+    match state {
+        WorkspaceRootState::WorkspaceAmbiguous => "workspace_root_ambiguous",
+        WorkspaceRootState::RootUnavailable => "workspace_root_unavailable",
+        WorkspaceRootState::RootRemoved => "workspace_root_removed",
+        WorkspaceRootState::RootChanged => "workspace_root_changed",
+        WorkspaceRootState::SelectedSingleRoot => "analysis_snapshot_stale",
+    }
+}
+
+fn root_authority_receipt_status(state: &WorkspaceRootState) -> LSPAny {
+    serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "receipt_status",
+        "status": "workspace_root_blocked",
+        "receipt_status": "not_available",
+        "missing_receipt_reason": root_authority_block_reason(state),
+        "copy_receipt_command": "not_available",
+        "open_attempt_ledger": "not_available",
+        "latest_attempt_outcome": "not_available",
+        "route_quality_summary": "not_available",
+        "limits_note": "Static evidence only; advisory, not a gate decision.",
+    })
+}
+
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
-        let fallback_root = self
-            .root()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-        let root = root_from_initialize_params(&params, &fallback_root);
-        let repo_config = match crate::config::load_for_root(&root) {
-            Ok(config) => config,
-            Err(err) => {
-                self.client
-                    .log_message(
-                        MessageType::WARNING,
-                        format!("ripr config load failed; using defaults: {err}"),
-                    )
-                    .await;
-                crate::config::RiprConfig::default()
+        let resolution = root_from_initialize_params(&params);
+        let repo_config = match &resolution {
+            WorkspaceRootResolution::Selected(root) if root.is_dir() => {
+                match crate::config::load_for_root(root) {
+                    Ok(config) => config,
+                    Err(err) => {
+                        self.client
+                            .log_message(
+                                MessageType::WARNING,
+                                format!("ripr config load failed; using defaults: {err}"),
+                            )
+                            .await;
+                        crate::config::RiprConfig::default()
+                    }
+                }
             }
+            _ => crate::config::RiprConfig::default(),
         };
-        self.set_root(root);
         self.set_analysis_config(LspAnalysisConfig::from_initialize_params(
             &params,
             repo_config,
         ));
+        self.set_workspace_root_authority(WorkspaceRootAuthority::unavailable(
+            "initial workspace root resolution pending",
+        ));
+        self.apply_workspace_root_resolution(resolution).await;
         Ok(initialize_result())
+    }
+
+    async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {
+        let resolution = match self.client.workspace_folders().await {
+            Ok(Some(folders)) => {
+                if folders.is_empty() {
+                    self.apply_workspace_root_authority(WorkspaceRootAuthority::removed(
+                        self.effective_root(),
+                    ))
+                    .await;
+                    return;
+                }
+                let params = InitializeParams {
+                    workspace_folders: Some(folders),
+                    ..InitializeParams::default()
+                };
+                root_from_initialize_params(&params)
+            }
+            Ok(None) => WorkspaceRootResolution::Unavailable(
+                "client did not return workspace folders after a workspace change".to_string(),
+            ),
+            Err(err) => WorkspaceRootResolution::Unavailable(format!(
+                "workspace folder query failed: {err}"
+            )),
+        };
+        self.apply_workspace_root_resolution(resolution).await;
     }
 
     async fn shutdown(&self) -> LspResult<()> {
         self.refresh_scheduler.stop();
         self.clear_all_diagnostic_uris();
-        if let Ok(mut health) = self.analysis_health.lock() {
-            health.state = AnalysisAttemptState::Stopped;
-            health.attempt_id = None;
-            health.snapshot_id = None;
-            health.last_success_snapshot_id = None;
-            health.last_success_at = None;
-            health.snapshot_run_status = None;
-            health.failure = None;
-            health.pending_attempt_id = None;
-            health.pending_reason = None;
-            health.pending_scope = None;
-        }
+        self.reset_health_for_input_change();
         self.publish_analysis_status().await;
         self.refresh_idle.notify_waiters();
         Ok(())
@@ -1151,8 +1392,8 @@ impl LanguageServer for Backend {
             .ok()
             .and_then(|value| value.clone());
         let health = self.analysis_health_snapshot();
-        let action_snapshot = health
-            .allows_current_repairs()
+        let root_allows_analysis = self.workspace_root_authority().allows_analysis();
+        let action_snapshot = (health.allows_current_repairs() && root_allows_analysis)
             .then_some(snapshot)
             .flatten();
         Ok(Some(code_action_response(
@@ -1311,7 +1552,9 @@ impl Backend {
             .count();
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
-        let top_actionable_packet = if health.allows_current_repairs() {
+        let top_actionable_packet = if health.allows_current_repairs()
+            && self.workspace_root_authority().allows_analysis()
+        {
             workspace_status_top_actionable_packet(&snapshot)
         } else {
             serde_json::Value::Null
@@ -1649,6 +1892,12 @@ impl Backend {
         if !health.allows_current_repairs() {
             return Some(repair_packet_sentinel("analysis_snapshot_stale"));
         }
+        let authority = self.workspace_root_authority();
+        if !authority.allows_analysis() {
+            return Some(repair_packet_sentinel(root_authority_block_reason(
+                &authority.state,
+            )));
+        }
         let root = self.root.lock().ok()?.clone();
         let gap_id_arg = arguments
             .first()
@@ -1709,6 +1958,10 @@ impl Backend {
     }
 
     fn collect_receipt_status(&self) -> Option<LSPAny> {
+        let authority = self.workspace_root_authority();
+        if !authority.allows_analysis() {
+            return Some(root_authority_receipt_status(&authority.state));
+        }
         let root = self.root.lock().ok()?.clone();
         let snapshot = match self.latest_analysis.lock().ok()? {
             guard if guard.is_none() => {

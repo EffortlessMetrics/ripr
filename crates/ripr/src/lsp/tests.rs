@@ -2,7 +2,9 @@ use super::actions::code_action_response;
 use super::backend::{
     Backend, RefreshLogSummary, refresh_completed_log_message, refresh_failed_log_message,
 };
-use super::capabilities::{initialize_result, root_from_initialize_params};
+use super::capabilities::{
+    WorkspaceRootResolution, initialize_result, root_from_initialize_params,
+};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, add_canonical_group_data, canonical_finding_groups,
@@ -65,6 +67,13 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
         result.capabilities.hover_provider,
         Some(HoverProviderCapability::Simple(true))
     );
+    let Some(workspace) = result.capabilities.workspace else {
+        return Err("expected workspace capability".to_string());
+    };
+    let Some(workspace_folders) = workspace.workspace_folders else {
+        return Err("expected workspace-folder capability".to_string());
+    };
+    assert_eq!(workspace_folders.supported, Some(true));
     let Some(provider) = result.capabilities.execute_command_provider else {
         return Err("expected execute command provider".to_string());
     };
@@ -367,12 +376,33 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let _did_open_notifications = read_until_refresh_terminal(&mut client_read).await?;
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": COLLECT_WORKSPACE_STATUS_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let status = read_lsp_response(&mut client_read, 2).await?;
+        assert_eq!(
+            status["result"]["analysis_status"]["root_state"],
+            "root_unavailable"
+        );
+        assert_eq!(
+            status["result"]["analysis_status"]["repair_actions_available"],
+            false
+        );
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
                 "method": "workspace/executeCommand",
                 "params": {
                     "command": REFRESH_COMMAND,
@@ -382,39 +412,16 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         )
         .await?;
         let (refresh, notifications) =
-            read_lsp_response_with_notifications(&mut client_read, 2).await?;
+            read_lsp_response_with_notifications(&mut client_read, 3).await?;
         assert!(refresh.get("error").is_none());
         assert_eq!(refresh["result"], serde_json::Value::Null);
-        let mut notifications = notifications;
-        let mut notification_messages = log_notification_messages(&notifications);
-        assert!(
-            notification_messages
-                .iter()
-                .any(|message| message.contains("ripr analysis refresh started"))
-        );
-        let has_terminal_refresh = |messages: &[String]| {
-            messages.iter().any(|message| {
-                message.contains("ripr analysis refresh failed after")
-                    || message.contains("ripr analysis refresh completed in")
-            })
-        };
-        if !has_terminal_refresh(&notification_messages)
-            && let Ok(Ok(message)) =
-                tokio::time::timeout(Duration::from_secs(2), read_lsp_message(&mut client_read))
-                    .await
-        {
-            notifications.push(message);
-            notification_messages = log_notification_messages(&notifications);
-        }
-        if !has_terminal_refresh(&notification_messages) {
-            return Err("explicit refresh must report a terminal status".to_string());
-        }
+        assert!(log_notification_messages(&notifications).is_empty());
 
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 3,
+                "id": 4,
                 "method": "textDocument/hover",
                 "params": {
                     "textDocument": { "uri": text_uri },
@@ -423,7 +430,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let hover = read_lsp_response(&mut client_read, 3).await?;
+        let hover = read_lsp_response(&mut client_read, 4).await?;
         let hover_value = hover["result"]["contents"]["value"]
             .as_str()
             .ok_or_else(|| "expected hover markdown value".to_string())?;
@@ -433,7 +440,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 4,
+                "id": 5,
                 "method": "textDocument/codeAction",
                 "params": {
                     "textDocument": { "uri": text_uri },
@@ -446,7 +453,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let actions = read_lsp_response(&mut client_read, 4).await?;
+        let actions = read_lsp_response(&mut client_read, 5).await?;
         assert_eq!(
             actions["result"][0]["title"],
             "Refresh Analysis - Saved Workspace Check"
@@ -457,13 +464,13 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 5,
+                "id": 6,
                 "method": "shutdown",
                 "params": null
             }),
         )
         .await?;
-        let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        let shutdown = read_lsp_response(&mut client_read, 6).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -3396,8 +3403,7 @@ fn document_store_creates_document_from_full_change_when_missing() -> Result<(),
 }
 
 #[test]
-fn initialize_root_prefers_first_workspace_folder() -> Result<(), String> {
-    let fallback = PathBuf::from("/fallback");
+fn initialize_root_rejects_ambiguous_workspace_folders() -> Result<(), String> {
     let params = initialize_params(
         Some(vec![
             WorkspaceFolder {
@@ -3412,31 +3418,53 @@ fn initialize_root_prefers_first_workspace_folder() -> Result<(), String> {
         Some(test_uri("file:///workspace/root-uri")?),
     );
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, PathBuf::from("/workspace/main"));
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Ambiguous(vec![
+            PathBuf::from("/workspace/main"),
+            PathBuf::from("/workspace/other"),
+        ])
+    );
     Ok(())
 }
 
 #[test]
 fn initialize_root_uses_root_uri_when_workspace_folders_are_missing() -> Result<(), String> {
-    let fallback = PathBuf::from("/fallback");
     let params = initialize_params(None, Some(test_uri("file:///workspace/root-uri")?));
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, PathBuf::from("/workspace/root-uri"));
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Selected(PathBuf::from("/workspace/root-uri"))
+    );
     Ok(())
 }
 
 #[test]
-fn initialize_root_falls_back_to_process_cwd_when_no_lsp_root_exists() {
-    let fallback = PathBuf::from("/fallback");
+fn initialize_root_rejects_empty_workspace_folders_even_with_root_uri() -> Result<(), String> {
+    let params = initialize_params(
+        Some(Vec::new()),
+        Some(test_uri("file:///workspace/root-uri")?),
+    );
+
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Unavailable(
+            "the client explicitly reported no workspace folders".to_string()
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn initialize_root_reports_unavailable_when_no_lsp_root_exists() {
     let params = initialize_params(None, None);
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, fallback);
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Unavailable(
+            "the client did not provide a workspace folder or root URI".to_string()
+        )
+    );
 }
 
 #[test]
@@ -3886,34 +3914,6 @@ where
             return Ok((message, notifications));
         }
         notifications.push(message);
-    }
-}
-
-async fn read_until_refresh_terminal<R>(reader: &mut R) -> Result<Vec<serde_json::Value>, String>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut notifications = Vec::new();
-    loop {
-        let message = tokio::time::timeout(Duration::from_secs(2), read_lsp_message(reader))
-            .await
-            .map_err(|timeout| {
-                format!("timed out waiting for terminal refresh notification: {timeout}")
-            })??;
-        let is_terminal_refresh = message.get("method").and_then(serde_json::Value::as_str)
-            == Some("window/logMessage")
-            && message
-                .get("params")
-                .and_then(|params| params.get("message"))
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|message| {
-                    message.contains("ripr analysis refresh failed after")
-                        || message.contains("ripr analysis refresh completed in")
-                });
-        notifications.push(message);
-        if is_terminal_refresh {
-            return Ok(notifications);
-        }
     }
 }
 

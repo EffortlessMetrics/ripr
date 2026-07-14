@@ -1298,9 +1298,7 @@ fn command_tokens(command: &str) -> Vec<String> {
 }
 
 fn is_inside_workspace(root: &Path, path: &Path) -> bool {
-    let root = normalize_path(root);
-    let path = normalize_path(path);
-    path == root || path.starts_with(&(root + "/"))
+    super::uri::path_is_within_root(root, path)
 }
 
 fn normalize_path(path: &Path) -> String {

@@ -1034,6 +1034,56 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('typed analysis status surfaces server-owned ambiguous root state', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'no_snapshot',
+        root_state: 'workspace_ambiguous',
+        candidate_roots: ['<workspace-one>', '<workspace-two>'],
+        root_detail: 'select one workspace folder, then restart or refresh the session',
+        root_recovery_route: 'select_root_and_restart'
+      });
+
+      assert.ok(context.status.text.includes('ripr: select root'));
+      assert.ok(String(context.status.tooltip).includes('workspace_ambiguous'));
+      assert.ok(String(context.status.tooltip).includes('<workspace-one>'));
+      assert.ok(String(context.status.tooltip).includes('select_root_and_restart'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status surfaces a changed root as stale', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'stale',
+        root_state: 'root_changed',
+        root_detail: 'workspace root changed; refresh to obtain current evidence',
+        root_recovery_route: 'refresh'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('root_changed'));
+      assert.ok(String(context.status.tooltip).includes('new root'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar projects existing first useful action report', async () => {
     const context = createControllerTestContext({
       firstActionJson: JSON.stringify({

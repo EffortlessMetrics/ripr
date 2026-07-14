@@ -164,7 +164,13 @@ Its stable fields are:
   "failure": { "kind": "analysis_error", "message": "bounded detail" },
   "pending": false,
   "retry_command": "ripr.refresh",
-  "repair_actions_available": false
+  "repair_actions_available": false,
+  "root_state": "selected_single_root",
+  "effective_root": "<selected-workspace-root>",
+  "candidate_roots": [],
+  "root_input_identity": "root:<selected-workspace-root>",
+  "root_detail": null,
+  "root_recovery_route": "refresh"
 }
 ```
 
@@ -179,6 +185,17 @@ gap artifacts and enabled languages for clients that project those details. A
 completion log must not override a typed failed, cancelled, or superseded
 state. Timing and queue fields belong only in this health surface, never in
 diagnostic or semantic gap identities.
+
+The server owns one explicit workspace-root state for each session. A single
+valid `workspaceFolders` entry is selected; a valid `rootUri` is the
+compatibility fallback when workspace folders are absent. Multiple workspace
+folders, invalid or inaccessible roots, and removal of the selected root are
+typed states that publish no ordinary repair diagnostics and suppress repair
+actions. The server advertises `workspace/didChangeWorkspaceFolders` support,
+invalidates scheduler generations and retained snapshots when root authority
+changes, and verifies projected diagnostic and related-information URIs remain
+inside the selected root. Absolute checkout spelling participates in the
+session root input identity but never changes canonical semantic gap identity.
 
 "Repair packet" here is the canonical RIPR-SPEC-0061 contract, not
 a separate LSP shape. A complete packet carries the full

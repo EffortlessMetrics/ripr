@@ -11,6 +11,95 @@ use tower_lsp_server::ls_types::{
     Uri,
 };
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum WorkspaceRootState {
+    SelectedSingleRoot,
+    WorkspaceAmbiguous,
+    RootUnavailable,
+    RootRemoved,
+    RootChanged,
+}
+
+impl WorkspaceRootState {
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::SelectedSingleRoot => "selected_single_root",
+            Self::WorkspaceAmbiguous => "workspace_ambiguous",
+            Self::RootUnavailable => "root_unavailable",
+            Self::RootRemoved => "root_removed",
+            Self::RootChanged => "root_changed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct WorkspaceRootAuthority {
+    pub(super) state: WorkspaceRootState,
+    pub(super) effective_root: Option<PathBuf>,
+    pub(super) candidate_roots: Vec<PathBuf>,
+    pub(super) detail: Option<String>,
+}
+
+impl WorkspaceRootAuthority {
+    pub(super) fn selected(root: PathBuf) -> Self {
+        Self {
+            state: WorkspaceRootState::SelectedSingleRoot,
+            effective_root: Some(root),
+            candidate_roots: Vec::new(),
+            detail: None,
+        }
+    }
+
+    pub(super) fn unavailable(detail: impl Into<String>) -> Self {
+        Self {
+            state: WorkspaceRootState::RootUnavailable,
+            effective_root: None,
+            candidate_roots: Vec::new(),
+            detail: Some(detail.into()),
+        }
+    }
+
+    pub(super) fn ambiguous(candidate_roots: Vec<PathBuf>) -> Self {
+        Self {
+            state: WorkspaceRootState::WorkspaceAmbiguous,
+            effective_root: None,
+            candidate_roots,
+            detail: Some("select one workspace folder, then restart or refresh the session".into()),
+        }
+    }
+
+    pub(super) fn changed(previous: Option<PathBuf>, current: Option<PathBuf>) -> Self {
+        Self {
+            state: WorkspaceRootState::RootChanged,
+            effective_root: current,
+            candidate_roots: previous.into_iter().collect(),
+            detail: Some("workspace root changed; refresh to obtain current evidence".into()),
+        }
+    }
+
+    pub(super) fn removed(previous: Option<PathBuf>) -> Self {
+        Self {
+            state: WorkspaceRootState::RootRemoved,
+            effective_root: None,
+            candidate_roots: previous.into_iter().collect(),
+            detail: Some(
+                "the selected workspace root was removed; select a root and restart".into(),
+            ),
+        }
+    }
+
+    pub(super) fn input_identity(&self) -> Option<String> {
+        self.effective_root
+            .as_ref()
+            .map(|root| format!("root:{}", root.display()))
+    }
+
+    pub(super) fn allows_analysis(&self) -> bool {
+        matches!(self.state, WorkspaceRootState::SelectedSingleRoot)
+            && self.effective_root.is_some()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct RefreshMetadata {
     pub(super) generated_at: SystemTime,

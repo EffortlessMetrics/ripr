@@ -4,12 +4,20 @@ use super::{
     COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
     COLLECT_WORKSPACE_STATUS_COMMAND, REFRESH_COMMAND,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
     CodeActionProviderCapability, CodeLensOptions, ExecuteCommandOptions, HoverProviderCapability,
-    InitializeParams, InitializeResult, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    InitializeParams, InitializeResult, OneOf, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum WorkspaceRootResolution {
+    Selected(PathBuf),
+    Ambiguous(Vec<PathBuf>),
+    Unavailable(String),
+}
 
 pub(super) fn initialize_result() -> InitializeResult {
     InitializeResult {
@@ -35,6 +43,13 @@ pub(super) fn initialize_result() -> InitializeResult {
                 ],
                 ..ExecuteCommandOptions::default()
             }),
+            workspace: Some(WorkspaceServerCapabilities {
+                workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+                    supported: Some(true),
+                    change_notifications: Some(OneOf::Left(true)),
+                }),
+                ..WorkspaceServerCapabilities::default()
+            }),
             ..ServerCapabilities::default()
         },
         server_info: Some(ServerInfo {
@@ -47,17 +62,60 @@ pub(super) fn initialize_result() -> InitializeResult {
 
 #[expect(
     deprecated,
-    reason = "InitializeParams.root_path is deprecated by LSP but still required as a fallback for clients that have not migrated to workspaceFolders."
+    reason = "rootUri remains the LSP compatibility fallback when workspaceFolders is absent"
 )]
-pub(super) fn root_from_initialize_params(
-    params: &InitializeParams,
-    fallback_root: &Path,
-) -> PathBuf {
-    params
-        .workspace_folders
-        .as_ref()
-        .and_then(|folders| folders.first())
-        .and_then(|folder| path_from_file_uri(&folder.uri))
-        .or_else(|| params.root_uri.as_ref().and_then(path_from_file_uri))
-        .unwrap_or_else(|| fallback_root.to_path_buf())
+pub(super) fn root_from_initialize_params(params: &InitializeParams) -> WorkspaceRootResolution {
+    if let Some(folders) = params.workspace_folders.as_ref() {
+        if folders.is_empty() {
+            return WorkspaceRootResolution::Unavailable(
+                "the client explicitly reported no workspace folders".to_string(),
+            );
+        }
+        if folders.len() > 1 {
+            let mut candidates = Vec::with_capacity(folders.len());
+            for folder in folders {
+                let Some(path) = path_from_file_uri(&folder.uri) else {
+                    return WorkspaceRootResolution::Unavailable(
+                        "workspace folder URI is not a valid file URI".to_string(),
+                    );
+                };
+                candidates.push(path);
+            }
+            return WorkspaceRootResolution::Ambiguous(candidates);
+        }
+        if let Some(folder) = folders.first() {
+            return path_from_workspace_folder(folder);
+        }
+    }
+
+    params.root_uri.as_ref().map_or_else(
+        || {
+            WorkspaceRootResolution::Unavailable(
+                "the client did not provide a workspace folder or root URI".to_string(),
+            )
+        },
+        |uri| {
+            path_from_file_uri(uri).map_or_else(
+                || {
+                    WorkspaceRootResolution::Unavailable(
+                        "root URI is not a valid file URI".to_string(),
+                    )
+                },
+                WorkspaceRootResolution::Selected,
+            )
+        },
+    )
+}
+
+fn path_from_workspace_folder(
+    folder: &tower_lsp_server::ls_types::WorkspaceFolder,
+) -> WorkspaceRootResolution {
+    path_from_file_uri(&folder.uri).map_or_else(
+        || {
+            WorkspaceRootResolution::Unavailable(
+                "workspace folder URI is not a valid file URI".to_string(),
+            )
+        },
+        WorkspaceRootResolution::Selected,
+    )
 }
