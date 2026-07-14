@@ -2,6 +2,7 @@ use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
 use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
+use crate::config::LspDiagnosticProfile;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -234,6 +235,10 @@ pub(super) struct AnalysisSnapshot {
     pub(super) mode: Mode,
     pub(super) refresh: RefreshMetadata,
     pub(super) findings: Vec<Finding>,
+    /// Profile used to derive the published finding diagnostics. Keeping this
+    /// on the snapshot lets consistency validate the same bounded projection
+    /// that the refresh actually published.
+    pub(super) diagnostic_profile: LspDiagnosticProfile,
     /// Classified seam evidence. Empty when `seamDiagnostics` is off
     /// (the default), or when the seam inventory was deferred on an
     /// interactive open/save refresh (see RIPR-SPEC-0105). Use
@@ -271,16 +276,19 @@ impl AnalysisSnapshot {
             .flatten()
             .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "gap_id"))
             .count();
+        let published_finding_count = super::diagnostics::canonical_finding_groups(&self.findings)
+            .into_iter()
+            .filter(|(primary, _)| {
+                super::diagnostics::finding_is_visible_in_profile(self.diagnostic_profile, primary)
+            })
+            .count();
         !self.root.as_os_str().is_empty()
             && self
                 .base
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && super::diagnostics::canonical_finding_groups(&self.findings).len()
-                + surfacable_seams
-                + gap_diagnostics
-                == diagnostic_count
+            && published_finding_count + surfacable_seams + gap_diagnostics == diagnostic_count
             && self
                 .gap_artifacts
                 .iter()
@@ -468,6 +476,7 @@ mod tests {
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            diagnostic_profile: LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
@@ -492,6 +501,7 @@ mod tests {
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            diagnostic_profile: LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),

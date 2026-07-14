@@ -15,8 +15,8 @@ mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig,
-    TypescriptConfig,
+    CheckInputExplicit, ConfigSeverity, LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig,
+    SeverityConfig, TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -195,10 +195,16 @@ impl RiprConfig {
         if let Some(severity) = raw.severity {
             config.severity = merge_severity(config.severity, severity)?;
         }
-        if let Some(lsp) = raw.lsp
-            && let Some(seam_diagnostics) = lsp.seam_diagnostics
-        {
-            config.lsp.seam_diagnostics = Some(seam_diagnostics);
+        if let Some(lsp) = raw.lsp {
+            if let Some(seam_diagnostics) = lsp.seam_diagnostics {
+                config.lsp.seam_diagnostics = Some(seam_diagnostics);
+            }
+            if let Some(profile) = lsp.diagnostic_profile {
+                config.lsp.diagnostic_profile = Some(
+                    LspDiagnosticProfile::parse(&profile)
+                        .map_err(|err| format!("{err} in [lsp]"))?,
+                );
+            }
         }
         if let Some(reports) = raw.reports
             && let Some(max) = reports.max_related_tests
@@ -367,6 +373,7 @@ struct RawOraclePolicy {
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
+    diagnostic_profile: Option<String>,
 }
 
 #[derive(Deserialize)]

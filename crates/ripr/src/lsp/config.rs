@@ -1,6 +1,7 @@
 use crate::app::{CheckInput, Mode, OutputFormat};
 use crate::config::{
-    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, apply_to_check_input,
+    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, LspDiagnosticProfile, RiprConfig,
+    apply_to_check_input,
 };
 use std::path::Path;
 use tower_lsp_server::ls_types::InitializeParams;
@@ -15,6 +16,9 @@ pub(super) struct LspAnalysisConfig {
     /// saved-workspace, draft-mode analysis so the installed editor surface is
     /// useful with no `ripr.toml` and without running `ripr init`.
     pub(super) enable_seam_diagnostics: bool,
+    /// Defaults to `actionable`; valid initialization options override the
+    /// repository setting, while unknown options retain that resolved value.
+    pub(super) diagnostic_profile: LspDiagnosticProfile,
 }
 
 impl Default for LspAnalysisConfig {
@@ -26,6 +30,7 @@ impl Default for LspAnalysisConfig {
             include_unchanged_tests: defaults.include_unchanged_tests,
             repo_config: RiprConfig::default(),
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
+            diagnostic_profile: LspDiagnosticProfile::default(),
         }
     }
 }
@@ -74,6 +79,14 @@ impl LspAnalysisConfig {
             config.enable_seam_diagnostics = enable_seam_diagnostics;
         }
 
+        if let Some(profile) = options
+            .get("diagnosticProfile")
+            .and_then(|value| value.as_str())
+            .and_then(|value| LspDiagnosticProfile::parse(value).ok())
+        {
+            config.diagnostic_profile = profile;
+        }
+
         config
     }
 
@@ -88,6 +101,7 @@ impl LspAnalysisConfig {
                 .lsp()
                 .seam_diagnostics()
                 .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+            diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
             repo_config,
         }
     }
@@ -138,6 +152,35 @@ mod tests {
         let params = params_with(json!({}));
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn diagnostic_profile_init_option_selects_full_visibility() {
+        let params = params_with(json!({"diagnosticProfile": "full"}));
+        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
+    }
+
+    #[test]
+    fn unknown_diagnostic_profile_init_option_keeps_the_default() {
+        let params = params_with(json!({"diagnosticProfile": "unknown"}));
+        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn invalid_repo_diagnostic_profile_is_rejected() {
+        let error = match crate::config::tests_only_parse(
+            r#"
+[lsp]
+diagnostic_profile = "quiet"
+"#,
+        ) {
+            Ok(_) => "invalid diagnostic profile was accepted".to_owned(),
+            Err(error) => error,
+        };
+        assert!(error.contains("diagnostic_profile"));
     }
 
     #[test]
@@ -221,6 +264,7 @@ include_unchanged_tests = false
 
 [lsp]
 seam_diagnostics = true
+diagnostic_profile = "full"
 "#,
         )?;
         let params = params_with(json!({}));
@@ -229,6 +273,7 @@ seam_diagnostics = true
         assert_eq!(config.mode, Mode::Deep);
         assert!(!config.include_unchanged_tests);
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
         Ok(())
     }
 

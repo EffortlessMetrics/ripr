@@ -223,6 +223,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         mode: crate::app::Mode::Draft,
         refresh: RefreshMetadata::default(),
         findings: vec![finding],
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
@@ -534,7 +535,8 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                     "rootUri": root_uri.as_str(),
                     "initializationOptions": {
                         "baseRef": "HEAD",
-                        "checkMode": "instant"
+                        "checkMode": "instant",
+                        "diagnosticProfile": "full"
                     },
                     "capabilities": {}
                 }
@@ -1560,6 +1562,50 @@ fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
     assert_eq!(latest.mode, Mode::Draft);
     assert_eq!(latest.findings.len(), 1);
     assert_eq!(latest.diagnostics_by_uri.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn refresh_plan_accepts_actionable_snapshot_with_suppressed_finding() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let mut visible = sample_finding();
+    visible.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+        value: "PricingError::Boundary".to_string(),
+        reason: "the exact boundary is not observed".to_string(),
+        flow_sink: None,
+    }];
+    visible.related_tests = vec![RelatedTest {
+        name: "checks_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 12,
+        oracle: Some("assert_eq!(result, expected)".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
+
+    let mut suppressed = sample_finding();
+    suppressed.id = "probe:pricing:9:predicate".to_string();
+    suppressed.probe.id = ProbeId(suppressed.id.clone());
+    suppressed.probe.location.file = PathBuf::from("src/other.rs");
+    suppressed.probe.location.line = 9;
+    suppressed.class = ExposureClass::Exposed;
+
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &visible);
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![visible, suppressed],
+    );
+    diagnostics.snapshot.diagnostic_profile = crate::config::LspDiagnosticProfile::Actionable;
+
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected actionable refresh plan".to_string());
+    };
     Ok(())
 }
 
@@ -4191,6 +4237,7 @@ fn sample_analysis_snapshot(
         mode: Mode::Draft,
         refresh: RefreshMetadata::generated_now(),
         findings,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
@@ -4293,6 +4340,7 @@ fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysi
     LspAnalysisConfig {
         base_ref: Some("HEAD".to_string()),
         mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         repo_config,
         ..LspAnalysisConfig::default()
     }

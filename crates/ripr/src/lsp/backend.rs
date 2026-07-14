@@ -768,6 +768,10 @@ impl Backend {
             "last_success_snapshot_id": health.last_success_snapshot_id,
             "last_success_age_ms": last_success_age_ms,
             "run_status": health.run_status(),
+            "diagnostic_profile": self
+                .analysis_config()
+                .map(|config| config.diagnostic_profile.as_str())
+                .unwrap_or("actionable"),
             "failure": health.failure.clone().map(|failure| serde_json::json!({
                 "kind": failure.kind,
                 "message": failure.message,

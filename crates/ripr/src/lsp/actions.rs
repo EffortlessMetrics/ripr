@@ -1764,6 +1764,7 @@ mod tests {
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),

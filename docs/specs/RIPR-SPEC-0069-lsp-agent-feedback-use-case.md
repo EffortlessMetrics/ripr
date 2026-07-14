@@ -74,9 +74,11 @@ established.
 ### Surface
 
 `ripr lsp --stdio` serves a saved-workspace model over
-`tower-lsp-server`. Diagnostics come in three closed kinds:
+`tower-lsp-server`. Diagnostics come in three closed kinds, selected by the
+explicit LSP diagnostic profile:
 
-- finding-based diagnostics (always on);
+- finding-based diagnostics (`actionable` by default; `full` preserves the
+  audit/debug projection);
 - seam grip-class diagnostics (configurable via
   `enable_seam_diagnostics`, default on
   (`DEFAULT_LSP_SEAM_DIAGNOSTICS = true` in
@@ -284,9 +286,10 @@ is a scope statement, never an all-clear.
   snapshots; it adds no new analysis truth.
 - No new report generation from the first-useful-action
   integration; it remains a read-only projection.
-- No change to the existing default-on seam diagnostics posture in
-  this lane; `enable_seam_diagnostics` stays default on with
-  opt-out, owned by its existing config contract.
+- The `actionable` profile does not publish route-less findings or seam
+  diagnostics; `full` remains available for analyzer investigation and audit.
+  The separate `enable_seam_diagnostics` setting still controls whether seam
+  inventory is computed in the `full` profile.
 
 ## Required Evidence
 

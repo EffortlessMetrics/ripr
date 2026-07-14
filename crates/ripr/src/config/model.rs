@@ -142,12 +142,40 @@ impl OraclePolicy {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LspConfig {
     pub(super) seam_diagnostics: Option<bool>,
+    pub(super) diagnostic_profile: Option<LspDiagnosticProfile>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum LspDiagnosticProfile {
+    #[default]
+    Actionable,
+    Full,
+}
+
+impl LspDiagnosticProfile {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Actionable => "actionable",
+            Self::Full => "full",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "actionable" => Ok(Self::Actionable),
+            "full" => Ok(Self::Full),
+            other => Err(format!(
+                "invalid lsp.diagnostic_profile {other:?}; expected \"actionable\" or \"full\""
+            )),
+        }
+    }
 }
 
 impl Default for LspConfig {
     fn default() -> Self {
         Self {
             seam_diagnostics: Some(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+            diagnostic_profile: None,
         }
     }
 }
@@ -155,6 +183,10 @@ impl Default for LspConfig {
 impl LspConfig {
     pub(crate) fn seam_diagnostics(&self) -> Option<bool> {
         self.seam_diagnostics
+    }
+
+    pub(crate) fn diagnostic_profile(&self) -> Option<LspDiagnosticProfile> {
+        self.diagnostic_profile
     }
 }
 

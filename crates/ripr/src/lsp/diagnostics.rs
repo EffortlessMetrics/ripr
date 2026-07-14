@@ -13,10 +13,10 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
 use crate::app::check_workspace_with_config;
-use crate::config::{ConfigSeverity, SeverityConfig};
+use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
 #[cfg(test)]
 use crate::domain::RelatedTest;
-use crate::domain::{DiagnosticWitness, Finding, LanguageId, LanguageStatus};
+use crate::domain::{DiagnosticWitness, ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
 };
@@ -300,6 +300,7 @@ pub(super) fn canonical_group_has_mixed_classes(raw_findings: &[Finding]) -> boo
         > 1
 }
 
+#[cfg(test)]
 pub(super) fn finding_diagnostics_by_uri(
     root: &Path,
     findings: &[Finding],
@@ -307,8 +308,29 @@ pub(super) fn finding_diagnostics_by_uri(
     is_full_run: bool,
     causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Result<BTreeMap<Uri, Vec<Diagnostic>>, String> {
+    finding_diagnostics_by_uri_with_profile(
+        root,
+        findings,
+        severity,
+        is_full_run,
+        LspDiagnosticProfile::Full,
+        causal_projection,
+    )
+}
+
+pub(super) fn finding_diagnostics_by_uri_with_profile(
+    root: &Path,
+    findings: &[Finding],
+    severity: &SeverityConfig,
+    is_full_run: bool,
+    profile: LspDiagnosticProfile,
+    causal_projection: Option<&CausalDeltaArtifact>,
+) -> Result<BTreeMap<Uri, Vec<Diagnostic>>, String> {
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
     for (primary, raw_findings) in canonical_finding_groups(findings) {
+        if !finding_is_visible_in_profile(profile, &primary) {
+            continue;
+        }
         let path = absolute_finding_path(root, &primary);
         let uri = file_uri_for_path(&path)?;
         let mut diagnostic =
@@ -343,6 +365,25 @@ pub(super) fn finding_diagnostics_by_uri(
         grouped.entry(uri).or_default().push(diagnostic);
     }
     Ok(grouped)
+}
+
+pub(super) fn finding_is_visible_in_profile(
+    profile: LspDiagnosticProfile,
+    finding: &Finding,
+) -> bool {
+    match profile {
+        LspDiagnosticProfile::Full => true,
+        LspDiagnosticProfile::Actionable => {
+            matches!(
+                finding.class,
+                ExposureClass::WeaklyExposed
+                    | ExposureClass::ReachableUnrevealed
+                    | ExposureClass::NoStaticPath
+            ) && DiagnosticWitness::from_finding(finding).is_some_and(|witness| {
+                !witness.missing_discriminators.is_empty() && witness.fix_site.is_some()
+            })
+        }
+    }
 }
 
 /// Return a root-independent digest of a canonical diagnostic payload.
@@ -510,11 +551,12 @@ pub(super) fn workspace_diagnostics_with_config(
         eprintln!("ripr lsp: {warning}");
     }
 
-    let mut grouped = finding_diagnostics_by_uri(
+    let mut grouped = finding_diagnostics_by_uri_with_profile(
         &root,
         &findings,
         config.repo_config().severity(),
         is_full_run,
+        config.diagnostic_profile,
         causal_projection.as_ref(),
     )?;
 
@@ -540,7 +582,8 @@ pub(super) fn workspace_diagnostics_with_config(
     // not gap-record repair packets — the WARNING/INFORMATION mapping
     // is owned by SeverityConfig. When run is not full, seam WARNINGs
     // downgrade to INFORMATION. The exception is documented here.
-    let classified_seams = if !defer_seam_inventory
+    let classified_seams = if config.diagnostic_profile == LspDiagnosticProfile::Full
+        && !defer_seam_inventory
         && config.enable_seam_diagnostics
         && config
             .repo_config()
@@ -627,6 +670,7 @@ pub(super) fn workspace_diagnostics_with_config(
         mode,
         refresh: RefreshMetadata::generated_now(),
         findings,
+        diagnostic_profile: config.diagnostic_profile,
         classified_seams,
         gap_artifacts: gap_artifact_report.artifacts,
         gap_artifact_rejections: gap_artifact_report.rejections,
@@ -1964,9 +2008,10 @@ mod seam_diagnostic_tests {
 mod diagnostic_policy_tests {
     use super::*;
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, LanguageStatus, Probe,
-        ProbeFamily, ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, StaticLimitKind,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, LanguageStatus,
+        MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        StaticLimitKind,
     };
     use crate::output::gap_decision_ledger::{GapAnchor, GapRepairRoute, ProjectionEligibility};
 
@@ -2075,6 +2120,71 @@ mod diagnostic_policy_tests {
             safe_gate_predicate: None,
             authority_boundary: "advisory".to_string(),
         }
+    }
+
+    #[test]
+    fn actionable_profile_suppresses_non_actionable_findings() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.class = ExposureClass::Exposed;
+        let grouped = finding_diagnostics_by_uri_with_profile(
+            Path::new("/workspace"),
+            &[finding],
+            &SeverityConfig::default(),
+            true,
+            LspDiagnosticProfile::Actionable,
+            None,
+        )?;
+        if !grouped.is_empty() {
+            return Err("actionable profile published an exposed finding".to_string());
+        }
+
+        let mut unknown = policy_finding();
+        unknown.class = ExposureClass::StaticUnknown;
+        let grouped = finding_diagnostics_by_uri_with_profile(
+            Path::new("/workspace"),
+            &[unknown],
+            &SeverityConfig::default(),
+            true,
+            LspDiagnosticProfile::Actionable,
+            None,
+        )?;
+        if !grouped.is_empty() {
+            return Err("actionable profile published a static unknown".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn actionable_profile_keeps_a_producer_backed_fix_route() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "Price::Boundary".to_string(),
+            reason: "exact boundary is not observed".to_string(),
+            flow_sink: None,
+        }];
+        finding.related_tests.push(RelatedTest {
+            name: "checks_boundary".to_string(),
+            file: std::path::PathBuf::from("tests/pricing.rs"),
+            line: 12,
+            oracle: Some("assert_eq!(price, expected)".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+        });
+
+        let grouped = finding_diagnostics_by_uri_with_profile(
+            Path::new("/workspace"),
+            &[finding],
+            &SeverityConfig::default(),
+            true,
+            LspDiagnosticProfile::Actionable,
+            None,
+        )?;
+        if grouped.values().flatten().count() != 1 {
+            return Err("actionable profile dropped a concrete producer-backed route".to_string());
+        }
+        Ok(())
     }
 
     // Test 1: WeaklyExposed + static_limit_kind=Some → advisory → INFORMATION (never WARNING).

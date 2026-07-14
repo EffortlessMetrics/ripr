@@ -263,7 +263,7 @@ LSP runtime behavior is not configured by CLI flags; clients pass options via
 
 When an LSP client starts `ripr lsp --stdio`, it can shape analysis by sending
 an `initializationOptions` object on the `initialize` request. The server
-reads four keys; everything else is ignored. The schema lives in
+reads five keys; everything else is ignored. The schema lives in
 [`crates/ripr/src/lsp/config.rs`](../crates/ripr/src/lsp/config.rs).
 
 | Key | Type | Default | Effect |
@@ -272,6 +272,7 @@ reads four keys; everything else is ignored. The schema lives in
 | `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
 | `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
 | `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
+| `diagnosticProfile` | string | `ripr.toml` `lsp.diagnostic_profile`, otherwise `actionable` | `actionable` publishes only producer-backed bounded finding routes; `full` preserves audit/debug finding and seam visibility. Unknown initialization values fall back to the repository/default profile. |
 
 Initialization options are treated as explicit LSP settings and override
 `ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
@@ -651,6 +652,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `seam_diagnostics` | boolean | `true` | Default for bounded saved-workspace repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+| `diagnostic_profile` | enum: `actionable` \| `full` | `actionable` | `actionable` suppresses exposed, unknown, opaque, and route-less diagnostics; `full` preserves the audit/debug projection. LSP `initializationOptions.diagnosticProfile` still wins. |
 
 ### `[reports]`
 
