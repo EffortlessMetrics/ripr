@@ -145,6 +145,15 @@ For the agent-cockpit contract, the surface must expose:
   `ripr.copyAgentBriefCommand`) so the agent leaves the editor with
   the full bounded brief, not a paraphrase.
 
+Diff-scoped finding diagnostics additionally expose a producer-owned
+discriminator witness when one is available. The witness carries the exact
+changed expression and before/after facts, expected sink, named missing
+discriminators, producer-identified test fix site, current oracle, exact
+oracle source location when available, explain command, confidence basis, and
+named limitations. The same typed witness is projected into diagnostic data,
+hover, context packets, and copy-context actions without renderer-specific
+derivation.
+
 The server also emits the versioned `ripr/analysisStatus` notification and
 returns the same `analysis_status` object from `ripr.collectWorkspaceStatus`.
 Its stable fields are:
@@ -228,6 +237,12 @@ just artifact ingestion.
   without a current snapshot offers `ripr.refresh`, nothing else.
 - Invalid or unvalidated gap artifact -> rejected with the named
   validation failure; never projected as an actionable diagnostic.
+- Missing or ambiguous witness evidence -> retain the named limitation and
+  omit the unavailable field. A renderer must not infer an exact assertion,
+  target test, or source location from path, line, class, or prose proximity.
+- A witness is evidence context only. It never creates an edit action or
+  changes gate authority; suggested assertions remain absent until a producer
+  supplies a symbol-resolved template.
 
 ### Required and forbidden wording
 

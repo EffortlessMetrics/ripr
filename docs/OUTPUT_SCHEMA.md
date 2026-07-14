@@ -1782,6 +1782,38 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
   "related_tests": [],
   "observed_values": [],
   "missing_discriminators": [],
+  "witness": {
+    "kind": "static_discriminator_gap",
+    "probe_family": "predicate",
+    "changed_expression": "amount >= discount_threshold",
+    "before": "amount > discount_threshold",
+    "after": "amount >= discount_threshold",
+    "expected_sink": "return_value",
+    "missing_discriminators": [
+      {
+        "value": "amount == discount_threshold",
+        "reason": "the current tests do not distinguish the equality boundary"
+      }
+    ],
+    "fix_site": {
+      "file": "tests/pricing.rs",
+      "line": 42,
+      "test_name": "discount_at_threshold",
+      "current_oracle": "assert!(result.is_some())",
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "weak",
+      "oracle_location": { "file": "tests/pricing.rs", "line": 44 }
+    },
+    "suggested_assertion": null,
+    "explain_command": "ripr explain --root . probe:src_lib.rs:predicate:bbaa2c25",
+    "confidence": { "value": 0.75, "basis": "static_only" },
+    "limitations": [
+      {
+        "kind": "suggested_assertion_unavailable",
+        "detail": "No producer-owned symbol-resolved assertion template is available."
+      }
+    ]
+  },
   "missing": [],
   "stop_reasons": [],
   "recommended_next_step": "Add below, equal, and above threshold tests."
@@ -1789,7 +1821,13 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
 ```
 
 The context packet is intentionally smaller than check output. It is optimized
-for coding agents and editor commands.
+for coding agents and editor commands. `witness` is additive and is omitted
+when an exposed finding has no unresolved discriminator. It contains only
+producer-owned facts: `fix_site` and `oracle_location` are absent when the
+producer cannot identify them, and `suggested_assertion` remains `null` until
+the producer supplies a symbol-resolved assertion template. `limitations[]`
+names unavailable evidence; renderers must not infer it from paths, lines,
+classes, or prose.
 
 ## Repo Seam Inventory
 
@@ -12761,6 +12799,64 @@ The LSP server publishes a `Diagnostic` for every actionable
 `ClassifiedSeam` alongside the existing diff-scoped `Finding` diagnostics
 under the built-in saved-workspace default. Clients or repo policy can pass
 `seamDiagnostics: false` to disable seam diagnostics for a session.
+
+### Diff-scoped discriminator witness
+
+Diff-scoped finding diagnostics may carry the same versioned producer witness
+as `ripr context --json`. The witness is placed in diagnostic `data.witness`
+and the copy-context action forwards it unchanged. Hover, context packets,
+and diagnostic data therefore share one typed fact set:
+
+```jsonc
+{
+  "data": {
+    "schema_version": "0.1",
+    "explain_command": "ripr explain --root . probe:pricing:88:error_path",
+    "witness": {
+      "kind": "static_discriminator_gap",
+      "probe_family": "error_path",
+      "changed_expression": "map_error(result)",
+      "before": "Err(PricingError::Other)",
+      "after": "Err(PricingError::Boundary)",
+      "expected_sink": "error_variant",
+      "missing_discriminators": [
+        {
+          "value": "PricingError::Boundary",
+          "reason": "the broad error oracle does not distinguish the variant"
+        }
+      ],
+      "fix_site": {
+        "file": "tests/pricing.rs",
+        "line": 10,
+        "test_name": "rejects_boundary",
+        "current_oracle": "assert!(result.is_err())",
+        "oracle_kind": "broad_error",
+        "oracle_strength": "weak",
+        "oracle_location": { "file": "tests/pricing.rs", "line": 12 }
+      },
+      "suggested_assertion": null,
+      "explain_command": "ripr explain --root . probe:pricing:88:error_path",
+      "confidence": { "value": 0.75, "basis": "static_only" },
+      "limitations": [
+        {
+          "kind": "suggested_assertion_unavailable",
+          "detail": "No producer-owned symbol-resolved assertion template is available."
+        }
+      ]
+    }
+  }
+}
+```
+
+The witness is projection-only. It does not create a repair route or authorize
+an edit. Missing or ambiguous producer evidence is represented by `null`, an
+omitted optional field, or a named `limitations[]` entry. In particular, a
+renderer must never synthesize an assertion, choose a test from path or line
+proximity, or turn a generic oracle into an exact discriminator. The related
+information location points to the exact oracle source line only when the
+producer supplied a matching assertion fact; otherwise it points to the
+producer's test target. The human-facing related-information message uses the
+explicit `Fix site:` role so clients do not confuse it with the changed code.
 
 Diagnostic shape:
 

@@ -2,7 +2,7 @@ use super::HOVER_TEXT;
 use super::state::{AnalysisSnapshot, format_duration};
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::domain::{Finding, StageEvidence, StageState};
+use crate::domain::{DiagnosticWitness, Finding, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
@@ -358,6 +358,9 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         lines.push("## Canonical Gap".to_string());
         lines.push(format!("ID: `{}`", gap.id));
     }
+    if let Some(witness) = DiagnosticWitness::from_finding(finding) {
+        push_diagnostic_witness(&mut lines, &witness);
+    }
 
     if !finding.related_tests.is_empty() {
         lines.push(String::new());
@@ -391,6 +394,71 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
     }
 
     lines.join("\n")
+}
+
+fn push_diagnostic_witness(lines: &mut Vec<String>, witness: &DiagnosticWitness) {
+    lines.push(String::new());
+    lines.push("## Discriminator witness".to_string());
+    lines.push(format!("- kind: `{}`", witness.kind));
+    lines.push(format!("- probe family: `{}`", witness.probe_family));
+    lines.push(format!(
+        "- changed expression: `{}`",
+        witness.changed_expression
+    ));
+    if let Some(before) = &witness.before {
+        lines.push(format!("- before: `{before}`"));
+    }
+    if let Some(after) = &witness.after {
+        lines.push(format!("- after: `{after}`"));
+    }
+    if let Some(expected_sink) = &witness.expected_sink {
+        lines.push(format!("- expected sink: `{expected_sink}`"));
+    }
+    for missing in &witness.missing_discriminators {
+        lines.push(format!(
+            "- missing discriminator: `{}` — {}",
+            missing.value, missing.reason
+        ));
+    }
+    if let Some(fix_site) = &witness.fix_site {
+        lines.push(format!(
+            "- fix site: `{}:{}` `{}`",
+            fix_site.file, fix_site.line, fix_site.test_name
+        ));
+        if let Some(oracle) = &fix_site.current_oracle {
+            lines.push(format!(
+                "- current oracle: `{oracle}` ({}/{})",
+                fix_site.oracle_kind, fix_site.oracle_strength
+            ));
+        }
+        if let Some(location) = &fix_site.oracle_location {
+            lines.push(format!(
+                "- oracle source: `{}:{}`",
+                location.file, location.line
+            ));
+        }
+    }
+    if let Some(assertion) = &witness.suggested_assertion {
+        lines.push(format!("- suggested assertion: `{assertion}`"));
+    }
+    lines.push(format!("- explain: `{}`", witness.explain_command));
+    if let Some(value) = witness.confidence.value {
+        lines.push(format!(
+            "- confidence: {value:.2} ({})",
+            witness.confidence.basis
+        ));
+    } else {
+        lines.push(format!(
+            "- confidence: unavailable ({})",
+            witness.confidence.basis
+        ));
+    }
+    for limitation in &witness.limitations {
+        lines.push(format!(
+            "- limitation: `{}` — {}",
+            limitation.kind, limitation.detail
+        ));
+    }
 }
 
 fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {

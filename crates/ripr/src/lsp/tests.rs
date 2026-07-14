@@ -36,8 +36,9 @@ use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, Seam
 use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId, LanguageStatus,
-    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    MissingDiscriminatorFact, OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId,
+    RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    StaticLimitKind, ValueContext, ValueFact,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -980,6 +981,108 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn discriminator_witness_stays_aligned_across_lsp_surfaces() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.recommended_next_step = None;
+    finding.canonical_gap = Some(sample_canonical_gap());
+    finding.probe.family = ProbeFamily::ErrorPath;
+    finding.probe.before = Some("Err(PricingError::Other)".to_string());
+    finding.probe.after = Some("Err(PricingError::Boundary)".to_string());
+    finding.probe.expected_sinks = vec!["error_variant".to_string()];
+    finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+        value: "PricingError::Boundary".to_string(),
+        reason: "the broad error oracle does not distinguish the variant".to_string(),
+        flow_sink: None,
+    }];
+    finding.activation.observed_values = vec![ValueFact {
+        line: 12,
+        text: "assert!(result.is_err())".to_string(),
+        value: "result.is_err()".to_string(),
+        context: ValueContext::AssertionArgument,
+    }];
+    finding.related_tests = vec![RelatedTest {
+        name: "rejects_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 10,
+        oracle: Some("assert!(result.is_err())".to_string()),
+        oracle_kind: OracleKind::BroadError,
+        oracle_strength: OracleStrength::Weak,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let witness = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("witness"))
+        .cloned()
+        .ok_or_else(|| "expected diagnostic discriminator witness".to_string())?;
+    assert_eq!(witness["kind"], "static_discriminator_gap");
+    assert_eq!(witness["probe_family"], "error_path");
+    assert_eq!(
+        witness["missing_discriminators"][0]["value"],
+        "PricingError::Boundary"
+    );
+    assert_eq!(witness["fix_site"]["file"], "tests/pricing.rs");
+    assert!(witness["fix_site"]["oracle_location"].is_null());
+    assert!(witness["suggested_assertion"].is_null());
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("explain_command"))
+            .and_then(|value| value.as_str()),
+        Some("ripr explain --root . probe:pricing:88:predicate")
+    );
+    assert!(diagnostic.message.contains("Exact error variant"));
+    assert!(diagnostic.message.contains("PricingError::Boundary"));
+
+    let related = diagnostic
+        .related_information
+        .as_ref()
+        .ok_or_else(|| "expected fix-site related information".to_string())?;
+    assert_eq!(related.len(), 1);
+    assert!(related[0].message.starts_with("Fix site:"));
+    assert_eq!(related[0].location.range.start.line, 9);
+
+    let hover = super::hover::finding_hover_response(&finding, &diagnostic);
+    let HoverContents::Markup(markup) = hover.contents else {
+        return Err("expected witness hover markdown".to_string());
+    };
+    assert!(markup.value.contains("## Discriminator witness"));
+    assert!(markup.value.contains("PricingError::Boundary"));
+    assert!(markup.value.contains("tests/pricing.rs:10"));
+    assert!(markup.value.contains("suggested_assertion_unavailable"));
+
+    let context_packet = crate::output::json::render_context_packet(&finding, 5);
+    let context_packet: serde_json::Value =
+        serde_json::from_str(&context_packet).map_err(|err| format!("packet JSON: {err}"))?;
+    assert_eq!(context_packet["witness"], witness);
+
+    let params = code_action_params(vec![diagnostic])?;
+    let actions = code_action_response(&params, None);
+    let context_target = actions.iter().find_map(|action| {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return None;
+        };
+        if action.title != "Inspect finding: copy context packet" {
+            return None;
+        }
+        action
+            .command
+            .as_ref()
+            .and_then(|command| command.arguments.as_ref())
+            .and_then(|arguments| arguments.first())
+    });
+    assert_eq!(
+        context_target.and_then(|target| target.get("witness")),
+        Some(&witness)
+    );
+    Ok(())
 }
 
 #[test]
@@ -3176,7 +3279,7 @@ fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), Stri
     assert_eq!(related[0].location.range.start.line, 11);
     assert_eq!(
         related[0].message,
-        "Related test `discount_boundary_is_exact` has strong oracle: assert_eq!(total, expected)"
+        "Fix site: related test `discount_boundary_is_exact` has strong exact_value oracle: assert_eq!(total, expected)"
     );
     Ok(())
 }

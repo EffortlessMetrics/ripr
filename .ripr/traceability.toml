@@ -4974,19 +4974,28 @@ spec = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
 tests = [
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status",
   "crates/ripr/src/lsp/tests.rs::failed_refresh_retains_last_snapshot_and_reports_stale_health",
-  "crates/ripr/src/lsp/tests.rs::initialize_root_rejects_ambiguous_workspace_folders",
-  "crates/ripr/src/lsp/tests.rs::initialize_root_uses_root_uri_when_workspace_folders_are_missing",
-  "crates/ripr/src/lsp/tests.rs::initialize_root_reports_unavailable_when_no_lsp_root_exists",
-  "crates/ripr/src/lsp/uri.rs::path_is_within_root_rejects_traversal_and_foreign_absolute_paths",
-  "crates/ripr/src/lsp/uri.rs::file_uri_is_within_root_rejects_non_file_and_foreign_uris",
-  "editors/vscode/test/suite/extension.test.ts::typed analysis status surfaces server-owned ambiguous root state",
+    "crates/ripr/src/lsp/tests.rs::initialize_root_rejects_ambiguous_workspace_folders",
+    "crates/ripr/src/lsp/tests.rs::initialize_root_uses_root_uri_when_workspace_folders_are_missing",
+    "crates/ripr/src/lsp/tests.rs::initialize_root_reports_unavailable_when_no_lsp_root_exists",
+    "crates/ripr/src/lsp/uri.rs::path_is_within_root_rejects_traversal_and_foreign_absolute_paths",
+    "crates/ripr/src/lsp/uri.rs::file_uri_is_within_root_rejects_non_file_and_foreign_uris",
+    "editors/vscode/test/suite/extension.test.ts::typed analysis status surfaces server-owned ambiguous root state",
+    "crates/ripr/src/lsp/tests.rs::discriminator_witness_stays_aligned_across_lsp_surfaces",
+    "crates/ripr/src/domain/diagnostic_witness.rs::tests::witness_preserves_exact_facts_and_named_missing_assertion_limitations",
+    "crates/ripr/src/domain/diagnostic_witness.rs::tests::exposed_finding_without_missing_fact_does_not_become_a_gap_witness",
 ]
 fixtures = []
 code = [
   "crates/ripr/src/lsp/backend.rs",
-  "crates/ripr/src/lsp/capabilities.rs",
-  "crates/ripr/src/lsp/actions.rs",
-  "crates/ripr/src/lsp/gap_artifacts.rs",
+    "crates/ripr/src/lsp/capabilities.rs",
+    "crates/ripr/src/lsp/actions.rs",
+    "crates/ripr/src/lsp/gap_artifacts.rs",
+    "crates/ripr/src/domain/diagnostic_witness.rs",
+    "crates/ripr/src/domain/context_packet.rs",
+    "crates/ripr/src/output/json/context_packet.rs",
+    "crates/ripr/src/lsp/diagnostics.rs",
+    "crates/ripr/src/lsp/hover.rs",
+    "crates/ripr/src/lsp/actions.rs",
   "crates/ripr/src/lsp/refresh_scheduler.rs",
   "crates/ripr/src/lsp/state.rs",
   "crates/ripr/src/lsp.rs",
@@ -4995,6 +5004,7 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md",
+  "docs/OUTPUT_SCHEMA.md",
 ]
 metrics = [
   "lsp_agent_feedback_use_case_status_proposed",

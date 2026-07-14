@@ -14,7 +14,9 @@ use crate::analysis::seams::SeamGripClass;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
 use crate::app::check_workspace_with_config;
 use crate::config::{ConfigSeverity, SeverityConfig};
-use crate::domain::{Finding, LanguageId, LanguageStatus, RelatedTest};
+#[cfg(test)]
+use crate::domain::RelatedTest;
+use crate::domain::{DiagnosticWitness, Finding, LanguageId, LanguageStatus};
 use crate::output::gap_decision_ledger::{
     DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
 };
@@ -1233,6 +1235,15 @@ fn diagnostic_for_finding_with_causal(
                 preview_actionability_json_value(&actionability),
             );
         }
+        if let Some(witness) = DiagnosticWitness::from_finding(finding)
+            && let Ok(value) = serde_json::to_value(&witness)
+        {
+            obj.insert(
+                "explain_command".to_string(),
+                serde_json::Value::String(witness.explain_command.clone()),
+            );
+            obj.insert("witness".to_string(), value);
+        }
         if let Some(projection) = causal_projection {
             projection.insert_comparison_fields(obj);
             if let Some(delta) =
@@ -1283,26 +1294,20 @@ fn related_information_for_finding(
     root: &Path,
     finding: &Finding,
 ) -> Option<Vec<DiagnosticRelatedInformation>> {
-    let related = finding
-        .related_tests
-        .iter()
-        .filter_map(|test| related_information_for_test(root, test))
-        .collect::<Vec<_>>();
-    if related.is_empty() {
-        None
-    } else {
-        Some(related)
-    }
-}
-
-fn related_information_for_test(
-    root: &Path,
-    test: &RelatedTest,
-) -> Option<DiagnosticRelatedInformation> {
-    let path = absolute_related_test_path(root, test);
+    let witness = DiagnosticWitness::from_finding(finding)?;
+    let fix_site = witness.fix_site.as_ref()?;
+    let path = absolute_path(root, Path::new(&fix_site.file));
     let uri = file_uri_for_path(&path).ok()?;
-    let line = test.line.saturating_sub(1) as u32;
-    Some(DiagnosticRelatedInformation {
+    let line = fix_site
+        .oracle_location
+        .as_ref()
+        .map_or(fix_site.line, |location| location.line)
+        .saturating_sub(1) as u32;
+    let oracle = fix_site
+        .current_oracle
+        .as_deref()
+        .map_or_else(String::new, |oracle| format!(": {oracle}"));
+    Some(vec![DiagnosticRelatedInformation {
         location: Location {
             uri,
             range: Range {
@@ -1313,19 +1318,11 @@ fn related_information_for_test(
                 },
             },
         },
-        message: related_test_message(test),
-    })
-}
-
-fn related_test_message(test: &RelatedTest) -> String {
-    let strength = test.oracle_strength.as_str();
-    match &test.oracle {
-        Some(oracle) => format!(
-            "Related test `{}` has {strength} oracle: {oracle}",
-            test.name
+        message: format!(
+            "Fix site: related test `{}` has {} {} oracle{}",
+            fix_site.test_name, fix_site.oracle_strength, fix_site.oracle_kind, oracle
         ),
-        None => format!("Related test `{}` has {strength} oracle", test.name),
-    }
+    }])
 }
 
 #[cfg(test)]
@@ -1351,6 +1348,34 @@ fn lsp_message(finding: &Finding) -> String {
     } else {
         reconciled
     };
+    let witness_message = (finding.language_status.is_none())
+        .then(|| DiagnosticWitness::from_finding(finding))
+        .flatten()
+        .and_then(|witness| {
+            let missing = witness.missing_discriminators.first()?.value.as_str();
+            let subject = match witness.expected_sink.as_deref() {
+                Some("error_variant") => "Exact error variant",
+                Some("return_value") => "Exact return value",
+                Some("struct_field") => "Exact field value",
+                Some("event_call" | "call_effect") => "Expected call/effect",
+                Some("match_arm") => "Expected match-arm result",
+                _ => "Exact discriminator",
+            };
+            let fix_site = witness.fix_site.as_ref();
+            let detail = match fix_site {
+                Some(site) if site.current_oracle.is_some() => {
+                    format!("`{}` only has {} oracle", site.test_name, site.oracle_kind)
+                }
+                Some(site) => format!("`{}` has no producer-supplied oracle text", site.test_name),
+                None => "the exact fix site is unavailable".to_string(),
+            };
+            Some(format!("{subject} `{missing}` is not observed; {detail}."))
+        });
+    if finding.recommended_next_step.is_none()
+        && let Some(witness_message) = witness_message
+    {
+        return witness_message;
+    }
     if finding
         .language_status
         .as_ref()
@@ -1378,11 +1403,16 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
     }
 }
 
+#[cfg(test)]
 fn absolute_related_test_path(root: &Path, test: &RelatedTest) -> PathBuf {
-    if test.file.is_absolute() {
-        test.file.clone()
+    absolute_path(root, &test.file)
+}
+
+fn absolute_path(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
     } else {
-        root.join(&test.file)
+        root.join(path)
     }
 }
 

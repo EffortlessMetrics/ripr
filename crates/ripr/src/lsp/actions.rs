@@ -1527,6 +1527,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             "language_status",
             "owner_kind",
             "static_limit_kind",
+            "explain_command",
         ] {
             if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
                 target.insert(
@@ -1536,6 +1537,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             }
         }
         copy_optional_value(&mut target, data, "preview_actionability");
+        copy_optional_value(&mut target, data, "witness");
     }
     serde_json::Value::Object(target)
 }
