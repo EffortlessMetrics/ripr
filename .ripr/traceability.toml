@@ -6759,6 +6759,26 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0125"
+name = "Rust missing-discriminator evidence fixtures"
+spec = "docs/specs/RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md"
+tests = []
+fixtures = [
+  "fixtures/rust_missing_discriminator_evidence",
+  "fixtures/rust_missing_discriminator_evidence/pilot-mappings.json",
+]
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md",
+  "fixtures/rust_missing_discriminator_evidence/expected/check.json",
+  "fixtures/rust_missing_discriminator_evidence/expected/human.txt",
+]
+metrics = [
+  "evidence_health_missing_discriminators_total",
+  "evidence_health_static_limitation_reasons",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0124"
 name = "LSP diagnostic delivery stability"
 spec = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
