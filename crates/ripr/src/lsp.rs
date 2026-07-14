@@ -1,4 +1,5 @@
 mod actions;
+mod agent_protocol;
 mod backend;
 mod capabilities;
 mod config;
