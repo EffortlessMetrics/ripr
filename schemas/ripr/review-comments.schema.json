@@ -64,6 +64,60 @@
     "analysis_scope": {
       "$ref": "#/$defs/analysis_scope"
     },
+    "causal_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "coverage"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_items",
+            "head_items",
+            "matched_items",
+            "ambiguous_items",
+            "unknown_items",
+            "complete",
+            "low_coverage_disclosed"
+          ],
+          "properties": {
+            "base_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "head_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "matched_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ambiguous_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown_items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "low_coverage_disclosed": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
     "rendering_limits": {
       "type": "object",
       "additionalProperties": false,

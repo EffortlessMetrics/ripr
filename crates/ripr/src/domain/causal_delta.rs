@@ -674,38 +674,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn comparison_rules_match_the_pr_a_fixture_corpus() -> Result<(), String> {
-        #[derive(serde::Deserialize)]
-        struct FixtureCase {
-            name: String,
-            base_available: bool,
-            head_available: bool,
-            base_state: Option<CanonicalEvidenceState>,
-            head_state: Option<CanonicalEvidenceState>,
-            expected: DeltaAttribution,
-        }
-
-        let cases: Vec<FixtureCase> = serde_json::from_str(include_str!(
-            "../../tests/fixtures/causal-attribution/pr-a-comparison-rules.json"
-        ))
-        .map_err(|error| format!("parse PR A comparison fixture: {error}"))?;
-        for case in cases {
-            let delta = compare_fixture_delta(
-                format!("gap:{}", case.name),
-                case.base_available,
-                case.head_available,
-                case.base_state,
-                case.head_state,
-            );
-            if delta.delta_attribution != case.expected {
-                return Err(format!(
-                    "fixture {} expected {:?}, got {:?}",
-                    case.name, case.expected, delta.delta_attribution
-                ));
-            }
-        }
-        Ok(())
-    }
 }

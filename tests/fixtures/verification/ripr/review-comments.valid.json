@@ -34,6 +34,18 @@
     "limitation": "review_comments_diff_scope_only",
     "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
   },
+  "causal_comparison": {
+    "available": true,
+    "coverage": {
+      "base_items": 1,
+      "head_items": 1,
+      "matched_items": 1,
+      "ambiguous_items": 0,
+      "unknown_items": 0,
+      "complete": true,
+      "low_coverage_disclosed": false
+    }
+  },
   "rendering_limits": {
     "max_inline_comments": 10,
     "max_summary_items": 25
