@@ -33,6 +33,7 @@ pub(super) enum RefreshReason {
     DidOpen,
     DidSave,
     DidClose,
+    ConfigReload,
     ExplicitRefresh,
 }
 
@@ -42,6 +43,7 @@ impl RefreshReason {
             Self::DidOpen => "did_open",
             Self::DidSave => "did_save",
             Self::DidClose => "did_close",
+            Self::ConfigReload => "config_reload",
             Self::ExplicitRefresh => "explicit_refresh",
         }
     }
@@ -73,6 +75,7 @@ pub(super) struct RefreshTelemetrySnapshot {
     pub(super) did_open_requests: u64,
     pub(super) did_save_requests: u64,
     pub(super) did_close_requests: u64,
+    pub(super) config_reload_requests: u64,
     pub(super) explicit_refresh_requests: u64,
     pub(super) analyses_started: u64,
     pub(super) requests_coalesced: u64,
@@ -177,6 +180,7 @@ impl RefreshScheduler {
                 state.latest_save_requested_at = Some(Instant::now());
             }
             RefreshReason::DidClose => state.telemetry.did_close_requests += 1,
+            RefreshReason::ConfigReload => state.telemetry.config_reload_requests += 1,
             RefreshReason::ExplicitRefresh => state.telemetry.explicit_refresh_requests += 1,
         }
 

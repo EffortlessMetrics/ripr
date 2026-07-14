@@ -21,7 +21,7 @@ use super::state::{
     AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, DocumentStore,
     WorkspaceRootAuthority, WorkspaceRootState, format_duration,
 };
-use super::uri::file_uri_is_within_root;
+use super::uri::{file_uri_for_path, file_uri_is_within_root, file_uris_match};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
     COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
@@ -51,9 +51,10 @@ use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Diagnostic,
-    DidChangeTextDocumentParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams,
-    InitializeParams, InitializeResult, LSPAny, MessageType, Uri,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, ExecuteCommandParams, FileEvent, Hover, HoverParams,
+    InitializeParams, InitializeResult, InitializedParams, LSPAny, MessageType, Registration, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -65,10 +66,12 @@ pub(super) struct Backend {
     workspace_root_transition: AsyncMutex<()>,
     documents: Mutex<DocumentStore>,
     analysis_config: Mutex<LspAnalysisConfig>,
+    configuration_failure: Mutex<Option<AnalysisFailure>>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     latest_analysis: Mutex<Option<AnalysisSnapshot>>,
     analysis_health: Mutex<AnalysisHealth>,
+    dynamic_file_watch_registration: Mutex<bool>,
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
@@ -92,10 +95,12 @@ impl Backend {
             workspace_root_transition: AsyncMutex::new(()),
             documents: Mutex::new(DocumentStore::default()),
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
+            configuration_failure: Mutex::new(None),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
             latest_analysis: Mutex::new(None),
             analysis_health: Mutex::new(AnalysisHealth::default()),
+            dynamic_file_watch_registration: Mutex::new(false),
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
             refresh_idle: Notify::new(),
@@ -119,6 +124,9 @@ impl Backend {
     ///
     /// See RIPR-SPEC-0105 for the design rationale.
     pub(super) async fn refresh_diagnostics(&self, scope: RefreshScope, reason: RefreshReason) {
+        if self.configuration_failure().is_some() {
+            return;
+        }
         let authority = self.workspace_root_authority();
         let Some(root) = authority.effective_root.clone() else {
             return;
@@ -891,6 +899,9 @@ impl Backend {
     }
 
     fn reset_health_for_input_change(&self) {
+        if let Ok(mut failure) = self.configuration_failure.lock() {
+            *failure = None;
+        }
         if let Ok(mut health) = self.analysis_health.lock() {
             health.state = AnalysisAttemptState::Stopped;
             health.attempt_id = None;
@@ -903,6 +914,126 @@ impl Backend {
             health.pending_reason = None;
             health.pending_scope = None;
         }
+    }
+
+    fn invalidate_analysis_input(&self, reason: &str) {
+        self.refresh_scheduler.invalidate_input();
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.state = AnalysisAttemptState::Stopped;
+            health.reason = Some(reason.to_string());
+            health.requested_scope = Some(RefreshScope::Interactive.as_str().to_string());
+            health.failure = None;
+            health.pending_attempt_id = None;
+            health.pending_reason = None;
+            health.pending_scope = None;
+        }
+    }
+
+    fn set_configuration_failure(&self, message: impl Into<String>) {
+        let failure = AnalysisFailure {
+            kind: "config_invalid".to_string(),
+            message: bounded_failure_message(&message.into()),
+        };
+        if let Ok(mut current) = self.configuration_failure.lock() {
+            *current = Some(failure.clone());
+        }
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.state = AnalysisAttemptState::Failed;
+            health.reason = Some(RefreshReason::ConfigReload.as_str().to_string());
+            health.requested_scope = Some(RefreshScope::Interactive.as_str().to_string());
+            health.failure = Some(failure);
+        }
+    }
+
+    fn clear_configuration_failure(&self) {
+        if let Ok(mut current) = self.configuration_failure.lock() {
+            *current = None;
+        }
+        if let Ok(mut health) = self.analysis_health.lock()
+            && health
+                .failure
+                .as_ref()
+                .is_some_and(|failure| failure.kind == "config_invalid")
+        {
+            health.failure = None;
+            health.state = AnalysisAttemptState::Stopped;
+        }
+    }
+
+    pub(super) fn configuration_failure(&self) -> Option<AnalysisFailure> {
+        self.configuration_failure
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().cloned())
+    }
+
+    async fn reload_repository_config(&self) {
+        let Some(root) = self.effective_root() else {
+            return;
+        };
+        let current = self.analysis_config().unwrap_or_default();
+        let had_configuration_failure = self.configuration_failure().is_some();
+        match crate::config::load_for_root(&root) {
+            Ok(repo_config) => {
+                let next = current.reload_repo_config(repo_config);
+                self.clear_configuration_failure();
+                if next != current || had_configuration_failure {
+                    self.set_analysis_config(next);
+                    self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+                    self.publish_analysis_status().await;
+                    self.refresh_diagnostics(
+                        RefreshScope::Interactive,
+                        RefreshReason::ConfigReload,
+                    )
+                    .await;
+                } else {
+                    self.publish_analysis_status().await;
+                }
+            }
+            Err(error) => {
+                self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+                self.set_configuration_failure(error);
+                self.publish_analysis_status().await;
+            }
+        }
+    }
+
+    async fn apply_session_configuration_change(&self, settings: &LSPAny) {
+        if !LspAnalysisConfig::has_session_option_changes(settings) {
+            return;
+        }
+        let Some(current) = self.analysis_config() else {
+            return;
+        };
+        let Some(next) = current.with_changed_session_options(settings) else {
+            return;
+        };
+        if next == current {
+            return;
+        }
+        self.set_analysis_config(next);
+        if self.configuration_failure().is_some() {
+            // Keep the config_invalid signal visible while repository
+            // configuration remains broken. The stored session override is
+            // retained and will be reapplied when the repository reload
+            // succeeds; it cannot authorize a refresh on its own.
+            self.publish_analysis_status().await;
+            return;
+        }
+        self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+        self.publish_analysis_status().await;
+        self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
+            .await;
+    }
+
+    fn file_event_is_repository_config(&self, event: &FileEvent) -> bool {
+        let Some(root) = self.effective_root() else {
+            return false;
+        };
+        let expected = root.join(crate::config::CONFIG_FILE_NAME);
+        file_uri_for_path(&expected)
+            .ok()
+            .is_some_and(|uri| file_uris_match(&uri, &event.uri))
     }
 
     fn set_analysis_config(&self, config: LspAnalysisConfig) {
@@ -1360,24 +1491,52 @@ fn root_authority_receipt_status(state: &WorkspaceRootState) -> LSPAny {
 }
 
 impl LanguageServer for Backend {
+    async fn initialized(&self, _: InitializedParams) {
+        let supports_dynamic_registration = self
+            .dynamic_file_watch_registration
+            .lock()
+            .map(|value| *value)
+            .unwrap_or(false);
+        if !supports_dynamic_registration {
+            return;
+        }
+        let registration = Registration {
+            id: "ripr-config-file-watch".to_string(),
+            method: "workspace/didChangeWatchedFiles".to_string(),
+            register_options: Some(serde_json::json!({
+                "watchers": [{"globPattern": "**/ripr.toml"}]
+            })),
+        };
+        if let Err(error) = self.client.register_capability(vec![registration]).await {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!("ripr config file watching unavailable: {error}"),
+                )
+                .await;
+        }
+    }
+
     async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
+        let supports_dynamic_registration = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.did_change_watched_files.as_ref())
+            .and_then(|capability| capability.dynamic_registration)
+            .unwrap_or(false);
+        if let Ok(mut supported) = self.dynamic_file_watch_registration.lock() {
+            *supported = supports_dynamic_registration;
+        }
         let resolution = root_from_initialize_params(&params);
-        let repo_config = match &resolution {
+        let (repo_config, config_error) = match &resolution {
             WorkspaceRootResolution::Selected(root) if root.is_dir() => {
                 match crate::config::load_for_root(root) {
-                    Ok(config) => config,
-                    Err(err) => {
-                        self.client
-                            .log_message(
-                                MessageType::WARNING,
-                                format!("ripr config load failed; using defaults: {err}"),
-                            )
-                            .await;
-                        crate::config::RiprConfig::default()
-                    }
+                    Ok(config) => (config, None),
+                    Err(err) => (crate::config::RiprConfig::default(), Some(err)),
                 }
             }
-            _ => crate::config::RiprConfig::default(),
+            _ => (crate::config::RiprConfig::default(), None),
         };
         self.set_analysis_config(LspAnalysisConfig::from_initialize_params(
             &params,
@@ -1387,7 +1546,32 @@ impl LanguageServer for Backend {
             "initial workspace root resolution pending",
         ));
         self.apply_workspace_root_resolution(resolution).await;
+        if let Some(error) = config_error {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!("ripr config load failed; analysis is paused: {error}"),
+                )
+                .await;
+            self.set_configuration_failure(error);
+            self.publish_analysis_status().await;
+        }
         Ok(initialize_result())
+    }
+
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        self.apply_session_configuration_change(&params.settings)
+            .await;
+    }
+
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        if params
+            .changes
+            .iter()
+            .any(|event| self.file_event_is_repository_config(event))
+        {
+            self.reload_repository_config().await;
+        }
     }
 
     async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {
@@ -1414,6 +1598,7 @@ impl LanguageServer for Backend {
             )),
         };
         self.apply_workspace_root_resolution(resolution).await;
+        self.reload_repository_config().await;
     }
 
     async fn shutdown(&self) -> LspResult<()> {
@@ -1498,6 +1683,14 @@ impl LanguageServer for Backend {
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
         if params.command == REFRESH_COMMAND {
+            if self.configuration_failure().is_some() {
+                // A retry must re-read the repository configuration. The
+                // normal refresh guard intentionally refuses to run while a
+                // config error is latched, so relying on a later file-watch
+                // event would make the advertised retry route dishonest.
+                self.reload_repository_config().await;
+                return Ok(None);
+            }
             // Explicit refresh: run the full seam inventory (RIPR-SPEC-0105).
             // This is the demand path that transitions a seams_deferred snapshot
             // to full/limited with complete seam evidence.

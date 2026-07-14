@@ -303,8 +303,9 @@ export class RiprClientController {
       revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,
       synchronize: {
+        configurationSection: 'ripr',
         fileEvents: this.runtime.createFileSystemWatcher(
-          new vscode.RelativePattern(this.workspaceRoot, '**/Cargo.toml')
+          new vscode.RelativePattern(this.workspaceRoot, '**/{Cargo.toml,ripr.toml}')
         )
       }
     };

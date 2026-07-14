@@ -47,12 +47,12 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    ExecuteCommandParams, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
-    MarkedString, NumberOrString, Position, Range, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
-    WorkspaceFolder,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, ExecuteCommandParams, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, MarkedString, NumberOrString, Position, Range,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -3801,6 +3801,68 @@ enabled = ["ruby"]
         );
         assert_eq!(config.mode, Mode::Draft);
         assert!(config.enable_seam_diagnostics);
+        let Some(failure) = backend.configuration_failure() else {
+            return Err("invalid config should pause analysis with a typed failure".to_string());
+        };
+        assert_eq!(failure.kind, "config_invalid");
+        backend.invalidate_workspace_root_for_test().await;
+        assert!(backend.configuration_failure().is_none());
+        Ok(())
+    })
+}
+
+#[test]
+fn session_configuration_change_preserves_invalid_repository_config_health() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("invalid-config-session-change")?;
+        std::fs::write(
+            root.path().join("ripr.toml"),
+            "[languages]\nenabled = [\"ruby\"]\n",
+        )
+        .map_err(|err| format!("write invalid config failed: {err}"))?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        if backend.configuration_failure().is_none() {
+            return Err("invalid repository config should latch config_invalid".to_string());
+        }
+        backend
+            .did_change_configuration(DidChangeConfigurationParams {
+                settings: serde_json::json!({"ripr": {"seamDiagnostics": false}}),
+            })
+            .await;
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        assert_eq!(status["analysis_status"]["state"], "failed");
+        assert_eq!(
+            status["analysis_status"]["failure"]["kind"],
+            "config_invalid"
+        );
+        assert!(
+            !backend
+                .analysis_config()
+                .ok_or_else(|| "expected analysis config".to_string())?
+                .enable_seam_diagnostics
+        );
         Ok(())
     })
 }

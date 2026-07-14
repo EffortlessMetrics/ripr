@@ -3974,13 +3974,13 @@ function assertCargoTomlWatcherScopedToWorkspace(
   watcherPatterns: vscode.GlobPattern[],
   workspaceRoot: string
 ): void {
-  assert.strictEqual(watcherPatterns.length, 1, 'expected one Cargo.toml watcher');
+  assert.strictEqual(watcherPatterns.length, 1, 'expected one repository manifest/config watcher');
   const pattern = watcherPatterns[0] as {
     base?: string;
     baseUri?: vscode.Uri;
     pattern?: string;
   };
-  assert.strictEqual(pattern.pattern, '**/Cargo.toml');
+  assert.strictEqual(pattern.pattern, '**/{Cargo.toml,ripr.toml}');
   const basePath = pattern.baseUri?.fsPath ?? pattern.base;
   assertWorkspacePathEqual(basePath ?? '', workspaceRoot);
 }
