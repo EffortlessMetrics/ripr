@@ -8,6 +8,16 @@ the GitHub Release body, triggering `publish-extension.yml`, or running
 process narrative, marketplace metadata, install truth, badge freshness,
 public vocabulary, asset verification) that the v0.5.0 release surfaced.
 
+Set the release identity once before running the active commands:
+
+```bash
+VERSION=0.11.0
+TAG="v${VERSION}"
+```
+
+Change the assignment for later releases. Concrete older versions are retained
+only where the text describes historical behavior.
+
 ## Preconditions
 
 - The release branch has been reviewed and merged.
@@ -31,7 +41,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo xtask check-product-copy
 cargo xtask check-generated-clean
-cargo xtask release-readiness --version 0.8.0
+cargo xtask release-readiness --version "${VERSION}"
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -39,9 +49,8 @@ cargo publish -p ripr --dry-run
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).
 
-For 0.8.x release claims about evidence-to-repair readiness, runtime
-completeness, or actionability projection, also run the Lane 1 evidence
-reports:
+For release claims about evidence-to-repair readiness, runtime completeness,
+or actionability projection, also run the Lane 1 evidence reports:
 
 ```bash
 cargo xtask lane1-evidence-audit
@@ -97,13 +106,16 @@ manifest, server archives, and checksums:
 
 ```bash
 gh release list --repo EffortlessMetrics/ripr --limit 5
-gh release view v0.8.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
-gh release download v0.8.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.8.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.8.0.json' --dir target/ripr/release-smoke --clobber
+gh release view "${TAG}" --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
+gh release download "${TAG}" --repo EffortlessMetrics/ripr \
+  --pattern "ripr-server-v${VERSION}-x86_64-pc-windows-msvc.zip" \
+  --pattern "ripr-server-manifest-v${VERSION}.json" \
+  --dir target/ripr/release-smoke --clobber
 ```
 
-For the `v0.8.0` release, the GitHub Release must have the VSIX, server
-manifest, per-target server archives, checksums, and a server archive whose
-manifest checksum matches the downloaded archive. The extracted server must run
+For each release, the GitHub Release must have the VSIX, server manifest,
+per-target server archives, checksums, and a server archive whose manifest
+checksum matches the downloaded archive. The extracted server must run
 `ripr --version`, `ripr lsp --version`, `ripr pilot`, `ripr outcome`, and
 `ripr agent verify`. When an agent verify JSON artifact is available, also run
 `ripr agent receipt` for the top seam.
@@ -138,7 +150,7 @@ happens, check crates.io manually before retrying.
 ## Post-Publish
 
 ```bash
-cargo install ripr --version 0.8.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version "${VERSION}" --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr doctor
@@ -152,8 +164,8 @@ target/ripr/install-smoke-cratesio/bin/ripr agent receipt --root . --verify-json
 Tag the release:
 
 ```bash
-git tag v0.8.0
-git push origin v0.8.0
+git tag "${TAG}"
+git push origin "${TAG}"
 ```
 
 Update docs or release notes if the install command or package metadata changed.
@@ -164,11 +176,12 @@ Before publishing, run the
 [Release copy checklist](RELEASE_COPY_CHECKLIST.md). It covers the GitHub
 Release body, marketplace metadata, README install commands, badge freshness
 disclosure, public vocabulary, and asset/dependent-channel verification.
-For 0.8.0, also compare GitHub About and repository topics with the current
-release-readiness handoff before changing repository metadata. Repository
-metadata should describe static mutation-exposure analysis for test-gap review
-without implying runtime mutation execution, generated tests, provider-backed
-analysis, default blocking, or stable preview-language gate authority.
+For each release, also compare GitHub About and repository topics with the
+current release-readiness handoff before changing repository metadata.
+Repository metadata should describe static mutation-exposure analysis for
+test-gap review without implying runtime mutation execution, generated tests,
+provider-backed analysis, default blocking, or stable preview-language gate
+authority.
 
 ## Recovery
 
@@ -181,13 +194,13 @@ existing GitHub Release rather than replacing it.
 1. Open a focused fix PR on `main` that reproduces the failure as a test
    and fixes only the broken path. Merge it.
 2. Rerun the failed workflow via `workflow_dispatch` with the same
-   `version` input as the tag, for example
-   `gh workflow run release-server-binaries.yml -f version=0.8.0`. The
-   asset names continue to use the original version, so they overlay
+   `version` input as the tag:
+   `gh workflow run release-server-binaries.yml -f version="${VERSION}"`.
+   The asset names continue to use the original version, so they overlay
    correctly on the existing Release.
 3. After server assets are present and verified, rerun any downstream
-   workflow that was gated on them, for example
-   `gh workflow run publish-extension.yml -f version=0.8.0`.
+   workflow that was gated on them:
+   `gh workflow run publish-extension.yml -f version="${VERSION}"`.
 4. Do not retag and do not delete the GitHub Release. Leave the tag at
    the release-prep commit; the fix-forward commit is on `main` and any
    subsequent point release will include it.
@@ -195,6 +208,6 @@ existing GitHub Release rather than replacing it.
    was user-visible. crates.io publish remains a manual step and should
    only run once asset verification is complete.
 
-This pattern is what the `v0.5.0` release used after the initial Windows
-server-archive failure; see CHANGELOG `Release recovery (v0.5.0)` for the
-record.
+This pattern is what the historical `v0.5.0` release used after the initial
+Windows server-archive failure; see CHANGELOG `Release recovery (v0.5.0)` for
+the record.
