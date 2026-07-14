@@ -136,3 +136,4 @@ observable behavior.
 | [RIPR-SPEC-0123](RIPR-SPEC-0123-targeted-rerun.md) | accepted | Targeted Rust rerun: explicit `--gap` or `--changed-test` selection, content-keyed fact reuse, named invalidation and cold fallback, canonical identity/receipt continuity, and a reproducible cold-versus-warm benchmark receipt |
 | [RIPR-SPEC-0124](RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md) | accepted | LSP diagnostic canonicalization, root-independent identities, unchanged URI suppression, and publication telemetry |
 | [RIPR-SPEC-0125](RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md) | proposed | Rust governed pilot missing-discriminator evidence fixtures |
+| [RIPR-SPEC-0126](RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md) | accepted | Pure deterministic finite LSP delivery budget over producer-owned canonical actionable items; explicit selected/omitted identities, byte limits, and overflow reasons |

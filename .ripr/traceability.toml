@@ -6830,3 +6830,28 @@ metrics = [
   "lsp_diagnostic_published_payload_bytes",
   "lsp_diagnostic_suppressed_payload_bytes",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0126"
+name = "LSP diagnostic delivery budget"
+spec = "docs/specs/RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md"
+tests = [
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::selection_is_deterministic_and_uses_evidence_owned_order",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::document_and_byte_limits_record_each_omission",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::oversized_inline_detail_stays_selected_with_explicit_omission",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::profile_filtered_items_never_consume_the_budget",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::invalid_budget_is_fail_closed",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/diagnostic_budget.rs",
+  "crates/ripr/src/lsp.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md",
+]
+metrics = [
+  "lsp_diagnostic_budget_selected_items",
+  "lsp_diagnostic_budget_omitted_items",
+  "lsp_diagnostic_budget_overflowed",
+]
