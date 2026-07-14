@@ -1006,6 +1006,34 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('typed analysis status takes precedence over lifecycle log parsing', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'failed',
+        attempt_id: '9',
+        snapshot_id: 'snapshot:8',
+        run_status: 'stale',
+        failure: { kind: 'analysis_error', message: 'temporary timeout' },
+        retry_command: 'ripr.refresh'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+      assert.ok(String(context.status.tooltip).includes('last-known-good evidence is retained'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 1 ms: generation=9, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar projects existing first useful action report', async () => {
     const context = createControllerTestContext({
       firstActionJson: JSON.stringify({

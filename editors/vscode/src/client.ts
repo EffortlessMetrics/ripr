@@ -193,6 +193,8 @@ export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
+  private receivedTypedAnalysisStatus = false;
+  private typedAnalysisStatusState: RiprAnalysisStatusPayload['state'] | undefined;
   private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
   private setupStatus: RiprSetupStatus = setupStatusWithoutWorkspace();
@@ -312,6 +314,7 @@ export class RiprClientController {
     this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
     this.client.setTrace(traceFromConfig(config.traceServer));
     this.notificationDisposables.push(
+      this.client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
       this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
     );
     await this.client.start();
@@ -334,6 +337,8 @@ export class RiprClientController {
     const client = this.client;
     this.client = undefined;
     this.server = undefined;
+    this.receivedTypedAnalysisStatus = false;
+    this.typedAnalysisStatusState = undefined;
     this.firstUsefulAction = undefined;
     this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
@@ -873,6 +878,9 @@ export class RiprClientController {
     if (!message) {
       return;
     }
+    if (this.shouldSuppressRefreshLifecycleLog(message)) {
+      return;
+    }
     if (message.startsWith('ripr analysis refresh queued')) {
       this.updateStatus({
         kind: 'analysisQueued',
@@ -906,6 +914,80 @@ export class RiprClientController {
     }
   }
 
+  private handleAnalysisStatus(params: unknown): void {
+    const status = analysisStatusPayload(params);
+    if (!status) {
+      return;
+    }
+    this.receivedTypedAnalysisStatus = true;
+    this.typedAnalysisStatusState = status.state;
+    const failure = status.failure && typeof status.failure === 'object'
+      ? status.failure as Record<string, unknown>
+      : undefined;
+    const failureMessage = typeof failure?.message === 'string'
+      ? failure.message
+      : 'The last analysis attempt failed.';
+    const retry = typeof status.retry_command === 'string'
+      ? status.retry_command
+      : 'ripr.refresh';
+    const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
+    switch (status.state) {
+      case 'queued':
+        this.updateStatus({
+          kind: 'analysisQueued',
+          summary: 'ripr saved-workspace analysis is queued.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'running':
+        this.updateStatus({
+          kind: 'analysisRunning',
+          summary: 'ripr saved-workspace analysis is running.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'failed':
+        this.updateStatus({
+          kind: 'analysisFailed',
+          summary: 'ripr analysis failed; last-known-good evidence is retained.',
+          detail: `${analysisStatusDetail(status)}\n${failureMessage}${retained}`,
+          nextStep: `Run ${retry} to retry the saved-workspace analysis.`
+        });
+        return;
+      case 'cancelled':
+      case 'superseded':
+        this.updateStatus({
+          kind: 'stale',
+          summary: `ripr analysis ${status.state}; retained evidence is stale.`,
+          detail: analysisStatusDetail(status),
+          nextStep: `Run ${retry} to obtain a current saved-workspace snapshot.`
+        });
+        return;
+      case 'succeeded':
+        if (status.run_status === 'stale') {
+          this.updateStatus({
+            kind: 'stale',
+            summary: 'ripr analysis completed with stale or limited evidence.',
+            detail: analysisStatusDetail(status),
+            nextStep: `Run ${retry} after resolving the reported limitation.`
+          });
+        } else {
+          this.updateStatus({
+            kind: 'analysisReady',
+            summary: 'ripr saved-workspace analysis completed.',
+            detail: analysisStatusDetail(status),
+            nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.'
+          });
+        }
+        void this.refreshFirstUsefulActionStatus();
+        return;
+      default:
+        return;
+    }
+  }
+
   private statusAfterRefreshCompleted(message: string): RiprStatusState {
     if (this.dirtyRiprDocuments.size === 0) {
       return statusFromRefreshCompletedMessage(message);
@@ -919,6 +1001,12 @@ export class RiprClientController {
         `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
       ].join('\n')
     };
+  }
+
+  private shouldSuppressRefreshLifecycleLog(message: string): boolean {
+    return this.receivedTypedAnalysisStatus
+      && this.typedAnalysisStatusState !== 'succeeded'
+      && isRefreshLifecycleLog(message);
   }
 
   private updateStatus(status: RiprStatusState): void {
@@ -3039,6 +3127,53 @@ function serverLogMessage(params: unknown): string | undefined {
   }
   const message = (params as { message?: unknown }).message;
   return typeof message === 'string' ? message : undefined;
+}
+
+interface RiprAnalysisStatusPayload {
+  schema_version: string;
+  kind: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'superseded' | 'stopped';
+  run_status?: string;
+  attempt_id?: string | null;
+  snapshot_id?: string | null;
+  retry_command?: string;
+  failure?: unknown;
+  pending?: boolean;
+}
+
+function analysisStatusPayload(params: unknown): RiprAnalysisStatusPayload | undefined {
+  if (!params || typeof params !== 'object') {
+    return undefined;
+  }
+  const candidate = params as Partial<RiprAnalysisStatusPayload>;
+  if (candidate.schema_version !== '0.1' || candidate.kind !== 'analysis_status') {
+    return undefined;
+  }
+  const states = new Set<RiprAnalysisStatusPayload['state']>([
+    'queued', 'running', 'succeeded', 'failed', 'cancelled', 'superseded', 'stopped'
+  ]);
+  if (typeof candidate.state !== 'string' || !states.has(candidate.state as RiprAnalysisStatusPayload['state'])) {
+    return undefined;
+  }
+  return candidate as RiprAnalysisStatusPayload;
+}
+
+function analysisStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const fields = [
+    `state=${status.state}`,
+    status.attempt_id ? `attempt=${status.attempt_id}` : undefined,
+    status.run_status ? `run_status=${status.run_status}` : undefined,
+    status.snapshot_id ? `snapshot=${status.snapshot_id}` : undefined,
+    status.pending ? 'pending=latest' : undefined
+  ].filter((field): field is string => Boolean(field));
+  return `ripr typed analysis status: ${fields.join(', ')}`;
+}
+
+function isRefreshLifecycleLog(message: string): boolean {
+  return message.startsWith('ripr analysis refresh queued')
+    || message.startsWith('ripr analysis refresh started')
+    || message.startsWith('ripr analysis refresh completed')
+    || message.startsWith('ripr analysis refresh failed');
 }
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {

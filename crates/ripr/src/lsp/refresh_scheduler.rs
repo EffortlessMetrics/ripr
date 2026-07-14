@@ -18,6 +18,13 @@ impl RefreshScope {
     fn covers(self, requested: Self) -> bool {
         matches!(self, Self::Full) || self == requested
     }
+
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Interactive => "interactive",
+            Self::Full => "full",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,6 +33,17 @@ pub(super) enum RefreshReason {
     DidSave,
     DidClose,
     ExplicitRefresh,
+}
+
+impl RefreshReason {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::DidOpen => "did_open",
+            Self::DidSave => "did_save",
+            Self::DidClose => "did_close",
+            Self::ExplicitRefresh => "explicit_refresh",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -300,6 +318,15 @@ impl RefreshScheduler {
 
     pub(super) fn execution_gate(&self) -> Arc<Mutex<()>> {
         Arc::clone(&self.execution_gate)
+    }
+
+    pub(super) fn pending_request(&self, generation: u64) -> Option<RefreshRequest> {
+        let state = self.state.lock().ok()?;
+        state
+            .pending_latest
+            .as_ref()
+            .filter(|request| request.generation == generation)
+            .cloned()
     }
 
     pub(super) fn record_attempt_outcome(

@@ -4971,9 +4971,18 @@ metrics = [
 id = "RIPR-SPEC-0069"
 name = "LSP / agent feedback use case"
 spec = "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md"
-tests = []
+tests = [
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status",
+  "crates/ripr/src/lsp/tests.rs::failed_refresh_retains_last_snapshot_and_reports_stale_health",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/refresh_scheduler.rs",
+  "crates/ripr/src/lsp/state.rs",
+  "crates/ripr/src/lsp.rs",
+  "editors/vscode/src/client.ts",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md",
 ]

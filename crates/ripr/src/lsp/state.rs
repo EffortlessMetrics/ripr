@@ -17,6 +17,104 @@ pub(super) struct RefreshMetadata {
     pub(super) duration: Option<Duration>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum AnalysisAttemptState {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+    Superseded,
+    Stopped,
+}
+
+impl AnalysisAttemptState {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Superseded => "superseded",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    pub(super) fn allows_current_repairs(self) -> bool {
+        matches!(self, Self::Succeeded)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct AnalysisFailure {
+    pub(super) kind: String,
+    pub(super) message: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct AnalysisHealth {
+    pub(super) attempt_id: Option<u64>,
+    pub(super) state: AnalysisAttemptState,
+    pub(super) reason: Option<String>,
+    pub(super) requested_scope: Option<String>,
+    pub(super) snapshot_id: Option<String>,
+    pub(super) last_success_snapshot_id: Option<String>,
+    pub(super) last_success_at: Option<SystemTime>,
+    pub(super) snapshot_run_status: Option<String>,
+    pub(super) failure: Option<AnalysisFailure>,
+    pub(super) pending_attempt_id: Option<u64>,
+    pub(super) pending_reason: Option<String>,
+    pub(super) pending_scope: Option<String>,
+}
+
+impl Default for AnalysisHealth {
+    fn default() -> Self {
+        Self {
+            attempt_id: None,
+            state: AnalysisAttemptState::Stopped,
+            reason: None,
+            requested_scope: None,
+            snapshot_id: None,
+            last_success_snapshot_id: None,
+            last_success_at: None,
+            snapshot_run_status: None,
+            failure: None,
+            pending_attempt_id: None,
+            pending_reason: None,
+            pending_scope: None,
+        }
+    }
+}
+
+impl AnalysisHealth {
+    pub(super) fn run_status(&self) -> &'static str {
+        if self.snapshot_id.is_none() {
+            return "no_snapshot";
+        }
+        if !matches!(self.state, AnalysisAttemptState::Succeeded) {
+            return "stale";
+        }
+        match self.snapshot_run_status.as_deref() {
+            Some("seams_deferred") => "seams_deferred",
+            Some("cache_limited") => "cache_limited",
+            Some("limited") => "limited",
+            Some("stale") => "stale",
+            _ => "full",
+        }
+    }
+
+    pub(super) fn allows_current_repairs(&self) -> bool {
+        self.snapshot_id.is_some()
+            && self.state.allows_current_repairs()
+            && self.run_status() != "stale"
+    }
+
+    pub(super) fn pending(&self) -> bool {
+        self.pending_attempt_id.is_some()
+    }
+}
+
 impl RefreshMetadata {
     pub(super) fn generated_now() -> Self {
         Self {

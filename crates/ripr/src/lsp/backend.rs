@@ -1,3 +1,4 @@
+use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
@@ -14,7 +15,10 @@ use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler,
     RefreshScope,
 };
-use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
+use super::state::{
+    AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, DocumentStore,
+    format_duration,
+};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
     COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
@@ -57,9 +61,16 @@ pub(super) struct Backend {
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     latest_analysis: Mutex<Option<AnalysisSnapshot>>,
+    analysis_health: Mutex<AnalysisHealth>,
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
+}
+
+pub(super) struct RefreshTransaction {
+    pub(super) plan: DiagnosticRefreshPlan,
+    pub(super) snapshot: AnalysisSnapshot,
+    pub(super) previous_diagnostics: BTreeMap<Uri, Vec<Diagnostic>>,
 }
 
 impl Backend {
@@ -72,6 +83,7 @@ impl Backend {
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
             latest_analysis: Mutex::new(None),
+            analysis_health: Mutex::new(AnalysisHealth::default()),
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
             refresh_idle: Notify::new(),
@@ -106,8 +118,17 @@ impl Backend {
             self.refresh_scheduler
                 .request(root, config, workspace_revision, scope, reason);
         let mut request = match decision {
-            RefreshDecision::Start(request) => *request,
+            RefreshDecision::Start(request) => {
+                let request = *request;
+                self.mark_attempt_queued(&request);
+                self.publish_analysis_status().await;
+                request
+            }
             RefreshDecision::Queued { generation } => {
+                if let Some(request) = self.refresh_scheduler.pending_request(generation) {
+                    self.mark_pending_attempt(&request);
+                    self.publish_analysis_status().await;
+                }
                 self.log_refresh_queued(generation).await;
                 loop {
                     if self.refresh_scheduler.is_idle() {
@@ -126,6 +147,7 @@ impl Backend {
             RefreshDecision::Deduplicated | RefreshDecision::Stopped => return,
         };
         let mut cancellation_guard = RefreshCancellationGuard::new(
+            self,
             &self.refresh_scheduler,
             &self.refresh_idle,
             request.clone(),
@@ -137,6 +159,8 @@ impl Backend {
             let attempt_duration = attempt_started.elapsed();
             self.refresh_scheduler
                 .record_attempt_outcome(outcome, attempt_duration);
+            self.record_health_outcome(&request, outcome);
+            self.publish_analysis_status().await;
             self.log_refresh_attempt_outcome(outcome, attempt_duration)
                 .await;
             let Some(next) = self
@@ -149,11 +173,15 @@ impl Backend {
             };
             request = next;
             cancellation_guard.update(request.clone());
+            self.mark_attempt_running(&request);
+            self.publish_analysis_status().await;
         }
     }
 
     async fn run_refresh_request(&self, request: &RefreshRequest) -> RefreshAttemptOutcome {
         let generation = request.generation;
+        self.mark_attempt_running(request);
+        self.publish_analysis_status().await;
         self.log_refresh_queued(generation).await;
         if !self.refresh_scheduler.is_current_generation(generation) {
             return RefreshAttemptOutcome::NotStarted;
@@ -194,8 +222,13 @@ impl Backend {
                 if self.refresh_scheduler.is_current_generation(generation)
                     && !is_cancellation_error(&err)
                 {
-                    self.report_refresh_failure_after(err, started.elapsed())
-                        .await;
+                    self.report_refresh_failure_after(
+                        request,
+                        err,
+                        started.elapsed(),
+                        "analysis_error",
+                    )
+                    .await;
                     return RefreshAttemptOutcome::Failed;
                 }
                 if !is_cancellation_error(&err) {
@@ -213,8 +246,10 @@ impl Backend {
             Err(err) => {
                 if self.refresh_scheduler.is_current_generation(generation) {
                     self.report_refresh_failure_after(
+                        request,
                         format!("analysis task failed: {err}"),
                         started.elapsed(),
+                        "task_failure",
                     )
                     .await;
                     return RefreshAttemptOutcome::Failed;
@@ -235,35 +270,62 @@ impl Backend {
         }
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
             .with_enabled_languages(&enabled_languages);
-        let Some(refresh) = self.refresh_plan(diagnostics) else {
+        let Some(transaction) = self.prepare_refresh_transaction(diagnostics) else {
             self.report_refresh_failure_after(
+                request,
                 "diagnostic snapshot was inconsistent with publish batches".to_string(),
                 started.elapsed(),
+                "analysis_error",
             )
             .await;
             return RefreshAttemptOutcome::Failed;
         };
-        let published_uri_count = refresh.publish_batches.len();
-        let cleared_uri_count = refresh.clear_uris.len();
-        let unchanged_uri_count = refresh.unchanged_uri_count;
-        let published_payload_bytes = refresh.published_payload_bytes;
-        let suppressed_payload_bytes = refresh.suppressed_payload_bytes;
-        for batch in refresh.publish_batches {
+        let RefreshTransaction {
+            plan,
+            snapshot,
+            previous_diagnostics,
+        } = transaction;
+        let published_uri_count = plan.publish_batches.len();
+        let cleared_uri_count = plan.clear_uris.len();
+        let unchanged_uri_count = plan.unchanged_uri_count;
+        let published_payload_bytes = plan.published_payload_bytes;
+        let suppressed_payload_bytes = plan.suppressed_payload_bytes;
+        for batch in &plan.publish_batches {
             if !self.refresh_scheduler.is_current_generation(generation) {
+                self.rollback_refresh_transaction(&previous_diagnostics, &plan)
+                    .await;
                 return cancellation_outcome(request);
             }
             self.client
-                .publish_diagnostics(batch.uri, batch.diagnostics, None)
+                .publish_diagnostics(batch.uri.clone(), batch.diagnostics.clone(), None)
                 .await;
         }
-        for uri in refresh.clear_uris {
+        for uri in &plan.clear_uris {
             if !self.refresh_scheduler.is_current_generation(generation) {
+                self.rollback_refresh_transaction(&previous_diagnostics, &plan)
+                    .await;
                 return cancellation_outcome(request);
             }
-            self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            self.client
+                .publish_diagnostics(uri.clone(), Vec::new(), None)
+                .await;
         }
         if !self.refresh_scheduler.is_current_generation(generation) {
+            self.rollback_refresh_transaction(&previous_diagnostics, &plan)
+                .await;
             return cancellation_outcome(request);
+        }
+        if !self.commit_refresh_snapshot(snapshot, &plan) {
+            self.rollback_refresh_transaction(&previous_diagnostics, &plan)
+                .await;
+            self.report_refresh_failure_after(
+                request,
+                "could not commit the completed diagnostic snapshot".to_string(),
+                started.elapsed(),
+                "snapshot_commit_failure",
+            )
+            .await;
+            return RefreshAttemptOutcome::Failed;
         }
         self.log_refresh_completed(
             summary,
@@ -277,41 +339,90 @@ impl Backend {
         RefreshAttemptOutcome::Published
     }
 
-    pub(super) async fn report_refresh_failure_after(&self, message: String, duration: Duration) {
+    pub(super) async fn report_refresh_failure_after(
+        &self,
+        request: &RefreshRequest,
+        message: String,
+        duration: Duration,
+        kind: &str,
+    ) {
         self.client
             .log_message(
                 MessageType::WARNING,
                 refresh_failed_log_message(&message, duration),
             )
             .await;
-        for uri in self.clear_all_diagnostic_uris() {
-            self.client.publish_diagnostics(uri, Vec::new(), None).await;
-        }
+        self.mark_attempt_failed(request, kind, &message);
+        self.publish_analysis_status().await;
     }
 
+    #[cfg(test)]
     pub(super) fn refresh_plan(
         &self,
         diagnostics: WorkspaceDiagnostics,
     ) -> Option<DiagnosticRefreshPlan> {
+        let transaction = self.prepare_refresh_transaction(diagnostics)?;
+        let RefreshTransaction { plan, snapshot, .. } = transaction;
+        self.commit_refresh_snapshot(snapshot, &plan)
+            .then_some(plan)
+    }
+
+    pub(super) fn prepare_refresh_transaction(
+        &self,
+        diagnostics: WorkspaceDiagnostics,
+    ) -> Option<RefreshTransaction> {
         let WorkspaceDiagnostics { snapshot, batches } = diagnostics;
-        let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
-            return None;
-        };
-        let Ok(mut last_diagnostics) = self.last_diagnostics.lock() else {
-            return None;
-        };
-        let Ok(mut latest_analysis) = self.latest_analysis.lock() else {
+        let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
         if snapshot.diagnostics_by_uri != diagnostics_by_uri_from_batches(&batches) {
             return None;
         }
-        let refresh = diagnostic_refresh_plan(&last_diagnostics, batches);
+        let plan = diagnostic_refresh_plan(&last_diagnostics, batches);
         debug_assert!(snapshot.is_consistent());
+        Some(RefreshTransaction {
+            plan,
+            snapshot,
+            previous_diagnostics: last_diagnostics.clone(),
+        })
+    }
+
+    pub(super) fn commit_refresh_snapshot(
+        &self,
+        snapshot: AnalysisSnapshot,
+        plan: &DiagnosticRefreshPlan,
+    ) -> bool {
+        let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
+            return false;
+        };
+        let Ok(mut last_diagnostics) = self.last_diagnostics.lock() else {
+            return false;
+        };
+        let Ok(mut latest_analysis) = self.latest_analysis.lock() else {
+            return false;
+        };
         *last_diagnostics = snapshot.diagnostics_by_uri.clone();
-        *last_diagnostic_uris = refresh.current_uris.clone();
+        *last_diagnostic_uris = plan.current_uris.clone();
         *latest_analysis = Some(snapshot);
-        Some(refresh)
+        true
+    }
+
+    async fn rollback_refresh_transaction(
+        &self,
+        previous_diagnostics: &BTreeMap<Uri, Vec<Diagnostic>>,
+        plan: &DiagnosticRefreshPlan,
+    ) {
+        let mut uris = previous_diagnostics
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        uris.extend(plan.current_uris.iter().cloned());
+        for uri in uris {
+            let diagnostics = previous_diagnostics.get(&uri).cloned().unwrap_or_default();
+            self.client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
+        }
     }
 
     pub(super) fn clear_all_diagnostic_uris(&self) -> Vec<Uri> {
@@ -370,6 +481,182 @@ impl Backend {
             return None;
         };
         snapshot.clone()
+    }
+
+    fn analysis_health_snapshot(&self) -> AnalysisHealth {
+        self.analysis_health
+            .lock()
+            .map(|health| health.clone())
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_snapshot_run_status_for_test(&self, run_status: &str) {
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.snapshot_run_status = Some(run_status.to_string());
+        }
+    }
+
+    fn effective_health_for_snapshot(
+        &self,
+        mut health: AnalysisHealth,
+        snapshot: &AnalysisSnapshot,
+    ) -> AnalysisHealth {
+        // `refresh_plan` is also a focused test seam and may be queried before
+        // the async refresh loop records its final health event. Do not expose
+        // an internally contradictory `latest_analysis != None` plus
+        // `run_status = no_snapshot` state during that short handoff.
+        if health.snapshot_id.is_none() && health.attempt_id.is_none() {
+            let snapshot_id = "snapshot:legacy".to_string();
+            health.state = AnalysisAttemptState::Succeeded;
+            health.snapshot_id = Some(snapshot_id.clone());
+            health.last_success_snapshot_id = Some(snapshot_id);
+            health.last_success_at = Some(snapshot.refresh.generated_at);
+            health.snapshot_run_status = Some(workspace_status_run_status(snapshot).to_string());
+        }
+        health
+    }
+
+    fn mark_attempt_queued(&self, request: &RefreshRequest) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.attempt_id = Some(request.generation);
+        health.state = AnalysisAttemptState::Queued;
+        health.reason = Some(request.reason.as_str().to_string());
+        health.requested_scope = Some(request.scope.as_str().to_string());
+        health.failure = None;
+    }
+
+    fn mark_attempt_running(&self, request: &RefreshRequest) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.attempt_id = Some(request.generation);
+        health.state = AnalysisAttemptState::Running;
+        health.reason = Some(request.reason.as_str().to_string());
+        health.requested_scope = Some(request.scope.as_str().to_string());
+        if health.pending_attempt_id == Some(request.generation) {
+            health.pending_attempt_id = None;
+            health.pending_reason = None;
+            health.pending_scope = None;
+        }
+    }
+
+    fn mark_pending_attempt(&self, request: &RefreshRequest) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.pending_attempt_id = Some(request.generation);
+        health.pending_reason = Some(request.reason.as_str().to_string());
+        health.pending_scope = Some(request.scope.as_str().to_string());
+    }
+
+    fn mark_attempt_failed(&self, request: &RefreshRequest, kind: &str, message: &str) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.attempt_id = Some(request.generation);
+        health.state = AnalysisAttemptState::Failed;
+        health.reason = Some(request.reason.as_str().to_string());
+        health.requested_scope = Some(request.scope.as_str().to_string());
+        health.failure = Some(AnalysisFailure {
+            kind: kind.to_string(),
+            message: bounded_failure_message(message),
+        });
+    }
+
+    fn mark_attempt_cancelled(&self, request: &RefreshRequest) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.attempt_id = Some(request.generation);
+        health.state = AnalysisAttemptState::Cancelled;
+        health.reason = Some(request.reason.as_str().to_string());
+        health.requested_scope = Some(request.scope.as_str().to_string());
+        health.pending_attempt_id = None;
+        health.pending_reason = None;
+        health.pending_scope = None;
+    }
+
+    pub(super) fn record_health_outcome(
+        &self,
+        request: &RefreshRequest,
+        outcome: RefreshAttemptOutcome,
+    ) {
+        let Ok(mut health) = self.analysis_health.lock() else {
+            return;
+        };
+        health.attempt_id = Some(request.generation);
+        health.reason = Some(request.reason.as_str().to_string());
+        health.requested_scope = Some(request.scope.as_str().to_string());
+        match outcome {
+            RefreshAttemptOutcome::Published => {
+                health.state = AnalysisAttemptState::Succeeded;
+                health.failure = None;
+                let snapshot_id = format!("snapshot:{}", request.generation);
+                health.snapshot_id = Some(snapshot_id.clone());
+                health.last_success_snapshot_id = Some(snapshot_id);
+                health.last_success_at =
+                    self.latest_analysis.lock().ok().and_then(|snapshot| {
+                        snapshot.as_ref().map(|value| value.refresh.generated_at)
+                    });
+                health.snapshot_run_status = self
+                    .latest_analysis
+                    .lock()
+                    .ok()
+                    .and_then(|snapshot| snapshot.as_ref().map(workspace_status_run_status))
+                    .map(str::to_string);
+            }
+            RefreshAttemptOutcome::Failed => {
+                // `mark_attempt_failed` records the bounded error and preserves
+                // the completed snapshot. Keep that richer state here.
+            }
+            RefreshAttemptOutcome::Cancelled => health.state = AnalysisAttemptState::Cancelled,
+            RefreshAttemptOutcome::Superseded => health.state = AnalysisAttemptState::Superseded,
+            RefreshAttemptOutcome::NotStarted => health.state = AnalysisAttemptState::Stopped,
+        }
+    }
+
+    async fn publish_analysis_status(&self) {
+        self.client
+            .send_notification::<AnalysisStatusNotification>(self.analysis_status_payload())
+            .await;
+    }
+
+    fn analysis_status_payload(&self) -> LSPAny {
+        let health = self.analysis_health_snapshot();
+        self.analysis_status_payload_for_health(&health)
+    }
+
+    fn analysis_status_payload_for_health(&self, health: &AnalysisHealth) -> LSPAny {
+        let last_success_age_ms = health
+            .last_success_at
+            .and_then(|generated_at| generated_at.elapsed().ok())
+            .map(|duration| duration.as_millis() as u64);
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "analysis_status",
+            "attempt_id": health.attempt_id.map(|id| id.to_string()),
+            "state": health.state.as_str(),
+            "reason": health.reason,
+            "requested_scope": health.requested_scope,
+            "snapshot_id": health.snapshot_id,
+            "last_success_snapshot_id": health.last_success_snapshot_id,
+            "last_success_age_ms": last_success_age_ms,
+            "run_status": health.run_status(),
+            "failure": health.failure.clone().map(|failure| serde_json::json!({
+                "kind": failure.kind,
+                "message": failure.message,
+            })),
+            "pending": health.pending(),
+            "pending_attempt_id": health.pending_attempt_id.map(|id| id.to_string()),
+            "pending_reason": health.pending_reason,
+            "pending_scope": health.pending_scope,
+            "retry_command": REFRESH_COMMAND,
+            "repair_actions_available": health.allows_current_repairs(),
+        })
     }
 
     fn set_root(&self, root: PathBuf) {
@@ -459,6 +746,7 @@ impl Backend {
 }
 
 struct RefreshCancellationGuard<'a> {
+    backend: &'a Backend,
     scheduler: &'a RefreshScheduler,
     idle: &'a Notify,
     request: RefreshRequest,
@@ -466,8 +754,14 @@ struct RefreshCancellationGuard<'a> {
 }
 
 impl<'a> RefreshCancellationGuard<'a> {
-    fn new(scheduler: &'a RefreshScheduler, idle: &'a Notify, request: RefreshRequest) -> Self {
+    fn new(
+        backend: &'a Backend,
+        scheduler: &'a RefreshScheduler,
+        idle: &'a Notify,
+        request: RefreshRequest,
+    ) -> Self {
         Self {
+            backend,
             scheduler,
             idle,
             request,
@@ -487,6 +781,7 @@ impl<'a> RefreshCancellationGuard<'a> {
 impl Drop for RefreshCancellationGuard<'_> {
     fn drop(&mut self) {
         if self.armed && self.scheduler.cancel(&self.request) {
+            self.backend.mark_attempt_cancelled(&self.request);
             self.idle.notify_waiters();
         }
     }
@@ -718,6 +1013,38 @@ pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> S
     )
 }
 
+fn bounded_failure_message(message: &str) -> String {
+    let normalized = message
+        .chars()
+        .map(|character| match character {
+            '\r' | '\n' | '\t' => ' ',
+            character => character,
+        })
+        .collect::<String>();
+    let path_safe = normalized
+        .split_whitespace()
+        .map(|token| {
+            if token.starts_with('/')
+                || token.starts_with('\\')
+                || token
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(|character| *character == b':')
+            {
+                "<path>"
+            } else {
+                token
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut bounded = path_safe.chars().take(240).collect::<String>();
+    if path_safe.chars().count() > 240 {
+        bounded.push('…');
+    }
+    bounded
+}
+
 fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
     match request.cancellation.checkpoint() {
         Err(error) if error.kind == AnalysisAbortKind::Cancelled => {
@@ -763,6 +1090,20 @@ impl LanguageServer for Backend {
 
     async fn shutdown(&self) -> LspResult<()> {
         self.refresh_scheduler.stop();
+        self.clear_all_diagnostic_uris();
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.state = AnalysisAttemptState::Stopped;
+            health.attempt_id = None;
+            health.snapshot_id = None;
+            health.last_success_snapshot_id = None;
+            health.last_success_at = None;
+            health.snapshot_run_status = None;
+            health.failure = None;
+            health.pending_attempt_id = None;
+            health.pending_reason = None;
+            health.pending_scope = None;
+        }
+        self.publish_analysis_status().await;
         self.refresh_idle.notify_waiters();
         Ok(())
     }
@@ -809,7 +1150,15 @@ impl LanguageServer for Backend {
             .lock()
             .ok()
             .and_then(|value| value.clone());
-        Ok(Some(code_action_response(&params, snapshot.as_ref())))
+        let health = self.analysis_health_snapshot();
+        let action_snapshot = health
+            .allows_current_repairs()
+            .then_some(snapshot)
+            .flatten();
+        Ok(Some(code_action_response(
+            &params,
+            action_snapshot.as_ref(),
+        )))
     }
 
     /// Advisory `textDocument/codeLens` handler (RIPR-SPEC-0099).
@@ -906,13 +1255,15 @@ impl Backend {
     }
 
     fn collect_workspace_status(&self) -> Option<LSPAny> {
+        let health = self.analysis_health_snapshot();
         let snapshot = match self.latest_analysis.lock().ok()? {
             guard if guard.is_none() => {
                 return Some(serde_json::json!({
                     "schema_version": "0.1",
                     "tool": "ripr",
                     "kind": "workspace_status",
-                    "run_status": "no_snapshot",
+                    "run_status": health.run_status(),
+                    "analysis_status": self.analysis_status_payload_for_health(&health),
                     "snapshot_age_ms": serde_json::Value::Null,
                     "snapshot_duration_ms": serde_json::Value::Null,
                     "diagnostics": serde_json::Value::Null,
@@ -925,6 +1276,8 @@ impl Backend {
             }
             guard => guard.clone()?,
         };
+        let health = self.effective_health_for_snapshot(health, &snapshot);
+        let analysis_status = self.analysis_status_payload_for_health(&health);
 
         let age_ms = snapshot
             .refresh
@@ -951,10 +1304,14 @@ impl Backend {
             .count();
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
-        let top_actionable_packet = workspace_status_top_actionable_packet(&snapshot);
+        let top_actionable_packet = if health.allows_current_repairs() {
+            workspace_status_top_actionable_packet(&snapshot)
+        } else {
+            serde_json::Value::Null
+        };
         let top_limitation = workspace_status_top_limitation(&snapshot);
 
-        let run_status = workspace_status_run_status(&snapshot);
+        let run_status = health.run_status();
 
         // Compact receipt/outcome summary — reuses the same artifact readers
         // as collect_receipt_status so the cockpit's single status call
@@ -967,6 +1324,7 @@ impl Backend {
                     "tool": "ripr",
                     "kind": "workspace_status",
                     "run_status": run_status,
+                    "analysis_status": analysis_status,
                     "snapshot_age_ms": age_ms,
                     "snapshot_duration_ms": duration_ms,
                     "diagnostics": {
@@ -997,6 +1355,7 @@ impl Backend {
             "tool": "ripr",
             "kind": "workspace_status",
             "run_status": run_status,
+            "analysis_status": analysis_status,
             "snapshot_age_ms": age_ms,
             "snapshot_duration_ms": duration_ms,
             "diagnostics": {
@@ -1279,6 +1638,10 @@ const DEFAULT_ACTIONABLE_GAPS_OUT: &str = "target/ripr/reports/actionable-gaps.j
 
 impl Backend {
     fn collect_repair_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+        let health = self.analysis_health_snapshot();
+        if !health.allows_current_repairs() {
+            return Some(repair_packet_sentinel("analysis_snapshot_stale"));
+        }
         let root = self.root.lock().ok()?.clone();
         let gap_id_arg = arguments
             .first()
