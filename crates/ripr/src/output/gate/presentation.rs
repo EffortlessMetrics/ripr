@@ -4,6 +4,7 @@ use super::model::{
     GateRepairRoute, GateRepairTarget, GateSummary, NewUnsuppressed,
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
+use crate::app::causal_projection::insert_canonical_delta_fields;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -32,6 +33,11 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
             "exception_policy".to_string(),
             exception_policy_json(exception_policy),
         );
+    }
+    if let Some(projection) = &report.causal_projection
+        && let Some(object) = document.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
     }
     serde_json::to_string_pretty(&document)
         .map_err(|err| format!("failed to render gate decision JSON: {err}"))
@@ -257,6 +263,11 @@ fn decision_json(decision: &GateDecision) -> Value {
             Value::String(canonical_gap_id.clone()),
         );
     }
+    if let Some(delta) = &decision.causal_delta
+        && let Some(object) = value.as_object_mut()
+    {
+        insert_canonical_delta_fields(object, delta);
+    }
     if let Some(gap_id) = &decision.gap_id
         && let Some(object) = value.as_object_mut()
     {
@@ -358,6 +369,13 @@ fn push_decision_section(
             "blocking" | "acknowledged" | "advisory"
         ) {
             push_optional_code(out, "Gap state", decision.gap_state.as_deref());
+            push_optional_code(
+                out,
+                "Delta attribution",
+                decision
+                    .delta_attribution
+                    .map(|attribution| attribution.as_str()),
+            );
             push_repair_route(out, &decision.repair_route);
         }
     }

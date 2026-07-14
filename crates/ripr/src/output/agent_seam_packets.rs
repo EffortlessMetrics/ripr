@@ -24,6 +24,7 @@ use crate::analysis::repair_route::{
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
 use crate::analysis::{ClassifiedSeam, SeamLimitInfo, SeamLimitSource};
+use crate::app::causal_projection::CausalDeltaArtifact;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, cross_language_oracle_visibility_unresolved,
     cross_language_test_target_unresolved, evidence_record_for, evidence_record_json_value,
@@ -63,6 +64,14 @@ pub(crate) fn render_agent_seam_packets_json(
     classified: &[ClassifiedSeam],
     limit_info: Option<&SeamLimitInfo>,
 ) -> String {
+    render_agent_seam_packets_json_with_causal(classified, limit_info, None)
+}
+
+pub(crate) fn render_agent_seam_packets_json_with_causal(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    causal_projection: Option<&CausalDeltaArtifact>,
+) -> String {
     let canonical_gaps = canonical_gap_identities(classified);
     let mut out = String::new();
     out.push_str("{\n");
@@ -71,6 +80,11 @@ pub(crate) fn render_agent_seam_packets_json(
         AGENT_SEAM_PACKET_SCHEMA_VERSION
     ));
     out.push_str("  \"scope\": \"repo\",\n");
+    if let Some(projection) = causal_projection {
+        out.push_str("  \"causal_comparison\": ");
+        out.push_str(&projection.comparison_json().to_string());
+        out.push_str(",\n");
+    }
 
     // run_status mirrors the repo-exposure pattern: "complete" when nothing
     // was capped, "seam_limit_applied" when the pilot budget fired.
@@ -117,7 +131,12 @@ pub(crate) fn render_agent_seam_packets_json(
         if idx == 0 {
             out.push('\n');
         }
-        push_packet_json(&mut out, entry, canonical_gaps.get(entry.seam.id()));
+        push_packet_json(
+            &mut out,
+            entry,
+            canonical_gaps.get(entry.seam.id()),
+            causal_projection,
+        );
         if idx + 1 != actionable.len() {
             out.push_str(",\n");
         } else {
@@ -145,6 +164,14 @@ pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
 pub(crate) fn render_agent_gap_record_packet_json(
     gap_ledger_path: &str,
     record: &GapRecord,
+) -> Result<String, String> {
+    render_agent_gap_record_packet_json_with_causal(gap_ledger_path, record, None)
+}
+
+pub(crate) fn render_agent_gap_record_packet_json_with_causal(
+    gap_ledger_path: &str,
+    record: &GapRecord,
+    causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Result<String, String> {
     validate_agent_gap_record_packet(record)?;
     let Some(route) = record.repair_route.as_ref() else {
@@ -221,7 +248,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "stop_conditions": &stop_conditions,
         "copyable_packet": pasteable_packet,
     });
-    let packet = json!({
+    let mut packet = json!({
         "task": task_for_gap_route(route),
         "source": "gap_decision_ledger",
         "gap_id": gap_id,
@@ -261,7 +288,13 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "runtime_confirmation": RUNTIME_CONFIRMATION_NOTE,
         "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
     });
-    let envelope = json!({
+    if let Some(projection) = causal_projection
+        && let Some(delta) = projection.delta_for(non_empty(&record.canonical_gap_id).as_deref())
+        && let Some(object) = packet.as_object_mut()
+    {
+        crate::app::causal_projection::insert_canonical_delta_fields(object, delta);
+    }
+    let mut envelope = json!({
         "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
         "scope": "repo",
         "source": "gap_decision_ledger",
@@ -271,6 +304,11 @@ pub(crate) fn render_agent_gap_record_packet_json(
         "packets_total": 1,
         "packets": [packet],
     });
+    if let Some(projection) = causal_projection
+        && let Some(object) = envelope.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
     let mut rendered = serde_json::to_string_pretty(&envelope)
         .map_err(|err| format!("render agent gap packet JSON failed: {err}"))?;
     rendered.push('\n');
@@ -1408,6 +1446,7 @@ fn push_packet_json(
     out: &mut String,
     entry: &ClassifiedSeam,
     canonical_gap: Option<&CanonicalGapIdentity>,
+    causal_projection: Option<&CausalDeltaArtifact>,
 ) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
@@ -1664,6 +1703,15 @@ fn push_packet_json(
         "      \"confidence\": \"{}\",\n",
         packet_confidence_for(entry)
     ));
+    if let Some(projection) = causal_projection
+        && let Some(delta) = projection.delta_for(canonical_gap.map(|gap| gap.id.as_str()))
+    {
+        let mut object = serde_json::Map::new();
+        crate::app::causal_projection::insert_canonical_delta_fields(&mut object, delta);
+        for (key, value) in object {
+            out.push_str(&format!("      \"{}\": {},\n", key, value));
+        }
+    }
     let evidence_record = evidence_record_json_value(&evidence_record_for(entry, canonical_gap));
     out.push_str("      \"evidence_record\": ");
     out.push_str(&evidence_record.to_string());

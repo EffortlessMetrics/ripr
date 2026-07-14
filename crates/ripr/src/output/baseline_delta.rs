@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
+
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "baseline_debt_delta";
 const STATUS: &str = "advisory";
@@ -25,6 +27,7 @@ pub(crate) struct BaselineDeltaReport {
     delta: DeltaCounts,
     items: Vec<DeltaItem>,
     warnings: Vec<String>,
+    causal_projection: Option<CausalDeltaArtifact>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -258,6 +261,15 @@ pub(crate) fn build_baseline_delta_report(input: BaselineDeltaInput) -> Baseline
     );
     let mut warnings = baseline.warnings.clone();
     warnings.extend(current.warnings.clone());
+    let causal_projection = match CausalDeltaArtifact::load(std::path::Path::new(&input.root)) {
+        Ok(projection) => projection,
+        Err(error) => {
+            warnings.push(format!(
+                "causal comparison artifact is unavailable; causal fields omitted: {error}"
+            ));
+            None
+        }
+    };
     let mut items = baseline.invalid_items.clone();
     let mut matched_current = BTreeSet::new();
 
@@ -334,11 +346,12 @@ pub(crate) fn build_baseline_delta_report(input: BaselineDeltaInput) -> Baseline
         delta,
         items,
         warnings,
+        causal_projection,
     }
 }
 
 pub(crate) fn render_baseline_delta_json(report: &BaselineDeltaReport) -> Result<String, String> {
-    serde_json::to_string_pretty(&json!({
+    let mut output = json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "kind": REPORT_KIND,
@@ -347,11 +360,21 @@ pub(crate) fn render_baseline_delta_json(report: &BaselineDeltaReport) -> Result
         "inputs": inputs_json(&report.inputs),
         "baseline": baseline_summary_json(&report.baseline),
         "delta": delta_json(&report.delta),
-        "items": report.items.iter().map(item_json).collect::<Vec<_>>(),
+        "items": report
+            .items
+            .iter()
+            .map(|item| item_json(item, report.causal_projection.as_ref()))
+            .collect::<Vec<_>>(),
         "warnings": report.warnings,
         "limits_note": LIMITS_NOTE,
-    }))
-    .map_err(|err| format!("failed to render baseline debt delta JSON: {err}"))
+    });
+    if let Some(projection) = report.causal_projection.as_ref()
+        && let Some(object) = output.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
+    serde_json::to_string_pretty(&output)
+        .map_err(|err| format!("failed to render baseline debt delta JSON: {err}"))
 }
 
 pub(crate) fn render_baseline_delta_markdown(report: &BaselineDeltaReport) -> String {
@@ -994,8 +1017,8 @@ fn delta_json(delta: &DeltaCounts) -> Value {
     })
 }
 
-fn item_json(item: &DeltaItem) -> Value {
-    json!({
+fn item_json(item: &DeltaItem, causal_projection: Option<&CausalDeltaArtifact>) -> Value {
+    let mut output = json!({
         "bucket": item.bucket.as_str(),
         "identity": {
             "canonical_gap_id": item.identity.canonical_gap_id,
@@ -1021,7 +1044,14 @@ fn item_json(item: &DeltaItem) -> Value {
             "verify_command": item.repair.verify_command,
         },
         "review": review_metadata_json(&item.review),
-    })
+    });
+    if let Some(projection) = causal_projection
+        && let Some(delta) = projection.delta_for(item.identity.canonical_gap_id.as_deref())
+        && let Some(object) = output.as_object_mut()
+    {
+        insert_canonical_delta_fields(object, delta);
+    }
+    output
 }
 
 fn review_metadata_from_value(value: Option<&Value>) -> Option<ReviewMetadata> {

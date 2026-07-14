@@ -4,6 +4,7 @@ use super::{
 };
 use crate::analysis;
 use crate::app::CheckOutput;
+use crate::app::causal_projection::CausalDeltaArtifact;
 use crate::config::RiprConfig;
 use crate::output::repo_exposure::TsFullRepoGuidance;
 use std::collections::BTreeMap;
@@ -113,10 +114,18 @@ pub(crate) fn render_check_with_config(
         OutputFormat::AgentSeamPacketsJson => {
             let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(agent_seam_packets::render_agent_seam_packets_json(
-                &classified,
-                None,
-            ))
+            let (causal_projection, causal_projection_warning) =
+                CausalDeltaArtifact::load_optional(&output.root);
+            if let Some(warning) = causal_projection_warning {
+                eprintln!("ripr agent packets: {warning}");
+            }
+            Ok(
+                agent_seam_packets::render_agent_seam_packets_json_with_causal(
+                    &classified,
+                    None,
+                    causal_projection.as_ref(),
+                ),
+            )
         }
     }
 }

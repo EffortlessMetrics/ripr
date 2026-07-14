@@ -14241,6 +14241,23 @@ line proximity never establishes causality. Missing or ambiguous snapshots
 produce `comparison_unknown`. `low_coverage_disclosed: true` is informational
 and must not be interpreted as a complete causal comparison.
 
+### Causal projection parity
+
+The same producer-owned `CanonicalDelta` fields are projected unchanged into
+gate decisions, baseline-debt-delta items, review-comment JSON, LSP diagnostic
+`data`, agent seam packets, gap-record packets, and agent briefs when the
+canonical PR delta artifact is available. Consumers match only by the exact
+`canonical_gap_id`; they do not derive attribution from paths, line numbers,
+classes, or prose. The projected fields are `delta_attribution`, `base_state`,
+`head_state`, `attribution_basis`, and `comparison_confidence`.
+
+Root-aware envelopes may also include `causal_comparison`, which discloses the
+artifact coverage counts, `complete`, and `low_coverage_disclosed`. A missing
+artifact leaves the optional projection absent. A malformed or unsupported
+artifact is reported as unavailable and never converted into a causal result.
+In particular, `comparison_unknown` and incomplete coverage remain visible but
+cannot be promoted by a renderer into PR-caused debt.
+
 ## PR Evidence Summary
 
 `cargo xtask ripr-pr-summary` writes two sibling files after the legacy

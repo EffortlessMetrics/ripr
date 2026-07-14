@@ -4549,6 +4549,7 @@ fn finding_projection_emits_one_limited_diagnostic_for_mixed_canonical_group() -
         &[first, second],
         config.repo_config().severity(),
         true,
+        None,
     )?;
     let diagnostics = grouped.values().flatten().collect::<Vec<_>>();
 

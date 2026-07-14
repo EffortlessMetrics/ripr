@@ -172,7 +172,7 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
     ensure_command_root(&options.root, "agent packet")?;
 
     if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
-        let rendered = render_agent_packet_from_gap_ledger(gap_ledger, gap_id)?;
+        let rendered = render_agent_packet_from_gap_ledger(&options.root, gap_ledger, gap_id)?;
         print!("{rendered}");
         return Ok(());
     }

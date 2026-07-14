@@ -1,8 +1,10 @@
 pub(crate) mod agent_brief;
+pub(crate) mod agent_gap_packet;
 pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;
 pub(crate) mod annotations;
+pub(crate) mod causal_projection;
 mod check;
 mod context;
 mod explain;

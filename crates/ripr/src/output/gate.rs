@@ -118,6 +118,14 @@ pub(crate) fn build_gate_decision_report(
             None
         }
     };
+    let causal_projection =
+        match crate::app::causal_projection::CausalDeltaArtifact::load(&input.root) {
+            Ok(projection) => projection,
+            Err(error) => {
+                config_errors.push(error);
+                None
+            }
+        };
     if let Some(authority) = &causal_delta
         && !authority.is_complete()
     {
@@ -172,7 +180,7 @@ pub(crate) fn build_gate_decision_report(
                 &recommendation_calibration,
                 &mutation_calibration,
                 &baseline,
-                causal_delta.as_ref(),
+                (causal_delta.as_ref(), causal_projection.as_ref()),
             )
         })
         .collect::<Vec<_>>();
@@ -230,6 +238,7 @@ pub(crate) fn build_gate_decision_report(
         warnings,
         config_errors,
         causal_delta,
+        causal_projection,
         exception_policy,
     })
 }
@@ -472,8 +481,12 @@ fn gate_decision(
     recommendation_calibration: &CalibrationIndex,
     mutation_calibration: &CalibrationIndex,
     baseline: &BaselineIndex,
-    causal_delta: Option<&CausalDeltaAuthority>,
+    causal_inputs: (
+        Option<&CausalDeltaAuthority>,
+        Option<&crate::app::causal_projection::CausalDeltaArtifact>,
+    ),
 ) -> GateDecision {
+    let (causal_delta, causal_projection) = causal_inputs;
     let recommendation_calibration =
         calibration_for_candidate(candidate, recommendation_calibration);
     let mutation_calibration = calibration_for_candidate(candidate, mutation_calibration);
@@ -570,6 +583,9 @@ fn gate_decision(
         repair_route,
         is_baseline_new,
         delta_attribution: causal_attribution,
+        causal_delta: causal_projection
+            .and_then(|projection| projection.delta_for(candidate.canonical_gap_id.as_deref()))
+            .cloned(),
     }
 }
 
