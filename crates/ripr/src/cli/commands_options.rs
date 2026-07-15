@@ -44,6 +44,7 @@ pub(crate) struct ReviewCommentsOptions {
     pub(crate) head: String,
     pub(crate) gap_ledger: Option<PathBuf>,
     pub(crate) out: PathBuf,
+    pub(crate) timeout_ms: u64,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct GateOptions {

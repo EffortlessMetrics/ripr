@@ -19,7 +19,8 @@
     "summary_only",
     "suppressed",
     "warnings",
-    "limits_note"
+    "limits_note",
+    "run_receipt"
   ],
   "properties": {
     "schema_version": {
@@ -232,6 +233,9 @@
     "limits_note": {
       "type": "string",
       "minLength": 1
+    },
+    "run_receipt": {
+      "$ref": "#/$defs/run_receipt"
     }
   },
   "$defs": {
@@ -341,6 +345,161 @@
           "minLength": 1
         }
       }
+    },
+    "run_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "root_identity",
+        "base_sha",
+        "head_sha",
+        "configured_timeout_ms",
+        "last_completed_phase",
+        "active_phase",
+        "completed_artifacts",
+        "missing_artifacts",
+        "reusable_cache_identity",
+        "limitations",
+        "non_claims",
+        "atomic_write_status"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "complete",
+            "limited_timeout",
+            "failed"
+          ]
+        },
+        "root_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configured_timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "last_completed_phase": {
+          "type": ["string", "null"]
+        },
+        "active_phase": {
+          "type": ["string", "null"]
+        },
+        "completed_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "missing_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reusable_cache_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "repair_route"],
+            "properties": {
+              "category": {
+                "type": "string",
+                "minLength": 1
+              },
+              "repair_route": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "non_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "atomic_write_status": {
+          "enum": ["not_written", "committed"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "complete" }
+            }
+          },
+          "then": {
+            "required": [
+              "last_completed_phase",
+              "active_phase",
+              "completed_artifacts",
+              "missing_artifacts"
+            ],
+            "properties": {
+              "last_completed_phase": { "const": "artifact_io" },
+              "active_phase": { "type": "null" },
+              "completed_artifacts": { "minItems": 1 },
+              "missing_artifacts": { "maxItems": 0 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "limited_timeout" }
+            }
+          },
+          "then": {
+            "required": ["active_phase", "limitations", "non_claims"],
+            "properties": {
+              "active_phase": { "type": "string", "minLength": 1 },
+              "limitations": { "minItems": 1 },
+              "non_claims": { "minItems": 1 },
+              "missing_artifacts": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "failed" }
+            }
+          },
+          "then": {
+            "required": ["limitations", "non_claims"],
+            "properties": {
+              "limitations": { "minItems": 1 },
+              "non_claims": { "minItems": 1 },
+              "missing_artifacts": { "minItems": 1 }
+            }
+          }
+        }
+      ]
     },
     "recommendation": {
       "type": "object",

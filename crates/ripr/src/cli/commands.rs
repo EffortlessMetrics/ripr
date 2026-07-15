@@ -9,6 +9,7 @@ use crate::cli::agent::{
     parse_agent_args,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
+use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
@@ -27,6 +28,8 @@ use crate::cli::commands_agent_support::{
 };
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
+
+const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
@@ -1478,6 +1481,23 @@ fn review_comments_with_diff_loader(
         ..CheckInput::default()
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    let receipt_path =
+        output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(&options.out);
+    let markdown_path = review_comments_markdown_path(&options.out);
+    let artifacts = vec![
+        output::outcome::display_path(&options.out),
+        output::outcome::display_path(&markdown_path),
+    ];
+    let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
+        &input.root,
+        &options.base,
+        &options.head,
+        options.timeout_ms,
+        &artifacts,
+    );
+    receipt.write_atomic(&receipt_path)?;
+    receipt.phase("input_validation", "configuration");
+    receipt.write_atomic(&receipt_path)?;
 
     if let Some(gap_ledger) = &options.gap_ledger {
         let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
@@ -1510,17 +1530,33 @@ fn review_comments_with_diff_loader(
             &gap_ledger_path,
             &records,
         );
-        let markdown_path = review_comments_markdown_path(&options.out);
+        receipt.phase("configuration", "static_rendering");
+        receipt.write_atomic(&receipt_path)?;
+        receipt.phase("static_rendering", "artifact_io");
+        receipt.write_atomic(&receipt_path)?;
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
         write_text_file(&options.out, &rendered_json)?;
         write_text_file(&markdown_path, &rendered_md)?;
+        receipt.complete(&artifacts);
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        receipt.write_atomic(&receipt_path)?;
         println!("Wrote {}", options.out.display());
         println!("Wrote {}", markdown_path.display());
         return Ok(());
     }
 
+    receipt.phase("configuration", "diff_discovery");
+    receipt.write_atomic(&receipt_path)?;
     let diff_text = load_diff(&input.root, &options.base, &options.head)?;
+    receipt.phase("diff_discovery", "language_facts");
+    receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
+    receipt.phase("language_facts", "canonical_analysis");
+    receipt.write_atomic(&receipt_path)?;
     let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
         .with_changed_owners(changed_owners);
     let changed_owner_names = working_set
@@ -1534,12 +1570,16 @@ fn review_comments_with_diff_loader(
         &working_set.files,
         &changed_owner_names,
     )?;
+    receipt.phase("canonical_analysis", "route_construction");
+    receipt.write_atomic(&receipt_path)?;
     let selection = select_agent_brief_seams(
         &scoped_inventory.classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
+    receipt.phase("route_construction", "static_rendering");
+    receipt.write_atomic(&receipt_path)?;
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
         &scoped_inventory,
@@ -1563,9 +1603,15 @@ fn review_comments_with_diff_loader(
         &selection,
         &analysis_scope,
     );
-    let markdown_path = review_comments_markdown_path(&options.out);
+    receipt.phase("static_rendering", "artifact_io");
+    receipt.write_atomic(&receipt_path)?;
+    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&markdown_path, &rendered_md)?;
+    receipt.complete(&artifacts);
+    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+    write_text_file(&options.out, &rendered_json)?;
+    receipt.write_atomic(&receipt_path)?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", markdown_path.display());
     Ok(())
@@ -1821,6 +1867,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
     let mut head: Option<String> = None;
     let mut gap_ledger = None;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
+    let mut timeout_ms = DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -1863,6 +1910,11 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 out = PathBuf::from(value);
             }
+            "--timeout-ms" => {
+                i += 1;
+                timeout_ms =
+                    parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+            }
             other => return Err(format!("unknown review-comments argument {other:?}")),
         }
         i += 1;
@@ -1874,6 +1926,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         gap_ledger,
         out,
+        timeout_ms,
     })
 }
 
@@ -5942,6 +5995,7 @@ mod tests {
                 head: "HEAD".to_string(),
                 gap_ledger: None,
                 out: PathBuf::from("target/ripr/review/comments.json"),
+                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
         );
         assert_eq!(
@@ -5961,6 +6015,7 @@ mod tests {
                     "target/ripr/reports/gap-decision-ledger.json"
                 )),
                 out: PathBuf::from("target/ripr/review/comments.json"),
+                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
         );
     }
@@ -7965,8 +8020,12 @@ language = "rust"
         let root = unique_command_test_dir("review-comments-diff-error");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
         let root_arg = root.display().to_string();
+        let out = root.join("comments.json");
+        let out_arg = out.display().to_string();
         let result = review_comments_with_diff_loader(
-            &args(&["--root", &root_arg, "--base", "main", "--head", "HEAD"]),
+            &args(&[
+                "--root", &root_arg, "--base", "main", "--head", "HEAD", "--out", &out_arg,
+            ]),
             |_root, _base, _head| Err("synthetic diff failure".to_string()),
         );
 

@@ -166,5 +166,26 @@
       "path": "src/config.rs"
     }
   ],
-  "limits_note": "Comments are capped and advisory; summary-only items never annotate."
+  "limits_note": "Comments are capped and advisory; summary-only items never annotate.",
+  "run_receipt": {
+    "schema_version": "0.1",
+    "status": "complete",
+    "root_identity": ".",
+    "base_sha": "origin/main",
+    "head_sha": "HEAD",
+    "configured_timeout_ms": 120000,
+    "last_completed_phase": "artifact_io",
+    "active_phase": null,
+    "completed_artifacts": [
+      "comments.json",
+      "comments.md"
+    ],
+    "missing_artifacts": [],
+    "reusable_cache_identity": "sha256:fixture",
+    "limitations": [],
+    "non_claims": [
+      "static review guidance is advisory evidence only"
+    ],
+    "atomic_write_status": "committed"
+  }
 }

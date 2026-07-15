@@ -45,6 +45,7 @@ pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;
 pub(crate) mod report_packet_index;
 pub(crate) mod review_comments;
+pub(crate) mod review_comments_receipt;
 pub(crate) mod ripr_zero_status;
 pub(crate) mod sarif;
 pub mod start_here_state;

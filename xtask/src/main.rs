@@ -72671,13 +72671,15 @@ fn has_markdown_heading(text: &str, heading: &str) -> bool {
 
 fn collect_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
-    collect_files_inner(root, &mut files)?;
+    collect_files_inner(root, root, &mut files)?;
     Ok(files)
 }
 
-fn collect_files_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_files_inner(root: &Path, path: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     let normalized = normalize_path(path);
-    if should_skip_path(&normalized) {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let relative_normalized = normalize_path(relative);
+    if should_skip_path(&relative_normalized) {
         return Ok(());
     }
     let metadata =
@@ -72691,7 +72693,7 @@ fn collect_files_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), Stri
             fs::read_dir(path).map_err(|err| format!("failed to read {normalized}: {err}"))?
         {
             let entry = entry.map_err(|err| format!("failed to read {normalized}: {err}"))?;
-            collect_files_inner(&entry.path(), files)?;
+            collect_files_inner(root, &entry.path(), files)?;
         }
     }
     Ok(())
@@ -72713,6 +72715,8 @@ fn should_skip_path(path: &str) -> bool {
         || path.starts_with(".claude/")
         || path == "target"
         || path.starts_with("target/")
+        || path.ends_with("/target")
+        || path.contains("/target/")
         || path == ".ripr/release"
         || path.starts_with(".ripr/release/")
         || path.ends_with("/.vscode-test")
@@ -85024,6 +85028,15 @@ fn has_unwrap_in_name() -> bool {
         assert!(should_skip_path("editors/vscode/out/src/extension.js"));
         assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
         assert!(!should_skip_path("editors/vscode/src/config.ts"));
+    }
+
+    #[test]
+    fn should_skip_path_ignores_nested_target_artifacts() {
+        assert!(should_skip_path("crates/ripr/target"));
+        assert!(should_skip_path(
+            "crates/ripr/target/ripr/review/run-receipt.json"
+        ));
+        assert!(!should_skip_path("crates/ripr/src/targeting.rs"));
     }
 
     #[test]
