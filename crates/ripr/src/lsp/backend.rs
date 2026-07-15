@@ -34,6 +34,7 @@ use super::{
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::{AnalysisAbortKind, is_cancellation_error};
+use crate::config::LspDiagnosticProfile;
 use crate::domain::context_packet::ContextPacket;
 use crate::domain::{StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
@@ -726,6 +727,16 @@ impl Backend {
     pub(super) fn set_snapshot_run_status_for_test(&self, run_status: &str) {
         if let Ok(mut health) = self.analysis_health.lock() {
             health.snapshot_run_status = Some(run_status.to_string());
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_analysis_attempt_state_for_test(&self, state: AnalysisAttemptState) {
+        if let Ok(mut health) = self.analysis_health.lock() {
+            health.attempt_id = Some(2);
+            health.state = state;
+            health.snapshot_id = Some("snapshot:test".to_string());
+            health.last_success_snapshot_id = Some("snapshot:test".to_string());
         }
     }
 
@@ -2047,8 +2058,10 @@ impl Backend {
 
     fn collect_workspace_status(&self) -> Option<LSPAny> {
         let health = self.analysis_health_snapshot();
+        let authority = self.workspace_root_authority();
         let snapshot = match self.latest_analysis.lock().ok()? {
             guard if guard.is_none() => {
+                let top_limitation = top_limitation_dto(&health, None, &authority).into_json();
                 return Some(serde_json::json!({
                     "schema_version": "0.1",
                     "tool": "ripr",
@@ -2059,7 +2072,7 @@ impl Backend {
                     "snapshot_duration_ms": serde_json::Value::Null,
                     "diagnostics": serde_json::Value::Null,
                     "top_actionable_packet": serde_json::Value::Null,
-                    "top_limitation": serde_json::Value::Null,
+                    "top_limitation": top_limitation,
                     "report_paths": workspace_status_report_paths(),
                     "refresh_command": REFRESH_COMMAND,
                     "limits_note": "Static evidence only; advisory, not a gate decision.",
@@ -2095,14 +2108,13 @@ impl Backend {
             .count();
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
-        let top_actionable_packet = if health.allows_current_repairs()
-            && self.workspace_root_authority().allows_analysis()
-        {
-            workspace_status_top_actionable_packet(&snapshot)
-        } else {
-            serde_json::Value::Null
-        };
-        let top_limitation = workspace_status_top_limitation(&snapshot);
+        let top_actionable_packet =
+            if health.allows_current_repairs() && authority.allows_analysis() {
+                workspace_status_top_actionable_packet(&snapshot)
+            } else {
+                serde_json::Value::Null
+            };
+        let top_limitation = top_limitation_dto(&health, Some(&snapshot), &authority).into_json();
 
         let run_status = health.run_status();
 
@@ -2284,18 +2296,410 @@ fn workspace_status_top_actionable_packet(snapshot: &AnalysisSnapshot) -> serde_
     })
 }
 
-fn workspace_status_top_limitation(snapshot: &AnalysisSnapshot) -> serde_json::Value {
-    let rejection = snapshot.gap_artifact_rejections.first();
-    let Some(rejection) = rejection else {
-        return serde_json::Value::Null;
+#[derive(Debug, PartialEq, Eq)]
+struct TopLimitationDto {
+    status: &'static str,
+    limitation_category: &'static str,
+    run_status: &'static str,
+    snapshot_id: Option<String>,
+    input_identity: Option<String>,
+    scope: &'static str,
+    completeness: &'static str,
+    why_not_actionable: String,
+    recovery_route: &'static str,
+    sample_sources: Vec<String>,
+    selected_count: usize,
+    total_count: usize,
+    non_claims: Vec<&'static str>,
+}
+
+impl TopLimitationDto {
+    fn into_json(self) -> serde_json::Value {
+        let repair_route = self.recovery_route;
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "top_limitation",
+            "status": self.status,
+            "category": self.limitation_category,
+            "limitation_category": self.limitation_category,
+            "run_status": self.run_status,
+            "snapshot_id": self.snapshot_id,
+            "input_identity": self.input_identity,
+            "scope": self.scope,
+            "completeness": self.completeness,
+            "repair_route": repair_route,
+            "recovery_route": repair_route,
+            "why_not_actionable": self.why_not_actionable,
+            "sample_sources": self.sample_sources,
+            "selected_count": self.selected_count,
+            "total_count": self.total_count,
+            "unlock_condition": repair_route,
+            "non_claims": self.non_claims,
+            "limits_note": "Static evidence only; advisory, not a gate decision.",
+        })
+    }
+}
+
+fn top_limitation_dto(
+    health: &AnalysisHealth,
+    snapshot: Option<&AnalysisSnapshot>,
+    authority: &WorkspaceRootAuthority,
+) -> TopLimitationDto {
+    let snapshot_id = health.snapshot_id.clone();
+    let input_identity = authority.input_identity();
+    let common = |status: &'static str,
+                  category: &'static str,
+                  completeness: &'static str,
+                  why_not_actionable: String,
+                  recovery_route: &'static str,
+                  sample_sources: Vec<String>,
+                  selected_count: usize,
+                  total_count: usize,
+                  non_claims: Vec<&'static str>| TopLimitationDto {
+        status,
+        limitation_category: category,
+        run_status: health.run_status(),
+        snapshot_id: snapshot_id.clone(),
+        input_identity: input_identity.clone(),
+        scope: "workspace",
+        completeness,
+        why_not_actionable,
+        recovery_route,
+        sample_sources,
+        selected_count,
+        total_count,
+        non_claims,
     };
-    let category = rejection.as_str();
-    let (repair_route, why_not_actionable) = workspace_status_rejection_repair(rejection);
-    serde_json::json!({
-        "category": category,
-        "repair_route": repair_route,
-        "why_not_actionable": why_not_actionable,
+
+    if !authority.allows_analysis() {
+        let (status, why_not_actionable, recovery_route) = match authority.state {
+            WorkspaceRootState::WorkspaceAmbiguous => (
+                "workspace_ambiguous",
+                "workspace root authority is ambiguous; analysis input is not selected",
+                "select_root_and_restart",
+            ),
+            WorkspaceRootState::RootUnavailable => (
+                "input_invalid",
+                "workspace root authority is unavailable; analysis input is not selected",
+                "select_root_and_restart",
+            ),
+            WorkspaceRootState::RootRemoved => (
+                "input_invalid",
+                "the selected workspace root was removed; analysis input is invalid",
+                "select_root_and_restart",
+            ),
+            WorkspaceRootState::RootChanged => (
+                "snapshot_stale",
+                "workspace root changed; the retained analysis input is stale",
+                "refresh",
+            ),
+            WorkspaceRootState::SelectedSingleRoot => (
+                "input_invalid",
+                "workspace root authority is not available for analysis",
+                "refresh",
+            ),
+        };
+        return common(
+            status,
+            status,
+            "incomplete",
+            why_not_actionable.to_string(),
+            recovery_route,
+            Vec::new(),
+            1,
+            1,
+            vec![
+                "not a repository-clean signal",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    let Some(snapshot) = snapshot else {
+        let (status, why_not_actionable, recovery_route, completeness) = match health.state {
+            AnalysisAttemptState::Queued => (
+                "analysis_queued",
+                "RIPR has queued an analysis attempt but has not produced a snapshot",
+                "wait_for_analysis",
+                "pending",
+            ),
+            AnalysisAttemptState::Running => (
+                "analysis_running",
+                "RIPR is analyzing the workspace and has not produced a snapshot",
+                "wait_for_analysis",
+                "pending",
+            ),
+            AnalysisAttemptState::Failed => (
+                "analysis_failed",
+                "analysis failed before a snapshot was available",
+                "refresh",
+                "incomplete",
+            ),
+            _ => (
+                "no_snapshot",
+                "RIPR has not completed an analysis snapshot yet",
+                "refresh",
+                "none",
+            ),
+        };
+        return common(
+            status,
+            status,
+            completeness,
+            health
+                .failure
+                .as_ref()
+                .map(|failure| format!("{}: {}", failure.kind, failure.message))
+                .unwrap_or_else(|| why_not_actionable.to_string()),
+            recovery_route,
+            Vec::new(),
+            1,
+            1,
+            vec![
+                "not a repository-clean signal",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    };
+
+    if health.state == AnalysisAttemptState::Failed {
+        let why = health
+            .failure
+            .as_ref()
+            .map(|failure| format!("the latest analysis failed: {}", failure.message))
+            .unwrap_or_else(|| "the latest analysis failed; the retained snapshot is stale".into());
+        return common(
+            "analysis_failed_retained_snapshot",
+            "analysis_failed_retained_snapshot",
+            "stale",
+            why,
+            "refresh",
+            snapshot_id.clone().into_iter().collect(),
+            1,
+            1,
+            vec![
+                "retained evidence is stale",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    if matches!(
+        health.state,
+        AnalysisAttemptState::Queued | AnalysisAttemptState::Running
+    ) {
+        let (status, why_not_actionable) = if health.state == AnalysisAttemptState::Queued {
+            (
+                "analysis_queued",
+                "RIPR has queued a new analysis attempt; the retained snapshot is not current",
+            )
+        } else {
+            (
+                "analysis_running",
+                "RIPR is analyzing the workspace; the retained snapshot is not current",
+            )
+        };
+        return common(
+            status,
+            status,
+            "pending",
+            why_not_actionable.to_string(),
+            "wait_for_analysis",
+            snapshot_id.clone().into_iter().collect(),
+            1,
+            1,
+            vec![
+                "retained evidence is not current",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    let run_status = health.run_status();
+    if run_status == "stale" {
+        return common(
+            "snapshot_stale",
+            "snapshot_stale",
+            "stale",
+            "the retained analysis snapshot is not current for this workspace".to_string(),
+            "refresh",
+            snapshot_id.clone().into_iter().collect(),
+            1,
+            1,
+            vec![
+                "retained evidence is stale",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+    if run_status == "seams_deferred" {
+        return common(
+            "seams_deferred",
+            "seams_deferred",
+            "deferred",
+            "interactive analysis deferred the expensive seam inventory".to_string(),
+            "refresh",
+            Vec::new(),
+            1,
+            1,
+            vec![
+                "seam evidence is incomplete",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    if let Some(rejection) = top_gap_artifact_rejection(&snapshot.gap_artifact_rejections) {
+        let category = rejection.as_str();
+        let (repair_route, why_not_actionable) = workspace_status_rejection_repair(rejection);
+        return common(
+            "artifact_rejected",
+            category,
+            "limited",
+            why_not_actionable.to_string(),
+            repair_route,
+            limitation_sample_sources(rejection),
+            1,
+            snapshot.gap_artifact_rejections.len(),
+            limitation_non_claims(category),
+        );
+    }
+
+    let static_limit_count = snapshot
+        .findings
+        .iter()
+        .filter(|finding| finding.static_limit_kind.is_some())
+        .count()
+        + snapshot
+            .gap_artifacts
+            .iter()
+            .filter(|artifact| artifact.has_static_limit())
+            .count();
+    if static_limit_count > 0 {
+        return common(
+            "canonical_static_limitation",
+            "canonical_static_limitation",
+            "limited",
+            "producer-owned static evidence is limited; inspect the named limitation".to_string(),
+            "inspect_full_evidence",
+            snapshot
+                .findings
+                .iter()
+                .filter(|finding| finding.static_limit_kind.is_some())
+                .min_by_key(|finding| finding.id.as_str())
+                .map(|finding| vec![finding.id.clone()])
+                .unwrap_or_default(),
+            static_limit_count,
+            static_limit_count,
+            vec![
+                "not a repair packet",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    if run_status == "limited" || run_status == "cache_limited" {
+        return common(
+            "run_limited",
+            "run_limited",
+            "limited",
+            "the current analysis run is limited and does not represent complete scope".to_string(),
+            "refresh",
+            Vec::new(),
+            1,
+            1,
+            vec![
+                "not a repository-clean signal",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    if snapshot.diagnostic_profile == LspDiagnosticProfile::Actionable
+        && snapshot.finding_count() > 0
+        && snapshot.actionable_diagnostic_count() == 0
+    {
+        return common(
+            "no_actionable_item",
+            "no_actionable_item",
+            "complete",
+            "the current actionable profile filtered findings without a bounded next action; inspect full evidence for detail".to_string(),
+            "inspect_full_evidence",
+            Vec::new(),
+            snapshot.finding_count(),
+            snapshot.finding_count(),
+            vec![
+                "not a repository-clean signal",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
+        );
+    }
+
+    common(
+        "no_active_limitation_in_current_scope",
+        "no_active_limitation_in_current_scope",
+        "complete",
+        "no active limitation was reported in the current RIPR analysis scope".to_string(),
+        "inspect_full_evidence",
+        Vec::new(),
+        0,
+        0,
+        vec![
+            "not a repository-clean signal",
+            "not test adequacy",
+            "not runtime evidence",
+        ],
+    )
+}
+
+fn top_gap_artifact_rejection(
+    rejections: &[super::gap_artifacts::GapArtifactRejection],
+) -> Option<&super::gap_artifacts::GapArtifactRejection> {
+    rejections.iter().min_by_key(|rejection| {
+        format!(
+            "{}:{:?}",
+            rejection.as_str(),
+            limitation_sample_sources(rejection)
+        )
     })
+}
+
+#[cfg(test)]
+mod top_limitation_selection_tests {
+    use super::*;
+
+    #[test]
+    fn top_gap_artifact_rejection_is_order_independent() {
+        use super::super::gap_artifacts::GapArtifactRejection;
+
+        let first_order = vec![
+            GapArtifactRejection::WrongRoot("/workspace/other".to_string()),
+            GapArtifactRejection::DisabledLanguage("typescript".to_string()),
+        ];
+        let second_order = vec![
+            GapArtifactRejection::DisabledLanguage("typescript".to_string()),
+            GapArtifactRejection::WrongRoot("/workspace/other".to_string()),
+        ];
+
+        let selected = |rejections: &[GapArtifactRejection]| {
+            top_gap_artifact_rejection(rejections)
+                .map(|rejection| (rejection.as_str(), limitation_sample_sources(rejection)))
+        };
+        let expected = ("disabled_language", vec!["typescript".to_string()]);
+
+        assert_eq!(selected(&first_order), Some(expected.clone()));
+        assert_eq!(selected(&second_order), Some(expected));
+    }
 }
 
 fn workspace_status_rejection_repair(
@@ -2465,39 +2869,14 @@ impl Backend {
     }
 
     fn collect_top_limitation(&self) -> Option<LSPAny> {
+        let health = self.analysis_health_snapshot();
         let snapshot = self.latest_analysis.lock().ok()?.clone();
-        let Some(snapshot) = snapshot else {
-            // No snapshot yet — return the "no blockers" sentinel, not null.
-            return Some(serde_json::json!({
-                "schema_version": "0.1",
-                "tool": "ripr",
-                "kind": "top_limitation",
-                "status": "no_limitation",
-            }));
-        };
-        let rejection = snapshot.gap_artifact_rejections.first()?;
-        let category = rejection.as_str();
-        let (repair_route, why_not_actionable) = workspace_status_rejection_repair(rejection);
-        // sample_sources: emit the String payload if the variant carries one.
-        // gap_id-bearing sample sources are a deferred follow-up — the
-        // GapArtifactRejection enum does not carry a gap_id.
-        let sample_sources = limitation_sample_sources(rejection);
-        // unlock_condition is honest: the same analyzer route that must be
-        // implemented to remove the limitation.
-        let unlock_condition = repair_route;
-        let non_claims = limitation_non_claims(category);
-        Some(serde_json::json!({
-            "schema_version": "0.1",
-            "tool": "ripr",
-            "kind": "top_limitation",
-            "limitation_category": category,
-            "repair_route": repair_route,
-            "why_not_actionable": why_not_actionable,
-            "sample_sources": sample_sources,
-            "unlock_condition": unlock_condition,
-            "non_claims": non_claims,
-            "limits_note": "Static evidence only; advisory, not a gate decision.",
-        }))
+        let health = snapshot
+            .as_ref()
+            .map(|snapshot| self.effective_health_for_snapshot(health.clone(), snapshot))
+            .unwrap_or(health);
+        let authority = self.workspace_root_authority();
+        Some(top_limitation_dto(&health, snapshot.as_ref(), &authority).into_json())
     }
 
     fn collect_receipt_status(&self) -> Option<LSPAny> {

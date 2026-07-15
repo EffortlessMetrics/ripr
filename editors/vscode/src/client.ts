@@ -1250,7 +1250,7 @@ export class RiprClientController {
   async showTopLimitation(): Promise<void> {
     const client = this.client;
     if (!client) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR has not completed an analysis snapshot yet.');
       return;
     }
     let response: Record<string, unknown> | null = null;
@@ -1267,12 +1267,14 @@ export class RiprClientController {
       this.output.appendLine(`ripr collectTopLimitation failed: ${message}`);
     }
     if (response === null) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR could not report workspace limitation status.');
       return;
     }
     const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'no_limitation') {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+    if (status === 'no_active_limitation_in_current_scope') {
+      this.runtime.showInformationMessage(
+        'No active limitation was reported in the current RIPR analysis scope; this is not an all-clear.'
+      );
       return;
     }
     const category = typeof response['limitation_category'] === 'string' ? response['limitation_category'] : '';
@@ -1293,7 +1295,7 @@ export class RiprClientController {
       this.output.appendLine(`  unlock_condition: ${unlock}`);
     }
     this.output.show();
-    const summary = category || repairRoute || 'See ripr output for limitation details.';
+    const summary = status || category || repairRoute || 'See ripr output for limitation details.';
     this.runtime.showInformationMessage(`ripr top limitation: ${summary}`);
   }
 

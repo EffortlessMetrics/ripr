@@ -1,6 +1,6 @@
 # RIPR-SPEC-0078: LSP Top-Limitation Command
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -20,11 +20,11 @@ Linked plan:
 
 Linked issues:
 
-- None yet
+- #1629
 
 Linked PRs:
 
-- None yet
+- #1696
 
 Support-tier impact:
 
@@ -53,17 +53,25 @@ be implemented to remove it?
 
 ## Behavior
 
-`ripr.collectTopLimitation` is a new LSP `executeCommand` that:
+`ripr.collectTopLimitation` and `ripr.collectWorkspaceStatus` consume one
+producer-owned typed top-limitation DTO. The DTO is built from the current
+workspace-root authority, analysis health, and optional analysis snapshot, so
+both commands agree on status, snapshot identity, scope, and recovery route.
 
-1. Locks `latest_analysis` briefly.
-2. If no snapshot exists yet, returns the `no_limitation` sentinel (see
-   Outputs). This is a meaningful "no blockers detected" answer, not null.
-3. If `gap_artifact_rejections` is empty on the snapshot, returns null
-   (the first rejection is absent; no limitation to report).
-4. Otherwise builds the full limitation packet from the first
-   `GapArtifactRejection` using `rejection.as_str()` (limitation
-   category) and `workspace_status_rejection_repair` (repair_route,
-   why_not_actionable). Does not duplicate the rejection taxonomy.
+The DTO distinguishes incomplete and limited states from a current scoped
+result. At minimum it emits `no_snapshot`, `analysis_queued`,
+`analysis_running`, `analysis_failed_retained_snapshot`, `snapshot_stale`,
+`workspace_ambiguous`, `input_invalid`, `run_limited`, `seams_deferred`,
+`artifact_rejected`, `canonical_static_limitation`, `no_actionable_item`, or
+`no_active_limitation_in_current_scope` as applicable. No state means that the
+repository is clean or that the test suite is adequate.
+
+When multiple artifact rejections are present, the selected sample is ordered
+by stable category and payload rather than raw artifact order. The DTO carries
+`snapshot_id`, `input_identity`, `run_status`, `scope`, `completeness`,
+`why_not_actionable`, `recovery_route`, bounded counts, sample sources, and
+static non-claims. A missing producer fact remains an explicit limitation; the
+renderer does not invent a taxonomy or a zero value.
 
 ### `unlock_condition` equivalence
 
@@ -137,34 +145,64 @@ Full limitation packet (when snapshot exists and has rejections):
 }
 ```
 
-No-limitation sentinel (when no snapshot exists):
+No-snapshot state:
 
 ```json
 {
   "schema_version": "0.1",
   "tool": "ripr",
   "kind": "top_limitation",
-  "status": "no_limitation"
+  "status": "no_snapshot",
+  "limitation_category": "no_snapshot",
+  "run_status": "no_snapshot",
+  "scope": "workspace",
+  "completeness": "none",
+  "repair_route": "refresh",
+  "recovery_route": "refresh",
+  "why_not_actionable": "RIPR has not completed an analysis snapshot yet"
 }
 ```
 
-Null (when snapshot exists but `gap_artifact_rejections` is empty): the
-command returns null.
+Current complete scope with no active limitation:
+
+```json
+{
+  "status": "no_active_limitation_in_current_scope",
+  "limitation_category": "no_active_limitation_in_current_scope",
+  "completeness": "complete",
+  "scope": "workspace",
+  "selected_count": 0,
+  "total_count": 0,
+  "non_claims": [
+    "not a repository-clean signal",
+    "not test adequacy",
+    "not runtime evidence"
+  ]
+}
+```
 
 ## Acceptance Examples
 
-1. No snapshot → `Some(value)` with `status == "no_limitation"`, not null.
-2. Snapshot with `DisabledLanguage("typescript")` rejection → full
-   packet with `limitation_category == "disabled_language"`, non-empty
-   `repair_route`, non-empty `why_not_actionable`, `non_claims` is array,
-   `limits_note` present, no mutation-runtime vocabulary.
-3. Capabilities list contains exactly 7 commands including
+1. No snapshot → `Some(value)` with `status == "no_snapshot"`, never an
+   all-clear sentinel.
+2. Failed refresh with a retained snapshot → `status ==
+   "analysis_failed_retained_snapshot"` and `run_status == "stale"`.
+3. Snapshot with `DisabledLanguage("typescript")` rejection → full
+   packet with `status == "artifact_rejected"`,
+   `limitation_category == "disabled_language"`, non-empty `repair_route`,
+   non-empty `why_not_actionable`, `non_claims` is array, `limits_note`
+   present, no mutation-runtime vocabulary.
+4. Workspace status and the command return the same top-limitation identity
+   and state.
+5. Capabilities list contains exactly 7 commands including
    `ripr.collectTopLimitation`.
 
 ## Test Mapping
 
-- `crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_no_snapshot_returns_no_limitation`
+- `crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_no_snapshot_returns_no_snapshot_status`
 - `crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_with_rejection_returns_limitation`
+- `crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status`
+- `crates/ripr/src/lsp/tests.rs::failed_refresh_retains_last_snapshot_and_reports_stale_health`
 - `crates/ripr/src/lsp/tests.rs::execute_command_collect_top_limitation_registered_in_capabilities`
 
 ## Implementation Mapping
@@ -187,6 +225,7 @@ command returns null.
 
 ## Failure Modes
 
-- No snapshot → `no_limitation` sentinel (safe fallback, not null).
-- No rejections in snapshot → null (nothing to report).
+- No snapshot → explicit `no_snapshot` state with a refresh route.
+- No rejections in a complete current snapshot → scoped
+  `no_active_limitation_in_current_scope`, never repository-clean language.
 - Lock failure → null (graceful degradation; never panics).
