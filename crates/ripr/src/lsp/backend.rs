@@ -2876,7 +2876,7 @@ impl Backend {
             .map(|snapshot| self.effective_health_for_snapshot(health.clone(), snapshot))
             .unwrap_or(health);
         let authority = self.workspace_root_authority();
-        Some(top_limitation_dto(&health, snapshot.as_ref(), &authority).into_json())
+        Some(top_limitation_dto(&health, snapshot.as_deref(), &authority).into_json())
     }
 
     fn collect_receipt_status(&self) -> Option<LSPAny> {
