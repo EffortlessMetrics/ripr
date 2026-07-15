@@ -2256,6 +2256,59 @@ mod tests {
     }
 
     #[test]
+    fn error_variant_producer_fact_reaches_canonical_packet_route() -> Result<(), String> {
+        let mut entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let seam = RepoSeam::new(
+            "src/pricing.rs",
+            "pricing::classify_boundary",
+            SeamKind::ErrorVariant,
+            9,
+            88,
+            "Err(PricingError::Other)",
+            RequiredDiscriminator::ErrorVariant {
+                variant: "PricingError::Other".to_string(),
+            },
+            ExpectedSink::ErrorChannel,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.seam = seam;
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "PricingError::Other".to_string(),
+            reason: "the changed error variant is not asserted exactly".to_string(),
+            flow_sink: None,
+        }];
+        entry.class = classify_seam(&entry.seam, &entry.evidence);
+
+        let readiness = repair_route_readiness(&entry);
+        if readiness.state != RepairRouteState::Ready || !readiness.is_repair_ready() {
+            return Err(format!(
+                "expected a ready error-variant route: {readiness:?}"
+            ));
+        }
+
+        let packet: Value = serde_json::from_str(
+            &crate::output::agent_seam_packets::render_agent_seam_packet_json(&entry),
+        )
+        .map_err(|error| format!("parse canonical packet: {error}"))?;
+        let packet = &packet["packets"][0];
+        if packet["task"] != "write_targeted_test"
+            || packet["recommended_test"]["file"] != "tests/pricing_tests.rs"
+            || packet["evidence_record"]["canonical_item"]["repair_route"]["repair_kind"]
+                != "add_exact_error_variant"
+            || !packet["evidence_record"]["canonical_item"]["repair_route"]["suggested_assertion"]
+                .as_str()
+                .is_some_and(|assertion| assertion.contains("PricingError::Other"))
+            || packet["evidence_record"]["recommendation"]["verify_command"].is_null()
+            || packet["evidence_record"]["canonical_item"]["receipt_command"].is_null()
+        {
+            return Err(format!(
+                "canonical packet lost the producer route: {packet}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn readiness_terminal_states_follow_classifier_class() {
         let intentional = sample_classified(StageState::Yes, SeamGripClass::Intentional);
         assert_eq!(
