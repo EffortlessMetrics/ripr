@@ -283,6 +283,7 @@ mod tests {
         }
         AnalysisSnapshot {
             root: PathBuf::from(root),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),

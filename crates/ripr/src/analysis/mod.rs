@@ -22,7 +22,8 @@ mod value_resolution;
 mod workspace;
 
 pub(crate) use diff::{
-    load_diff, load_diff_range, parse_unified_diff, working_tree_has_tracked_changes,
+    load_diff, load_diff_range, parse_unified_diff, resolve_base_commit,
+    working_tree_has_tracked_changes,
 };
 pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;

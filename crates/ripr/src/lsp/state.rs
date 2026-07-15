@@ -1,4 +1,5 @@
 use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
+use super::input_identity::LspAnalysisInputIdentity;
 use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
@@ -152,6 +153,8 @@ pub(super) struct AnalysisHealth {
     pub(super) last_success_snapshot_id: Option<String>,
     pub(super) last_success_at: Option<SystemTime>,
     pub(super) snapshot_run_status: Option<String>,
+    pub(super) current_input_identity: Option<String>,
+    pub(super) last_success_input_identity: Option<String>,
     pub(super) failure: Option<AnalysisFailure>,
     pub(super) pending_attempt_id: Option<u64>,
     pub(super) pending_reason: Option<String>,
@@ -169,6 +172,8 @@ impl Default for AnalysisHealth {
             last_success_snapshot_id: None,
             last_success_at: None,
             snapshot_run_status: None,
+            current_input_identity: None,
+            last_success_input_identity: None,
             failure: None,
             pending_attempt_id: None,
             pending_reason: None,
@@ -231,6 +236,9 @@ impl Default for RefreshMetadata {
 #[derive(Clone, Debug)]
 pub(super) struct AnalysisSnapshot {
     pub(super) root: PathBuf,
+    /// The exact input identity that produced this completed snapshot. This
+    /// is producer-owned provenance, not a renderer-derived summary.
+    pub(super) input_identity: Option<LspAnalysisInputIdentity>,
     pub(super) base: Option<String>,
     pub(super) mode: Mode,
     pub(super) refresh: RefreshMetadata,
@@ -257,6 +265,12 @@ pub(super) struct AnalysisSnapshot {
 }
 
 impl AnalysisSnapshot {
+    pub(super) fn input_identity_id(&self) -> Option<String> {
+        self.input_identity
+            .as_ref()
+            .map(LspAnalysisInputIdentity::stable_id)
+    }
+
     pub(super) fn is_consistent(&self) -> bool {
         let diagnostic_count = self
             .diagnostics_by_uri
@@ -472,6 +486,7 @@ mod tests {
         diagnostics_by_uri.insert(uri, vec![gap_diagnostic()]);
         let snapshot = AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
@@ -497,6 +512,7 @@ mod tests {
         diagnostics_by_uri.insert(uri, vec![plain_diagnostic()]);
         let snapshot = AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),

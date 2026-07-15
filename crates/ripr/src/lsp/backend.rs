@@ -21,7 +21,10 @@ use super::state::{
     AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, DocumentStore,
     WorkspaceRootAuthority, WorkspaceRootState, format_duration,
 };
-use super::uri::{file_uri_for_path, file_uri_is_within_root, file_uris_match};
+use super::uri::{
+    file_uri_for_path, file_uri_is_within_root, file_uris_match, path_from_file_uri,
+    path_is_within_root,
+};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
     COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
@@ -251,6 +254,7 @@ impl Backend {
         .await
         {
             Ok(Ok(mut diagnostics)) => {
+                diagnostics.snapshot.input_identity = Some(request.input_identity.clone());
                 diagnostics
                     .snapshot
                     .refresh
@@ -433,8 +437,18 @@ impl Backend {
     #[cfg(test)]
     pub(super) fn refresh_plan(
         &self,
-        diagnostics: WorkspaceDiagnostics,
+        mut diagnostics: WorkspaceDiagnostics,
     ) -> Option<DiagnosticRefreshPlan> {
+        if diagnostics.snapshot.input_identity.is_none() {
+            let config = self.analysis_config().unwrap_or_default();
+            diagnostics.snapshot.input_identity = Some(
+                super::input_identity::LspAnalysisInputIdentity::from_refresh_inputs(
+                    diagnostics.snapshot.root.clone(),
+                    self.workspace_revision(),
+                    &config,
+                ),
+            );
+        }
         let transaction = self.prepare_refresh_transaction(diagnostics)?;
         let RefreshTransaction { plan, snapshot, .. } = transaction;
         self.commit_refresh_snapshot(snapshot, &plan)
@@ -476,6 +490,9 @@ impl Backend {
         snapshot: AnalysisSnapshot,
         plan: &DiagnosticRefreshPlan,
     ) -> bool {
+        if snapshot.input_identity.is_none() {
+            return false;
+        }
         let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
             return false;
         };
@@ -642,6 +659,7 @@ impl Backend {
             health.last_success_snapshot_id = Some(snapshot_id);
             health.last_success_at = Some(snapshot.refresh.generated_at);
             health.snapshot_run_status = Some(workspace_status_run_status(snapshot).to_string());
+            health.last_success_input_identity = snapshot.input_identity_id();
         }
         health
     }
@@ -654,6 +672,7 @@ impl Backend {
         health.state = AnalysisAttemptState::Queued;
         health.reason = Some(request.reason.as_str().to_string());
         health.requested_scope = Some(request.scope.as_str().to_string());
+        health.current_input_identity = Some(request.input_identity_id());
         health.failure = None;
     }
 
@@ -665,6 +684,7 @@ impl Backend {
         health.state = AnalysisAttemptState::Running;
         health.reason = Some(request.reason.as_str().to_string());
         health.requested_scope = Some(request.scope.as_str().to_string());
+        health.current_input_identity = Some(request.input_identity_id());
         if health.pending_attempt_id == Some(request.generation) {
             health.pending_attempt_id = None;
             health.pending_reason = None;
@@ -736,6 +756,13 @@ impl Backend {
                     .ok()
                     .and_then(|snapshot| snapshot.as_ref().map(workspace_status_run_status))
                     .map(str::to_string);
+                health.current_input_identity = Some(request.input_identity_id());
+                health.last_success_input_identity =
+                    self.latest_analysis.lock().ok().and_then(|snapshot| {
+                        snapshot
+                            .as_ref()
+                            .and_then(AnalysisSnapshot::input_identity_id)
+                    });
             }
             RefreshAttemptOutcome::Failed => {
                 // `mark_attempt_failed` records the bounded error and preserves
@@ -774,6 +801,8 @@ impl Backend {
             "requested_scope": health.requested_scope,
             "snapshot_id": health.snapshot_id,
             "last_success_snapshot_id": health.last_success_snapshot_id,
+            "current_input_identity": health.current_input_identity,
+            "last_success_input_identity": health.last_success_input_identity,
             "last_success_age_ms": last_success_age_ms,
             "run_status": health.run_status(),
             "diagnostic_profile": self
@@ -909,6 +938,8 @@ impl Backend {
             health.last_success_snapshot_id = None;
             health.last_success_at = None;
             health.snapshot_run_status = None;
+            health.current_input_identity = None;
+            health.last_success_input_identity = None;
             health.failure = None;
             health.pending_attempt_id = None;
             health.pending_reason = None;
@@ -923,6 +954,7 @@ impl Backend {
             health.reason = Some(reason.to_string());
             health.requested_scope = Some(RefreshScope::Interactive.as_str().to_string());
             health.failure = None;
+            health.current_input_identity = None;
             health.pending_attempt_id = None;
             health.pending_reason = None;
             health.pending_scope = None;
@@ -942,6 +974,7 @@ impl Backend {
             health.reason = Some(RefreshReason::ConfigReload.as_str().to_string());
             health.requested_scope = Some(RefreshScope::Interactive.as_str().to_string());
             health.failure = Some(failure);
+            health.current_input_identity = None;
         }
     }
 
@@ -1036,6 +1069,26 @@ impl Backend {
             .is_some_and(|uri| file_uris_match(&uri, &event.uri))
     }
 
+    fn file_event_is_workspace_manifest_or_lockfile(&self, event: &FileEvent) -> bool {
+        let Some(root) = self.effective_root() else {
+            return false;
+        };
+        let Some(path) = path_from_file_uri(&event.uri) else {
+            return false;
+        };
+        workspace_input_path_is_relevant(&root, &path)
+    }
+
+    pub(super) fn watched_file_change_kinds(&self, changes: &[FileEvent]) -> (bool, bool) {
+        let config_changed = changes
+            .iter()
+            .any(|event| self.file_event_is_repository_config(event));
+        let workspace_graph_changed = changes
+            .iter()
+            .any(|event| self.file_event_is_workspace_manifest_or_lockfile(event));
+        (config_changed, workspace_graph_changed)
+    }
+
     fn set_analysis_config(&self, config: LspAnalysisConfig) {
         let Ok(mut current_config) = self.analysis_config.lock() else {
             return;
@@ -1113,6 +1166,14 @@ impl Backend {
         let diagnostics = last_diagnostics.get(uri)?;
         diagnostic_at_position(diagnostics, position).map(diagnostic_hover_response)
     }
+}
+
+pub(super) fn workspace_input_path_is_relevant(root: &Path, path: &Path) -> bool {
+    path_is_within_root(root, path)
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| matches!(name, "Cargo.toml" | "Cargo.lock"))
 }
 
 struct RefreshCancellationGuard<'a> {
@@ -1504,14 +1565,18 @@ impl LanguageServer for Backend {
             id: "ripr-config-file-watch".to_string(),
             method: "workspace/didChangeWatchedFiles".to_string(),
             register_options: Some(serde_json::json!({
-                "watchers": [{"globPattern": "**/ripr.toml"}]
+                "watchers": [
+                    {"globPattern": "**/ripr.toml"},
+                    {"globPattern": "**/Cargo.toml"},
+                    {"globPattern": "**/Cargo.lock"}
+                ]
             })),
         };
         if let Err(error) = self.client.register_capability(vec![registration]).await {
             self.client
                 .log_message(
                     MessageType::WARNING,
-                    format!("ripr config file watching unavailable: {error}"),
+                    format!("ripr workspace input watching unavailable: {error}"),
                 )
                 .await;
         }
@@ -1565,12 +1630,16 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        if params
-            .changes
-            .iter()
-            .any(|event| self.file_event_is_repository_config(event))
-        {
+        let (config_changed, workspace_graph_changed) =
+            self.watched_file_change_kinds(&params.changes);
+        if config_changed {
             self.reload_repository_config().await;
+        }
+        if workspace_graph_changed {
+            self.invalidate_analysis_input("workspace_manifest_or_lockfile_changed");
+            self.publish_analysis_status().await;
+            self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
+                .await;
         }
     }
 

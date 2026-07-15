@@ -666,6 +666,7 @@ pub(super) fn workspace_diagnostics_with_config(
         .collect();
     let snapshot = AnalysisSnapshot {
         root,
+        input_identity: None,
         base,
         mode,
         refresh: RefreshMetadata::generated_now(),

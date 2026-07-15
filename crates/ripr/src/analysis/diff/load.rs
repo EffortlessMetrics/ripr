@@ -108,12 +108,32 @@ fn git_symbolic_ref_quiet(root: &Path, refname: &str) -> Option<String> {
 /// Return `true` when `git rev-parse --verify --quiet <refname>` succeeds,
 /// meaning the ref genuinely exists in the repository.
 fn git_ref_exists(root: &Path, refname: &str) -> bool {
+    git_ref_output(root, refname).is_some_and(|out| out.status.success())
+}
+
+fn git_ref_output(root: &Path, refname: &str) -> Option<std::process::Output> {
     Command::new("git")
         .args(["rev-parse", "--verify", "--quiet", refname])
         .current_dir(root)
         .output()
-        .map(|out| out.status.success())
-        .unwrap_or(false)
+        .ok()
+}
+
+/// Resolve a requested base to the commit that the next analysis will use.
+///
+/// Tracking the commit rather than only the ref name keeps moving refs such as
+/// `origin/main` from being mistaken for the same analysis input after they
+/// advance. An unresolved ref remains `None`; the analysis path will report
+/// the named base failure instead of manufacturing a commit identity.
+pub fn resolve_base_commit(root: &Path, base: Option<&str>) -> Option<String> {
+    let base = base?;
+    let commit = format!("{base}^{{commit}}");
+    let output = git_ref_output(root, &commit)?;
+    if !output.status.success() {
+        return None;
+    }
+    let commit = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!commit.is_empty()).then_some(commit)
 }
 
 pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
@@ -242,6 +262,34 @@ mod tests {
             .args(["commit", "-m", "init"])
             .current_dir(dir)
             .output()?;
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_base_resolves_to_exact_commit_and_unknown_refs_fail_closed() -> std::io::Result<()>
+    {
+        let dir = std::env::temp_dir().join("ripr-resolve-exact-base");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let expected = String::from_utf8(
+            git_ref_output(&dir, "HEAD")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "git HEAD was not resolved")
+                })?
+                .stdout,
+        )
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+        .trim()
+        .to_string();
+
+        assert_eq!(
+            resolve_base_commit(&dir, Some("HEAD")).as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(resolve_base_commit(&dir, Some("missing-base")), None);
+
+        let _ = fs::remove_dir_all(&dir);
         Ok(())
     }
 

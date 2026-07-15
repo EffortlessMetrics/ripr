@@ -100,6 +100,7 @@ struct RefreshInputIdentity {
 pub(super) struct RefreshRequest {
     pub(super) generation: u64,
     pub(super) authority_epoch: u64,
+    pub(super) input_identity: LspAnalysisInputIdentity,
     pub(super) root: PathBuf,
     pub(super) config: LspAnalysisConfig,
     pub(super) workspace_revision: u64,
@@ -114,12 +115,12 @@ impl RefreshRequest {
             root: self.root.clone(),
             config: self.config.clone(),
             workspace_revision: self.workspace_revision,
-            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
-                self.root.clone(),
-                self.workspace_revision,
-                &self.config,
-            ),
+            input_identity: self.input_identity.clone(),
         }
+    }
+
+    pub(super) fn input_identity_id(&self) -> String {
+        self.input_identity.stable_id()
     }
 }
 
@@ -224,6 +225,7 @@ impl RefreshScheduler {
         let request = RefreshRequest {
             generation: state.next_generation,
             authority_epoch,
+            input_identity: identity.input_identity.clone(),
             root,
             config,
             workspace_revision,

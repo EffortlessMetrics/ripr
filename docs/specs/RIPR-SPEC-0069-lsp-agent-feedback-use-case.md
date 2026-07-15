@@ -170,6 +170,8 @@ Its stable fields are:
   "requested_scope": "interactive",
   "snapshot_id": "snapshot:6",
   "last_success_snapshot_id": "snapshot:6",
+  "current_input_identity": "input:<current-input-fingerprint>",
+  "last_success_input_identity": "input:<snapshot-input-fingerprint>",
   "last_success_age_ms": 1234,
   "run_status": "stale",
   "failure": { "kind": "analysis_error", "message": "bounded detail" },
@@ -196,6 +198,16 @@ gap artifacts and enabled languages for clients that project those details. A
 completion log must not override a typed failed, cancelled, or superseded
 state. Timing and queue fields belong only in this health surface, never in
 diagnostic or semantic gap identities.
+
+`current_input_identity` identifies the effective root, saved-workspace
+revision, repository and session configuration, requested/resolved base,
+language/profile selection, relevant Cargo manifest and lockfile content,
+analyzer version, and identity schema used by the current request. The value
+is an opaque stable fingerprint; it does not expose configuration contents or
+absolute paths. `last_success_input_identity` is the corresponding producer
+identity stored on the retained snapshot. They must differ visibly when a
+newer request has different inputs, even while the last-good snapshot remains
+available for stale inspection.
 
 The server owns one explicit workspace-root state for each session. A single
 valid `workspaceFolders` entry is selected; a valid `rootUri` is the

@@ -1220,6 +1220,7 @@ mod seam_hover_tests {
     fn sample_snapshot(mode: Mode) -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode,
             refresh: super::super::state::RefreshMetadata::default(),
