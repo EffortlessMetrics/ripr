@@ -7,10 +7,10 @@ use super::{
 };
 use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
-    CodeActionProviderCapability, CodeLensOptions, ExecuteCommandOptions, HoverProviderCapability,
-    InitializeParams, InitializeResult, OneOf, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceFoldersServerCapabilities,
-    WorkspaceServerCapabilities,
+    CodeActionProviderCapability, CodeLensOptions, DiagnosticOptions, DiagnosticServerCapabilities,
+    ExecuteCommandOptions, HoverProviderCapability, InitializeParams, InitializeResult, OneOf,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,10 +20,22 @@ pub(super) enum WorkspaceRootResolution {
     Unavailable(String),
 }
 
+#[cfg(test)]
 pub(super) fn initialize_result() -> InitializeResult {
+    initialize_result_for_client(true)
+}
+
+pub(super) fn initialize_result_for_client(supports_pull_diagnostics: bool) -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            diagnostic_provider: supports_pull_diagnostics.then_some(
+                DiagnosticServerCapabilities::Options(DiagnosticOptions {
+                    inter_file_dependencies: true,
+                    workspace_diagnostics: true,
+                    ..DiagnosticOptions::default()
+                }),
+            ),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
             // Advisory codeLens: resolve is disabled; lenses are display-only
@@ -60,6 +72,25 @@ pub(super) fn initialize_result() -> InitializeResult {
         }),
         offset_encoding: None,
     }
+}
+
+pub(super) fn client_supports_pull_diagnostics(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .text_document
+        .as_ref()
+        .and_then(|text_document| text_document.diagnostic.as_ref())
+        .is_some()
+}
+
+pub(super) fn client_supports_diagnostic_refresh(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.diagnostics.as_ref())
+        .and_then(|diagnostics| diagnostics.refresh_support)
+        .unwrap_or(false)
 }
 
 #[expect(
@@ -125,6 +156,10 @@ fn path_from_workspace_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower_lsp_server::ls_types::{
+        DiagnosticClientCapabilities, DiagnosticWorkspaceClientCapabilities,
+        TextDocumentClientCapabilities, WorkspaceClientCapabilities,
+    };
 
     #[test]
     fn initialize_result_advertises_the_fail_closed_agent_capability() -> Result<(), String> {
@@ -135,6 +170,71 @@ mod tests {
             .ok_or_else(|| "expected experimental LSP capabilities".to_string())?;
         if experimental != server_capability() {
             return Err("initialize capability drifted from the protocol authority".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn initialize_result_advertises_pull_diagnostic_provider() -> Result<(), String> {
+        let provider = initialize_result()
+            .capabilities
+            .diagnostic_provider
+            .ok_or_else(|| "pull diagnostic provider was not advertised".to_string())?;
+        let DiagnosticServerCapabilities::Options(options) = provider else {
+            return Err("expected static diagnostic options".to_string());
+        };
+        if !options.inter_file_dependencies || !options.workspace_diagnostics {
+            return Err("diagnostic provider lost workspace dependency support".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn push_only_client_does_not_receive_pull_provider_advertisement() -> Result<(), String> {
+        if initialize_result_for_client(false)
+            .capabilities
+            .diagnostic_provider
+            .is_some()
+        {
+            return Err("push-only client received a pull provider".to_string());
+        }
+        if initialize_result_for_client(true)
+            .capabilities
+            .diagnostic_provider
+            .is_none()
+        {
+            return Err("pull-capable client lost pull provider".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pull_mode_requires_text_document_diagnostic_capability() -> Result<(), String> {
+        let mut pull = InitializeParams::default();
+        pull.capabilities.text_document = Some(TextDocumentClientCapabilities {
+            diagnostic: Some(DiagnosticClientCapabilities::default()),
+            ..TextDocumentClientCapabilities::default()
+        });
+        if !client_supports_pull_diagnostics(&pull) || client_supports_diagnostic_refresh(&pull) {
+            return Err("pull-only capability was classified incorrectly".to_string());
+        }
+
+        let mut push = InitializeParams::default();
+        push.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            diagnostics: Some(DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            }),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if client_supports_pull_diagnostics(&push) || !client_supports_diagnostic_refresh(&push) {
+            return Err("push refresh capability was classified incorrectly".to_string());
+        }
+
+        let neither = InitializeParams::default();
+        if client_supports_pull_diagnostics(&neither)
+            || client_supports_diagnostic_refresh(&neither)
+        {
+            return Err("empty capabilities were classified as pull-capable".to_string());
         }
         Ok(())
     }

@@ -4,9 +4,7 @@ use super::gap_artifacts::{
     validate_workspace_gap_artifact_report,
 };
 use super::state::{AnalysisSnapshot, RefreshMetadata};
-use super::uri::file_uri_for_path;
-#[cfg(test)]
-use super::uri::path_from_file_uri;
+use super::uri::{file_uri_for_path, file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
@@ -28,6 +26,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tower_lsp_server::ls_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
     Position, Range, Uri,
@@ -391,7 +390,6 @@ pub(super) fn finding_is_visible_in_profile(
 /// Navigation URIs remain absolute in the LSP wire payload, but the cache
 /// identity must be comparable for equivalent checkouts. Path-bearing data is
 /// therefore rewritten to `repo://` relative paths before hashing.
-#[cfg(test)]
 pub(super) fn normalized_diagnostic_payload_digest(
     root: &Path,
     diagnostics: &[Diagnostic],
@@ -415,7 +413,6 @@ pub(super) fn normalized_diagnostic_payload_digest(
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-#[cfg(test)]
 fn normalize_path_values(root: &Path, value: &mut serde_json::Value, key: Option<&str>) {
     match value {
         serde_json::Value::Object(object) => {
@@ -440,6 +437,114 @@ fn normalize_path_values(root: &Path, value: &mut serde_json::Value, key: Option
         }
         _ => {}
     }
+}
+
+/// Build the stable identity for one document's current diagnostic report.
+///
+/// The identity is deliberately scoped to the document. A change in another
+/// document therefore does not invalidate an unchanged document report. The
+/// canonical payload digest removes checkout-root-specific paths before
+/// hashing, while the snapshot inputs capture changes that affect the whole
+/// projection.
+pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &Uri) -> String {
+    let relative_uri = normalized_document_uri(&snapshot.root, uri);
+    let diagnostics = snapshot.diagnostics_for_uri(uri).unwrap_or(&[]);
+    let payload_digest = normalized_diagnostic_payload_digest(&snapshot.root, diagnostics);
+    stable_diagnostic_id(
+        "ripr-document-diagnostics-v1",
+        [
+            snapshot.mode.as_str(),
+            snapshot.diagnostic_profile.as_str(),
+            snapshot_run_status(
+                &snapshot.findings,
+                &snapshot.gap_artifact_rejections,
+                snapshot.seams_deferred,
+            ),
+            snapshot.base.as_deref().unwrap_or("no-base"),
+            relative_uri.as_str(),
+            payload_digest.as_str(),
+        ],
+    )
+}
+
+/// Build a workspace identity from the ordered set of document identities.
+/// This is an observability/test identity; the LSP workspace report carries
+/// the per-document IDs because that is what clients use for unchanged data.
+pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> String {
+    let mut parts = vec![
+        snapshot.mode.as_str().to_string(),
+        snapshot.diagnostic_profile.as_str().to_string(),
+        snapshot_run_status(
+            &snapshot.findings,
+            &snapshot.gap_artifact_rejections,
+            snapshot.seams_deferred,
+        )
+        .to_string(),
+        snapshot
+            .base
+            .clone()
+            .unwrap_or_else(|| "no-base".to_string()),
+    ];
+    for uri in snapshot.diagnostics_by_uri.keys() {
+        parts.push(normalized_document_uri(&snapshot.root, uri));
+        parts.push(document_diagnostic_result_id(snapshot, uri));
+    }
+    stable_diagnostic_id(
+        "ripr-workspace-diagnostics-v1",
+        parts.iter().map(String::as_str),
+    )
+}
+
+/// Snapshot-scoped identities used by pull diagnostics.
+///
+/// Computing a document identity serializes and normalizes its complete
+/// diagnostic payload. Cache those producer-owned values when a snapshot is
+/// committed so repeated pull requests only look up the requested document.
+#[derive(Debug)]
+pub(super) struct DiagnosticResultIdCache {
+    snapshot: Arc<AnalysisSnapshot>,
+    document_ids: BTreeMap<Uri, String>,
+    workspace_id: String,
+}
+
+impl DiagnosticResultIdCache {
+    pub(super) fn for_snapshot(snapshot: Arc<AnalysisSnapshot>) -> Self {
+        let document_ids = snapshot
+            .diagnostics_by_uri
+            .keys()
+            .map(|uri| (uri.clone(), document_diagnostic_result_id(&snapshot, uri)))
+            .collect();
+        let workspace_id = workspace_diagnostic_result_id(&snapshot);
+        Self {
+            snapshot,
+            document_ids,
+            workspace_id,
+        }
+    }
+
+    pub(super) fn matches_snapshot(&self, snapshot: &Arc<AnalysisSnapshot>) -> bool {
+        Arc::ptr_eq(&self.snapshot, snapshot) && !self.workspace_id.is_empty()
+    }
+
+    pub(super) fn document_id(&self, snapshot: &AnalysisSnapshot, uri: &Uri) -> String {
+        self.document_ids
+            .get(uri)
+            .or_else(|| {
+                self.document_ids
+                    .iter()
+                    .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
+                    .map(|(_, result_id)| result_id)
+            })
+            .cloned()
+            .unwrap_or_else(|| document_diagnostic_result_id(snapshot, uri))
+    }
+}
+
+fn normalized_document_uri(root: &Path, uri: &Uri) -> String {
+    path_from_file_uri(uri).map_or_else(
+        || uri.as_str().to_string(),
+        |path| format!("repo://{}", display_repo_path(root, &path)),
+    )
 }
 
 fn diagnostic_sort_key(diagnostic: &Diagnostic) -> String {
@@ -2630,6 +2735,90 @@ mod delivery_tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(ids, vec!["a", "b"]);
+        Ok(())
+    }
+
+    fn snapshot_for_identity(
+        root: &str,
+        entries: &[(&str, Vec<Diagnostic>)],
+    ) -> Result<AnalysisSnapshot, String> {
+        let diagnostics_by_uri = entries
+            .iter()
+            .map(|(uri, diagnostics)| {
+                uri.parse::<Uri>()
+                    .map(|uri| (uri, diagnostics.clone()))
+                    .map_err(|err| format!("parse snapshot URI failed: {err}"))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        Ok(AnalysisSnapshot {
+            root: PathBuf::from(root),
+            input_identity: None,
+            base: Some("origin/main".to_string()),
+            mode: crate::app::Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings: Vec::new(),
+            diagnostic_profile: LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
+            diagnostics_by_uri,
+            seams_deferred: false,
+        })
+    }
+
+    #[test]
+    fn diagnostic_result_ids_ignore_equivalent_checkout_roots_and_time() -> Result<(), String> {
+        let diagnostics = vec![diagnostic("same", 4)];
+        let first = snapshot_for_identity(
+            "/workspace-a",
+            &[("file:///workspace-a/src/lib.rs", diagnostics.clone())],
+        )?;
+        let second = snapshot_for_identity(
+            "/workspace-b",
+            &[("file:///workspace-b/src/lib.rs", diagnostics)],
+        )?;
+        let first_uri = "file:///workspace-a/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse first URI failed: {err}"))?;
+        let second_uri = "file:///workspace-b/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse second URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &first_uri)
+            != document_diagnostic_result_id(&second, &second_uri)
+        {
+            return Err("equivalent roots changed the document result ID".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_result_identity_changes_only_for_a_semantic_document_change() -> Result<(), String>
+    {
+        let first = snapshot_for_identity(
+            "/workspace",
+            &[
+                ("file:///workspace/src/a.rs", vec![diagnostic("a", 1)]),
+                ("file:///workspace/src/b.rs", vec![diagnostic("b", 2)]),
+            ],
+        )?;
+        let second = snapshot_for_identity(
+            "/workspace",
+            &[
+                ("file:///workspace/src/a.rs", vec![diagnostic("a", 1)]),
+                ("file:///workspace/src/b.rs", vec![diagnostic("b", 3)]),
+            ],
+        )?;
+        let a_uri = "file:///workspace/src/a.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &a_uri)
+            != document_diagnostic_result_id(&second, &a_uri)
+        {
+            return Err("unaffected document result ID changed".to_string());
+        }
+        if workspace_diagnostic_result_id(&first) == workspace_diagnostic_result_id(&second) {
+            return Err("workspace result ID ignored the changed document".to_string());
+        }
         Ok(())
     }
 

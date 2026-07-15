@@ -50,11 +50,12 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, DiagnosticSeverity,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, ExecuteCommandParams, FileChangeType, FileEvent, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString, Position,
-    Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType,
+    FileEvent, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, MarkedString,
+    NumberOrString, PartialResultParams, Position, PreviousResultId, Range,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    VersionedTextDocumentIdentifier, WorkspaceFolder,
+    VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams, WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -178,6 +179,319 @@ fn capabilities_advertise_code_lens_provider() -> Result<(), String> {
         },
         "code_lens_provider must advertise resolve_provider: false (advisory text-only; no resolve round-trip)"
     );
+    Ok(())
+}
+
+#[test]
+fn document_pull_reuses_result_id_as_unchanged_report() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let finding = sample_finding();
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        ))
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let request = |previous_result_id| DocumentDiagnosticParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        identifier: None,
+        previous_result_id,
+        work_done_progress_params: Default::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+    let first = runtime
+        .block_on(backend.diagnostic(request(None)))
+        .map_err(|err| format!("first pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first report failed: {err}"))?;
+    if first_json.get("kind").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!("expected full first report: {first_json}"));
+    }
+    let result_id = first_json
+        .get("resultId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "full report did not carry resultId".to_string())?
+        .to_string();
+    let second = runtime
+        .block_on(backend.diagnostic(request(Some(result_id))))
+        .map_err(|err| format!("second pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second report failed: {err}"))?;
+    if second_json.get("kind").and_then(serde_json::Value::as_str) != Some("unchanged") {
+        return Err(format!("expected unchanged second report: {second_json}"));
+    }
+    if second_json.get("items").is_some() {
+        return Err("unchanged report unexpectedly carried items".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_pull_reuses_each_document_result_id() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let finding = sample_finding();
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        ))
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let first = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("first workspace pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first workspace report failed: {err}"))?;
+    let result_id = first_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("resultId"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "workspace full report did not carry resultId".to_string())?
+        .to_string();
+    let second = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: vec![PreviousResultId {
+                uri,
+                value: result_id,
+            }],
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("second workspace pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second workspace report failed: {err}"))?;
+    let kind = second_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("kind"))
+        .and_then(serde_json::Value::as_str);
+    if kind != Some("unchanged") {
+        return Err(format!(
+            "expected unchanged workspace report: {second_json}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn pull_diagnostics_before_first_snapshot_return_empty_full_reports() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    let document = runtime
+        .block_on(backend.diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("cold-start document pull failed: {err}"))?;
+    let document_json = serde_json::to_value(document)
+        .map_err(|err| format!("serialize cold-start document report failed: {err}"))?;
+    if document_json
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        != Some("full")
+        || document_json
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(|items| !items.is_empty())
+    {
+        return Err(format!(
+            "expected an empty full document report before the first snapshot: {document_json}"
+        ));
+    }
+
+    let workspace = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("cold-start workspace pull failed: {err}"))?;
+    let workspace_json = serde_json::to_value(workspace)
+        .map_err(|err| format!("serialize cold-start workspace report failed: {err}"))?;
+    if workspace_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .is_none_or(|items| !items.is_empty())
+    {
+        return Err(format!(
+            "expected an empty workspace report before the first snapshot: {workspace_json}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let first_uri = test_uri("file:///workspace/src/first.rs")?;
+    let second_uri = test_uri("file:///workspace/src/second.rs")?;
+    let first_finding = sample_finding();
+    let mut second_finding = sample_finding();
+    second_finding.id = "probe:second:88:predicate".to_string();
+    second_finding.probe.id = ProbeId("probe:second:88:predicate".to_string());
+    second_finding.probe.location.file = PathBuf::from("src/second.rs");
+    let first_diagnostic = diagnostic_for_finding(Path::new("/workspace"), &first_finding);
+    let initial_second_diagnostic =
+        diagnostic_for_finding(Path::new("/workspace"), &second_finding);
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        first_uri.clone(),
+        vec![first_diagnostic.clone()],
+        vec![first_finding.clone(), second_finding.clone()],
+    );
+    snapshot
+        .diagnostics_by_uri
+        .insert(second_uri.clone(), vec![initial_second_diagnostic.clone()]);
+    let diagnostics = WorkspaceDiagnostics {
+        snapshot,
+        batches: vec![
+            DiagnosticBatch {
+                uri: first_uri.clone(),
+                diagnostics: vec![first_diagnostic],
+            },
+            DiagnosticBatch {
+                uri: second_uri.clone(),
+                diagnostics: vec![initial_second_diagnostic],
+            },
+        ],
+    };
+    backend
+        .refresh_plan(diagnostics)
+        .ok_or_else(|| "expected committed multi-document snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let first = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("first multi-document pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first multi-document report failed: {err}"))?;
+    let previous_result_ids = first_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "first multi-document report had no items".to_string())?
+        .iter()
+        .map(|item| {
+            let uri = item
+                .get("uri")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "multi-document item had no URI".to_string())?
+                .parse()
+                .map_err(|err| format!("parse returned URI failed: {err}"))?;
+            let result_id = item
+                .get("resultId")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "multi-document item had no result ID".to_string())?;
+            Ok(PreviousResultId {
+                uri,
+                value: result_id.to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut changed_second_diagnostic =
+        diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    changed_second_diagnostic.message.push_str(" changed");
+    let mut changed_snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        first_uri.clone(),
+        vec![diagnostic_for_finding(
+            Path::new("/workspace"),
+            &sample_finding(),
+        )],
+        vec![first_finding, second_finding],
+    );
+    changed_snapshot
+        .diagnostics_by_uri
+        .insert(second_uri.clone(), vec![changed_second_diagnostic.clone()]);
+    backend
+        .refresh_plan(WorkspaceDiagnostics {
+            snapshot: changed_snapshot,
+            batches: vec![
+                DiagnosticBatch {
+                    uri: first_uri,
+                    diagnostics: vec![diagnostic_for_finding(
+                        Path::new("/workspace"),
+                        &sample_finding(),
+                    )],
+                },
+                DiagnosticBatch {
+                    uri: second_uri,
+                    diagnostics: vec![changed_second_diagnostic],
+                },
+            ],
+        })
+        .ok_or_else(|| "expected changed multi-document snapshot".to_string())?;
+
+    let second = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("second multi-document pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second multi-document report failed: {err}"))?;
+    let kinds = second_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "second multi-document report had no items".to_string())?
+        .iter()
+        .filter_map(|item| {
+            item.get("uri")
+                .and_then(serde_json::Value::as_str)
+                .zip(item.get("kind").and_then(serde_json::Value::as_str))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if kinds.get("file:///workspace/src/first.rs") != Some(&"unchanged")
+        || kinds.get("file:///workspace/src/second.rs") != Some(&"full")
+    {
+        return Err(format!(
+            "expected only the changed document to be full: {second_json}"
+        ));
+    }
     Ok(())
 }
 
