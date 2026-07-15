@@ -26,7 +26,7 @@ The pipeline per PR:
 scout (read-only inventory)
 -> adversarial spec / issue
 -> builder (implements)
--> verify-myself
+-> verifier (separate, exact-head proof)
 -> bot-comment review and repair
 -> all review conversations resolved
 -> required Ripr Rust Small Result green
