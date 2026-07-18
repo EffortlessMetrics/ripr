@@ -36,6 +36,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::targeted_rerun_benchmark(&args)
         }
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
+        XtaskCommand::ActiveGoalAuthorityAudit => super::active_goal_authority::run(),
         XtaskCommand::PrBody(args) => super::pr_body(&args),
         XtaskCommand::Closeout(args) => super::closeout(&args),
         XtaskCommand::EvidenceHealth => super::reports::evidence_health_report(),
@@ -165,5 +166,33 @@ mod tests {
         let result = execute(XtaskCommand::RustRepairTrustReport);
         std::env::set_current_dir(original_dir).map_err(|error| error.to_string())?;
         result
+    }
+
+    #[test]
+    fn active_goal_authority_route_writes_reports_then_fails_closed() -> Result<(), String> {
+        let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have a repository parent".to_string())?;
+        let command = XtaskCommand::parse(["active-goal-authority-audit".to_string()]);
+        let reports = repository_root.join("target/ripr/reports");
+        let result = match command {
+            XtaskCommand::ActiveGoalAuthorityAudit => {
+                crate::active_goal_authority::run_at(repository_root, &reports)
+            }
+            _ => return Err("command parser did not select authority audit route".to_string()),
+        };
+        let artifacts_exist = [
+            "active-goal-authority-audit.json",
+            "active-goal-authority-audit.md",
+        ]
+        .iter()
+        .all(|name| reports.join(name).is_file());
+        if result.is_ok() {
+            return Err("Phase 1 authority route did not fail closed".to_string());
+        }
+        if !artifacts_exist {
+            return Err("Phase 1 authority route did not write both reports".to_string());
+        }
+        Ok(())
     }
 }

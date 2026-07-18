@@ -169,6 +169,29 @@ pub(crate) fn run_output(program: &str, args: &[&str]) -> Result<String, String>
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+pub(crate) fn run_output_bytes_in_dir(
+    program: &str,
+    args: &[&str],
+    cwd: &Path,
+) -> Result<Vec<u8>, String> {
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|err| format!("failed to run {program} in {}: {err}", cwd.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{program} {} failed with {} in {}",
+            args.join(" "),
+            output.status,
+            cwd.display()
+        ));
+    }
+    // Repository discovery consumes path identity as bytes. The caller performs
+    // strict UTF-8 validation after splitting the NUL-delimited path stream.
+    Ok(output.stdout)
+}
+
 pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)

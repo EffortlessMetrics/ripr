@@ -1,0 +1,13 @@
+[[consumer]]
+id = "history"
+selector = "history.md"
+classification = "historical_campaign_evidence"
+owner = "test"
+dependent_issue = "#1697"
+compatibility_period = "indefinite"
+current_behavior = "records prior source"
+fields = "path"
+authority = "none"
+target_behavior = "retain"
+positive_proof = "classified"
+negative_proof = "cannot authorize"

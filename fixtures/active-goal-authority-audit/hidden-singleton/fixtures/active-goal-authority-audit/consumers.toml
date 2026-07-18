@@ -1,0 +1,13 @@
+[[consumer]]
+id = "declared-history"
+selector = "history.md"
+classification = "historical_campaign_evidence"
+owner = "test"
+dependent_issue = "#1697"
+compatibility_period = "fixture"
+current_behavior = "historical reference"
+fields = "path"
+authority = "none"
+target_behavior = "retain"
+positive_proof = "classified history"
+negative_proof = "hidden reader stays unclassified"
