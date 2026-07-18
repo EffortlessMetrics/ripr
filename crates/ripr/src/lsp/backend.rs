@@ -664,6 +664,11 @@ impl Backend {
         .await;
     }
 
+    #[cfg(test)]
+    pub(super) fn invalidate_analysis_input_for_test(&self, reason: &str) {
+        self.invalidate_analysis_input(reason);
+    }
+
     fn workspace_root_authority(&self) -> WorkspaceRootAuthority {
         self.workspace_root
             .lock()
@@ -888,6 +893,60 @@ impl Backend {
 
     fn analysis_status_payload_for_health(&self, health: &AnalysisHealth) -> LSPAny {
         let root = self.workspace_root_authority();
+        let config = self.analysis_config();
+        let configuration_failure = self.configuration_failure();
+        let snapshot_input = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|snapshot| {
+                snapshot
+                    .as_ref()
+                    .and_then(|value| value.input_identity.clone())
+            })
+            .map(|identity| identity.status_payload());
+        let current_input = match (
+            health.current_input_identity.as_deref(),
+            snapshot_input.as_ref(),
+        ) {
+            (Some(current), Some(snapshot))
+                if snapshot["input_identity"].as_str() == Some(current) =>
+            {
+                snapshot.clone()
+            }
+            (Some(input_identity), _) => serde_json::json!({"input_identity": input_identity}),
+            (None, Some(snapshot)) if health.state == AnalysisAttemptState::Succeeded => {
+                snapshot.clone()
+            }
+            (None, None) => serde_json::Value::Null,
+            (None, Some(_)) => serde_json::Value::Null,
+        };
+        let last_success_input = snapshot_input
+            .or_else(|| {
+                health
+                    .last_success_input_identity
+                    .clone()
+                    .map(|input_identity| serde_json::json!({"input_identity": input_identity}))
+            })
+            .unwrap_or(serde_json::Value::Null);
+        let input_authority = serde_json::json!({
+            "current": if configuration_failure.is_some() {
+                serde_json::Value::Null
+            } else {
+                current_input
+            },
+            "last_success": last_success_input,
+            "configuration_state": configuration_failure
+                .as_ref()
+                .map_or("valid", |_| "invalid"),
+            "repository_config_source": config
+                .as_ref()
+                .and_then(|value| value.repo_config().source_path())
+                .map(|path| path.to_string_lossy().to_string()),
+            "session_options_present": config
+                .as_ref()
+                .is_some_and(|value| value.session_options.is_some()),
+        });
         let last_success_age_ms = health
             .last_success_at
             .and_then(|generated_at| generated_at.elapsed().ok())
@@ -934,6 +993,7 @@ impl Backend {
             "root_input_identity": root.input_identity(),
             "root_detail": root.detail,
             "root_recovery_route": root_recovery_route(&root.state),
+            "input_authority": input_authority,
         })
     }
 
@@ -2059,8 +2119,9 @@ impl Backend {
     fn collect_workspace_status(&self) -> Option<LSPAny> {
         let health = self.analysis_health_snapshot();
         let authority = self.workspace_root_authority();
-        let snapshot = match self.latest_analysis.lock().ok()? {
-            guard if guard.is_none() => {
+        let latest_analysis = self.latest_analysis.lock().ok()?.clone();
+        let snapshot = match latest_analysis {
+            None => {
                 let top_limitation = top_limitation_dto(&health, None, &authority).into_json();
                 return Some(serde_json::json!({
                     "schema_version": "0.1",
@@ -2078,7 +2139,7 @@ impl Backend {
                     "limits_note": "Static evidence only; advisory, not a gate decision.",
                 }));
             }
-            guard => guard.clone()?,
+            Some(snapshot) => snapshot,
         };
         let health = self.effective_health_for_snapshot(health, &snapshot);
         let analysis_status = self.analysis_status_payload_for_health(&health);

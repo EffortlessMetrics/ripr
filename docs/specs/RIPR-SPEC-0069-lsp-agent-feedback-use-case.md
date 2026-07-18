@@ -183,7 +183,29 @@ Its stable fields are:
   "candidate_roots": [],
   "root_input_identity": "root:<selected-workspace-root>",
   "root_detail": null,
-  "root_recovery_route": "refresh"
+  "root_recovery_route": "refresh",
+  "input_authority": {
+    "configuration_state": "valid",
+    "repository_config_source": "<root>/ripr.toml",
+    "session_options_present": true,
+    "current": {
+      "input_identity": "input:<current-input-fingerprint>",
+      "root_identity": "root:<root-fingerprint>",
+      "effective_root": "<selected-workspace-root>",
+      "requested_base": "origin/main",
+      "resolved_base": "<resolved-commit>",
+      "mode": "draft",
+      "profile": "actionable",
+      "enabled_languages": ["rust"],
+      "manifest_identity": "<manifest-fingerprint>",
+      "lockfile_identity": "<lockfile-fingerprint>",
+      "analyzer_version": "<ripr-version>",
+      "schema_version": "lsp-analysis-input-v1"
+    },
+    "last_success": {
+      "input_identity": "input:<snapshot-input-fingerprint>"
+    }
+  }
 }
 ```
 
@@ -208,6 +230,14 @@ absolute paths. `last_success_input_identity` is the corresponding producer
 identity stored on the retained snapshot. They must differ visibly when a
 newer request has different inputs, even while the last-good snapshot remains
 available for stale inspection.
+
+`input_authority` is the bounded recovery view for the same producer-owned
+identity. It exposes configuration source presence and the non-secret input
+components needed to diagnose a stale or invalid session; it does not expose
+repository configuration text. `current` is null while configuration is
+invalid or no effective root is selected. `last_success` remains the retained
+snapshot's exact input view when one exists, and an invalid or changed current
+input must not make that retained view authorize current repair actions.
 
 The server owns one explicit workspace-root state for each session. A single
 valid `workspaceFolders` entry is selected; a valid `rootUri` is the

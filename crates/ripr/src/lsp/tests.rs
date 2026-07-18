@@ -6194,6 +6194,26 @@ fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_stat
             "no_snapshot"
         );
         assert_eq!(
+            status["analysis_status"]["input_authority"]["configuration_state"],
+            "valid"
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["repository_config_source"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["session_options_present"],
+            false
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["current"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["last_success"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
             status["limits_note"],
             "Static evidence only; advisory, not a gate decision."
         );
@@ -6303,6 +6323,34 @@ fn failed_refresh_retains_last_snapshot_and_reports_stale_health() -> Result<(),
             "analysis_failed_retained_snapshot"
         );
         assert_eq!(status["top_limitation"]["run_status"], "stale");
+
+        let retained_input_identity = status["analysis_status"]["input_authority"]["last_success"]
+            ["input_identity"]
+            .as_str()
+            .ok_or_else(|| "expected retained input identity before invalidation".to_string())?
+            .to_string();
+
+        backend.invalidate_analysis_input_for_test("workspace_manifest_or_lockfile_changed");
+        let invalidated_status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command after invalidation failed: {err}"))?
+            .ok_or_else(|| "expected workspace status after invalidation".to_string())?;
+        assert_eq!(
+            invalidated_status["analysis_status"]["input_authority"]["current"],
+            serde_json::Value::Null,
+            "invalidated retained evidence must not be promoted to current input"
+        );
+        assert_eq!(
+            invalidated_status["analysis_status"]["input_authority"]["last_success"]
+                ["input_identity"]
+                .as_str(),
+            Some(retained_input_identity.as_str())
+        );
 
         let retained_diagnostic = retained
             .diagnostics_by_uri
@@ -6491,6 +6539,57 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
         assert_eq!(
             status["diagnostics"]["actionable_diagnostics"].as_u64(),
             Some(0)
+        );
+        let current_input = &status["analysis_status"]["input_authority"]["current"];
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["configuration_state"],
+            "valid"
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["repository_config_source"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["session_options_present"],
+            false
+        );
+        assert!(
+            current_input["input_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.starts_with("input:")),
+            "status must expose the current producer-owned input identity: {status}"
+        );
+        assert!(
+            current_input["root_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.starts_with("root:")),
+            "status must expose a bounded root identity: {status}"
+        );
+        assert_eq!(current_input["effective_root"], "/workspace");
+        assert_eq!(current_input["saved_workspace_revision"], 1);
+        assert_eq!(
+            current_input["repository_config_identity"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            current_input["session_options_identity"],
+            serde_json::Value::Null
+        );
+        assert_eq!(current_input["requested_base"], "origin/main");
+        assert_eq!(current_input["resolved_base"], serde_json::Value::Null);
+        assert_eq!(current_input["mode"], "draft");
+        assert_eq!(current_input["profile"], "actionable");
+        assert_eq!(
+            current_input["enabled_languages"],
+            serde_json::json!(["rust"])
+        );
+        assert_eq!(current_input["manifest_identity"], serde_json::Value::Null);
+        assert_eq!(current_input["lockfile_identity"], serde_json::Value::Null);
+        assert_eq!(current_input["analyzer_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(current_input["schema_version"], "lsp-analysis-input-v1");
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["last_success"]["input_identity"],
+            current_input["input_identity"]
         );
         assert_eq!(status["refresh_command"], REFRESH_COMMAND);
         assert!(

@@ -1,6 +1,7 @@
 use super::config::LspAnalysisConfig;
 use crate::app::Mode;
 use crate::domain::LanguageId;
+use serde_json::Value;
 use std::path::PathBuf;
 
 /// Versioned semantic inputs that identify one LSP analysis session state.
@@ -109,7 +110,7 @@ impl LspAnalysisInputIdentity {
                 ),
             },
             config.mode.clone(),
-            "default",
+            config.diagnostic_profile.as_str(),
             enabled_languages.iter().copied(),
             manifest_identity,
             lockfile_identity,
@@ -141,11 +142,36 @@ impl LspAnalysisInputIdentity {
         );
         format!("input:{}", crate::config::config_fingerprint(&canonical))
     }
+
+    /// Produce the bounded, producer-owned input view used by workspace
+    /// status. This is metadata for lifecycle recovery, not a replacement for
+    /// the opaque stable identity used by semantic consumers.
+    pub(super) fn status_payload(&self) -> Value {
+        let root = self.effective_root.to_string_lossy().replace('\\', "/");
+        serde_json::json!({
+            "input_identity": self.stable_id(),
+            "root_identity": format!("root:{}", crate::config::config_fingerprint(&root)),
+            "effective_root": self.effective_root,
+            "saved_workspace_revision": self.saved_workspace_revision,
+            "repository_config_identity": self.repository_config_identity,
+            "session_options_identity": self.session_options_identity,
+            "requested_base": self.requested_base,
+            "resolved_base": self.resolved_base,
+            "mode": self.mode.as_str(),
+            "profile": self.profile,
+            "enabled_languages": self.enabled_languages,
+            "manifest_identity": self.manifest_identity,
+            "lockfile_identity": self.lockfile_identity,
+            "analyzer_version": self.analyzer_version,
+            "schema_version": self.schema_version,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::LspDiagnosticProfile;
     use serde_json::json;
 
     fn identity(
@@ -307,6 +333,29 @@ mod tests {
         })();
         let _ = std::fs::remove_dir_all(&root);
         result
+    }
+
+    #[test]
+    fn diagnostic_profile_participates_in_refresh_identity() -> Result<(), String> {
+        let root = PathBuf::from("/workspace");
+        let actionable = LspAnalysisConfig {
+            diagnostic_profile: LspDiagnosticProfile::Actionable,
+            ..LspAnalysisConfig::default()
+        };
+        let mut full = actionable.clone();
+        full.diagnostic_profile = LspDiagnosticProfile::Full;
+
+        let actionable_identity =
+            LspAnalysisInputIdentity::from_refresh_inputs(root.clone(), 1, &actionable);
+        let full_identity = LspAnalysisInputIdentity::from_refresh_inputs(root, 1, &full);
+
+        if actionable_identity.stable_id() == full_identity.stable_id() {
+            return Err("diagnostic profile changes must invalidate input identity".to_string());
+        }
+        if actionable_identity.profile != "actionable" || full_identity.profile != "full" {
+            return Err("input identity must retain the resolved diagnostic profile".to_string());
+        }
+        Ok(())
     }
 
     #[test]
