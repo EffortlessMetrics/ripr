@@ -79576,6 +79576,212 @@ TypeScript repair packet (advisory)
         Ok(())
     }
 
+    // RIPR-SPEC-0108 (#1729): prove the honesty gate actually ENFORCES the Perl
+    // advisory corpus entry rather than letting it sit inert. The real charter
+    // case `perl_preview_card_advisory_no_repair_packet` is a tier-`pure`,
+    // `source_report` case whose typed assertions include `must_not_promote`
+    // and `expected_class: weakly_exposed`; corpus iteration is language-
+    // agnostic, so those assertions are evaluated on every default
+    // `check-evidence-promotion-honesty` run. This pins that enforcement in
+    // both directions: an honest advisory Perl report stays clean, and a
+    // dishonest re-bless of the advisory finding to `exposed` is caught.
+    #[test]
+    fn evidence_promotion_honesty_catches_dishonest_perl_advisory_rebless() -> Result<(), String> {
+        let root = temp_dir("evidence-promotion-honesty-perl-advisory");
+        let corpus = root.join("corpus.json");
+        let py_fixture = root.join("fixtures/py");
+        let ts_fixture = root.join("fixtures/ts");
+        let rust_fixture = root.join("fixtures/rust");
+        let rust_control_fixture = root.join("fixtures/rust-control");
+        let ts_control_fixture = root.join("fixtures/ts-control");
+        let perl_report = root.join("reports/perl-preview-advisory.json");
+
+        // Honest {python, typescript, rust} non-promoted + rust/ts control
+        // cases so the corpus satisfies the language-parity requirements and
+        // only the Perl case can move the needle.
+        for (fixture, classification) in [
+            (&py_fixture, "weakly_exposed"),
+            (&ts_fixture, "weakly_exposed"),
+            (&rust_fixture, "weakly_exposed"),
+            (&rust_control_fixture, "exposed"),
+            (&ts_control_fixture, "exposed"),
+        ] {
+            write_evidence_promotion_check(fixture, classification)?;
+        }
+
+        // Mirror the real Perl charter case shape: a byte-pinned advisory-only
+        // `source_report` with a single `weakly_exposed` finding.
+        let perl_report_json = |classification: &str| {
+            serde_json::json!({
+                "schema_version": "0.2",
+                "tool": "ripr",
+                "mode": "draft",
+                "root": ".",
+                "base": "origin/main",
+                "summary": {"changed_perl_files": 1, "probes": 1, "findings": 1},
+                "findings": [{
+                    "id": "perl:preview:discount-threshold",
+                    "language": "perl",
+                    "classification": classification,
+                    "perl_preview_card": {
+                        "language_status": "preview",
+                        "authority_boundary": "preview_advisory_only",
+                        "repair_packet_ready": false
+                    }
+                }]
+            })
+        };
+
+        let corpus_json = serde_json::json!({
+            "cases": [
+                {
+                    "id": "py_non_promoted",
+                    "language": "python",
+                    "tier": "pure",
+                    "source_fixture": py_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "ts_non_promoted",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_non_promoted",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_fixture,
+                    "must_remain_non_promoted": true
+                },
+                {
+                    "id": "rust_control",
+                    "language": "rust",
+                    "tier": "pure",
+                    "source_fixture": rust_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "ts_control",
+                    "language": "typescript",
+                    "tier": "pure",
+                    "source_fixture": ts_control_fixture,
+                    "expected_promoted": true
+                },
+                {
+                    "id": "perl_advisory_dishonest_rebless",
+                    "language": "perl",
+                    "tier": "pure",
+                    "source_report": perl_report,
+                    "assertions": [
+                        {"type": "must_not_promote"},
+                        {"type": "expected_class", "class": "weakly_exposed"}
+                    ]
+                }
+            ]
+        });
+        write(
+            &corpus,
+            &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+        );
+
+        // Green witness: an honest advisory Perl report yields no violation, so
+        // the caught case below is a real regression signal, not always-on.
+        write(
+            &perl_report,
+            &serde_json::to_string_pretty(&perl_report_json("weakly_exposed"))
+                .map_err(|err| err.to_string())?,
+        );
+        let mut honest_violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut honest_violations)?;
+        assert!(
+            honest_violations.is_empty(),
+            "honest Perl advisory corpus must be clean, got {honest_violations:?}"
+        );
+
+        // Caught: a dishonest re-bless of the Perl advisory finding to `exposed`
+        // trips the `must_not_promote` assertion the corpus entry carries.
+        write(
+            &perl_report,
+            &serde_json::to_string_pretty(&perl_report_json("exposed"))
+                .map_err(|err| err.to_string())?,
+        );
+        let mut dishonest_violations = Vec::new();
+        super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut dishonest_violations)?;
+        assert!(
+            dishonest_violations.iter().any(|violation| {
+                violation.contains("perl_advisory_dishonest_rebless")
+                    && violation.contains("must_not_promote")
+                    && violation.contains("promoted to exposed")
+            }),
+            "expected the dishonest Perl advisory re-bless to be caught, got {dishonest_violations:?}"
+        );
+        Ok(())
+    }
+
+    // Guard the *live* corpus (#1729): the mechanism test above proves the gate
+    // catches a dishonest re-bless of a Perl advisory case, but only against a
+    // synthetic corpus. This pins the other failure mode #1729 raised — the
+    // real `perl_preview_card_advisory_no_repair_packet` charter case being
+    // silently demoted or removed so the gate stops consuming it. It must stay
+    // in the enforced path: tier `pure` (not clone/flag-gated), a byte-pinned
+    // `source_report`, and the `must_not_promote` + `expected_class:
+    // weakly_exposed` assertions. Complements CI's live gate run.
+    #[test]
+    fn perl_advisory_charter_case_stays_enforced_in_live_corpus() -> Result<(), String> {
+        let corpus_path = super::repo_rooted_fixture_path(super::EVIDENCE_PROMOTION_HONESTY_CORPUS);
+        let text = fs::read_to_string(&corpus_path)
+            .map_err(|err| format!("read live honesty corpus: {err}"))?;
+        let corpus: Value = serde_json::from_str(&text)
+            .map_err(|err| format!("parse live honesty corpus: {err}"))?;
+        let cases = corpus
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or("live honesty corpus has no `cases` array")?;
+        let perl_case = cases
+            .iter()
+            .find(|case| {
+                case.get("id").and_then(Value::as_str)
+                    == Some("perl_preview_card_advisory_no_repair_packet")
+            })
+            .ok_or(
+                "live honesty corpus dropped the Perl advisory charter case \
+                 `perl_preview_card_advisory_no_repair_packet` — the gate would stop enforcing it",
+            )?;
+
+        assert_eq!(
+            perl_case.get("tier").and_then(Value::as_str),
+            Some("pure"),
+            "Perl charter case must stay tier `pure` so it runs on the default gate (not clone/flag-gated)"
+        );
+        assert!(
+            perl_case
+                .get("source_report")
+                .and_then(Value::as_str)
+                .is_some_and(|report| !report.trim().is_empty()),
+            "Perl charter case must keep a byte-pinned `source_report`"
+        );
+        let assertions = perl_case
+            .get("assertions")
+            .and_then(Value::as_array)
+            .ok_or("Perl charter case lost its typed `assertions` array")?;
+        assert!(
+            assertions.iter().any(|assertion| {
+                assertion.get("type").and_then(Value::as_str) == Some("must_not_promote")
+            }),
+            "Perl charter case must keep the `must_not_promote` assertion (cardinal-sin-seam invariant)"
+        );
+        assert!(
+            assertions.iter().any(|assertion| {
+                assertion.get("type").and_then(Value::as_str) == Some("expected_class")
+                    && assertion.get("class").and_then(Value::as_str) == Some("weakly_exposed")
+            }),
+            "Perl charter case must keep `expected_class: weakly_exposed`"
+        );
+        Ok(())
+    }
+
     #[test]
     fn evidence_promotion_honesty_pass_report_names_clean_guard() -> Result<(), String> {
         with_temp_cwd("evidence-promotion-honesty-clean-guard-report", |root| {

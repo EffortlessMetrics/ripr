@@ -6222,6 +6222,8 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_missing_scope_for_scope_guard_case",
   "xtask/src/main.rs::tests::evidence_promotion_honesty_rejects_packet_ready_limitation_case",
+  "xtask/src/main.rs::tests::evidence_promotion_honesty_catches_dishonest_perl_advisory_rebless",
+  "xtask/src/main.rs::tests::perl_advisory_charter_case_stays_enforced_in_live_corpus",
   "xtask/src/main.rs::tests::evidence_promotion_corpus_summary_classifies_failure_kinds",
   "xtask/src/main.rs::tests::evidence_promotion_corpus_summary_reports_pinned_external_setup_failure",
   "xtask/src/main.rs::tests::evidence_promotion_corpus_summary_report_writes_pure_and_not_run_external_cases",
