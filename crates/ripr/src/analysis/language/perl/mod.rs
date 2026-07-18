@@ -3246,6 +3246,14 @@ struct RangeFact {
     end_column: usize,
 }
 
+/// Canonical Perl gap ID using FNV-1a 64-bit.
+///
+/// This uses the **same FNV-1a constants** as the Rust seam ID
+/// (`crates/ripr/src/analysis/seams.rs:313`), the canonical gap ID
+/// (`crates/ripr/src/analysis/canonical_gap.rs:128`), and the seam cache
+/// (`crates/ripr/src/analysis/seam_cache.rs:1411`). This is deliberate
+/// parity: all gap/seam IDs across languages use one hash scheme so they
+/// are comparable in corpus ledgers and traceability edges. See #1722.
 fn canonical_perl_gap_id<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;

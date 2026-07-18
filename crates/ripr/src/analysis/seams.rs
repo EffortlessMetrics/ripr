@@ -309,6 +309,12 @@ fn normalize_path(p: &Path) -> String {
 /// `std::collections::hash_map::DefaultHasher`, which is intentionally not
 /// stable across releases. The hash never reads time, walk order, process
 /// ID, or any other ambient state.
+///
+/// This uses the **same FNV-1a constants** as the Perl gap ID
+/// (`crates/ripr/src/analysis/language/perl/mod.rs:3249`), the canonical
+/// gap ID (`crates/ripr/src/analysis/canonical_gap.rs:128`), and the seam
+/// cache (`crates/ripr/src/analysis/seam_cache.rs:1411`). Deliberate
+/// parity: all gap/seam IDs across languages use one scheme. See #1722.
 fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) -> SeamId {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
