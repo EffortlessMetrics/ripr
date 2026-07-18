@@ -138,3 +138,4 @@ observable behavior.
 | [RIPR-SPEC-0125](RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md) | proposed | Rust governed pilot missing-discriminator evidence fixtures |
 | [RIPR-SPEC-0126](RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md) | accepted | Pure deterministic finite LSP delivery budget over producer-owned canonical actionable items; explicit selected/omitted identities, byte limits, and overflow reasons |
 | [RIPR-SPEC-0128](RIPR-SPEC-0128-active-goal-authority-audit.md) | proposed | Deterministic audit-only inventory of singleton active-goal consumers, migration blockers, proof, and rollback |
+| [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | proposed | Three-layer editor integration contract (standard LSP, enhanced VS Code, headless riprAgent) and support matrix |
