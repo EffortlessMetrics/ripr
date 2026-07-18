@@ -33,6 +33,18 @@ report still emits and the command returns nonzero when blockers exist so the
 exact repair route remains inspectable. Phase 1 intentionally reports that
 path-level rules and issue-range aggregates are not migration evidence.
 
+Schema `0.2` adds a deterministic occurrence projection while retaining the
+Phase 1 `consumers` projection. Each occurrence identity is exactly the
+normalized repository-relative path, a file-type-aware structural anchor, a
+closed marker kind, and the SHA-256 hash of normalized marker-bearing content.
+Line numbers, absolute checkout spelling, traversal order, and generation time
+are excluded. This first #1715 batch establishes identity and report shape; it
+does not yet treat broad family classification as occurrence-level review.
+Repeated identical markers with the same identity are reported as a
+contradiction and fail closed rather than receiving insertion-sensitive
+ordinals or collapsing silently. Rust anchors come from syntax ownership;
+identifier and prose markers require token boundaries.
+
 ## Required invariants
 
 - Equivalent repository inputs produce byte-equivalent semantic rows and digest.
@@ -77,7 +89,9 @@ non-authorization fixture, and a historical-reference non-blocker.
 
 Tests in `xtask/src/active_goal_authority.rs` cover repository completeness,
 determinism, hidden singleton readers, legacy-ready non-authorization, and
-historical references.
+historical references. Occurrence tests cover line-movement stability,
+authority-bearing content drift, non-vacuous required fields, and preservation
+of the Phase 1 consumer projection.
 
 ## Implementation Mapping
 

@@ -33,6 +33,18 @@ writer permission.
 3. Review every remaining blocker on the exact head. Only zero blockers may
    satisfy #1697. Phase 1 cannot unblock #1701.
 
+### #1715 occurrence batches
+
+1. Add the portable occurrence identity and schema `0.2` report projection
+   while retaining the Phase 1 consumer view. This batch stays fail-closed.
+2. Replace parser, selector, command, and checker families with exact reviewed
+   occurrence rows.
+3. Replace live documentation and agent-guidance families with exact reviewed
+   occurrence rows; retain historical rows without authority.
+4. Replace workflow, fixture, policy, metric, and report families with exact
+   reviewed occurrence rows. Finish only with zero unknown live occurrences
+   and covered-path insertion controls.
+
 ## Migration proof
 
 - Before each #1701 slice, run `cargo xtask active-goal-authority-audit` and
