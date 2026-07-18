@@ -2169,6 +2169,30 @@ impl Backend {
             .count();
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
+        // Compute the diagnostic delivery budget result for workspace status.
+        let diagnostic_budget_json = {
+            let items = crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(
+                &snapshot.diagnostics_by_uri,
+            );
+            match crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
+                items,
+                &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+                "workspace_status",
+                "workspace_status",
+            ) {
+                Ok(result) => serde_json::json!({
+                    "total_canonical_items": result.total_canonical_items,
+                    "eligible_items": result.eligible_items,
+                    "selected_count": result.selected.len(),
+                    "omitted_count": result.omitted.len(),
+                    "selected_bytes": result.selected_bytes,
+                    "complete_bytes": result.complete_bytes,
+                    "overflowed": result.overflowed,
+                }),
+                Err(_) => serde_json::Value::Null,
+            }
+        };
+
         let top_actionable_packet =
             if health.allows_current_repairs() && authority.allows_analysis() {
                 workspace_status_top_actionable_packet(&snapshot)
@@ -2236,6 +2260,7 @@ impl Backend {
                 "actionable_gap_artifacts": actionable_gap_artifacts,
                 "gap_artifact_rejections": gap_artifact_rejections,
             },
+            "diagnostic_budget": diagnostic_budget_json,
             "top_actionable_packet": top_actionable_packet,
             "top_limitation": top_limitation,
             "receipt_status_summary": receipt_status_summary,

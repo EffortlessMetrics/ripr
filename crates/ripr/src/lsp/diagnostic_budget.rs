@@ -283,6 +283,71 @@ pub fn evaluate_diagnostic_budget(
     })
 }
 
+/// Build [`DiagnosticBudgetItem`]s from a snapshot's diagnostics.
+///
+/// This is the integration bridge between the LSP diagnostics (tower-lsp
+/// `Diagnostic` values keyed by URI) and the budget evaluator. Each
+/// diagnostic is measured for payload bytes (serialized JSON size) and
+/// assigned a default `DiagnosticSelectionKey` (all ranks equal — the
+/// producer-owned ranks from the finding/seam are not yet plumbed through
+/// to the diagnostic payload; a follow-up PR will enrich the selection
+/// key from the classified seam evidence).
+///
+/// The `canonical_id` is extracted from the diagnostic's `data` field
+/// (`seam_id` or `gap_id`), falling back to a URI+line composite.
+pub fn build_budget_items_from_diagnostics(
+    diagnostics_by_uri: &std::collections::BTreeMap<
+        tower_lsp_server::ls_types::Uri,
+        Vec<tower_lsp_server::ls_types::Diagnostic>,
+    >,
+) -> Vec<DiagnosticBudgetItem> {
+    let mut items = Vec::new();
+    for (uri, diagnostics) in diagnostics_by_uri {
+        let document = uri.as_str().to_string();
+        for diagnostic in diagnostics {
+            let canonical_id = diagnostic_canonical_id(diagnostic, &document);
+            let payload_bytes = diagnostic_payload_bytes(diagnostic);
+            items.push(DiagnosticBudgetItem {
+                canonical_id,
+                document: document.clone(),
+                payload_bytes,
+                inline_detail_bytes: 0,
+                eligibility: DiagnosticBudgetEligibility::Actionable,
+                selection_key: DiagnosticSelectionKey {
+                    repair_route_rank: 128,
+                    causal_rank: 128,
+                    evidence_rank: 128,
+                },
+            });
+        }
+    }
+    items
+}
+
+fn diagnostic_canonical_id(
+    diagnostic: &tower_lsp_server::ls_types::Diagnostic,
+    document: &str,
+) -> String {
+    if let Some(data) = &diagnostic.data
+        && let Some(obj) = data.as_object()
+    {
+        if let Some(id) = obj.get("seam_id").and_then(|v| v.as_str()) {
+            return id.to_string();
+        }
+        if let Some(id) = obj.get("gap_id").and_then(|v| v.as_str()) {
+            return id.to_string();
+        }
+    }
+    let line = diagnostic.range.start.line;
+    format!("{document}:{line}")
+}
+
+fn diagnostic_payload_bytes(diagnostic: &tower_lsp_server::ls_types::Diagnostic) -> usize {
+    serde_json::to_string(diagnostic)
+        .map(|text| text.len())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
