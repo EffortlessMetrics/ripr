@@ -2343,10 +2343,19 @@ fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let repository = required_release_arg(args, "repository", "REPOSITORY")?;
     let version = normalize_release_version(&version);
     let dist_dir = Path::new("dist");
-    let checksums_path = dist_dir.join("checksums.txt");
-    if checksums_path.exists() {
-        fs::remove_file(&checksums_path)
-            .map_err(|err| format!("failed to remove {}: {err}", checksums_path.display()))?;
+    // Published as `SHA256SUMS` (the near-universal ecosystem convention) so
+    // consumers can run `sha256sum -c SHA256SUMS` against the release assets.
+    // The content format is unchanged (`<sha256>  <file_name>` per line).
+    let sha256sums_path = dist_dir.join("SHA256SUMS");
+    // Also remove any legacy `checksums.txt` left in a reused `dist/` from a
+    // pre-rename run so the stale sidecar cannot linger beside — or be hashed
+    // into — the new `SHA256SUMS`.
+    let legacy_checksums_path = dist_dir.join("checksums.txt");
+    for path in [&sha256sums_path, &legacy_checksums_path] {
+        if path.exists() {
+            fs::remove_file(path)
+                .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
+        }
     }
 
     let mut assets = serde_json::Map::new();
@@ -2378,15 +2387,18 @@ fn release_server_manifest(args: &[String]) -> Result<(), String> {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if file_name.ends_with(".sha256") || file_name == "checksums.txt" {
+        if file_name.ends_with(".sha256")
+            || file_name == "SHA256SUMS"
+            || file_name == "checksums.txt"
+        {
             continue;
         }
         checksum_lines.push(format!("{}  {file_name}", sha256_file(&path)?));
     }
-    fs::write(&checksums_path, format!("{}\n", checksum_lines.join("\n")))
-        .map_err(|err| format!("failed to write {}: {err}", checksums_path.display()))?;
+    fs::write(&sha256sums_path, format!("{}\n", checksum_lines.join("\n")))
+        .map_err(|err| format!("failed to write {}: {err}", sha256sums_path.display()))?;
     eprintln!("wrote {}", manifest_path.display());
-    eprintln!("wrote {}", checksums_path.display());
+    eprintln!("wrote {}", sha256sums_path.display());
     Ok(())
 }
 
@@ -83174,6 +83186,10 @@ TypeScript repair packet (advisory)
                 &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
                 "windows-sha\n",
             );
+            // Simulate a reused `dist/` from a pre-rename run: a stale legacy
+            // `checksums.txt` must be cleaned up, never hashed into the new
+            // sidecar, and never surfaced in the manifest.
+            write(&dist.join("checksums.txt"), "stale-legacy-sidecar\n");
 
             let args = vec![
                 "--version".to_string(),
@@ -83199,12 +83215,37 @@ TypeScript repair packet (advisory)
                 "windows-sha"
             );
 
-            let checksums = fs::read_to_string(dist.join("checksums.txt"))
-                .map_err(|err| format!("read checksums: {err}"))?;
+            let checksums = fs::read_to_string(dist.join("SHA256SUMS"))
+                .map_err(|err| format!("read SHA256SUMS: {err}"))?;
             assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"));
             assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"));
             assert!(checksums.contains("  ripr-server-manifest-v1.2.3.json"));
             assert!(!checksums.contains(".sha256"));
+            // Neither sidecar hashes itself or the stale legacy file.
+            assert!(
+                !checksums.contains("SHA256SUMS"),
+                "SHA256SUMS must not hash itself"
+            );
+            assert!(
+                !checksums.contains("checksums.txt"),
+                "the stale legacy checksums.txt must not be hashed into SHA256SUMS"
+            );
+            // The reused-dist upgrade path leaves only the new sidecar behind.
+            assert!(
+                !dist.join("checksums.txt").exists(),
+                "stale legacy checksums.txt must be removed on a reused dist/ run"
+            );
+            // The JSON manifest keys are release targets only — never a sidecar.
+            let assets = manifest["assets"]
+                .as_object()
+                .ok_or("manifest assets is not an object")?;
+            assert_eq!(
+                assets.len(),
+                2,
+                "only the two server targets are manifested"
+            );
+            assert!(!assets.contains_key("SHA256SUMS"));
+            assert!(!assets.contains_key("checksums.txt"));
             Ok(())
         })
     }

@@ -45,8 +45,13 @@ and uploads these assets to the matching GitHub Release:
 ripr-server-v<VERSION>-<target>.zip
 ripr-server-v<VERSION>-<target>.tar.gz
 ripr-server-manifest-v<VERSION>.json
-checksums.txt
+SHA256SUMS
 ```
+
+The `SHA256SUMS` sidecar is `sha256sum -c SHA256SUMS`-compatible (one
+`<sha256>  <file_name>` line per asset). Releases through `v0.7.0` published the
+same manifest under the legacy name `checksums.txt`; the content format is
+unchanged.
 
 Each server archive contains:
 
