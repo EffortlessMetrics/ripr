@@ -5,6 +5,7 @@ mod classification;
 pub mod context_packet;
 mod diagnostic_witness;
 mod evidence;
+mod fix_instruction;
 mod language;
 mod probe;
 mod summary;
@@ -30,6 +31,7 @@ pub use evidence::{
     Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
     RiprEvidence, StageEvidence, StageState,
 };
+pub use fix_instruction::{FixInstructionState, FixInstructionSummary};
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
