@@ -27,12 +27,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tower_lsp_server::ls_types::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
-    Range, Uri,
-};
 #[cfg(test)]
 use tower_lsp_server::ls_types::Position;
+use tower_lsp_server::ls_types::{
+    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString, Range,
+    Uri,
+};
 
 pub struct DiagnosticBatch {
     pub uri: Uri,
