@@ -507,3 +507,12 @@ classification = "generated"
 reason = "Generated Shields endpoint JSON for public README badges."
 generated_by = "cargo xtask badges"
 covered_by = ["cargo xtask badges --check", "cargo xtask badges", "cargo xtask check-badge-endpoints", "cargo xtask update-badge-endpoints"]
+
+[[allow]]
+glob = ".allow/conformance/*.json"
+kind = "config"
+owner = "core/policy"
+surface = "config"
+classification = "config"
+reason = "cargo-allow spec-system conformance fixtures for legacy TOML dialect validation (#1761/#1836)"
+covered_by = ["cargo xtask check-spec-format", "cargo xtask check-doc-index"]
