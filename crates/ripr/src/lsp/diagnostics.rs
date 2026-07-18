@@ -29,10 +29,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tower_lsp_server::ls_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
-    Position, Range, Uri,
+    Range, Uri,
 };
-
-const MAX_DIAGNOSTIC_RANGE_WIDTH: u32 = 120;
+#[cfg(test)]
+use tower_lsp_server::ls_types::Position;
 
 pub struct DiagnosticBatch {
     pub uri: Uri,
@@ -956,16 +956,7 @@ fn diagnostic_for_gap_record_with_causal(
     let uri = file_uri_for_path(&path).ok()?;
     let line_index = line.saturating_sub(1) as u32;
     let diagnostic = Diagnostic {
-        range: Range {
-            start: Position {
-                line: line_index,
-                character: 0,
-            },
-            end: Position {
-                line: line_index,
-                character: MAX_DIAGNOSTIC_RANGE_WIDTH,
-            },
-        },
+        range: crate::lsp::position::line_span_range(line_index),
         severity: Some(gap_record_diagnostic_severity(record)),
         code: Some(NumberOrString::String(format!(
             "ripr-gap-{}",
@@ -1195,13 +1186,7 @@ fn diagnostic_for_classified_seam_with_causal(
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let line = seam.display_line().saturating_sub(1) as u32;
-    let range = Range {
-        start: Position { line, character: 0 },
-        end: Position {
-            line,
-            character: MAX_DIAGNOSTIC_RANGE_WIDTH,
-        },
-    };
+    let range = crate::lsp::position::line_span_range(line);
     let diagnostic_id = stable_diagnostic_id(
         "seam",
         [
@@ -1418,26 +1403,8 @@ fn diagnostic_for_finding_with_causal(
 
 fn diagnostic_range_for_finding(finding: &Finding) -> Range {
     let line = finding.probe.location.line.saturating_sub(1) as u32;
-    let start_character = finding.probe.location.column.saturating_sub(1) as u32;
-    let width = expression_lsp_width(&finding.probe.expression).min(MAX_DIAGNOSTIC_RANGE_WIDTH);
-    Range {
-        start: Position {
-            line,
-            character: start_character,
-        },
-        end: Position {
-            line,
-            character: start_character.saturating_add(width),
-        },
-    }
-}
-
-fn expression_lsp_width(expression: &str) -> u32 {
-    expression
-        .chars()
-        .map(|character| character.len_utf16() as u32)
-        .sum::<u32>()
-        .max(1)
+    let column = finding.probe.location.column as u32;
+    crate::lsp::position::expression_span_range(line, column, &finding.probe.expression)
 }
 
 fn related_information_for_finding(
@@ -1460,13 +1427,7 @@ fn related_information_for_finding(
     Some(vec![DiagnosticRelatedInformation {
         location: Location {
             uri,
-            range: Range {
-                start: Position { line, character: 0 },
-                end: Position {
-                    line,
-                    character: 120,
-                },
-            },
+            range: crate::lsp::position::line_span_range(line),
         },
         message: format!(
             "Fix site: related test `{}` has {} {} oracle{}",

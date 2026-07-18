@@ -9,6 +9,7 @@ mod gap_artifacts;
 mod hover;
 mod input_identity;
 mod lens;
+mod position;
 mod refresh_scheduler;
 mod state;
 #[cfg(test)]
