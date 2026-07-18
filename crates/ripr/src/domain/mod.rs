@@ -9,6 +9,7 @@ mod language;
 mod probe;
 mod summary;
 mod support;
+mod test_evidence_summary;
 
 pub use candidate_relation::CandidateRelation;
 pub use causal_delta::{
@@ -37,3 +38,4 @@ pub use probe::{
 };
 pub use summary::Summary;
 pub use support::{ProbeId, SourceLocation, SymbolId};
+pub use test_evidence_summary::{TestEvidenceEntry, TestEvidenceSummary};
