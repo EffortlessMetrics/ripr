@@ -287,6 +287,35 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   terminate any `ripr lsp --stdio` you spawn for an LSP behavioral test; an
   orphaned server holds a Windows file lock and breaks the next build.
 
+### Status-comment verification contract
+
+When posting a status, triage, or "issue update" comment on a GitHub issue,
+bind every claim to verifiable evidence. The open-issue list is the durable
+campaign record; low-truth status comments bury substantive signal and
+mislead future agents who consume prior comments as context.
+
+Rules:
+
+- Every status claim must cite a **verifiable artifact**: a `file:line`
+  reference, a merged PR number, a `gh run` / `gh release` result, or a `git
+  log --grep` output. "Not started" is not a valid verdict without evidence.
+- "No PR references it" is **forbidden** without a `git log --all --grep
+  <issue-number>` (or `gh pr list --search`) result attached inline. Many
+  issues have merged PRs that cite them in the PR body but not the commit
+  subject — `git log --grep` alone misses these.
+- Use the closed `status/*` label set (`status/done-open`,
+  `status/blocked-upstream`, `status/blocked-repo`, `status/needs-work`,
+  `status/mis-scoped`) as the primary status signal. Labels don't bury
+  signal; a status comment is secondary.
+- One status comment per issue per pass. A second pass must **edit** (or
+  minimize/hide) the prior comment, not append a near-duplicate. Re-posting
+  the same review minutes apart is noise that buries substantive comments.
+- Do not fabricate file paths or issue numbers. Verify paths exist (`ls`,
+  `find`) and issues exist (`gh issue view`) before citing them.
+- Do not post a status review on a **closed** issue without first checking
+  `gh issue view <N> --json state`. Describing the pre-fix state of an
+  already-closed issue is a credibility failure.
+
 ## PR Scope Doctrine
 
 Do not optimize PRs for low line count. Optimize for narrow production risk and
