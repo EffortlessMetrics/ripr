@@ -93,6 +93,12 @@
       "serialize-javascript": "^7.0.5"
     }
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "configuration": {
       "title": "ripr",
@@ -105,7 +111,9 @@
         "ripr.server.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution."
+          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution.",
+          "restrictedConfigurations": true,
+          "scope": "resource"
         },
         "ripr.server.args": {
           "type": "array",
@@ -116,22 +124,30 @@
             "lsp",
             "--stdio"
           ],
-          "description": "Arguments used to start the ripr language server."
+          "description": "Arguments used to start the ripr language server.",
+          "restrictedConfigurations": true,
+          "scope": "resource"
         },
         "ripr.server.autoDownload": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available."
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available.",
+          "restrictedConfigurations": true,
+          "scope": "resource"
         },
         "ripr.server.version": {
           "type": "string",
           "default": "",
-          "description": "Pinned ripr server version. Empty means match the extension version."
+          "description": "Pinned ripr server version. Empty means match the extension version.",
+          "restrictedConfigurations": true,
+          "scope": "resource"
         },
         "ripr.server.downloadBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases."
+          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases.",
+          "restrictedConfigurations": true,
+          "scope": "resource"
         },
         "ripr.check.mode": {
           "type": "string",

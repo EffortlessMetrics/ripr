@@ -259,6 +259,17 @@ export class RiprClientController {
       return;
     }
 
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.updateStatus({
+        kind: 'workspaceUntrusted',
+        summary: 'ripr requires a trusted workspace to start the server.',
+        detail: 'The workspace is not trusted. ripr does not download, launch, or run repair actions in untrusted workspaces.',
+        nextStep: 'Trust the workspace (Manage > Trust Workspace), then run ripr: Restart Server.'
+      });
+      this.output.appendLine('ripr workspace is not trusted; refusing to start server or download.');
+      return;
+    }
+
     this.updateStatus({
       kind: 'resolvingServer',
       summary: 'Resolving ripr server.',
@@ -1464,6 +1475,10 @@ export class RiprClientController {
   }
 
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.output.appendLine('ripr workspace is not trusted; refusing to resolve server for command.');
+      return undefined;
+    }
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if ('command' in server) {
       this.server = server;
@@ -1538,6 +1553,7 @@ interface RiprSetupArtifactDefinition {
 type RiprStatusKind =
   | 'disabled'
   | 'noWorkspace'
+  | 'workspaceUntrusted'
   | 'workspaceAmbiguous'
   | 'resolvingServer'
   | 'serverUnavailable'
@@ -1746,6 +1762,8 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(circle-slash) ripr: disabled';
     case 'noWorkspace':
       return '$(folder) ripr: open workspace';
+    case 'workspaceUntrusted':
+      return '$(shield) ripr: untrusted workspace';
     case 'workspaceAmbiguous':
       return '$(warning) ripr: select root';
     case 'resolvingServer':
