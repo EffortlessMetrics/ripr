@@ -1,3 +1,4 @@
+mod candidate_relation;
 mod causal_delta;
 mod classification;
 #[doc(hidden)]
@@ -9,6 +10,7 @@ mod probe;
 mod summary;
 mod support;
 
+pub use candidate_relation::CandidateRelation;
 pub use causal_delta::{
     AttributionBasis, CanonicalDelta, CanonicalEvidenceState, ComparisonConfidence,
     ComparisonCoverage, DeltaAttribution, GapState, compare_fixture_delta,
