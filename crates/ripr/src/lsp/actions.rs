@@ -358,7 +358,7 @@ fn push_gap_actions(
 fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: command_title.to_string(),
             command: COPY_CONTEXT_COMMAND.to_string(),
@@ -398,7 +398,7 @@ fn copy_agent_loop_command_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: title.to_string(),
             command: command.to_string(),
@@ -1386,7 +1386,7 @@ fn non_empty_string(value: &Value) -> Option<&str> {
 fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: TARGETED_TEST_BRIEF_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: TARGETED_TEST_BRIEF_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1402,7 +1402,7 @@ fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> Code
 fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1415,7 +1415,7 @@ fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
 fn copy_python_repair_card_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1431,7 +1431,7 @@ fn copy_suggested_assertion_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: SUGGESTED_ASSERTION_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: SUGGESTED_ASSERTION_TITLE.to_string(),
             command: COPY_SUGGESTED_ASSERTION_COMMAND.to_string(),
@@ -1447,7 +1447,7 @@ fn copy_suggested_assertion_action(
 fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: OPEN_RELATED_TEST_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.navigate")),
         command: Some(Command {
             title: OPEN_RELATED_TEST_TITLE.to_string(),
             command: OPEN_RELATED_TEST_COMMAND.to_string(),

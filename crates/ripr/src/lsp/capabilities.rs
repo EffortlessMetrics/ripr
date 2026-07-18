@@ -7,9 +7,10 @@ use super::{
 };
 use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
-    CodeActionProviderCapability, CodeLensOptions, DiagnosticOptions, DiagnosticServerCapabilities,
-    ExecuteCommandOptions, HoverProviderCapability, InitializeParams, InitializeResult, OneOf,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
+    DiagnosticOptions, DiagnosticServerCapabilities, ExecuteCommandOptions,
+    HoverProviderCapability, InitializeParams, InitializeResult, OneOf, ServerCapabilities,
+    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 
@@ -37,7 +38,17 @@ pub(super) fn initialize_result_for_client(supports_pull_diagnostics: bool) -> I
                 }),
             ),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
-            code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+                code_action_kinds: Some(vec![
+                    CodeActionKind::new("quickfix.ripr"),
+                    CodeActionKind::new("source.ripr.inspect"),
+                    CodeActionKind::new("source.ripr.navigate"),
+                    CodeActionKind::new("source.ripr.verify"),
+                    CodeActionKind::new("source.ripr.refresh"),
+                ]),
+                resolve_provider: Some(false),
+                ..CodeActionOptions::default()
+            })),
             // Advisory codeLens: resolve is disabled; lenses are display-only
             // text hints citing the cached related-test count. No resolve
             // round-trip is needed (RIPR-SPEC-0099).

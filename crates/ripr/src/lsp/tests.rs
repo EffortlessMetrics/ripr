@@ -2304,7 +2304,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
         vec![
             (
                 "Inspect finding: copy context packet",
-                "quickfix",
+                "source.ripr.inspect",
                 "Inspect finding: copy context",
                 COPY_CONTEXT_COMMAND,
             ),
