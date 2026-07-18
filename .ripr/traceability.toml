@@ -6886,3 +6886,51 @@ metrics = [
   "active_goal_authority_contradictions_total",
   "active_goal_authority_blockers_total",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0129"
+name = "editor integration contract and support matrix"
+spec = "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md"
+tests = [
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::capability_is_fail_closed_until_handlers_land",
+  "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_the_fail_closed_agent_capability",
+  "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_pull_diagnostic_provider",
+  "crates/ripr/src/lsp/capabilities.rs::tests::push_only_client_does_not_receive_pull_provider_advertisement",
+  "crates/ripr/src/lsp/tests.rs::initialize_result_exposes_existing_lsp_capabilities",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/agent_protocol.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "editors/vscode/src/client.ts",
+  "editors/vscode/package.json",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md",
+  "docs/specs/README.md",
+]
+metrics = [
+  "editor_layer_support_coverage",
+  "editor_capability_drift",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0130"
+name = "RIPR authority map and legacy dialect conformance fixture"
+spec = "docs/specs/RIPR-SPEC-0130-ripr-authority-map.md"
+tests = []
+fixtures = [
+  ".allow/conformance/legacy-dialect.json",
+]
+code = [
+  ".allow/profiles/spec-system.toml",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0130-ripr-authority-map.md",
+  ".allow/conformance/legacy-dialect.json",
+]
+metrics = [
+  "authority_map_coverage",
+  "legacy_dialect_conformance",
+]

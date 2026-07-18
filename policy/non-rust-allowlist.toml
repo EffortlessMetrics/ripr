@@ -295,6 +295,15 @@ reason = "Owned cargo-allow spec-system artifact graph ledger."
 covered_by = ["cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit --format json"]
 
 [[allow]]
+glob = ".allow/conformance/*.json"
+kind = "policy_metadata"
+owner = "product-swarm"
+surface = "repo"
+classification = "metadata"
+reason = "Owned cargo-allow legacy-dialect conformance fixture consumed by the advisory spec-system profile."
+covered_by = ["cargo xtask check-file-policy", "cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit --format json"]
+
+[[allow]]
 glob = ".ripr/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"
