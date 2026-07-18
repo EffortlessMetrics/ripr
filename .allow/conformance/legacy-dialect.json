@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "kind": "legacy_dialect_conformance",
+  "description": "Asserts that legacy RIPR TOML dialects parse without error against their expected structure. Consumed by the cargo-allow spec-system profile (advisory). See RIPR-SPEC-0130.",
+  "files": [
+    {
+      "path": ".ripr/goals/active.toml",
+      "dialect": "ripr_active_goal_v1",
+      "expected_top_level_keys": ["id", "title", "status", "objective", "end_state", "non_goals"],
+      "parse_mode": "toml"
+    },
+    {
+      "path": ".ripr/traceability.toml",
+      "dialect": "ripr_traceability_v1",
+      "expected_sections": ["behavior"],
+      "parse_mode": "toml"
+    }
+  ]
+}
