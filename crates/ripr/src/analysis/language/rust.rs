@@ -652,7 +652,22 @@ impl LanguageAdapter for RustAdapter {
                 index_files.len()
             ));
         }
-        let mut index = rust_index::build_index(&options.root, &index_files)?;
+        // Load files into memory and use the content-addressed per-file fact
+        // cache. This avoids re-parsing unchanged files with ra_ap_syntax on
+        // every ripr check / LSP save (#1912). The cache is keyed on a
+        // content hash; unchanged files hit the cache and skip the parse.
+        let loaded_files = index_files
+            .iter()
+            .map(|file| {
+                let full = options.root.join(file);
+                let bytes = std::fs::read(&full)
+                    .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
+                Ok((file.clone(), bytes))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let cached =
+            rust_index::build_index_from_loaded_files_with_cache(&options.root, &loaded_files)?;
+        let mut index = cached.index;
         rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
         let mut findings = Vec::new();
@@ -723,7 +738,21 @@ impl LanguageAdapter for RustAdapter {
         // inflates `no_static_path` for owners that *are* exercised by
         // integration tests under `tests/` or `examples/`. Probe seeding
         // stays production-only so test bodies do not generate findings.
-        let mut index = rust_index::build_index(&options.root, &rust_files)?;
+        // Use the content-addressed per-file fact cache (#1912).
+        let loaded_rust_files = rust_files
+            .iter()
+            .map(|file| {
+                let full = options.root.join(file);
+                let bytes = std::fs::read(&full)
+                    .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
+                Ok((file.clone(), bytes))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let cached = rust_index::build_index_from_loaded_files_with_cache(
+            &options.root,
+            &loaded_rust_files,
+        )?;
+        let mut index = cached.index;
         rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
         let mut findings = Vec::new();
