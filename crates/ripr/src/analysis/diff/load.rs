@@ -24,7 +24,11 @@ pub fn load_diff(
         &owned
     };
 
-    run_git_diff(root, &format!("{base}...HEAD"), &[])
+    run_git_diff(
+        root,
+        &format!("{base}...HEAD"),
+        &["--no-ext-diff", "--unified=0"],
+    )
 }
 
 /// Load the diff from `base` to the live working tree.

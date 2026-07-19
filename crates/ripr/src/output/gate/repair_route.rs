@@ -83,7 +83,7 @@ fn missing_route_fields(candidate: &GateCandidate) -> Vec<String> {
 }
 
 fn push_missing(missing: &mut Vec<String>, name: &str, value: &Option<String>) {
-    if value.as_deref().is_none_or(str::is_empty) {
+    if value.as_deref().is_none_or(|s| s.trim().is_empty()) {
         missing.push(name.to_string());
     }
 }

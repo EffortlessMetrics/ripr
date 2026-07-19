@@ -52,7 +52,7 @@ Repo-scoped formats such as `repo-exposure-json`, `repo-exposure-md`,
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "draft",
   "root": ".",

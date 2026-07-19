@@ -1557,6 +1557,13 @@ fn review_comments_with_diff_loader(
     receipt.phase("configuration", "diff_discovery");
     receipt.write_atomic(&receipt_path)?;
     let diff_text = load_diff(&input.root, &options.base, &options.head)?;
+    if analysis::working_tree_has_tracked_changes(&input.root) {
+        eprintln!(
+            "ripr: warning: working tree has uncommitted tracked changes; \
+             the committed diff at {}...{} does not include them.",
+            options.base, options.head
+        );
+    }
     receipt.phase("diff_discovery", "language_facts");
     receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
