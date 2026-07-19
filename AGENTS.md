@@ -55,12 +55,19 @@ Do not split into `ripr-core`, `ripr-cli`, `ripr-lsp`, `ripr-engine`, or
 
 The current internal shape is:
 
-- `domain`: probe, RIPR evidence, oracle strength, exposure classification
+- `domain`: probe, RIPR evidence, oracle strength, exposure classification,
+  fix-instruction state, candidate relations, test-evidence summary
 - `app`: use-case orchestration and public library API
-- `analysis`: diff loading, syntax indexing, probe generation, classification
-- `output`: human, JSON, and GitHub annotation rendering
-- `cli`: command-line adapter
-- `lsp`: experimental sidecar adapter
+- `analysis`: diff loading, syntax indexing, probe generation, classification,
+  repair-route readiness, seam inventory, test-grip evidence
+- `output`: human, JSON, SARIF, GitHub annotation, gate decision, repair
+  packet, receipt, badge, and evidence-record rendering
+- `cli`: command-line adapter (dispatch, help, doctor, parse)
+- `lsp`: experimental sidecar adapter (backend, diagnostics, hover, actions,
+  capabilities, position encoding, diagnostic budget, refresh scheduler,
+  input identity, agent protocol)
+- `agent`: repair-loop commands (loop commands, provenance)
+- `config`: `ripr.toml` loading, typed model, language detection
 
 ## Rust Baseline
 

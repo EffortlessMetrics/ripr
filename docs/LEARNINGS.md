@@ -1653,3 +1653,149 @@ command, or receipt command; they carry the named investigation route instead.
 Keep the real pilot row excluded until the corrected analyzer produces a
 complete before/after route. A plausible test name or weak related-test match
 is context, not permission to mutate.
+
+## 2026-07-19: The gate does not gate — hardcoded seam_id breaks the blocking path
+
+`gate/repair_route.rs:114` hardcodes `seam_id: None` for gap-ledger candidates.
+`missing_route_fields` always pushes `"seam_id"`, so `gate_repair_route_is_complete`
+is always false for them. Since `candidate_is_policy_eligible` requires a complete
+route, `eligible` is always false, so `would_block` is always false. The gate
+emits `advisory` and `gate_decision_should_fail` returns false — CI exits 0.
+
+The tests named `*_fails_closed_*` (`tests.rs:764`, `tests.rs:1761`) assert
+`advisory` status with `!gate_decision_should_fail` — they are **fail-open at
+the CI level** despite their names. This contradicts `CALIBRATED_GATE_POLICY.md:74-75`
+which says baseline-check/calibrated-gate "blocks for new baseline misses."
+
+The recurring lesson: a test named `fails_closed` that asserts exit-0 is not
+fail-closed. The exit code is the oracle, not the test name. When the product
+contract says "blocks," the test must assert a non-zero exit — otherwise the
+test encodes the bug as the expected behavior, and the bug survives indefinitely.
+This is the "verify the artifact, not the report" rule applied to the gate's
+own test suite.
+
+## 2026-07-19: Static receipts are advisory — fabrication is trivial
+
+The repair-receipt chain (`ripr agent verify`, `ripr agent receipt`,
+`ripr receipt write`) performs no test re-execution, no git head binding, and no
+signature verification. `ripr agent verify` reads two JSON files and computes
+static movement between them. `ripr receipt write --current-head` is optional
+and only format-validated (40 hex chars) — never compared to `git rev-parse HEAD`.
+
+This is honest about ripr being a static analyzer: the receipt is a static
+movement record, not a runtime proof. The output carries `status: "advisory"`,
+`safe_to_merge: false`, and `provenance.runtime_mutation_execution: false`.
+
+But downstream consumers (CI gates, dashboards, agents) who treat the receipt
+as proof of testing are deceived. The lesson: a static analyzer's receipt is
+only as trustworthy as the chain of custody from the analysis to the consumer.
+ripr should stamp the receipt with the analyzed head SHA (resolved via git,
+not caller-supplied) and the artifact content hashes, so a consumer can at least
+verify the receipt corresponds to a real analysis at a known commit — even if
+it cannot verify the analysis was correct.
+
+## 2026-07-19: Every save re-runs the full pipeline — the cache exists but isn't wired in
+
+`RustAdapter::analyze_diff` (`rust.rs:655`) calls `rust_index::build_index` →
+`build_index_with_adapters` (`build.rs:80`, **uncached**). The cached variant
+`build_index_from_loaded_files_with_cache` (`build.rs:19`) and `RepoFilesFactCache`
+(`seam_cache.rs:769`) exist and work — but are only wired into the repo-seam
+inventory path. Every `ripr check` and every LSP `did_save` re-reads and re-parses
+every indexed file with `ra_ap_syntax` from scratch.
+
+Additionally, `advance_workspace_revision` (`backend.rs:628`) bumps a counter on
+every `did_save`, and the counter is part of `LspAnalysisInputIdentity`
+(`input_identity.rs:17`). The dedup path at `refresh_scheduler.rs:204-221` compares
+identity — but since every save produces a different revision, dedup never fires
+for saves. The one cheap fast-path that exists is dead code in practice.
+
+The lesson: a cache that isn't wired into the hot path is documentation, not
+infrastructure. When you build a cache, wire it into the diff-scoped path (the
+path that runs on every save), not just the repo-scoped path (which runs rarely).
+And: a dedup identity that includes a monotonic counter will never dedup — use a
+content hash or omit the counter from the identity comparison.
+
+## 2026-07-19: `continue-on-error: true` on every step makes green meaningless
+
+The generated CI workflow (`init.rs`) uses `continue-on-error: true` on ~30 of
+~31 steps. Only the gate step and the diff-capture step lack it. A consumer
+sees a green job and missing artifacts (SARIF, badge, reports) with no signal
+that anything failed.
+
+The lesson: advisory CI steps are fine, but they must be clearly separated from
+load-bearing steps. A step that produces the gate input (`review-comments`) is
+load-bearing — if it fails, the gate has no input and the "green" is a
+false-clean. Reserve `continue-on-error` for genuinely advisory outputs (badge
+rendering, policy reports), never for the analysis pipeline itself. Add a final
+summary step that checks for expected artifacts and surfaces missing ones as
+a visible warning.
+
+## 2026-07-19: `Result<_, String>` everywhere is the single highest-leverage refactor target
+
+2,474 `Result<_, String>` signatures across 170 files, with 1,254
+`.map_err(|err| format!("...: {err}"))` call sites. Zero typed error enums in
+production (only 2 defined: `DiagnosticBudgetError`, `ArtifactReadError`).
+
+This blocks:
+- Programmatic error handling for library consumers (callers cannot match on
+  error variants)
+- Clean `# Errors` documentation on public API functions
+- The public library surface from being credible (`Ok::<(), String>(())` in
+  the quick-start example is a tell)
+
+The lesson: `String` errors are acceptable for a CLI binary but become
+technical debt the moment a library surface is exposed. The fix (introduce
+`thiserror`, migrate module by module) is mechanical and low-risk, but the
+payoff is structural: every downstream consumer (the LSP backend, the agent
+loop, external embedders) gains the ability to distinguish `Io` from `Git`
+from `Parse` from `Analysis` errors.
+
+## 2026-07-19: Cross-language consistency requires a shared vocabulary layer
+
+`SeamKind` (7 variants) is Rust-only. Preview adapters use `ProbeFamily` (8
+variants) — different variant names, different cardinality, no canonical
+crosswalk. Perl defines its own `OracleKind` (12 variants) and `OracleStrength`
+(5 variants) separate from the domain enum (9/6). Python and TypeScript never
+emit `ReachableUnrevealed`, `InfectionUnknown`, or `PropagationUnknown`.
+
+The lesson: a shared `LanguageAdapter` trait is necessary but not sufficient.
+The trait ensures structural consistency (same method signatures), but the
+*classification vocabulary* diverges because each adapter independently
+decides which domain values it can produce. A shared vocabulary layer — either
+a trait method that declares "this adapter can emit these ExposureClass values"
+or a canonical crosswalk from `ProbeFamily` to `SeamKind` — would prevent the
+silent gaps where a preview-language change whose probe is reached-but-unrevealed
+falls through to `StaticUnknown` instead of `ReachableUnrevealed`.
+
+## 2026-07-19: A file-policy gate that fails on main breaks every subsequent PR
+
+During this session, a merged PR (#1836, authority map) added
+`.allow/conformance/legacy-dialect.json` without adding a `non-rust-allowlist.toml`
+entry. `check-file-policy` — a required CI gate — broke on main. Every subsequent
+PR inherited the failure. The fix (#1848) was a one-line allowlist addition, but
+it blocked ~15 open PRs until it landed.
+
+The lesson: when a gate validates "every file must be in an allowlist," adding
+a new file type in one PR without the allowlist entry is a main-breaking change.
+The fix is either: (a) make the gate advisory with a warning instead of
+required, or (b) add a pre-commit hook / xtask check that proposes the
+allowlist entry when a new file type is detected. At minimum, the gate's error
+message should say "add an entry to `policy/non-rust-allowlist.toml`" — which
+it does, but the breakage was on main, not in the PR that added the file.
+
+## 2026-07-19: Duplicate run-status logic drifts — extract or unify
+
+`workspace_status_run_status` (`backend.rs:2518-2545`) and
+`snapshot_run_status` (`diagnostics.rs:821-843`) are near-identical
+implementations of the same five-state decision tree. The `diagnostics.rs`
+version's doc comment says "This replicates the logic of
+`backend::workspace_status_run_status`" — an acknowledged copy. They differ
+subtly: `backend.rs` checks `gap_artifacts.iter().any(|a| a.has_static_limit())`
+at line 2533, which `diagnostics.rs` omits.
+
+The recurring lesson (cf. "Reuse the shared enforcement layer" in AGENTS.md):
+when two functions implement the same decision, they will drift. The drift is
+not a question of *if* but *when*. Extract the logic into one function and call
+it from both sites. The cost of extraction is always lower than the cost of the
+bug that drift produces — especially when the drift is in a fail-closed
+posture (one copy discloses `seams_deferred`, the other doesn't).
