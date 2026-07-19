@@ -3400,7 +3400,13 @@ suite('Extension Smoke', () => {
     const context = createControllerTestContext({
       lspResult: {
         kind: 'receipt_status',
-        route_quality_summary: 'coverage: 3/5 routes; top gap: gap:rust:pricing:discount:threshold-boundary'
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [
+            { repair_kind: 'AddBoundaryAssertion', attempted: 2, success_rate: 0.5 }
+          ]
+        }
       }
     });
     try {
@@ -3410,7 +3416,11 @@ suite('Extension Smoke', () => {
       assert.strictEqual(context.client.requests.length, 1);
       assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('coverage: 3/5 routes'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('status=advisory'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('AddBoundaryAssertion'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('attempted=2'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('success_rate=0.5'), context.infoMessages.at(-1));
+      assert.ok(context.outputLines.join('\n').includes('status=advisory'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();
@@ -3430,6 +3440,29 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
       assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality fails closed for malformed structured summaries', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [{ repair_kind: 'AddBoundaryAssertion' }]
+        }
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showRouteQuality();
+
+      assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.ok(!context.infoMessages.at(-1)?.includes('attempted=0'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();

@@ -1425,9 +1425,7 @@ export class RiprClientController {
       this.runtime.showInformationMessage('No route quality available — server not responding.');
       return;
     }
-    const routeQualitySummary = typeof response['route_quality_summary'] === 'string'
-      ? response['route_quality_summary']
-      : 'not_available';
+    const routeQualitySummary = formatRouteQualitySummary(response['route_quality_summary']) ?? 'not_available';
 
     this.output.appendLine(`ripr route quality: ${routeQualitySummary}`);
     this.output.show();
@@ -4744,6 +4742,48 @@ function objectField(value: Record<string, unknown>, field: string): Record<stri
 function stringField(value: Record<string, unknown>, field: string): string | undefined {
   const child = value[field];
   return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+}
+
+function formatRouteQualitySummary(value: unknown): string | undefined {
+  if (value === 'not_available' || !value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const summary = value as Record<string, unknown>;
+  if (summary.report !== 'route-quality' || typeof summary.status !== 'string') {
+    return undefined;
+  }
+  const rows = summary.top_repair_kind_rows;
+  if (!Array.isArray(rows) || rows.length > 3) {
+    return undefined;
+  }
+
+  const formattedRows: string[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return undefined;
+    }
+    const rowObject = row as Record<string, unknown>;
+    const repairKind = stringField(rowObject, 'repair_kind');
+    const attempted = rowObject.attempted;
+    const successRate = rowObject.success_rate;
+    if (
+      !repairKind ||
+      typeof attempted !== 'number' ||
+      !Number.isInteger(attempted) ||
+      attempted < 0 ||
+      (successRate !== null &&
+        (typeof successRate !== 'number' || !Number.isFinite(successRate) || successRate < 0 || successRate > 1))
+    ) {
+      return undefined;
+    }
+    const renderedRate = successRate === null ? 'not_available' : String(successRate);
+    formattedRows.push(`${repairKind}: attempted=${attempted}, success_rate=${renderedRate}`);
+  }
+
+  return [
+    `status=${summary.status}`,
+    ...formattedRows
+  ].join('\n');
 }
 
 function stringArrayField(value: Record<string, unknown>, field: string): string[] {
