@@ -141,6 +141,86 @@ pub(crate) fn cache_base_dir(workspace_root: &std::path::Path) -> PathBuf {
     cache_base_dir_from_env(workspace_root, std::env::var(CACHE_DIR_ENV))
 }
 
+/// Read-only summary of a cache directory for status and diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CacheStatus {
+    pub(crate) state: &'static str,
+    pub(crate) total_size_bytes: u64,
+    pub(crate) entry_count: usize,
+}
+
+/// Inspect a cache directory without following symlinks or fabricating counts.
+///
+/// This is best-effort diagnostic output, not a security boundary or an atomic
+/// snapshot. The standard-library path-based traversal has no portable
+/// directory-handle-relative API, so a concurrent rename can still make a
+/// reported total stale. Symlink entries are skipped and traversal failures
+/// are surfaced as `partial`; callers must not use this report to authorize
+/// access or make security decisions.
+pub(crate) fn inspect_cache_dir(cache_dir: &Path) -> CacheStatus {
+    let metadata = match std::fs::symlink_metadata(cache_dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return CacheStatus {
+                state: "not_found",
+                total_size_bytes: 0,
+                entry_count: 0,
+            };
+        }
+        Err(_) => {
+            return CacheStatus {
+                state: "unavailable",
+                total_size_bytes: 0,
+                entry_count: 0,
+            };
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return CacheStatus {
+            state: "unavailable",
+            total_size_bytes: 0,
+            entry_count: 0,
+        };
+    }
+
+    let mut total_size_bytes = 0u64;
+    let mut entry_count = 0usize;
+    let mut partially_readable = false;
+    let mut stack = vec![cache_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            partially_readable = true;
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                partially_readable = true;
+                continue;
+            };
+            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
+                partially_readable = true;
+                continue;
+            };
+            let file_type = metadata.file_type();
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            } else if file_type.is_file() {
+                total_size_bytes = total_size_bytes.saturating_add(metadata.len());
+                entry_count = entry_count.saturating_add(1);
+            }
+        }
+    }
+
+    CacheStatus {
+        state: if partially_readable { "partial" } else { "ok" },
+        total_size_bytes,
+        entry_count,
+    }
+}
+
 pub(crate) fn classified_seam_cache_store_limit() -> Result<usize, String> {
     classified_seam_cache_store_limit_from_env(std::env::var(CLASSIFIED_SEAM_CACHE_STORE_LIMIT_ENV))
 }

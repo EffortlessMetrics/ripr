@@ -43,6 +43,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::PrEvidence(args) => commands::pr_evidence(&args),
         CliCommand::ImpactedEvidence(args) => commands::impacted_evidence(&args),
         CliCommand::RiprPlus(args) => commands::ripr_plus(&args),
+        CliCommand::Cache(args) => commands::cache(&args),
         CliCommand::Rerun(args) => rerun::run(&args),
     }
 }
@@ -182,6 +183,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Diff(args(&["--format", "xml"]))),
             Err("unknown diff format \"xml\"".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Cache(Vec::new())),
+            Err("cache requires subcommand `status`".to_string())
         );
     }
 
