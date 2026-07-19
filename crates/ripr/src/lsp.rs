@@ -4,6 +4,7 @@ mod backend;
 mod capabilities;
 mod config;
 pub mod diagnostic_budget;
+mod diagnostic_catalog;
 mod diagnostics;
 mod gap_artifacts;
 mod hover;

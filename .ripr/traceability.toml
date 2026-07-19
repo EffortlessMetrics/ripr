@@ -6867,6 +6867,35 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0127"
+name = "LSP diagnostic code catalog"
+spec = "docs/specs/RIPR-SPEC-0127-lsp-diagnostic-code-catalog.md"
+tests = [
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::every_entry_has_a_nonempty_code",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::codes_and_aliases_are_globally_unique",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::every_code_resolves_to_exactly_one_entry",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::every_emitted_finding_code_is_catalogued",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::every_emitted_seam_code_is_catalogued",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::every_emitted_gap_code_is_catalogued",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::gap_code_fails_closed_for_unknown_kind",
+  "crates/ripr/src/lsp/diagnostic_catalog.rs::tests::unknown_code_does_not_resolve",
+  "crates/ripr/src/lsp/diagnostics.rs::tests::gap_record_diagnostic_fails_closed_for_unregistered_kind",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/diagnostic_catalog.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0127-lsp-diagnostic-code-catalog.md",
+]
+metrics = [
+  "lsp_diagnostic_catalog_entries",
+  "lsp_diagnostic_catalog_unresolved_gap_kinds",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0128"
 name = "Active-goal authority audit"
 spec = "docs/specs/RIPR-SPEC-0128-active-goal-authority-audit.md"

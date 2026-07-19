@@ -955,13 +955,13 @@ fn diagnostic_for_gap_record_with_causal(
     let path = absolute_gap_anchor_path(root, Path::new(file));
     let uri = file_uri_for_path(&path).ok()?;
     let line_index = line.saturating_sub(1) as u32;
+    // Fail closed: a gap whose kind is not a governed catalog code is not
+    // emitted as a diagnostic rather than surfacing an unregistered code.
+    let code = super::diagnostic_catalog::gap_code(&record.kind)?;
     let diagnostic = Diagnostic {
         range: crate::lsp::position::line_span_range(line_index),
         severity: Some(gap_record_diagnostic_severity(record)),
-        code: Some(NumberOrString::String(format!(
-            "ripr-gap-{}",
-            record.kind.replace('_', "-")
-        ))),
+        code: Some(NumberOrString::String(code)),
         code_description: None,
         source: Some("ripr".to_string()),
         message: gap_record_diagnostic_message(record),
@@ -1228,10 +1228,9 @@ fn diagnostic_for_classified_seam_with_causal(
     Some(Diagnostic {
         range,
         severity: Some(severity),
-        code: Some(NumberOrString::String(format!(
-            "ripr-seam-{}",
-            entry.class.as_str().replace('_', "-")
-        ))),
+        code: Some(NumberOrString::String(
+            super::diagnostic_catalog::seam_code(entry.class),
+        )),
         code_description: None,
         source: Some("ripr".to_string()),
         message: lsp_seam_message(entry),
@@ -1391,7 +1390,9 @@ fn diagnostic_for_finding_with_causal(
     Diagnostic {
         range: diagnostic_range_for_finding(finding),
         severity: lsp_severity(config.for_exposure(&finding.class)),
-        code: Some(NumberOrString::String(finding.class.as_str().to_string())),
+        code: Some(NumberOrString::String(
+            super::diagnostic_catalog::finding_code(&finding.class),
+        )),
         code_description: None,
         source: Some("ripr".to_string()),
         message: lsp_message(finding),
@@ -1770,6 +1771,27 @@ mod seam_diagnostic_tests {
         assert!(
             diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn gap_record_diagnostic_fails_closed_for_unregistered_kind() {
+        // A registered kind on an eligible, anchored record emits a diagnostic.
+        let mut record = gap_record(true);
+        assert!(
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .is_some(),
+            "a registered gap kind should emit a diagnostic"
+        );
+
+        // An unregistered kind (for example from an external ledger) is not a
+        // governed catalog code, so the emission site fails closed and does not
+        // surface an unknown `ripr-gap-*` code.
+        record.kind = "TotallyUnregisteredKind".to_string();
+        assert!(
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .is_none(),
+            "an unregistered gap kind must not emit a diagnostic"
         );
     }
 
