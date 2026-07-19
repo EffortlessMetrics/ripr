@@ -790,6 +790,10 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    fn workspace_root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
+    }
+
     #[test]
     fn nul_delimited_tracked_paths_preserve_newlines() -> Result<(), String> {
         let paths = parse_tracked_paths(b"plain.rs\0line\nbreak.rs\0")?;
@@ -888,7 +892,7 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn occurrence_projection_preserves_legacy_consumers() -> Result<(), String> {
-        let audit = audit_root(Path::new("../"))?;
+        let audit = audit_root(&workspace_root())?;
         let json = render_json(&audit)?;
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|err| format!("parse report: {err}"))?;
@@ -958,7 +962,8 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn repository_inventory_is_complete_and_deterministic() -> Result<(), String> {
-        let first = audit_root(Path::new("../"))?;
+        let root = workspace_root();
+        let first = audit_root(&root)?;
         if !first.unclassified.is_empty() {
             return Err(format!("unclassified: {:?}", first.unclassified));
         }
@@ -973,9 +978,9 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
                 first.contradictions
             ));
         }
-        let fixture = Path::new("../fixtures/active-goal-authority-audit/historical-reference");
-        let fixture_first = audit_root(fixture)?;
-        let fixture_second = audit_root(fixture)?;
+        let fixture = root.join("fixtures/active-goal-authority-audit/historical-reference");
+        let fixture_first = audit_root(&fixture)?;
+        let fixture_second = audit_root(&fixture)?;
         if fixture_first.semantic_digest != fixture_second.semantic_digest {
             return Err("equivalent inputs changed semantic digest".to_string());
         }
@@ -984,7 +989,7 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn ignored_and_untracked_residue_does_not_change_digest() -> Result<(), String> {
-        let root = Path::new("../");
+        let root = workspace_root();
         let residue = root.join(format!(
             ".active-goal-audit-residue-{}/active_goal_reader.txt",
             std::process::id()
@@ -995,7 +1000,7 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
         fs::create_dir_all(parent).map_err(|err| format!("create residue directory: {err}"))?;
         fs::write(&residue, ".ripr/goals/active.toml ready = true")
             .map_err(|err| format!("write residue: {err}"))?;
-        let discovered = discover(root)?;
+        let discovered = discover(&root)?;
         if let Err(err) = fs::remove_dir_all(parent)
             && err.kind() != std::io::ErrorKind::NotFound
         {
@@ -1012,9 +1017,9 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn hidden_singleton_and_legacy_ready_block_migration() -> Result<(), String> {
-        let audit = audit_root(Path::new(
-            "../fixtures/active-goal-authority-audit/hidden-singleton",
-        ))?;
+        let audit = audit_root(
+            &workspace_root().join("fixtures/active-goal-authority-audit/hidden-singleton"),
+        )?;
         if !audit
             .unclassified
             .iter()
@@ -1030,7 +1035,8 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
             return Err("fixture unexpectedly contains active.toml".to_string());
         }
         let source = fs::read_to_string(
-            "../fixtures/active-goal-authority-audit/hidden-singleton/hidden_reader.rs",
+            workspace_root()
+                .join("fixtures/active-goal-authority-audit/hidden-singleton/hidden_reader.rs"),
         )
         .map_err(|err| format!("read hidden reader: {err}"))?;
         if !source.contains("const LEGACY_STATUS: &str = \"ready\";") {
@@ -1057,8 +1063,8 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
         if parse_rules(&duplicated).is_ok() {
             return Err("duplicate consumer id was accepted".to_string());
         }
-        let root = Path::new("../fixtures/active-goal-authority-audit/duplicate-issues");
-        if issue_contract_rows(root).is_ok() {
+        let root = workspace_root().join("fixtures/active-goal-authority-audit/duplicate-issues");
+        if issue_contract_rows(&root).is_ok() {
             return Err("duplicate issue identity was accepted".to_string());
         }
         Ok(())
@@ -1066,9 +1072,10 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn blocked_command_returns_error_after_writing_both_reports() -> Result<(), String> {
-        let fixture = Path::new("../fixtures/active-goal-authority-audit/hidden-singleton");
+        let fixture =
+            workspace_root().join("fixtures/active-goal-authority-audit/hidden-singleton");
         let reports = fixture.join("target/ripr/reports");
-        let result = run_at(fixture, &reports);
+        let result = run_at(&fixture, &reports);
         if result.is_ok() {
             return Err("blocked command unexpectedly returned success".to_string());
         }
@@ -1087,9 +1094,9 @@ fn noise() { let inactive_goal = "active goals"; let active_goal_id = 1; }
 
     #[test]
     fn historical_reference_is_classified_without_authority() -> Result<(), String> {
-        let audit = audit_root(Path::new(
-            "../fixtures/active-goal-authority-audit/historical-reference",
-        ))?;
+        let audit = audit_root(
+            &workspace_root().join("fixtures/active-goal-authority-audit/historical-reference"),
+        )?;
         if !audit.unclassified.is_empty() {
             return Err(format!(
                 "historical fixture unclassified: {:?}",
