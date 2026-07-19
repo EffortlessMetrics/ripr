@@ -6843,10 +6843,18 @@ tests = [
   "crates/ripr/src/lsp/diagnostic_budget.rs::tests::oversized_inline_detail_stays_selected_with_explicit_omission",
   "crates/ripr/src/lsp/diagnostic_budget.rs::tests::profile_filtered_items_never_consume_the_budget",
   "crates/ripr/src/lsp/diagnostic_budget.rs::tests::invalid_budget_is_fail_closed",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::diagnostic_bridge_preserves_identity_and_actionability",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::diagnostic_bridge_uses_explicit_seam_and_preview_eligibility",
+  "crates/ripr/src/lsp/diagnostic_budget.rs::tests::legacy_fallback_identity_is_stable_when_diagnostics_are_reordered",
+  "crates/ripr/src/lsp/backend.rs::diagnostic_budget_projection_tests::workspace_status_budget_json_preserves_all_reason_variants",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_counts",
+  "crates/ripr/src/lsp/tests.rs::workspace_status_budget_identity_changes_with_diagnostic_snapshot",
 ]
 fixtures = []
 code = [
   "crates/ripr/src/lsp/diagnostic_budget.rs",
+  "crates/ripr/src/lsp/backend.rs",
   "crates/ripr/src/lsp.rs",
 ]
 outputs = [

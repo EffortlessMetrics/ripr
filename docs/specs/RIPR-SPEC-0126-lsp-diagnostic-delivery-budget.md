@@ -76,6 +76,26 @@ surface can provide the complete detail.
 The selected set is a bounded working view. It is not a product-risk ranking
 and does not imply that omitted items are less important.
 
+## Workspace-status projection
+
+The workspace-status producer may expose the evaluator result under
+`diagnostic_budget`. The projection preserves the evaluator's schema and
+includes selected and omitted canonical identities, omission reasons, byte
+totals, overflow reasons, budget/evidence identities, and the continuation
+route. It also reports `diagnostic_budget_state` separately:
+
+- `available` means the budget was evaluated for the current snapshot;
+- `unavailable` includes a machine-readable reason: `no_snapshot`,
+  `serialization_failure`, or `evaluation_failure`. Failure states may also
+  carry producer error detail for diagnostics; the reason code is the stable
+  client contract.
+
+When inline detail bytes are not produced by the diagnostic producer, the
+projection must say `inline_detail_measurement: "not_available"`; it must not
+present a fabricated zero as measured detail evidence. Producer selection
+ranks remain an explicit limitation until real diagnostic producers populate
+them.
+
 ## Required invariants
 
 - Equal inputs in any discovery order produce equal results and bytes.

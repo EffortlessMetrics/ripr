@@ -7,6 +7,8 @@
 
 use std::collections::BTreeSet;
 
+use sha2::{Digest, Sha256};
+
 pub const DIAGNOSTIC_BUDGET_SCHEMA_VERSION: &str = "lsp-diagnostic-budget-v1";
 pub const DIAGNOSTIC_BUDGET_SELECTION_VERSION: &str = "evidence-order-v1";
 pub const DEFAULT_MAX_ITEMS_PER_DOCUMENT: usize = 50;
@@ -293,26 +295,33 @@ pub fn evaluate_diagnostic_budget(
 /// to the diagnostic payload; a follow-up PR will enrich the selection
 /// key from the classified seam evidence).
 ///
-/// The `canonical_id` is extracted from the diagnostic's `data` field
-/// (`seam_id` or `gap_id`), falling back to a URI+line composite.
+/// The `canonical_id` is extracted from the diagnostic's producer-owned
+/// `data` field. The location/hash fallback is retained for legacy diagnostics
+/// that predate the explicit identity fields, but it is deterministic and is
+/// never used as an actionability signal.
 pub fn build_budget_items_from_diagnostics(
     diagnostics_by_uri: &std::collections::BTreeMap<
         tower_lsp_server::ls_types::Uri,
         Vec<tower_lsp_server::ls_types::Diagnostic>,
     >,
-) -> Vec<DiagnosticBudgetItem> {
+) -> Result<Vec<DiagnosticBudgetItem>, serde_json::Error> {
     let mut items = Vec::new();
     for (uri, diagnostics) in diagnostics_by_uri {
         let document = uri.as_str().to_string();
         for diagnostic in diagnostics {
-            let canonical_id = diagnostic_canonical_id(diagnostic, &document);
-            let payload_bytes = diagnostic_payload_bytes(diagnostic);
+            let payload = serde_json::to_vec(diagnostic)?;
+            let payload_bytes = payload.len();
+            let canonical_id = diagnostic_canonical_id(diagnostic, &document, &payload);
             items.push(DiagnosticBudgetItem {
                 canonical_id,
                 document: document.clone(),
                 payload_bytes,
                 inline_detail_bytes: 0,
-                eligibility: DiagnosticBudgetEligibility::Actionable,
+                eligibility: if diagnostic_is_actionable(diagnostic) {
+                    DiagnosticBudgetEligibility::Actionable
+                } else {
+                    DiagnosticBudgetEligibility::ProfileFiltered
+                },
                 selection_key: DiagnosticSelectionKey {
                     repair_route_rank: 128,
                     causal_rank: 128,
@@ -321,31 +330,65 @@ pub fn build_budget_items_from_diagnostics(
             });
         }
     }
-    items
+    Ok(items)
 }
 
 fn diagnostic_canonical_id(
     diagnostic: &tower_lsp_server::ls_types::Diagnostic,
     document: &str,
+    payload: &[u8],
 ) -> String {
     if let Some(data) = &diagnostic.data
         && let Some(obj) = data.as_object()
     {
-        if let Some(id) = obj.get("seam_id").and_then(|v| v.as_str()) {
-            return id.to_string();
-        }
-        if let Some(id) = obj.get("gap_id").and_then(|v| v.as_str()) {
-            return id.to_string();
+        for key in [
+            "diagnostic_id",
+            "canonical_gap_id",
+            "finding_id",
+            "gap_id",
+            "seam_id",
+        ] {
+            if let Some(id) = obj
+                .get(key)
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+            {
+                return id.to_string();
+            }
         }
     }
     let line = diagnostic.range.start.line;
-    format!("{document}:{line}")
+    let character = diagnostic.range.start.character;
+    let payload_hash = Sha256::digest(payload);
+    format!("location:{document}:{line}:{character}:{payload_hash:x}")
 }
 
-fn diagnostic_payload_bytes(diagnostic: &tower_lsp_server::ls_types::Diagnostic) -> usize {
-    serde_json::to_string(diagnostic)
-        .map(|text| text.len())
-        .unwrap_or(0)
+fn diagnostic_is_actionable(diagnostic: &tower_lsp_server::ls_types::Diagnostic) -> bool {
+    let Some(data) = diagnostic.data.as_ref() else {
+        return false;
+    };
+
+    // Gap diagnostics are emitted only after the producer has validated the
+    // LSP projection route. The budget still needs the producer's semantic
+    // actionability predicate, rather than treating identity as eligibility.
+    if data.get("source").and_then(|value| value.as_str()) == Some("gap_decision_ledger") {
+        return data.get("gap_state").and_then(|value| value.as_str()) == Some("actionable")
+            && data.get("repairability").and_then(|value| value.as_str()) == Some("repairable");
+    }
+
+    // Classified seams publish their producer-owned headline decision. Preview
+    // findings publish the shared validator's packet decision. These signals
+    // are already settled before this delivery projection runs.
+    if let Some(eligible) = data
+        .get("headline_eligible")
+        .and_then(|value| value.as_bool())
+    {
+        return eligible;
+    }
+    data.get("preview_actionability")
+        .and_then(|value| value.get("repair_packet_ready"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -374,6 +417,168 @@ mod tests {
             causal_rank: causal,
             evidence_rank: evidence,
         }
+    }
+
+    #[test]
+    fn diagnostic_bridge_preserves_identity_and_actionability() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let first = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:first",
+                "source": "gap_decision_ledger",
+                "canonical_gap_id": "gap:first",
+                "gap_state": "baseline_only",
+                "repairability": "no_action",
+            })),
+            ..Default::default()
+        };
+        let second = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:second",
+                "source": "gap_decision_ledger",
+                "canonical_gap_id": "gap:second",
+                "gap_state": "actionable",
+                "repairability": "repairable",
+            })),
+            ..Default::default()
+        };
+        let diagnostics = std::collections::BTreeMap::from([(uri, vec![first, second])]);
+
+        let items = build_budget_items_from_diagnostics(&diagnostics)
+            .map_err(|err| format!("build budget items: {err}"))?;
+        if items.len() != 2 {
+            return Err(format!("expected two budget items, got {items:?}"));
+        }
+        if items[0].canonical_id != "finding:first" || items[1].canonical_id != "finding:second" {
+            return Err(format!("producer identities were not preserved: {items:?}"));
+        }
+        if items[0].eligibility != DiagnosticBudgetEligibility::ProfileFiltered {
+            return Err("non-actionable canonical gap consumed the budget".to_string());
+        }
+        if items[1].eligibility != DiagnosticBudgetEligibility::Actionable {
+            return Err("actionable canonical gap was profile-filtered".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_bridge_uses_explicit_seam_and_preview_eligibility() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let seam = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "seam:headline",
+                "seam_id": "seam:headline",
+                "headline_eligible": true,
+            })),
+            ..Default::default()
+        };
+        let preview = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:preview",
+                "finding_id": "finding:preview",
+                "canonical_gap_id": "gap:preview",
+                "preview_actionability": {"repair_packet_ready": true},
+            })),
+            ..Default::default()
+        };
+        let diagnostics = std::collections::BTreeMap::from([(uri, vec![seam, preview])]);
+
+        let items = build_budget_items_from_diagnostics(&diagnostics)
+            .map_err(|err| format!("build budget items: {err}"))?;
+        if !items
+            .iter()
+            .all(|item| item.eligibility == DiagnosticBudgetEligibility::Actionable)
+        {
+            return Err(format!(
+                "explicit producer eligibility was not preserved: {items:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_fallback_identity_is_stable_when_diagnostics_are_reordered() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let first = tower_lsp_server::ls_types::Diagnostic {
+            message: "first legacy diagnostic".to_string(),
+            ..Default::default()
+        };
+        let second = tower_lsp_server::ls_types::Diagnostic {
+            message: "second legacy diagnostic".to_string(),
+            ..Default::default()
+        };
+        let forward =
+            std::collections::BTreeMap::from([(uri.clone(), vec![first.clone(), second.clone()])]);
+        let reversed = std::collections::BTreeMap::from([(uri, vec![second, first])]);
+        let forward_ids = build_budget_items_from_diagnostics(&forward)
+            .map_err(|err| format!("build forward budget items: {err}"))?
+            .into_iter()
+            .map(|item| item.canonical_id)
+            .collect::<std::collections::BTreeSet<_>>();
+        let reversed_ids = build_budget_items_from_diagnostics(&reversed)
+            .map_err(|err| format!("build reversed budget items: {err}"))?
+            .into_iter()
+            .map(|item| item.canonical_id)
+            .collect::<std::collections::BTreeSet<_>>();
+        if forward_ids != reversed_ids {
+            return Err(format!(
+                "legacy fallback identities changed after reordering: forward={forward_ids:?}, reversed={reversed_ids:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_bridge_fails_closed_for_missing_or_negative_eligibility() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let no_metadata = tower_lsp_server::ls_types::Diagnostic::default();
+        let non_headline_seam = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "seam:advisory",
+                "headline_eligible": false,
+            })),
+            ..Default::default()
+        };
+        let incomplete_preview = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:incomplete-preview",
+                "preview_actionability": {"repair_packet_ready": false},
+            })),
+            ..Default::default()
+        };
+        let diagnostics = std::collections::BTreeMap::from([(
+            uri,
+            vec![no_metadata, non_headline_seam, incomplete_preview],
+        )]);
+
+        let items = build_budget_items_from_diagnostics(&diagnostics)
+            .map_err(|err| format!("build budget items: {err}"))?;
+        if items.len() != 3
+            || items
+                .iter()
+                .any(|item| item.eligibility != DiagnosticBudgetEligibility::ProfileFiltered)
+        {
+            return Err(format!(
+                "missing or negative producer eligibility was over-credited: {items:?}"
+            ));
+        }
+        if !items[0]
+            .canonical_id
+            .starts_with("location:file:///workspace/src/lib.rs:")
+        {
+            return Err(format!(
+                "legacy diagnostic identity was not deterministic: {items:?}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]

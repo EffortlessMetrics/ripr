@@ -7,7 +7,7 @@ use super::capabilities::{
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, DiagnosticResultIdCache, WorkspaceDiagnostics,
-    diagnostic_refresh_plan, take_all_uris,
+    diagnostic_refresh_plan, take_all_uris, workspace_diagnostic_result_id,
 };
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
@@ -2132,6 +2132,11 @@ impl Backend {
                     "snapshot_age_ms": serde_json::Value::Null,
                     "snapshot_duration_ms": serde_json::Value::Null,
                     "diagnostics": serde_json::Value::Null,
+                    "diagnostic_budget": serde_json::Value::Null,
+                    "diagnostic_budget_state": {
+                        "status": "unavailable",
+                        "reason": "no_snapshot",
+                    },
                     "top_actionable_packet": serde_json::Value::Null,
                     "top_limitation": top_limitation,
                     "report_paths": workspace_status_report_paths(),
@@ -2170,26 +2175,36 @@ impl Backend {
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
         // Compute the diagnostic delivery budget result for workspace status.
-        let diagnostic_budget_json = {
-            let items = crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(
+        let (diagnostic_budget_json, diagnostic_budget_state) = {
+            let complete_evidence_identity = workspace_diagnostic_result_id(&snapshot);
+            let snapshot_profile_identity = snapshot
+                .input_identity_id()
+                .unwrap_or_else(|| complete_evidence_identity.clone());
+            match crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(
                 &snapshot.diagnostics_by_uri,
-            );
-            match crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
-                items,
-                &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
-                "workspace_status",
-                "workspace_status",
             ) {
-                Ok(result) => serde_json::json!({
-                    "total_canonical_items": result.total_canonical_items,
-                    "eligible_items": result.eligible_items,
-                    "selected_count": result.selected.len(),
-                    "omitted_count": result.omitted.len(),
-                    "selected_bytes": result.selected_bytes,
-                    "complete_bytes": result.complete_bytes,
-                    "overflowed": result.overflowed,
-                }),
-                Err(_) => serde_json::Value::Null,
+                Ok(items) => match crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
+                    items,
+                    &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+                    &snapshot_profile_identity,
+                    &complete_evidence_identity,
+                ) {
+                    Ok(result) => (
+                        diagnostic_budget_result_json(&result),
+                        serde_json::json!({
+                            "status": "available",
+                            "inline_detail_measurement": "not_available",
+                        }),
+                    ),
+                    Err(error) => (
+                        serde_json::Value::Null,
+                        diagnostic_budget_unavailable_state("evaluation_failure", error),
+                    ),
+                },
+                Err(error) => (
+                    serde_json::Value::Null,
+                    diagnostic_budget_unavailable_state("serialization_failure", error),
+                ),
             }
         };
 
@@ -2229,6 +2244,8 @@ impl Backend {
                         "actionable_gap_artifacts": actionable_gap_artifacts,
                         "gap_artifact_rejections": gap_artifact_rejections,
                     },
+                    "diagnostic_budget": diagnostic_budget_json.clone(),
+                    "diagnostic_budget_state": diagnostic_budget_state.clone(),
                     "top_actionable_packet": top_actionable_packet,
                     "top_limitation": top_limitation,
                     "receipt_status_summary": serde_json::Value::Null,
@@ -2261,6 +2278,7 @@ impl Backend {
                 "gap_artifact_rejections": gap_artifact_rejections,
             },
             "diagnostic_budget": diagnostic_budget_json,
+            "diagnostic_budget_state": diagnostic_budget_state,
             "top_actionable_packet": top_actionable_packet,
             "top_limitation": top_limitation,
             "receipt_status_summary": receipt_status_summary,
@@ -2268,6 +2286,184 @@ impl Backend {
             "refresh_command": REFRESH_COMMAND,
             "limits_note": "Static evidence only; advisory, not a gate decision.",
         }))
+    }
+}
+
+fn diagnostic_budget_unavailable_state(
+    reason: &'static str,
+    error: impl std::fmt::Display,
+) -> serde_json::Value {
+    serde_json::json!({
+        "status": "unavailable",
+        "reason": reason,
+        "detail": error.to_string(),
+    })
+}
+
+fn diagnostic_budget_result_json(
+    result: &crate::lsp::diagnostic_budget::DiagnosticBudgetResult,
+) -> serde_json::Value {
+    let selected = result
+        .selected
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "canonical_id": item.canonical_id,
+                "document": item.document,
+                "payload_bytes": item.payload_bytes,
+                "inline_detail_omitted": item.inline_detail_omitted,
+            })
+        })
+        .collect::<Vec<_>>();
+    let omitted = result
+        .omitted
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "canonical_id": item.canonical_id,
+                "reason": omitted_diagnostic_reason_name(item.reason),
+            })
+        })
+        .collect::<Vec<_>>();
+    let overflow_reasons = result
+        .overflow_reasons
+        .iter()
+        .map(|reason| overflow_reason_name(*reason))
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "schema_version": result.schema_version,
+        "snapshot_profile_budget_identity": result.snapshot_profile_budget_identity,
+        "complete_evidence_identity": result.complete_evidence_identity,
+        "continuation_or_inspect_route": result.continuation_or_inspect_route,
+        "selection_basis_version": result.selection_basis_version,
+        "total_canonical_items": result.total_canonical_items,
+        "eligible_items": result.eligible_items,
+        "selected_count": result.selected.len(),
+        "omitted_count": result.omitted.len(),
+        "selected": selected,
+        "omitted": omitted,
+        "selected_bytes": result.selected_bytes,
+        "complete_bytes": result.complete_bytes,
+        "overflowed": result.overflowed,
+        "overflow_reasons": overflow_reasons,
+        "inline_detail_measurement": "not_available",
+    })
+}
+
+fn omitted_diagnostic_reason_name(
+    reason: crate::lsp::diagnostic_budget::OmittedDiagnosticReason,
+) -> &'static str {
+    match reason {
+        crate::lsp::diagnostic_budget::OmittedDiagnosticReason::ProfileFiltered => {
+            "profile_filtered"
+        }
+        crate::lsp::diagnostic_budget::OmittedDiagnosticReason::DocumentItemLimit => {
+            "document_item_limit"
+        }
+        crate::lsp::diagnostic_budget::OmittedDiagnosticReason::WorkspaceItemLimit => {
+            "workspace_item_limit"
+        }
+        crate::lsp::diagnostic_budget::OmittedDiagnosticReason::SerializedByteLimit => {
+            "serialized_byte_limit"
+        }
+    }
+}
+
+fn overflow_reason_name(
+    reason: crate::lsp::diagnostic_budget::DiagnosticOverflowReason,
+) -> &'static str {
+    match reason {
+        crate::lsp::diagnostic_budget::DiagnosticOverflowReason::DocumentItemLimit => {
+            "document_item_limit"
+        }
+        crate::lsp::diagnostic_budget::DiagnosticOverflowReason::WorkspaceItemLimit => {
+            "workspace_item_limit"
+        }
+        crate::lsp::diagnostic_budget::DiagnosticOverflowReason::SerializedByteLimit => {
+            "serialized_byte_limit"
+        }
+        crate::lsp::diagnostic_budget::DiagnosticOverflowReason::InlineDetailLimit => {
+            "inline_detail_limit"
+        }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_budget_projection_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_status_budget_json_preserves_all_reason_variants() {
+        use crate::lsp::diagnostic_budget::{
+            DiagnosticBudgetResult, DiagnosticOverflowReason, OmittedDiagnosticItem,
+            OmittedDiagnosticReason, SelectedDiagnosticItem,
+        };
+
+        let result = DiagnosticBudgetResult {
+            schema_version: crate::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SCHEMA_VERSION,
+            snapshot_profile_budget_identity: "profile:workspace".to_string(),
+            complete_evidence_identity: "evidence:complete".to_string(),
+            continuation_or_inspect_route: "ripr/inspect".to_string(),
+            selection_basis_version:
+                crate::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SELECTION_VERSION,
+            total_canonical_items: 5,
+            eligible_items: 1,
+            selected: vec![SelectedDiagnosticItem {
+                canonical_id: "finding:selected".to_string(),
+                document: "file:///workspace/src/lib.rs".to_string(),
+                payload_bytes: 17,
+                inline_detail_omitted: true,
+            }],
+            omitted: vec![
+                OmittedDiagnosticItem {
+                    canonical_id: "finding:profile".to_string(),
+                    reason: OmittedDiagnosticReason::ProfileFiltered,
+                },
+                OmittedDiagnosticItem {
+                    canonical_id: "finding:document".to_string(),
+                    reason: OmittedDiagnosticReason::DocumentItemLimit,
+                },
+                OmittedDiagnosticItem {
+                    canonical_id: "finding:workspace".to_string(),
+                    reason: OmittedDiagnosticReason::WorkspaceItemLimit,
+                },
+                OmittedDiagnosticItem {
+                    canonical_id: "finding:bytes".to_string(),
+                    reason: OmittedDiagnosticReason::SerializedByteLimit,
+                },
+            ],
+            selected_bytes: 17,
+            complete_bytes: 100,
+            overflowed: true,
+            overflow_reasons: std::collections::BTreeSet::from([
+                DiagnosticOverflowReason::DocumentItemLimit,
+                DiagnosticOverflowReason::WorkspaceItemLimit,
+                DiagnosticOverflowReason::SerializedByteLimit,
+                DiagnosticOverflowReason::InlineDetailLimit,
+            ]),
+        };
+
+        let json = diagnostic_budget_result_json(&result);
+        assert_eq!(json["schema_version"], "lsp-diagnostic-budget-v1");
+        assert_eq!(json["selected"][0]["canonical_id"], "finding:selected");
+        assert_eq!(json["selected"][0]["payload_bytes"], 17);
+        assert_eq!(json["selected"][0]["inline_detail_omitted"], true);
+        assert_eq!(json["omitted"][0]["reason"], "profile_filtered");
+        assert_eq!(json["omitted"][1]["reason"], "document_item_limit");
+        assert_eq!(json["omitted"][2]["reason"], "workspace_item_limit");
+        assert_eq!(json["omitted"][3]["reason"], "serialized_byte_limit");
+        assert_eq!(
+            json["overflow_reasons"],
+            serde_json::json!([
+                "document_item_limit",
+                "workspace_item_limit",
+                "serialized_byte_limit",
+                "inline_detail_limit"
+            ])
+        );
+        assert_eq!(json["selected_bytes"], 17);
+        assert_eq!(json["complete_bytes"], 100);
+        assert_eq!(json["overflowed"], true);
     }
 }
 

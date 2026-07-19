@@ -50,14 +50,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, DiagnosticSeverity,
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType,
-    FileEvent, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, MarkedString,
-    NumberOrString, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams, WorkspaceFolder,
+    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, Diagnostic,
+    DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    ExecuteCommandParams, FileChangeType, FileEvent, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, MarkedString, NumberOrString, PartialResultParams,
+    Position, PositionEncodingKind, PreviousResultId, Range, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
+    WorkspaceDiagnosticParams, WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -6205,6 +6206,13 @@ fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_stat
         assert_eq!(status["analysis_status"]["run_status"], "no_snapshot");
         assert_eq!(status["analysis_status"]["repair_actions_available"], false);
         assert_eq!(status["top_actionable_packet"], serde_json::Value::Null);
+        assert_eq!(
+            status["diagnostic_budget_state"],
+            serde_json::json!({
+                "status": "unavailable",
+                "reason": "no_snapshot",
+            })
+        );
         assert_eq!(status["top_limitation"]["status"], "no_snapshot");
         assert_eq!(
             status["top_limitation"]["limitation_category"],
@@ -6557,7 +6565,46 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
             status["diagnostics"]["actionable_diagnostics"].as_u64(),
             Some(0)
         );
+        assert_eq!(
+            status["diagnostic_budget"]["total_canonical_items"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["selected_count"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["eligible_items"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["omitted_count"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["omitted"][0]["reason"],
+            "profile_filtered"
+        );
+        assert_eq!(status["diagnostic_budget_state"]["status"], "available");
+        assert_eq!(
+            status["diagnostic_budget"]["inline_detail_measurement"],
+            "not_available"
+        );
         let current_input = &status["analysis_status"]["input_authority"]["current"];
+        let input_identity = current_input["input_identity"]
+            .as_str()
+            .ok_or_else(|| "expected input identity in workspace status".to_string())?;
+        assert!(
+            status["diagnostic_budget"]["snapshot_profile_budget_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.contains(input_identity)),
+            "budget identity must bind to the snapshot input identity: {status}"
+        );
+        assert_ne!(
+            status["diagnostic_budget"]["complete_evidence_identity"],
+            "workspace_status"
+        );
+        assert_eq!(status["diagnostic_budget"]["overflowed"], false);
         assert_eq!(
             status["analysis_status"]["input_authority"]["configuration_state"],
             "valid"
@@ -6625,6 +6672,75 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
             status["limits_note"],
             "Static evidence only; advisory, not a gate decision."
         );
+        Ok(())
+    })
+}
+
+#[test]
+fn workspace_status_budget_identity_changes_with_diagnostic_snapshot() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+
+        let diagnostic = |id: &str| Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": id,
+            })),
+            ..Default::default()
+        };
+        let status = || async {
+            let params = ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            };
+            backend
+                .execute_command(params)
+                .await
+                .map_err(|err| format!("execute_command failed: {err}"))?
+                .ok_or_else(|| "expected workspace status after snapshot".to_string())
+        };
+
+        let first = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic("gap:first")],
+            vec![sample_finding()],
+        );
+        backend
+            .refresh_plan(first)
+            .ok_or_else(|| "expected first refresh plan".to_string())?;
+        let first_status = status().await?;
+        let first_identity = first_status["diagnostic_budget"]["complete_evidence_identity"]
+            .as_str()
+            .ok_or_else(|| "expected first complete evidence identity".to_string())?
+            .to_string();
+
+        let second = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic("gap:second")],
+            vec![sample_finding()],
+        );
+        backend
+            .refresh_plan(second)
+            .ok_or_else(|| "expected second refresh plan".to_string())?;
+        let second_status = status().await?;
+        let second_identity = second_status["diagnostic_budget"]["complete_evidence_identity"]
+            .as_str()
+            .ok_or_else(|| "expected second complete evidence identity".to_string())?;
+
+        if first_identity == second_identity {
+            return Err(format!(
+                "different diagnostic snapshots reused complete evidence identity: {first_status}"
+            ));
+        }
         Ok(())
     })
 }
