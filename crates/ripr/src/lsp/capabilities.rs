@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
     DiagnosticOptions, DiagnosticServerCapabilities, ExecuteCommandOptions,
-    HoverProviderCapability, InitializeParams, InitializeResult, OneOf, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    HoverProviderCapability, InitializeParams, InitializeResult, OneOf, PositionEncodingKind,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 
@@ -30,6 +30,7 @@ pub(super) fn initialize_result_for_client(supports_pull_diagnostics: bool) -> I
     InitializeResult {
         capabilities: ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            position_encoding: Some(PositionEncodingKind::UTF16),
             diagnostic_provider: supports_pull_diagnostics.then_some(
                 DiagnosticServerCapabilities::Options(DiagnosticOptions {
                     inter_file_dependencies: true,

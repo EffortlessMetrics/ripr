@@ -54,7 +54,7 @@ use tower_lsp_server::ls_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType,
     FileEvent, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, MarkedString,
-    NumberOrString, PartialResultParams, Position, PreviousResultId, Range,
+    NumberOrString, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
     VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams, WorkspaceFolder,
@@ -72,6 +72,11 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
     assert_eq!(
         result.capabilities.hover_provider,
         Some(HoverProviderCapability::Simple(true))
+    );
+    assert_eq!(
+        result.capabilities.position_encoding,
+        Some(PositionEncodingKind::UTF16),
+        "diagnostic ranges use UTF-16 code-unit offsets"
     );
     let Some(workspace) = result.capabilities.workspace else {
         return Err("expected workspace capability".to_string());
