@@ -47,8 +47,21 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
     if config_path.exists() && !options.force {
         println!("Left existing {} unchanged", config_path.display());
     } else {
-        std::fs::write(&config_path, generated_init_config())
-            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        // Use create_new to prevent a symlink-following write race where a
+        // symlink is placed at config_path between the exists() check above
+        // and the write. create_new fails if the path already exists,
+        // including symlinks. (#1948)
+        if options.force {
+            std::fs::write(&config_path, generated_init_config())
+                .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        } else {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&config_path)
+                .and_then(|_| std::fs::write(&config_path, generated_init_config()))
+                .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        }
         println!("Wrote {}", config_path.display());
     }
 
