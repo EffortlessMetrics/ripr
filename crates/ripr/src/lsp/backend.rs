@@ -1774,10 +1774,12 @@ impl LanguageServer for Backend {
             }
             _ => (crate::config::RiprConfig::default(), None),
         };
-        self.set_analysis_config(LspAnalysisConfig::from_initialize_params(
-            &params,
-            repo_config,
-        ));
+        let analysis_config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
+        // `from_initialize_params` is the sole owner of the position-encoding
+        // negotiation; read the chosen encoding back so the initialize response
+        // advertises exactly what the config will use.
+        let position_encoding = analysis_config.position_encoding.clone();
+        self.set_analysis_config(analysis_config);
         self.set_workspace_root_authority(WorkspaceRootAuthority::unavailable(
             "initial workspace root resolution pending",
         ));
@@ -1792,7 +1794,10 @@ impl LanguageServer for Backend {
             self.set_configuration_failure(error);
             self.publish_analysis_status().await;
         }
-        Ok(initialize_result_for_client(supports_pull_diagnostics))
+        Ok(initialize_result_for_client(
+            supports_pull_diagnostics,
+            position_encoding,
+        ))
     }
 
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {

@@ -23,14 +23,53 @@ pub(super) enum WorkspaceRootResolution {
 
 #[cfg(test)]
 pub(super) fn initialize_result() -> InitializeResult {
-    initialize_result_for_client(true)
+    initialize_result_for_client(true, PositionEncodingKind::UTF16)
 }
 
-pub(super) fn initialize_result_for_client(supports_pull_diagnostics: bool) -> InitializeResult {
+/// Select the position encoding for this session from the client's advertised
+/// `general.positionEncodings` (#1626 PR B / #1749).
+///
+/// UTF-16 is the LSP default and the server's native computation, so it is
+/// preferred whenever the client supports it. When the client advertises a
+/// list without UTF-16, the server honors the first advertised encoding it can
+/// produce (UTF-8 or UTF-32). When the client advertises nothing, the encoding
+/// defaults to UTF-16.
+pub(super) fn negotiate_position_encoding(params: &InitializeParams) -> PositionEncodingKind {
+    let advertised = params
+        .capabilities
+        .general
+        .as_ref()
+        .and_then(|general| general.position_encodings.as_ref());
+    match advertised {
+        Some(encodings) if !encodings.is_empty() => {
+            if encodings.contains(&PositionEncodingKind::UTF16) {
+                PositionEncodingKind::UTF16
+            } else {
+                encodings
+                    .iter()
+                    .find(|kind| is_supported_position_encoding(kind))
+                    .cloned()
+                    .unwrap_or(PositionEncodingKind::UTF16)
+            }
+        }
+        _ => PositionEncodingKind::UTF16,
+    }
+}
+
+fn is_supported_position_encoding(kind: &PositionEncodingKind) -> bool {
+    *kind == PositionEncodingKind::UTF8
+        || *kind == PositionEncodingKind::UTF16
+        || *kind == PositionEncodingKind::UTF32
+}
+
+pub(super) fn initialize_result_for_client(
+    supports_pull_diagnostics: bool,
+    position_encoding: PositionEncodingKind,
+) -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-            position_encoding: Some(PositionEncodingKind::UTF16),
+            position_encoding: Some(position_encoding),
             diagnostic_provider: supports_pull_diagnostics.then_some(
                 DiagnosticServerCapabilities::Options(DiagnosticOptions {
                     inter_file_dependencies: true,
@@ -170,8 +209,65 @@ mod tests {
     use super::*;
     use tower_lsp_server::ls_types::{
         DiagnosticClientCapabilities, DiagnosticWorkspaceClientCapabilities,
-        TextDocumentClientCapabilities, WorkspaceClientCapabilities,
+        GeneralClientCapabilities, TextDocumentClientCapabilities, WorkspaceClientCapabilities,
     };
+
+    fn params_with_position_encodings(
+        encodings: Option<Vec<PositionEncodingKind>>,
+    ) -> InitializeParams {
+        let mut params = InitializeParams::default();
+        params.capabilities.general = Some(GeneralClientCapabilities {
+            position_encodings: encodings,
+            ..GeneralClientCapabilities::default()
+        });
+        params
+    }
+
+    #[test]
+    fn negotiate_prefers_utf16_when_the_client_supports_it() {
+        let params = params_with_position_encodings(Some(vec![
+            PositionEncodingKind::UTF8,
+            PositionEncodingKind::UTF16,
+        ]));
+        assert_eq!(
+            negotiate_position_encoding(&params),
+            PositionEncodingKind::UTF16
+        );
+    }
+
+    #[test]
+    fn negotiate_selects_utf8_when_the_client_advertises_only_utf8() {
+        let params = params_with_position_encodings(Some(vec![PositionEncodingKind::UTF8]));
+        assert_eq!(
+            negotiate_position_encoding(&params),
+            PositionEncodingKind::UTF8
+        );
+    }
+
+    #[test]
+    fn negotiate_defaults_to_utf16_when_the_client_advertises_nothing() {
+        assert_eq!(
+            negotiate_position_encoding(&params_with_position_encodings(None)),
+            PositionEncodingKind::UTF16
+        );
+        assert_eq!(
+            negotiate_position_encoding(&params_with_position_encodings(Some(vec![]))),
+            PositionEncodingKind::UTF16
+        );
+        assert_eq!(
+            negotiate_position_encoding(&InitializeParams::default()),
+            PositionEncodingKind::UTF16
+        );
+    }
+
+    #[test]
+    fn initialize_result_echoes_the_negotiated_position_encoding() {
+        let result = initialize_result_for_client(true, PositionEncodingKind::UTF8);
+        assert_eq!(
+            result.capabilities.position_encoding,
+            Some(PositionEncodingKind::UTF8)
+        );
+    }
 
     #[test]
     fn initialize_result_advertises_the_fail_closed_agent_capability() -> Result<(), String> {
@@ -203,14 +299,14 @@ mod tests {
 
     #[test]
     fn push_only_client_does_not_receive_pull_provider_advertisement() -> Result<(), String> {
-        if initialize_result_for_client(false)
+        if initialize_result_for_client(false, PositionEncodingKind::UTF16)
             .capabilities
             .diagnostic_provider
             .is_some()
         {
             return Err("push-only client received a pull provider".to_string());
         }
-        if initialize_result_for_client(true)
+        if initialize_result_for_client(true, PositionEncodingKind::UTF16)
             .capabilities
             .diagnostic_provider
             .is_none()

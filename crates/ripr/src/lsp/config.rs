@@ -5,7 +5,7 @@ use crate::config::{
 };
 use serde_json::Value;
 use std::path::Path;
-use tower_lsp_server::ls_types::InitializeParams;
+use tower_lsp_server::ls_types::{InitializeParams, PositionEncodingKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
@@ -25,6 +25,10 @@ pub(super) struct LspAnalysisConfig {
     /// Defaults to `actionable`; valid initialization options override the
     /// repository setting, while unknown options retain that resolved value.
     pub(super) diagnostic_profile: LspDiagnosticProfile,
+    /// The position encoding negotiated at `initialize` from the client's
+    /// `general.positionEncodings` (#1626 PR B / #1749). Defaults to UTF-16 and
+    /// is preserved across repository-config and session-option reloads.
+    pub(super) position_encoding: PositionEncodingKind,
 }
 
 impl Default for LspAnalysisConfig {
@@ -38,6 +42,7 @@ impl Default for LspAnalysisConfig {
             session_options: None,
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
             diagnostic_profile: LspDiagnosticProfile::default(),
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 }
@@ -47,7 +52,10 @@ impl LspAnalysisConfig {
         params: &InitializeParams,
         repo_config: RiprConfig,
     ) -> Self {
-        Self::from_repo_config_and_options(repo_config, params.initialization_options.as_ref())
+        let mut config =
+            Self::from_repo_config_and_options(repo_config, params.initialization_options.as_ref());
+        config.position_encoding = super::capabilities::negotiate_position_encoding(params);
+        config
     }
 
     pub(super) fn from_repo_config_and_options(
@@ -92,14 +100,19 @@ impl LspAnalysisConfig {
                 merged.insert(key.clone(), value.clone());
             }
         }
-        Some(Self::from_repo_config_and_options(
+        let mut next = Self::from_repo_config_and_options(
             self.repo_config.clone(),
             Some(&Value::Object(merged)),
-        ))
+        );
+        next.position_encoding = self.position_encoding.clone();
+        Some(next)
     }
 
     pub(super) fn reload_repo_config(&self, repo_config: RiprConfig) -> Self {
-        Self::from_repo_config_and_options(repo_config, self.session_options.as_ref())
+        let mut next =
+            Self::from_repo_config_and_options(repo_config, self.session_options.as_ref());
+        next.position_encoding = self.position_encoding.clone();
+        next
     }
 
     pub(super) fn has_session_option_changes(settings: &Value) -> bool {
@@ -121,6 +134,7 @@ impl LspAnalysisConfig {
             diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
             repo_config,
             session_options: None,
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 
@@ -247,6 +261,29 @@ mod tests {
         let params = params_with(json!({"diagnosticProfile": "full"}));
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
         assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
+    }
+
+    #[test]
+    fn position_encoding_survives_repo_reload_and_session_option_changes() -> Result<(), String> {
+        let config = LspAnalysisConfig {
+            position_encoding: PositionEncodingKind::UTF8,
+            ..LspAnalysisConfig::default()
+        };
+
+        let reloaded = config.reload_repo_config(RiprConfig::default());
+        if reloaded.position_encoding != PositionEncodingKind::UTF8 {
+            return Err("reload_repo_config dropped the negotiated position encoding".to_string());
+        }
+
+        let with_options = config
+            .with_changed_session_options(&json!({ "diagnosticProfile": "full" }))
+            .ok_or_else(|| "session option change should rebuild the config".to_string())?;
+        if with_options.position_encoding != PositionEncodingKind::UTF8 {
+            return Err(
+                "with_changed_session_options dropped the negotiated position encoding".to_string(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
