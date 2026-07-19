@@ -32,12 +32,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target/ub-review-build"
-          key: ub-review-c4f31769f432da0a3983234f7ede3f08b629fa02
+          key: ub-review-a1e64c65e39aadf341f4e5cb14094b9a87f592ad
 
       - name: ub-review
         env:
           CARGO_TARGET_DIR: target/ub-review-build
-        uses: EffortlessMetrics/ub-review@c4f31769f432da0a3983234f7ede3f08b629fa02
+        uses: EffortlessMetrics/ub-review@a1e64c65e39aadf341f4e5cb14094b9a87f592ad
         with:
           # review-mode hides the internal mode/fail-on-gate/review_forward
           # knobs. advisory = comment only; gate = recommended CI gate;
