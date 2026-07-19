@@ -360,6 +360,11 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
     }
     if let Some(witness) = DiagnosticWitness::from_finding(finding) {
         push_diagnostic_witness(&mut lines, &witness);
+        let summary = crate::domain::FixInstructionSummary::from_witness(&witness);
+        lines.push(format!(
+            "**Fix instruction:** {}",
+            fix_instruction_label(&summary)
+        ));
     }
 
     if !finding.related_tests.is_empty() {
@@ -394,6 +399,22 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
     }
 
     lines.join("\n")
+}
+
+fn fix_instruction_label(summary: &crate::domain::FixInstructionSummary) -> String {
+    use crate::domain::FixInstructionState;
+    match summary.state {
+        FixInstructionState::FixSiteReady => {
+            "fix site ready — navigate to the test and inspect the oracle"
+        }
+        FixInstructionState::StaticLimitation => {
+            "static limitation — no bounded repair instruction available"
+        }
+        FixInstructionState::Stale => "stale — refresh analysis before acting",
+        FixInstructionState::InspectOnly => "inspect only — informational, nothing to fix",
+        FixInstructionState::Unavailable => "unavailable — no producer-owned witness",
+    }
+    .to_string()
 }
 
 fn push_diagnostic_witness(lines: &mut Vec<String>, witness: &DiagnosticWitness) {

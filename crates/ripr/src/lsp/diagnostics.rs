@@ -1386,6 +1386,10 @@ fn diagnostic_for_finding_with_causal(
                 serde_json::Value::String(witness.explain_command.clone()),
             );
             obj.insert("witness".to_string(), value);
+            let summary = crate::domain::FixInstructionSummary::from_witness(&witness);
+            if let Ok(summary_value) = serde_json::to_value(&summary) {
+                obj.insert("fix_instruction".to_string(), summary_value);
+            }
         }
         if let Some(projection) = causal_projection {
             projection.insert_comparison_fields(obj);
