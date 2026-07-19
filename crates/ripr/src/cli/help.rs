@@ -394,6 +394,7 @@ mod tests {
         assert!(CONTEXT_HELP.contains("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Diagnose the local ripr setup"));
         assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
+        assert!(DOCTOR_HELP.contains("--json"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
         assert!(DOCTOR_HELP.contains("Start-here next step:"));
         assert!(DOCTOR_HELP.contains("ripr start-here --root . --base origin/main --head HEAD"));

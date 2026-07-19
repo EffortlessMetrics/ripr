@@ -221,10 +221,22 @@ ripr context [--root PATH] [--base REV | --diff PATH]
 ### `ripr doctor`
 
 ```text
-ripr doctor [--root PATH]
+ripr doctor [--root PATH] [--json]
 ```
 
 Reports local tooling and workspace shape. Takes no analysis-shaping flags.
+
+Use `--json` for the same core checks as the human report when onboarding an
+agent, editor, or CI wrapper:
+
+```console
+ripr doctor --root . --json
+```
+
+The JSON report and the human command share the root-directory, `Cargo.toml`,
+configuration, and `git`/`cargo`/`rustc` checks. A `pass` report exits zero; a
+`fail` report exits non-zero. This is machine-readable setup evidence, not a
+release or analysis gate decision.
 
 `doctor` also reports the repository config status for the selected root:
 

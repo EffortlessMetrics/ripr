@@ -4129,39 +4129,39 @@ pub(super) fn context(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn doctor(args: &[String]) -> Result<(), String> {
-    let root = match args {
-        [] => PathBuf::from("."),
-        [flag] if flag == "--help" || flag == "-h" => {
-            help::print_doctor_help();
-            return Ok(());
+    let mut json_output = false;
+    let mut root_args: Vec<&str> = Vec::new();
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                help::print_doctor_help();
+                return Ok(());
+            }
+            "--json" => json_output = true,
+            _ => root_args.push(arg.as_str()),
         }
-        [flag] if flag == "--root" => return Err("missing value for --root".to_string()),
-        [flag, value] if flag == "--root" => PathBuf::from(value),
+    }
+    let root = match root_args.as_slice() {
+        [] => PathBuf::from("."),
+        ["--root"] => return Err("missing value for --root".to_string()),
+        ["--root", value] => PathBuf::from(value),
         [other, ..] => return Err(format!("unknown doctor argument {other:?}")),
     };
 
-    let mut ok = true;
+    if json_output {
+        return doctor_json(&root);
+    }
+
+    // Human-readable path (unchanged behavior).
+    let core_evaluation = output::doctor::evaluate_doctor_core_with_config(&root);
+    let core_report = &core_evaluation.report;
+    let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
     println!("ripr doctor");
     println!("- root: {}", root.display());
 
-    if root.is_dir() {
-        println!("✓ root directory exists");
-    } else {
-        println!("! root directory does not exist");
-        ok = false;
-    }
-
-    if root.join("Cargo.toml").exists() {
-        println!(
-            "✓ Cargo.toml found at {}",
-            root.join("Cargo.toml").display()
-        );
-    } else {
-        println!("! no Cargo.toml found at {}", root.display());
-        ok = false;
-    }
-
-    report_config_status(&root, &mut ok);
+    ok &= report_doctor_core_check(core_report, "root_directory");
+    ok &= report_doctor_core_check(core_report, "cargo_toml");
+    report_config_status(&root, core_evaluation.config, &mut ok);
     report_cache_status(&root);
     report_detected_languages(&root);
     suggest_preview_language_enablement(&root);
@@ -4169,20 +4169,8 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     report_perl_preview(&root);
     report_known_limitations();
 
-    for (tool, args) in [
-        ("git", vec!["--version"]),
-        ("cargo", vec!["--version"]),
-        ("rustc", vec!["--version"]),
-    ] {
-        match std::process::Command::new(tool).args(&args).output() {
-            Ok(output) if output.status.success() => {
-                println!("✓ {}", String::from_utf8_lossy(&output.stdout).trim())
-            }
-            _ => {
-                println!("! {tool} not available");
-                ok = false;
-            }
-        }
+    for tool in output::doctor::DOCTOR_TOOLS {
+        ok &= report_doctor_core_check(core_report, &format!("tool_{tool}"));
     }
 
     print_doctor_start_here_guidance(&root);
@@ -4194,6 +4182,32 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
     }
+}
+
+/// Typed JSON doctor output. Captures top-level checks as structured
+/// `DoctorCheck` values. Deeper sub-checks (languages, cache, perl, and test
+/// surfaces) remain on the human-oriented path for a follow-up
+/// PR to type individually. See #1771 / #1614.
+fn doctor_json(root: &Path) -> Result<(), String> {
+    let report = output::doctor::evaluate_doctor_core(root);
+    println!("{}", report.render_json()?);
+    output::doctor::doctor_report_result(&report)
+}
+
+fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -> bool {
+    let Some(check) = report.checks.iter().find(|check| check.name == name) else {
+        println!("! missing doctor core check: {name}");
+        return false;
+    };
+    let marker = match check.status {
+        output::doctor::DoctorStatus::Pass => "✓",
+        output::doctor::DoctorStatus::Fail => "!",
+    };
+    println!(
+        "{marker} {}",
+        check.evidence.as_deref().unwrap_or(check.name.as_str())
+    );
+    check.status == output::doctor::DoctorStatus::Pass
 }
 
 fn print_doctor_start_here_guidance(root: &Path) {
@@ -4923,8 +4937,8 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-fn report_config_status(root: &Path, ok: &mut bool) {
-    match load_for_root(root) {
+fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mut bool) {
+    match config {
         Ok(config) => {
             match config.source_path() {
                 Some(path) => {
@@ -10287,6 +10301,128 @@ language = "rust"
     #[test]
     fn doctor_accepts_default_root() {
         assert_eq!(doctor(&args(&[])), Ok(()));
+    }
+
+    #[test]
+    fn doctor_core_report_fails_closed_for_invalid_config() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-invalid-config");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
+            .map_err(|err| format!("write invalid config: {err}"))?;
+
+        let report = output::doctor::evaluate_doctor_core(&dir);
+        if report.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "invalid config should fail, got {:?}",
+                report.status
+            ));
+        }
+        let config_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "config")
+            .ok_or_else(|| "missing config check".to_string())?;
+        if config_check.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "invalid config check should fail, got {:?}",
+                config_check.status
+            ));
+        }
+        if !config_check
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("invalid ripr.toml"))
+        {
+            return Err(format!(
+                "invalid config evidence was not actionable: {:?}",
+                config_check.evidence
+            ));
+        }
+
+        let json = report.render_json()?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| format!("parse report JSON: {err}"))?;
+        if value["status"] != "fail"
+            || value["checks"][2]["name"] != "config"
+            || value["checks"][2]["status"] != "fail"
+        {
+            return Err(format!("unexpected invalid-config JSON report: {value}"));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_core_report_fails_closed_for_missing_root() -> Result<(), String> {
+        let root = unique_command_test_dir("doctor-missing-root");
+        if root.exists() {
+            return Err(format!("test root unexpectedly exists: {}", root.display()));
+        }
+
+        let report = output::doctor::evaluate_doctor_core(&root);
+        if report.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!("missing root should fail, got {:?}", report.status));
+        }
+        let root_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "root_directory")
+            .ok_or_else(|| "missing root-directory check".to_string())?;
+        if root_check.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "missing root check should fail, got {:?}",
+                root_check.status
+            ));
+        }
+        if !root_check
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("does not exist"))
+        {
+            return Err(format!(
+                "missing root evidence was not actionable: {:?}",
+                root_check.evidence
+            ));
+        }
+        Ok(())
+    }
+
+    // Deterministic missing-tool and empty-report-passes assertions live with
+    // the moved model in `output::doctor::tests` now
+    // (`doctor_tool_check_fails_closed_for_guaranteed_missing_tool`,
+    // `empty_report_is_pass`). This test keeps the integration-level proof
+    // that the `--json` doctor path fails closed for a malformed config.
+    #[test]
+    fn doctor_json_and_tool_failures_return_errors() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-json-invalid-config");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
+            .map_err(|err| format!("write invalid config: {err}"))?;
+        if doctor_json(&dir).is_ok() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err("invalid JSON doctor report unexpectedly passed".to_string());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_human_projection_fails_for_missing_root() -> Result<(), String> {
+        let root = unique_command_test_dir("doctor-human-missing-root");
+        if root.exists() {
+            return Err(format!("test root unexpectedly exists: {}", root.display()));
+        }
+        let root_arg = root.to_string_lossy().into_owned();
+        if doctor(&args(&["--root", &root_arg])).is_ok() {
+            return Err("human doctor unexpectedly passed for missing root".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_json_flag_accepts_explicit_root() -> Result<(), String> {
+        doctor(&args(&["--json", "--root", "."]))
     }
 
     // --- preview_language_enable_suggestions tests ---

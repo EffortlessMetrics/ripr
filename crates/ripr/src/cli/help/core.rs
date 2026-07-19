@@ -167,7 +167,15 @@ Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file
 "#;
 pub(super) const DOCTOR_HELP: &str = r#"Diagnose the local ripr setup (Rust toolchain, workspace, paths).
 
-Usage: ripr doctor [--root PATH]
+Usage: ripr doctor [--root PATH] [--json]
+
+Options:
+  --root PATH  Diagnose the selected workspace (defaults to `.`).
+  --json       Emit the core checks as stable JSON and use the same exit status.
+
+The JSON report is machine-readable advisory setup evidence. A `fail` status or
+non-zero exit means at least one core check failed; it is not a release or gate
+decision.
 
 Checks:
   - root directory exists
