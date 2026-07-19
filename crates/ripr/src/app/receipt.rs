@@ -35,6 +35,7 @@ pub(crate) struct ReceiptWriteOptions {
     pub(crate) packet_id: Option<String>,
     pub(crate) verify_command: String,
     pub(crate) verify_status: String,
+    pub(crate) current_head: Option<String>,
     /// When `None`, defaults to `target/ripr/receipts/<canonical_gap_id>.json`.
     pub(crate) out: Option<PathBuf>,
     pub(crate) json: bool,
@@ -113,6 +114,7 @@ pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String
         "packet_id_available": packet_id_available,
         "verify_command": opts.verify_command,
         "verify_status": opts.verify_status,
+        "current_head": opts.current_head.clone(),
         "written_at": written_at,
         "limits_note": "Static evidence only. Receipt records what was run; does not certify semantic correctness."
     });
@@ -252,6 +254,18 @@ fn validate_write_options(opts: &ReceiptWriteOptions) -> Result<(), String> {
             VALID_VERIFY_STATUSES.join(", ")
         ));
     }
+    if let Some(current_head) = opts.current_head.as_deref() {
+        validate_current_head(current_head)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_current_head(value: &str) -> Result<(), String> {
+    if value.len() != 40 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(
+            "receipt write --current-head requires a 40-character hexadecimal SHA".to_string(),
+        );
+    }
     Ok(())
 }
 
@@ -378,6 +392,7 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test -p ripr".to_string(),
             verify_status: status.to_string(),
+            current_head: None,
             out: None,
             json: true,
         }
@@ -392,6 +407,7 @@ mod tests {
             packet_id: Some("packet-abc123".to_string()),
             verify_command: "cargo test -p ripr".to_string(),
             verify_status: "passed".to_string(),
+            current_head: Some("0123456789abcdef0123456789abcdef01234567".to_string()),
             out: None,
             json: true,
         };
@@ -410,6 +426,10 @@ mod tests {
         assert_eq!(value["packet_id_available"], true);
         assert_eq!(value["verify_command"], "cargo test -p ripr");
         assert_eq!(value["verify_status"], "passed");
+        assert_eq!(
+            value["current_head"],
+            "0123456789abcdef0123456789abcdef01234567"
+        );
         assert!(value["written_at"].as_str().unwrap_or("").contains('T'));
         assert!(
             value["limits_note"]
@@ -428,6 +448,7 @@ mod tests {
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
         assert_eq!(value["packet_id"], serde_json::Value::Null);
         assert_eq!(value["packet_id_available"], false);
+        assert_eq!(value["current_head"], serde_json::Value::Null);
         Ok(())
     }
 
@@ -449,6 +470,7 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: None,
             json: true,
         };
@@ -482,12 +504,35 @@ mod tests {
     }
 
     #[test]
+    fn receipt_write_invalid_current_head_exits_nonzero() -> Result<(), String> {
+        for current_head in ["abc1234567890", "0123456789abcdef0123456789abcdef0123456g"] {
+            let mut opts = write_opts("gap:demo:aabbccdd", "passed");
+            opts.current_head = Some(current_head.to_string());
+            match write_receipt(&opts) {
+                Ok(_) => {
+                    return Err(format!(
+                        "write_receipt should reject invalid current head {current_head:?}"
+                    ));
+                }
+                Err(err) if err.contains("40-character hexadecimal SHA") => {}
+                Err(err) => {
+                    return Err(format!(
+                        "error should explain current-head format, got: {err}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn receipt_write_missing_verify_command_exits_nonzero() -> Result<(), String> {
         let opts = ReceiptWriteOptions {
             canonical_gap_id: "gap:demo:aabbccdd".to_string(),
             packet_id: None,
             verify_command: "".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: None,
             json: true,
         };
@@ -850,6 +895,7 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: Some(PathBuf::from("custom/path/r.json")),
             json: true,
         };
