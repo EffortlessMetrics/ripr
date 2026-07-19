@@ -1403,7 +1403,7 @@ fn diagnostic_for_finding_with_causal(
 
 fn diagnostic_range_for_finding(finding: &Finding) -> Range {
     let line = finding.probe.location.line.saturating_sub(1) as u32;
-    let column = finding.probe.location.column as u32;
+    let column = finding.probe.location.column;
     crate::lsp::position::expression_span_range(line, column, &finding.probe.expression)
 }
 

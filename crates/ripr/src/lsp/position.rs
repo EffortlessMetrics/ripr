@@ -34,8 +34,8 @@ pub(crate) fn utf16_character_width(text: &str) -> u32 {
 /// `line` is 0-based (LSP convention). `column` is 1-based from the
 /// analyzer and is converted to 0-based here. The span width is the UTF-16
 /// width of `expression`, capped at [`MAX_LINE_SPAN_WIDTH`].
-pub(crate) fn expression_span_range(line: u32, column: u32, expression: &str) -> Range {
-    let start_character = column.saturating_sub(1);
+pub(crate) fn expression_span_range(line: u32, column: usize, expression: &str) -> Range {
+    let start_character = column.saturating_sub(1) as u32;
     let width = utf16_character_width(expression).min(MAX_LINE_SPAN_WIDTH);
     Range {
         start: Position {
@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn utf16_character_width_cjk_counts_two() {
+    fn utf16_character_width_bmp_counts_one() {
         // CJK characters are in the BMP (1 UTF-16 unit each).
         assert_eq!(utf16_character_width("日本語"), 3);
     }

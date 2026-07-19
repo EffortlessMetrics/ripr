@@ -3674,6 +3674,18 @@ fn diagnostic_for_finding_uses_probe_column_and_expression_width() {
 }
 
 #[test]
+fn diagnostic_for_finding_uses_utf16_width_for_non_ascii_expression() {
+    let mut finding = sample_finding();
+    finding.probe.location.column = 2;
+    finding.probe.expression = "\u{e9}\u{1f389}".to_string();
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert_eq!(diagnostic.range.start.character, 1);
+    assert_eq!(diagnostic.range.end.character, 4);
+}
+
+#[test]
 fn diagnostic_for_finding_uses_one_character_range_for_empty_expression() {
     let mut finding = sample_finding();
     finding.probe.location.column = 3;
