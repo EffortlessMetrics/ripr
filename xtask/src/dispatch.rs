@@ -146,6 +146,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::PublishDryRun => {
             super::run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
         }
+        XtaskCommand::IssueIntake(args) => super::reports::issue_intake(&args),
         XtaskCommand::Help(args) => print_help(&args),
         XtaskCommand::Unknown(command) => Err(unknown_command_message(&command)),
     }

@@ -123,6 +123,7 @@ pub(crate) enum XtaskCommand {
     Package,
     PublishDryRun,
     Help(Vec<String>),
+    IssueIntake(Vec<String>),
     Unknown(String),
 }
 
@@ -261,6 +262,7 @@ impl XtaskCommand {
             "vscode-test-e2e" => Self::VscodeTestE2e,
             "package" => Self::Package,
             "publish-dry-run" => Self::PublishDryRun,
+            "issue-intake" => Self::IssueIntake(rest),
             "help" => Self::Help(rest),
             other => Self::Unknown(other.to_string()),
         }
@@ -436,6 +438,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "vscode-test-e2e",
         "package",
         "publish-dry-run",
+        "issue-intake --issue <number>",
     ]
 }
 
@@ -1401,6 +1404,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "cargo publish dry-run staging output",
             false,
             "Runs publish dry run without publishing.",
+        ),
+        command_entry(
+            "issue-intake --issue <number>",
+            "external_state_read",
+            "target/ripr/reports/issue-intake-<number>.json",
+            false,
+            "Fetches a live GitHub issue and emits a typed intake packet.",
         ),
     ]
 }
