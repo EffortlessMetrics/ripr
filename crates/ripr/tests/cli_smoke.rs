@@ -888,6 +888,12 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     ])?;
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ripr first-pr - side effects and cost disclosure"));
+    assert!(stdout.contains("cost class:      varies with diff and workspace size"));
+    assert!(stdout.contains(&format!("writes to:       {reports_arg}/")));
+    assert!(stdout.contains("cache location:  target/ripr/cache/"));
+    assert!(stdout.contains("git reads:       yes (diff between base and head)"));
+    assert!(stdout.contains("network:         none"));
     assert!(stdout.contains("Start here:"));
     assert!(stdout.contains("State: top_gap"));
     assert!(stdout.contains("Safe next action: repair one named gap"));
@@ -984,6 +990,11 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert!(check_stdout.contains("Start here:"));
     assert!(check_stdout.contains("State: top_gap"));
     assert!(check_stdout.contains("First PR start-here packet ok:"));
+    // --check validates without rewriting, so the disclosure must not claim writes.
+    assert!(
+        check_stdout
+            .contains("writes to:       none (--check validates an existing start-here packet)")
+    );
     std::fs::remove_dir_all(workspace)?;
     Ok(())
 }

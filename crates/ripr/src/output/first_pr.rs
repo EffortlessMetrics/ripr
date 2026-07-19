@@ -50,13 +50,37 @@ pub(crate) fn first_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
+
     let options = parse_options(args)?;
+    print_side_effect_disclosure(&options);
+
     let repo = repo_root()?;
     if options.check {
         check_first_pr(&repo, &options)
     } else {
         write_first_pr(&repo, &options)
     }
+}
+
+/// Print the side-effect and cost disclosure for the *resolved* invocation, so
+/// `--check` (validate-only) and custom `--out-dir` runs report their actual
+/// write behavior rather than always claiming the defaults. Rendered after
+/// `parse_options` and before any filesystem write.
+fn print_side_effect_disclosure(options: &FirstPrOptions) {
+    println!("ripr first-pr - side effects and cost disclosure");
+    println!("  cost class:      varies with diff and workspace size");
+    if options.check {
+        println!("  writes to:       none (--check validates an existing start-here packet)");
+    } else {
+        println!(
+            "  writes to:       {}/",
+            options.out_dir.trim_end_matches('/')
+        );
+    }
+    println!("  cache location:  target/ripr/cache/");
+    println!("  git reads:       yes (diff between base and head)");
+    println!("  network:         none");
+    println!("  runtime hint:    seconds on typical diffs; minutes on large diffs\n");
 }
 
 fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
