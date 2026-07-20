@@ -329,7 +329,22 @@ export class RiprClientController {
       this.client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
       this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
     );
-    await this.client.start();
+    try {
+      await this.client.start();
+    } catch (error) {
+      // A rejected start must not strand a half-initialized client: clear the
+      // reference and detach listeners so a later start() re-initializes
+      // instead of returning early against stale state.
+      const failed = this.client;
+      this.client = undefined;
+      while (this.notificationDisposables.length > 0) {
+        this.notificationDisposables.pop()?.dispose();
+      }
+      if (failed) {
+        await failed.stop().catch(() => undefined);
+      }
+      throw error;
+    }
     await this.refreshSetupStatusFiles();
     this.updateStatus({
       kind: 'analysisQueued',
