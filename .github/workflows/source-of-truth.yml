@@ -26,7 +26,7 @@ jobs:
       - name: Check document artifacts
         run: cargo xtask check-doc-artifacts
 
-      - name: Check active goals
+      - name: Check goal files are historical-only
         run: cargo xtask check-goals
 
       - name: Check support tiers
@@ -39,7 +39,7 @@ jobs:
             echo "## Source of Truth (advisory)"
             echo ""
             echo "- document artifacts: \`cargo xtask check-doc-artifacts\`"
-            echo "- active goals: \`cargo xtask check-goals\`"
+            echo "- goal files historical-only: \`cargo xtask check-goals\`"
             echo "- support tiers: \`cargo xtask check-support-tiers\`"
             echo ""
             echo "This workflow is advisory and is not a branch-protection gate."

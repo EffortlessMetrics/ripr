@@ -231,6 +231,8 @@ struct MarkdownLink {
     target: String,
 }
 
+const GOAL_FILES_HISTORICAL_BANNER: &str = "Historical record: `.ripr/goals/` files grant no selection, mutation, proof, or support authority. Live work state is GitHub issues, PRs, checks, reviews, and the local worktree; one PR's scope is its PR-local implementation slice.";
+
 #[derive(Debug, Default)]
 struct CampaignManifest {
     id: Option<String>,
@@ -240,6 +242,7 @@ struct CampaignManifest {
     lane: Option<String>,
     successor: Option<String>,
     no_current_goal: Option<bool>,
+    authority: Option<String>,
     end_state: Vec<String>,
     hard_rules: Vec<String>,
     non_goals: Vec<String>,
@@ -248,7 +251,6 @@ struct CampaignManifest {
 
 #[derive(Debug, Default)]
 struct CampaignWorkItem {
-    line: usize,
     id: Option<String>,
     status: Option<String>,
     branch: Option<String>,
@@ -65013,10 +65015,11 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
     let mut blocked_work_items = Vec::new();
     let mut done_work_items = Vec::new();
     if active_path.exists() {
+        // Historical record only: goal files grant no live authority, so a
+        // missing manifest is not a violation and scheduler-era sync rules no
+        // longer apply.
         let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
         missing_links.extend(parse_violations);
-        validate_campaign_manifest(&manifest, &mut missing_links)?;
-        missing_links.extend(campaign_source_truth_violations_for_root(root)?);
         active_goal_id = manifest.id.clone();
         active_goal_title = manifest.title.clone();
         active_goal_status = manifest.status.clone();
@@ -65030,8 +65033,6 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
                 _ => {}
             }
         }
-    } else {
-        missing_links.push(".ripr/goals/active.toml is missing".to_string());
     }
 
     let support_path = root.join(SUPPORT_TIERS_PATH);
@@ -65549,7 +65550,7 @@ Review before checking a box; `pr-body` does not infer policy impact.
 
 ## Claim boundary
 
-This PR body is generated from `.ripr/goals/active.toml` and linked artifacts where present. It does not claim the work is complete until the proof commands above are run and their results are reported.
+This PR body uses `.ripr/goals/active.toml` as historical context where present; live scope comes from the controlling GitHub issue and this PR's implementation slice. It does not claim the work is complete until the proof commands above are run and their results are reported.
 
 ## Rollback
 
@@ -65986,7 +65987,7 @@ fn closeout_next_recommendation(
             "No successor goal is recorded; next unresolved work item is `{id}` (`{status}`).\n"
         );
     }
-    "No next goal is selected in `.ripr/goals/active.toml`.\n".to_string()
+    "No next goal is recorded in the historical `.ripr/goals/active.toml`; select current work from open GitHub issues and PRs.\n".to_string()
 }
 
 fn closeout_archive_text(active_text: &str, goal_id: &str, date: &str) -> String {
@@ -66646,15 +66647,16 @@ fn goals(args: &[String]) -> Result<(), String> {
 fn check_campaign() -> Result<(), String> {
     let mut violations = stale_agent_boundary_language_violations()?;
     let manifest_path = Path::new(".ripr/goals/active.toml");
-    if !manifest_path.exists() {
-        violations.push(".ripr/goals/active.toml is missing".to_string());
-        return finish_campaign_report(&violations);
+    if manifest_path.exists() {
+        let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
+        violations.extend(parse_violations);
+        if manifest.authority.as_deref() != Some("historical_read_only") {
+            violations.push(
+                ".ripr/goals/active.toml must declare `authority = \"historical_read_only\"`; goal files are read-only compatibility artifacts and grant no selection, mutation, proof, or support authority"
+                    .to_string(),
+            );
+        }
     }
-
-    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    violations.extend(parse_violations);
-    validate_campaign_manifest(&manifest, &mut violations)?;
-    violations.extend(campaign_source_truth_violations()?);
     finish_campaign_report(&violations)
 }
 
@@ -66663,13 +66665,6 @@ fn goals_status() -> Result<(), String> {
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
     let mut violations = stale_agent_boundary_language_violations()?;
     violations.extend(parse_violations);
-    validate_campaign_manifest(&manifest, &mut violations)?;
-    validate_active_manifest_source_truth(
-        Path::new("."),
-        ".ripr/goals/active.toml",
-        &manifest,
-        &mut violations,
-    )?;
     let body = campaign_status_report_body(&manifest, &violations);
     write_report("goals.md", &body)?;
     println!("{body}");
@@ -66688,13 +66683,6 @@ fn goals_next() -> Result<(), String> {
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
     let mut violations = stale_agent_boundary_language_violations()?;
     violations.extend(parse_violations);
-    validate_campaign_manifest(&manifest, &mut violations)?;
-    validate_active_manifest_source_truth(
-        Path::new("."),
-        ".ripr/goals/active.toml",
-        &manifest,
-        &mut violations,
-    )?;
     let body = campaign_next_report_body(&manifest, &violations);
     write_report("goals-next.md", &body)?;
     println!("{body}");
@@ -66713,16 +66701,12 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
         PolicyReportSpec {
             report_file: "campaign.md",
             check: "check-campaign",
-            why_it_matters: "Codex Goals use .ripr/goals/active.toml as the durable campaign queue; drift here sends agents toward the wrong work item.",
+            why_it_matters: "Goal files under .ripr/goals are read-only historical artifacts; a file that still claims live selection or mutation authority sends agents toward the wrong source of truth.",
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
-                "Keep .ripr/goals/active.toml synchronized with docs/IMPLEMENTATION_CAMPAIGNS.md.",
-                "Keep focused tracker manifests referenced from docs and separate from .ripr/goals/active.toml.",
-                "Give done work items proof command entries.",
-                "Keep declared proposal, plan, spec, receipt, and closeout paths pointing at files that exist.",
-                "Use only done, active, ready, or blocked work item statuses.",
-                "Give every non-blocked work item a branch, acceptance claim, and valid command list.",
-                "Use blocked_by or blocked_reason when a work item is blocked.",
+                "Declare `authority = \"historical_read_only\"` in any retained .ripr/goals manifest.",
+                "Take live work selection from GitHub issues, PRs, checks, and the local worktree, not from goal files.",
+                "Keep one PR's scope in its PR-local implementation slice under .allow/spec-system/slices/.",
             ],
             rerun_command: "cargo xtask check-campaign",
             exception_template: None,
@@ -66789,769 +66773,20 @@ fn is_stale_agent_boundary_scan_target(path: &str) -> bool {
         || (path.starts_with("docs/") && (path.ends_with(".md") || path.ends_with(".toml")))
 }
 
-fn validate_campaign_manifest(
-    manifest: &CampaignManifest,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    let docs = read_text_lossy(Path::new("docs/IMPLEMENTATION_CAMPAIGNS.md"))?;
-    let mut ids = BTreeSet::new();
-    let mut statuses_by_id = BTreeMap::new();
-
-    let Some(id) = manifest.id.as_ref() else {
-        violations.push(".ripr/goals/active.toml is missing campaign `id`".to_string());
-        return Ok(());
-    };
-    if !is_kebab_case_id(id) {
-        violations.push(format!("campaign id `{id}` must use kebab-case"));
-    }
-    if !docs.contains(id) {
-        violations.push(format!(
-            "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention active campaign id `{id}`"
-        ));
-    }
-    let campaign_status = manifest.status.as_deref();
-    match campaign_status {
-        Some("active" | "closed") => {}
-        Some(status) => violations.push(format!(
-            "campaign has unsupported status `{status}`; use active or closed"
-        )),
-        None => violations.push("campaign is missing `status`".to_string()),
-    }
-    if manifest
-        .title
-        .as_ref()
-        .is_none_or(|value| value.trim().is_empty())
-    {
-        violations.push("campaign is missing non-empty `title`".to_string());
-    }
-    if manifest.end_state.is_empty() {
-        violations.push("campaign has no end_state entries".to_string());
-    }
-    if manifest.work_items.is_empty() {
-        violations.push("campaign has no [[work_item]] entries".to_string());
-    }
-
-    for item in &manifest.work_items {
-        let Some(item_id) = item.id.as_ref() else {
-            violations.push(format!("work item at line {} is missing `id`", item.line));
-            continue;
-        };
-        if !ids.insert(item_id.clone()) {
-            violations.push(format!("duplicate work item id `{item_id}`"));
-        }
-        if !is_work_item_id(item_id) {
-            violations.push(format!(
-                "work item id `{item_id}` must look like `scope/name`"
-            ));
-        }
-        if !docs.contains(&format!("`{item_id}`")) {
-            violations.push(format!(
-                "docs/IMPLEMENTATION_CAMPAIGNS.md does not list work item `{item_id}`"
-            ));
-        }
-
-        match item.status.as_deref() {
-            Some("done" | "active" | "ready" | "blocked") => {
-                if let Some(status) = item.status.as_ref() {
-                    statuses_by_id.insert(item_id.clone(), status.clone());
-                    let expected_row = format!("| `{item_id}` | {status} |");
-                    if !docs.contains(&expected_row) {
-                        violations.push(format!(
-                            "docs/IMPLEMENTATION_CAMPAIGNS.md does not show `{item_id}` as `{status}`"
-                        ));
-                    }
-                }
-            }
-            Some(status) => violations.push(format!(
-                "{item_id} (line {}) has unsupported status `{status}`; expected one of done, active, ready, blocked",
-                item.line
-            )),
-            None => violations.push(format!(
-                "{item_id} (line {}) is missing `status`",
-                item.line
-            )),
-        }
-
-        if item
-            .branch
-            .as_ref()
-            .is_none_or(|value| value.trim().is_empty())
-        {
-            violations.push(format!(
-                "{item_id} (line {}) is missing `branch`",
-                item.line
-            ));
-        }
-        if item.stackable.is_none() {
-            violations.push(format!(
-                "{item_id} (line {}) is missing `stackable`",
-                item.line
-            ));
-        }
-        if item
-            .acceptance
-            .as_ref()
-            .is_none_or(|value| value.trim().is_empty())
-        {
-            violations.push(format!(
-                "{item_id} (line {}) is missing `acceptance`",
-                item.line
-            ));
-        }
-        if item.status.as_deref() != Some("blocked") && item.commands.is_empty() {
-            violations.push(format!(
-                "{item_id} (line {}) is missing command entries",
-                item.line
-            ));
-        }
-        for command in &item.commands {
-            if !is_known_campaign_command(command) {
-                violations.push(format!(
-                    "{item_id} lists unknown or unsupported command `{command}`"
-                ));
-            }
-        }
-        if item.status.as_deref() == Some("blocked")
-            && item.blocked_by.is_empty()
-            && item
-                .blocked_reason
-                .as_ref()
-                .is_none_or(|value| value.trim().is_empty())
-        {
-            violations.push(format!(
-                "{item_id} is blocked but has no blocked_by or blocked_reason"
-            ));
-        }
-    }
-
-    if campaign_status == Some("closed") {
-        let unfinished = manifest
-            .work_items
-            .iter()
-            .filter_map(|item| {
-                let id = item.id.as_deref()?;
-                (item.status.as_deref() != Some("done")).then_some(id)
-            })
-            .collect::<Vec<_>>();
-        if !unfinished.is_empty() {
-            violations.push(format!(
-                "closed campaign has unfinished work items: {}",
-                unfinished.join(", ")
-            ));
-        }
-
-        let successor = manifest
-            .successor
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let has_no_current_goal_marker = manifest.no_current_goal == Some(true);
-        if successor.is_none() && !has_no_current_goal_marker {
-            violations.push(
-                "closed active campaign must declare `successor = \"<campaign-id>\"` or `no_current_goal = true` before it can remain in `.ripr/goals/active.toml`"
-                    .to_string(),
-            );
-        }
-        if let Some(successor) = successor {
-            if !is_kebab_case_id(successor) {
-                violations.push(format!(
-                    "campaign successor `{successor}` must use kebab-case"
-                ));
-            }
-            if successor == id {
-                violations.push(format!(
-                    "campaign successor `{successor}` must not match the closed campaign id"
-                ));
-            }
-            if !docs.contains(successor) {
-                violations.push(format!(
-                    "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention campaign successor `{successor}`"
-                ));
-            }
-        }
-    }
-
-    for item in &manifest.work_items {
-        let Some(item_id) = item.id.as_ref() else {
-            continue;
-        };
-        for dependency in &item.blocked_by {
-            match statuses_by_id.get(dependency) {
-                Some(status) if status == "done" => {}
-                Some(status) if item.status.as_deref() == Some("ready") => {
-                    violations.push(format!(
-                        "{item_id} is ready but dependency `{dependency}` is `{status}`"
-                    ));
-                }
-                Some(_) => {}
-                None => violations.push(format!(
-                    "{item_id} references missing blocked_by item `{dependency}`"
-                )),
-            }
-        }
-    }
-
-    let active_non_stackable = manifest
-        .work_items
-        .iter()
-        .filter(|item| item.status.as_deref() == Some("active") && item.stackable != Some(true))
-        .count();
-    if active_non_stackable > 1 {
-        violations.push(format!(
-            "campaign has {active_non_stackable} active non-stackable work items; use at most one"
-        ));
-    }
-
-    Ok(())
-}
-
-fn campaign_source_truth_violations() -> Result<Vec<String>, String> {
-    campaign_source_truth_violations_for_root(Path::new("."))
-}
-
-fn campaign_source_truth_violations_for_root(root: &Path) -> Result<Vec<String>, String> {
-    let mut violations = Vec::new();
-    let active_path = root.join(".ripr/goals/active.toml");
-    let (active_manifest, active_parse_violations) = parse_campaign_manifest(&active_path)?;
-    violations.extend(active_parse_violations);
-    validate_active_manifest_source_truth(
-        root,
-        ".ripr/goals/active.toml",
-        &active_manifest,
-        &mut violations,
-    )?;
-
-    let referenced = referenced_goal_manifest_paths(root)?;
-    for reference in &referenced {
-        if !root.join(reference).exists() {
-            violations.push(format!(
-                "campaign docs reference `{reference}`, but that manifest does not exist"
-            ));
-        }
-    }
-
-    for path in focused_goal_manifest_paths(root)? {
-        let normalized = normalize_repo_relative(root, &path);
-        let text = read_text_lossy(&path)?;
-        let (manifest, parse_violations) = parse_campaign_manifest(&path)?;
-        violations.extend(parse_violations);
-        validate_focused_campaign_source_truth(
-            root,
-            &normalized,
-            &text,
-            &manifest,
-            &active_manifest,
-            &mut violations,
-        )?;
-    }
-
-    Ok(violations)
-}
-
-fn validate_active_manifest_source_truth(
-    root: &Path,
-    manifest_path: &str,
-    manifest: &CampaignManifest,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    validate_active_manifest_archive_freshness(root, manifest_path, manifest, violations)?;
-
-    let artifact_paths = doc_artifact_paths_by_id(root)?;
-    for item in &manifest.work_items {
-        let item_id = item.id.as_deref().unwrap_or("<missing>");
-        validate_manifest_artifact_reference(
-            root,
-            manifest_path,
-            item_id,
-            "proposal",
-            item.proposal.as_deref(),
-            &artifact_paths,
-            violations,
-        )?;
-        validate_manifest_artifact_reference(
-            root,
-            manifest_path,
-            item_id,
-            "plan",
-            item.plan.as_deref(),
-            &artifact_paths,
-            violations,
-        )?;
-        validate_manifest_artifact_reference(
-            root,
-            manifest_path,
-            item_id,
-            "spec",
-            item.spec.as_deref(),
-            &artifact_paths,
-            violations,
-        )?;
-        for spec in &item.specs {
-            validate_manifest_artifact_reference(
-                root,
-                manifest_path,
-                item_id,
-                "specs",
-                Some(spec.as_str()),
-                &artifact_paths,
-                violations,
-            )?;
-        }
-        validate_manifest_artifact_reference(
-            root,
-            manifest_path,
-            item_id,
-            "receipt",
-            item.receipt.as_deref(),
-            &artifact_paths,
-            violations,
-        )?;
-        validate_manifest_artifact_reference(
-            root,
-            manifest_path,
-            item_id,
-            "closeout",
-            item.closeout.as_deref(),
-            &artifact_paths,
-            violations,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_active_manifest_archive_freshness(
-    root: &Path,
-    manifest_path: &str,
-    manifest: &CampaignManifest,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    if manifest.status.as_deref() == Some("closed") {
-        return Ok(());
-    }
-    let Some(active_id) = manifest.id.as_deref() else {
-        return Ok(());
-    };
-    let archive_dir = root.join(".ripr/goals/archive");
-    if !archive_dir.exists() {
-        return Ok(());
-    }
-
-    let mut archive_paths = Vec::new();
-    for entry in fs::read_dir(&archive_dir)
-        .map_err(|err| format!("read {}: {err}", normalize_path(&archive_dir)))?
-    {
-        let entry =
-            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&archive_dir)))?;
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) == Some("toml") {
-            archive_paths.push(path);
-        }
-    }
-    archive_paths.sort();
-
-    for path in archive_paths {
-        let normalized = normalize_repo_relative(root, &path);
-        let (archived_manifest, _parse_violations) = parse_campaign_manifest(&path)?;
-        if archived_manifest.id.as_deref() == Some(active_id) {
-            violations.push(format!(
-                "{manifest_path} reactivates archived campaign id `{active_id}` from `{normalized}`; select a new campaign id or restore the closed/no-current-goal manifest"
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn doc_artifact_paths_by_id(root: &Path) -> Result<BTreeMap<String, String>, String> {
-    let ledger_path = root.join(DOC_ARTIFACT_LEDGER);
-    if !ledger_path.exists() {
-        return Ok(BTreeMap::new());
-    }
-    let ledger = parse_doc_artifact_ledger(&ledger_path)?;
-    Ok(ledger
-        .artifacts
-        .into_iter()
-        .filter_map(|artifact| Some((artifact.id?, artifact.path?)))
-        .collect())
-}
-
-fn validate_manifest_artifact_reference(
-    root: &Path,
-    manifest_path: &str,
-    item_id: &str,
-    field: &str,
-    value: Option<&str>,
-    artifact_paths: &BTreeMap<String, String>,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    let reference = repo_relative_reference(value);
-    if reference.is_empty() {
-        violations.push(format!(
-            "{manifest_path}:{item_id} has empty `{field}` source-of-truth reference"
-        ));
-        return Ok(());
-    }
-    if let Some(path) = artifact_paths.get(&reference) {
-        if !root.join(path).exists() {
-            violations.push(format!(
-                "{manifest_path}:{item_id} `{field}` references registered artifact `{reference}`, but `{path}` is missing"
-            ));
-        }
-        return Ok(());
-    }
-    if manifest_artifact_id_has_matching_file(root, &reference)? || root.join(&reference).exists() {
-        return Ok(());
-    }
-    violations.push(format!(
-        "{manifest_path}:{item_id} `{field}` references missing source-of-truth artifact or path `{reference}`"
-    ));
-    Ok(())
-}
-
-fn referenced_goal_manifest_paths(root: &Path) -> Result<BTreeSet<String>, String> {
-    let mut paths = BTreeSet::new();
-    for relative in [
-        "docs/IMPLEMENTATION_CAMPAIGNS.md",
-        "docs/IMPLEMENTATION_PLAN.md",
-        "docs/ROADMAP.md",
-        "docs/REPO_TRACKING_MODEL.md",
-        "docs/CODEX_GOALS.md",
-    ] {
-        let path = root.join(relative);
-        if !path.exists() {
-            continue;
-        }
-        let text = read_text_lossy(&path)?;
-        paths.extend(extract_goal_manifest_paths(&text));
-    }
-    Ok(paths)
-}
-
-fn extract_goal_manifest_paths(text: &str) -> BTreeSet<String> {
-    let mut paths = BTreeSet::new();
-    for raw in text.split(|ch: char| {
-        ch.is_whitespace()
-            || matches!(
-                ch,
-                '`' | '"' | '\'' | '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';'
-            )
-    }) {
-        let mut token = raw.trim_end_matches(|ch: char| {
-            matches!(ch, '.' | ':' | ',' | ';' | ')' | ']') && !raw.ends_with(".toml")
-        });
-        while let Some(stripped) = token.strip_prefix("../") {
-            token = stripped;
-        }
-        if let Some(index) = token.find(".ripr/goals/") {
-            let candidate = &token[index..];
-            if candidate.ends_with(".toml") {
-                paths.insert(
-                    normalize_slashes(candidate)
-                        .trim_start_matches("./")
-                        .to_string(),
-                );
-            }
-        }
-    }
-    paths
-}
-
-fn focused_goal_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let goals_dir = root.join(".ripr/goals");
-    let mut paths = Vec::new();
-    let entries = fs::read_dir(&goals_dir)
-        .map_err(|err| format!("read {}: {err}", normalize_path(&goals_dir)))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&goals_dir)))?;
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
-            continue;
-        }
-        let normalized = normalize_repo_relative(root, &path);
-        if normalized == ".ripr/goals/active.toml" {
-            continue;
-        }
-        let text = read_text_lossy(&path)?;
-        let (manifest, _) = parse_campaign_manifest(&path)?;
-        if is_focused_campaign_manifest(&normalized, &text, &manifest) {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
-}
-
-fn is_focused_campaign_manifest(path: &str, text: &str, manifest: &CampaignManifest) -> bool {
-    path.starts_with(".ripr/goals/lane")
-        || text.contains("Focused")
-        || manifest.status.as_deref() == Some("tracker")
-        || manifest.issue.is_some()
-        || manifest.lane.is_some()
-}
-
-fn validate_focused_campaign_source_truth(
-    root: &Path,
-    manifest_path: &str,
-    text: &str,
-    manifest: &CampaignManifest,
-    active_manifest: &CampaignManifest,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    if !text.contains("not the active Codex Goals manifest") {
-        violations.push(format!(
-            "focused tracker manifest `{manifest_path}` must state that it is not the active Codex Goals manifest"
-        ));
-    }
-    if manifest.id.is_some() && manifest.id == active_manifest.id {
-        violations.push(format!(
-            "focused tracker manifest `{manifest_path}` reuses the active campaign id `{}`",
-            manifest.id.as_deref().unwrap_or("<missing>")
-        ));
-    }
-    if manifest.title.is_some() && manifest.title == active_manifest.title {
-        violations.push(format!(
-            "focused tracker manifest `{manifest_path}` reuses the active campaign title `{}`",
-            manifest.title.as_deref().unwrap_or("<missing>")
-        ));
-    }
-
-    for item in &manifest.work_items {
-        let item_id = item.id.as_deref().unwrap_or("<missing>");
-        if item.status.as_deref() == Some("done") && item.commands.is_empty() {
-            violations.push(format!(
-                "{manifest_path}:{item_id} is done but has no proof command entries"
-            ));
-        }
-        validate_manifest_artifact_path(
-            root,
-            manifest_path,
-            item_id,
-            "proposal",
-            item.proposal.as_deref(),
-            violations,
-        );
-        validate_manifest_artifact_path(
-            root,
-            manifest_path,
-            item_id,
-            "plan",
-            item.plan.as_deref(),
-            violations,
-        );
-        validate_manifest_artifact_path(
-            root,
-            manifest_path,
-            item_id,
-            "spec",
-            item.spec.as_deref(),
-            violations,
-        );
-        for spec in &item.specs {
-            validate_manifest_artifact_path(
-                root,
-                manifest_path,
-                item_id,
-                "specs",
-                Some(spec.as_str()),
-                violations,
-            );
-        }
-        validate_manifest_artifact_path(
-            root,
-            manifest_path,
-            item_id,
-            "receipt",
-            item.receipt.as_deref(),
-            violations,
-        );
-        validate_manifest_artifact_path(
-            root,
-            manifest_path,
-            item_id,
-            "closeout",
-            item.closeout.as_deref(),
-            violations,
-        );
-        if let Some(acceptance) = item.acceptance.as_ref() {
-            for spec_id in extract_spec_ids(acceptance) {
-                if !spec_id_has_file(root, &spec_id)? {
-                    violations.push(format!(
-                        "{manifest_path}:{item_id} references `{spec_id}` in acceptance, but docs/specs has no matching file"
-                    ));
-                }
-            }
-        }
-    }
-
-    if manifest.status.as_deref() == Some("closed") {
-        validate_closed_manifest_capability_next(root, manifest_path, violations)?;
-    }
-
-    Ok(())
-}
-
-fn validate_manifest_artifact_path(
-    root: &Path,
-    manifest_path: &str,
-    item_id: &str,
-    field: &str,
-    value: Option<&str>,
-    violations: &mut Vec<String>,
-) {
-    let Some(value) = value else {
-        return;
-    };
-    let relative = repo_relative_reference(value);
-    if relative.is_empty() {
-        violations.push(format!(
-            "{manifest_path}:{item_id} has empty `{field}` source-of-truth path"
-        ));
-        return;
-    }
-    if !root.join(&relative).exists() {
-        violations.push(format!(
-            "{manifest_path}:{item_id} `{field}` references missing `{relative}`"
-        ));
-    }
-}
-
-fn validate_closed_manifest_capability_next(
-    root: &Path,
-    manifest_path: &str,
-    violations: &mut Vec<String>,
-) -> Result<(), String> {
-    let matrix_path = root.join("docs/CAPABILITY_MATRIX.md");
-    if !matrix_path.exists() {
-        return Ok(());
-    }
-    let matrix = read_text_lossy(&matrix_path)?;
-    for (index, line) in matrix.lines().enumerate() {
-        if !line.starts_with('|') || !line.contains(manifest_path) {
-            continue;
-        }
-        let columns = line
-            .trim_matches('|')
-            .split('|')
-            .map(|column| column.trim().trim_matches('`'))
-            .collect::<Vec<_>>();
-        if columns.len() < 5 {
-            continue;
-        }
-        if columns[4] != "maintenance" {
-            violations.push(format!(
-                "docs/CAPABILITY_MATRIX.md:{} references closed manifest `{manifest_path}` but next is `{}` instead of `maintenance`",
-                index + 1,
-                columns[4]
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn repo_relative_reference(value: &str) -> String {
-    let mut normalized = normalize_slashes(value)
-        .trim()
-        .trim_matches('`')
-        .trim_matches('"')
-        .to_string();
-    while let Some(stripped) = normalized.strip_prefix("../") {
-        normalized = stripped.to_string();
-    }
-    normalized.trim_start_matches("./").to_string()
-}
-
 fn normalize_repo_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map(normalize_path)
         .unwrap_or_else(|_| normalize_path(path))
 }
-
-fn extract_spec_ids(text: &str) -> BTreeSet<String> {
-    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
-        .filter(|part| is_spec_id(part))
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn spec_id_has_file(root: &Path, spec_id: &str) -> Result<bool, String> {
-    let specs_dir = root.join("docs/specs");
-    if !specs_dir.exists() {
-        return Ok(false);
-    }
-    for entry in fs::read_dir(&specs_dir)
-        .map_err(|err| format!("read {}: {err}", normalize_path(&specs_dir)))?
-    {
-        let entry =
-            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&specs_dir)))?;
-        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
-            continue;
-        };
-        if name
-            .strip_prefix(spec_id)
-            .is_some_and(|rest| rest.starts_with('-') && rest.ends_with(".md"))
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn manifest_artifact_id_has_matching_file(root: &Path, artifact_id: &str) -> Result<bool, String> {
-    if is_spec_id(artifact_id) {
-        return spec_id_has_file(root, artifact_id);
-    }
-    let Some(directory) = artifact_id_fallback_directory(artifact_id) else {
-        return Ok(false);
-    };
-    artifact_id_has_markdown_file(root, directory, artifact_id)
-}
-
-fn artifact_id_fallback_directory(artifact_id: &str) -> Option<&'static str> {
-    if artifact_id.starts_with("RIPR-PROP-") {
-        Some("docs/proposals")
-    } else {
-        None
-    }
-}
-
-fn artifact_id_has_markdown_file(
-    root: &Path,
-    directory: &str,
-    artifact_id: &str,
-) -> Result<bool, String> {
-    let dir = root.join(directory);
-    if !dir.exists() {
-        return Ok(false);
-    }
-    for entry in
-        fs::read_dir(&dir).map_err(|err| format!("read {}: {err}", normalize_path(&dir)))?
-    {
-        let entry = entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&dir)))?;
-        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
-            continue;
-        };
-        if name
-            .strip_prefix(artifact_id)
-            .is_some_and(|rest| rest.starts_with('-') && rest.ends_with(".md"))
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 fn campaign_status_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
     let status = if violations.is_empty() {
         "pass"
     } else {
         "fail"
     };
-    let mut body = format!("# ripr goals status\n\nStatus: {status}\n\n");
-    body.push_str("## Campaign\n\n");
+    let mut body =
+        format!("# ripr goals status\n\nStatus: {status}\n\n{GOAL_FILES_HISTORICAL_BANNER}\n");
+    body.push_str("## Campaign (historical record)\n\n");
     body.push_str(&format!(
         "- id: `{}`\n",
         manifest.id.as_deref().unwrap_or("<missing>")
@@ -67591,8 +66826,9 @@ fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String])
     } else {
         "fail"
     };
-    let mut body = format!("# ripr goals next\n\nStatus: {status}\n\n");
-    body.push_str("## Ready Work Items\n\n");
+    let mut body =
+        format!("# ripr goals next\n\nStatus: {status}\n\n{GOAL_FILES_HISTORICAL_BANNER}\n");
+    body.push_str("## Ready Work Items (historical record)\n\n");
     let ready = manifest
         .work_items
         .iter()
@@ -67674,7 +66910,7 @@ fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String])
                 "The active manifest is closed and records successor `{successor}`; do not continue the closed campaign or infer a different successor from chat history.\n\n",
             ));
             body.push_str(
-                "Record or select the successor campaign in `.ripr/goals/active.toml` before starting behavior work.\n\n",
+                "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`.\n\n",
             );
         }
         if manifest.status.as_deref() == Some("closed") && manifest.no_current_goal == Some(true) {
@@ -67689,7 +66925,7 @@ fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String])
             body.push_str("- accepted proposals, specs, ADRs, and campaign plans\n");
             body.push_str("- open issues that cite those repo artifacts\n\n");
             body.push_str(
-                "Record the selected successor in `.ripr/goals/active.toml` before starting behavior work.\n\n",
+                "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`.\n\n",
             );
         }
     } else {
@@ -67768,10 +67004,7 @@ fn parse_campaign_manifest(path: &Path) -> Result<(CampaignManifest, Vec<String>
             if let Some(item) = current.take() {
                 manifest.work_items.push(item);
             }
-            current = Some(CampaignWorkItem {
-                line: line_number,
-                ..CampaignWorkItem::default()
-            });
+            current = Some(CampaignWorkItem::default());
             continue;
         }
         let Some((key, value)) = trimmed.split_once('=') else {
@@ -67923,6 +67156,9 @@ fn assign_campaign_scalar(
             "no_current_goal" => {
                 manifest.no_current_goal = parse_campaign_bool(value, line_number, violations);
             }
+            "authority" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.authority = Some(parsed);
+            }),
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
             )),
@@ -67973,38 +67209,6 @@ fn is_kebab_case_id(value: &str) -> bool {
         }
     }
     saw_char && !previous_dash
-}
-
-fn is_work_item_id(value: &str) -> bool {
-    let Some((scope, name)) = value.split_once('/') else {
-        return false;
-    };
-    is_kebab_case_id(scope) && is_kebab_case_id(name)
-}
-
-fn is_known_campaign_command(command: &str) -> bool {
-    let trimmed = command.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    if let Some(rest) = trimmed.strip_prefix("cargo xtask ") {
-        let command_name = rest.split_whitespace().next().unwrap_or_default();
-        return known_xtask_command(command_name);
-    }
-    if let Some(rest) = trimmed.strip_prefix("cargo-allow ") {
-        let command_name = rest.split_whitespace().next().unwrap_or_default();
-        return matches!(command_name, "doctor" | "check" | "worklist")
-            && rest.contains("--profile spec-system")
-            && rest.contains("--config .allow/profiles/spec-system.toml");
-    }
-    trimmed.starts_with("cargo fmt")
-        || trimmed.starts_with("cargo check")
-        || trimmed.starts_with("cargo test")
-        || trimmed.starts_with("cargo clippy")
-        || trimmed.starts_with("cargo doc")
-        || trimmed.starts_with("cargo package")
-        || trimmed.starts_with("cargo publish")
-        || trimmed.starts_with("npm ")
 }
 
 fn known_xtask_command(command: &str) -> bool {
@@ -76201,12 +75405,11 @@ mod tests {
         badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
         badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
         build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_doc_artifacts, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_support_tiers,
-        check_workflows, ci_full_evidence_gates, cockpit_json, cockpit_markdown,
-        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_doc_artifacts,
+        check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
+        check_network_policy, check_no_panic_family, check_process_policy, check_static_language,
+        check_support_tiers, check_workflows, ci_full_evidence_gates, cockpit_json,
+        cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings, command_catalog,
         command_catalog_violations, commands_report_json, commands_report_markdown,
         critic_findings, days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
         dogfood_bun_ub_cross_language_run, dogfood_bun_ub_cross_language_scenarios,
@@ -76245,14 +75448,14 @@ mod tests {
         guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
         install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
-        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, lane1_actionable_gap_packets_json,
-        lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
-        lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
+        is_non_rust_programming_candidate, is_policy_path, is_production_path,
+        is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook, is_snake_case_id,
+        is_spec_id, is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_actionable_gap_packets_json, lane1_actionable_gap_packets_markdown,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
+        lane1_evidence_audit_repo_exposure_args,
         lane1_evidence_audit_report_from_complete_repo_exposure,
         lane1_evidence_audit_timeout_error, lane1_readiness_packet_specs,
         limited_badge_artifacts_json, limited_badge_artifacts_markdown,
@@ -87996,44 +87199,6 @@ commands = [
     }
 
     #[test]
-    fn campaign_command_validator_accepts_known_repo_commands() {
-        assert!(is_known_campaign_command("cargo xtask check-pr"));
-        assert!(is_known_campaign_command("cargo xtask goals status"));
-        assert!(is_known_campaign_command("cargo xtask reports index"));
-        assert!(is_known_campaign_command("cargo xtask receipts check"));
-        assert!(is_known_campaign_command("cargo xtask golden-drift"));
-        assert!(is_known_campaign_command(
-            "cargo xtask check-allow-attributes"
-        ));
-        assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
-        assert!(is_known_campaign_command(
-            "cargo xtask test-efficiency-report"
-        ));
-        assert!(is_known_campaign_command("cargo xtask dogfood"));
-        assert!(is_known_campaign_command("cargo test --workspace"));
-        assert!(is_known_campaign_command(
-            "cargo-allow doctor --profile spec-system --config .allow/profiles/spec-system.toml --format json"
-        ));
-        assert!(is_known_campaign_command(
-            "cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit --format json"
-        ));
-        assert!(is_known_campaign_command(
-            "cargo-allow worklist --profile spec-system --config .allow/profiles/spec-system.toml --format json"
-        ));
-        assert!(!is_known_campaign_command(
-            "cargo-allow audit --profile spec-system --config .allow/profiles/spec-system.toml"
-        ));
-        assert!(!is_known_campaign_command(
-            "cargo-allow check --profile spec-system"
-        ));
-        assert!(!is_known_campaign_command("cargo xtask missing-command"));
-        assert!(!is_known_campaign_command(""));
-
-        let manifest = CampaignManifest::default();
-        assert!(manifest.work_items.is_empty());
-    }
-
-    #[test]
     fn test_oracle_parser_classifies_strong_weak_and_smoke_tests() {
         let source = r#"
 #[test]
@@ -99402,20 +98567,21 @@ metric = "language_adapter_python_repair_routing_quality_metrics"
     }
 
     #[test]
-    fn repo_contract_report_warns_when_active_goal_is_missing() -> Result<(), String> {
+    fn repo_contract_report_treats_goal_manifest_as_optional_historical() -> Result<(), String> {
         with_temp_cwd("repo-contract-report-missing-active-goal", |root| {
             write_repo_contract_report_fixture(root, false);
 
             let summary = super::repo_contract_summary(root)?;
-            assert_eq!(super::repo_contract_report_status(&summary), "warn");
-            assert!(
-                summary
-                    .missing_links
-                    .iter()
-                    .any(|link| link.contains(".ripr/goals/active.toml is missing")),
-                "{:#?}",
-                summary.missing_links
-            );
+            if summary
+                .missing_links
+                .iter()
+                .any(|link| link.contains(".ripr/goals/active.toml"))
+            {
+                return Err(format!(
+                    "missing historical goal manifest must not be a violation: {:#?}",
+                    summary.missing_links
+                ));
+            }
             Ok(())
         })
     }
@@ -99926,90 +99092,6 @@ stackable = true
     }
 
     #[test]
-    fn campaign_manifest_accepts_closed_when_all_work_items_are_done_with_successor() {
-        with_temp_cwd("campaign-closed", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "closed-campaign\nnext-campaign\n\n| `docs/test` | done |\n",
-            );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-successor = "next-campaign"
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
-
-            assert!(violations.is_empty(), "{violations:?}");
-        });
-    }
-
-    #[test]
-    fn campaign_manifest_accepts_closed_with_no_current_goal_marker() {
-        with_temp_cwd("campaign-closed-no-current-goal", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "closed-campaign\n\n| `docs/test` | done |\n",
-            );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-no_current_goal = true
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
-
-            assert!(violations.is_empty(), "{violations:?}");
-        });
-    }
-
-    #[test]
     fn goals_next_reports_no_current_goal_guidance() {
         let manifest = CampaignManifest {
             status: Some("closed".to_string()),
@@ -100024,7 +99106,10 @@ commands = ["cargo xtask check-pr"]
         assert!(body.contains(
             "do not continue the closed campaign or infer a successor from chat history"
         ));
-        assert!(body.contains("Record the selected successor in `.ripr/goals/active.toml`"));
+        assert!(body.contains(
+            "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`."
+        ));
+        assert!(body.contains("Historical record:"));
     }
 
     #[test]
@@ -100119,197 +99204,227 @@ commands = ["cargo xtask check-pr"]
         assert!(body.contains("## Successor Goal"));
         assert!(body.contains("records successor `next-campaign`"));
         assert!(body.contains("do not continue the closed campaign"));
-        assert!(
-            body.contains("Record or select the successor campaign in `.ripr/goals/active.toml`")
-        );
+        assert!(body.contains(
+            "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`."
+        ));
         assert!(!body.contains("## No Current Goal"));
     }
 
-    #[test]
-    fn campaign_manifest_rejects_closed_without_successor_or_no_current_goal_marker() {
-        with_temp_cwd("campaign-closed-stale", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "closed-campaign\n\n| `docs/test` | done |\n",
-            );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
-
-            assert!(
-                violations
-                    .iter()
-                    .any(|violation| violation.contains("closed active campaign must declare")),
-                "{violations:?}"
-            );
-        });
+    fn slice_test_repo_root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
 
     #[test]
-    fn campaign_manifest_rejects_closed_with_unfinished_work_items() {
-        with_temp_cwd("campaign-closed-unfinished", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "closed-campaign\n\n| `docs/test` | ready |\n",
-            );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "ready"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
-
-            assert!(
-                violations.iter().any(|violation| violation
-                    .contains("closed campaign has unfinished work items: docs/test")),
-                "{violations:?}"
-            );
-        });
+    fn spec_system_profile_is_current_v2_without_goal_root() -> Result<(), String> {
+        let profile = std::fs::read_to_string(
+            slice_test_repo_root().join(".allow/profiles/spec-system.toml"),
+        )
+        .map_err(|err| format!("read spec-system profile: {err}"))?;
+        if !profile.contains("generation = \"current-v2\"") {
+            return Err("profile must declare current-v2 generation".to_string());
+        }
+        if profile.lines().any(|line| line.starts_with("goals =")) {
+            return Err("current-v2 profile must not declare a goals root".to_string());
+        }
+        if profile.contains("active_goal_required") {
+            return Err("current-v2 profile must not require an active goal".to_string());
+        }
+        Ok(())
     }
 
     #[test]
-    fn campaign_manifest_rejects_done_work_item_without_proof_commands() {
-        with_temp_cwd("campaign-done-without-proof", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "active-campaign\n\n| `docs/test` | done |\n",
+    fn goal_manifest_without_authority_marker_is_flagged() -> Result<(), String> {
+        let root =
+            std::env::temp_dir().join(format!("ripr-goal-authority-marker-{}", std::process::id()));
+        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture root: {err}"))?;
+        let manifest_path = root.join("active.toml");
+        std::fs::write(
+            &manifest_path,
+            "id = \"legacy-campaign\"\nstatus = \"active\"\nlane = \"lane1\"\n",
+        )
+        .map_err(|err| format!("write manifest fixture: {err}"))?;
+        let parsed = super::parse_campaign_manifest(&manifest_path);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture root: {err}"))?;
+        let (manifest, violations) = parsed?;
+        if !violations.is_empty() {
+            return Err(format!("fixture must parse: {violations:?}"));
+        }
+        if manifest.authority.as_deref() == Some("historical_read_only") {
+            return Err(
+                "legacy manifest without the marker must fail the authority condition".to_string(),
             );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["Active proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
-
-            // Gate-feedback contract: the violation names the work_item id, the
-            // exact line, and the missing field so an agent can jump straight to
-            // the offending row instead of re-deriving it.
-            assert!(
-                violations.iter().any(|violation| {
-                    violation.contains("docs/test")
-                        && violation.contains("(line ")
-                        && violation.contains("is missing command entries")
-                }),
-                "{violations:?}"
-            );
-        });
+        }
+        Ok(())
     }
 
     #[test]
-    fn campaign_manifest_rejects_unknown_work_item_proof_command() {
-        with_temp_cwd("campaign-unknown-proof-command", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "active-campaign\n\n| `docs/test` | ready |\n",
+    fn goal_manifest_legacy_fields_grant_no_authority() -> Result<(), String> {
+        let root =
+            std::env::temp_dir().join(format!("ripr-goal-legacy-fields-{}", std::process::id()));
+        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture root: {err}"))?;
+        let manifest_path = root.join("active.toml");
+        std::fs::write(
+            &manifest_path,
+            "id = \"legacy-campaign\"\nstatus = \"active\"\nlane = \"lane1\"\n\n[[work_item]]\nid = \"scope/name\"\nstatus = \"ready\"\nbranch = \"codex/scope-name\"\n",
+        )
+        .map_err(|err| format!("write manifest fixture: {err}"))?;
+        let parsed = super::parse_campaign_manifest(&manifest_path);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture root: {err}"))?;
+        let (manifest, violations) = parsed?;
+        if !violations.is_empty() {
+            return Err(format!("fixture must parse: {violations:?}"));
+        }
+        // Legacy `active` / `ready` / `branch` / `lane` data must not grant
+        // selection authority: the report is bannered historical and the
+        // authority condition still flags the manifest.
+        if manifest.authority.as_deref() == Some("historical_read_only") {
+            return Err(
+                "unmarked manifest unexpectedly passed the authority condition".to_string(),
             );
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["Active proof exists."]
+        }
+        let body = super::campaign_next_report_body(&manifest, &[]);
+        if !body.contains("Historical record:")
+            || !body.contains("## Ready Work Items (historical record)")
+        {
+            return Err("goals next lost its historical banner".to_string());
+        }
+        Ok(())
+    }
 
-[[work_item]]
-id = "docs/test"
-status = "ready"
-branch = "docs-test"
-stackable = false
-acceptance = "Proof command must be known."
-commands = ["cargo xtask missing-command"]
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok(), "{result:?}");
-            let (manifest, parse_violations) = match result {
-                Ok(value) => value,
-                Err(_) => return,
-            };
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
+    #[test]
+    fn goals_next_is_a_historical_report_not_a_selection() -> Result<(), String> {
+        let manifest = CampaignManifest {
+            status: Some("active".to_string()),
+            work_items: vec![super::CampaignWorkItem {
+                id: Some("scope/name".to_string()),
+                status: Some("ready".to_string()),
+                branch: Some("codex/scope-name".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let body = super::campaign_next_report_body(&manifest, &[]);
+        if !body.contains("Historical record:") {
+            return Err("goals next lost its historical banner".to_string());
+        }
+        for retired in [
+            "Record the selected successor",
+            "Record or select the successor",
+            "before starting behavior work",
+        ] {
+            if body.contains(retired) {
+                return Err(format!(
+                    "goals next still instructs manifest selection: {retired}"
+                ));
+            }
+        }
+        Ok(())
+    }
 
-            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
-            assert!(validation.is_ok(), "{validation:?}");
+    #[test]
+    fn implementation_slices_validate_and_coexist() -> Result<(), String> {
+        fn validate_slice(text: &str) -> Result<(), String> {
+            for required in [
+                "schema_version = \"2.0\"",
+                "id = \"",
+                "generation = ",
+                "source_issue = \"",
+                "design_reference = \"",
+                "change_class = \"",
+                "claim_boundary",
+                "non_goals",
+                "return_conditions",
+                "owned_seams",
+                "shared_seams",
+                "forbidden_seams",
+                "[[requirement_delta]]",
+                "requirement_id = \"",
+                "[implementation_claim]",
+                "[evidence]",
+                "[support_claim]",
+            ] {
+                if !text.contains(required) {
+                    return Err(format!("slice is missing {required}"));
+                }
+            }
+            for line in text.lines() {
+                let key = line.split('=').next().unwrap_or_default().trim();
+                for forbidden in [
+                    "branch",
+                    "worktree",
+                    "pull_request",
+                    "pr_number",
+                    "ci_status",
+                    "reviewer",
+                    "worker",
+                    "assignee",
+                    "priority",
+                    "timing",
+                    "schedule",
+                    "progress",
+                    "percent_complete",
+                    "session",
+                    "model",
+                ] {
+                    if key == forbidden {
+                        return Err(format!("slice carries live state field `{forbidden}`"));
+                    }
+                }
+            }
+            Ok(())
+        }
 
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    "docs/test lists unknown or unsupported command `cargo xtask missing-command`"
-                )),
-                "{violations:?}"
-            );
-        });
+        let slice_dir = slice_test_repo_root().join(".allow/spec-system/slices");
+        let mut validated = 0;
+        let entries =
+            std::fs::read_dir(&slice_dir).map_err(|err| format!("read slices directory: {err}"))?;
+        for entry in entries {
+            let path = entry.map_err(|err| format!("slice entry: {err}"))?.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path)
+                .map_err(|err| format!("read slice {}: {err}", path.display()))?;
+            validate_slice(&text).map_err(|err| format!("{}: {err}", path.display()))?;
+            validated += 1;
+        }
+        if validated == 0 {
+            return Err("expected at least one checked-in slice".to_string());
+        }
+
+        // Coexistence: a second, unrelated slice validates alongside the
+        // checked-in one; no slice acts as a current or active pointer.
+        let second = r#"schema_version = "2.0"
+id = "ripr.slice.unrelated-change.v1"
+generation = 1
+source_issue = "issue:9999"
+design_reference = "RIPR-SPEC-9999#example"
+change_class = "behavior_change"
+claim_boundary = "One bounded change only."
+non_goals = ["unrelated refactoring"]
+return_conditions = ["Return to root if the requirement is stale."]
+owned_seams = ["seam:ripr:xtask:example"]
+shared_seams = []
+forbidden_seams = []
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-9999#example"
+requirement_generation = 1
+[implementation_claim]
+status = "implemented"
+[evidence]
+state = "outstanding"
+[support_claim]
+state = "unchanged"
+"#;
+        validate_slice(second)?;
+        let with_live_state = second.replace(
+            "change_class = \"behavior_change\"",
+            "change_class = \"behavior_change\"\nbranch = \"codex/unrelated\"",
+        );
+        if validate_slice(&with_live_state).is_ok() {
+            return Err("slice carrying branch state must be rejected".to_string());
+        }
+        Ok(())
     }
 
     #[test]
@@ -100332,646 +99447,6 @@ commands = ["cargo xtask missing-command"]
         assert!(!body.contains(
             "do not continue the closed campaign or infer a successor from chat history"
         ));
-    }
-
-    #[test]
-    fn active_manifest_rejects_archived_campaign_reactivation() -> Result<(), String> {
-        with_temp_cwd("campaign-archived-reactivation", |root| {
-            let active_path = root.join(".ripr/goals/active.toml");
-            write(
-                &active_path,
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "active"
-end_state = ["Reactivated stale work."]
-
-[[work_item]]
-id = "docs/test"
-status = "ready"
-branch = "docs-test"
-stackable = false
-acceptance = "Reactivated stale work."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            write(
-                &root.join(".ripr/goals/archive/2026-05-21-closed-campaign.toml"),
-                r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-no_current_goal = true
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-
-            let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    ".ripr/goals/active.toml reactivates archived campaign id `closed-campaign`"
-                )),
-                "{violations:?}"
-            );
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn active_manifest_allows_closed_archived_campaign_history() -> Result<(), String> {
-        with_temp_cwd("campaign-closed-archived-history", |root| {
-            let active_path = root.join(".ripr/goals/active.toml");
-            let closed_manifest = r#"
-id = "closed-campaign"
-title = "Closed Campaign"
-status = "closed"
-no_current_goal = true
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#;
-            write(&active_path, closed_manifest);
-            write(
-                &root.join(".ripr/goals/archive/2026-05-21-closed-campaign.toml"),
-                closed_manifest,
-            );
-
-            let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            assert!(violations.is_empty(), "{violations:?}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn active_manifest_archive_check_ignores_historical_schema_drift() -> Result<(), String> {
-        with_temp_cwd("campaign-archive-schema-drift", |root| {
-            let active_path = root.join(".ripr/goals/active.toml");
-            write(
-                &active_path,
-                r#"
-id = "new-campaign"
-title = "New Campaign"
-status = "active"
-end_state = ["New active work."]
-
-[[work_item]]
-id = "docs/test"
-status = "ready"
-branch = "docs-test"
-stackable = false
-acceptance = "New active work."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            write(
-                &root.join(".ripr/goals/archive/2026-05-21-old-campaign.toml"),
-                r#"
-id = "old-campaign"
-title = "Old Campaign"
-status = "closed"
-no_current_goal = true
-end_state = ["Closed proof exists."]
-
-[[work_item]]
-id = "docs/test"
-status = "done"
-branch = "docs-test"
-stackable = false
-fixture = "fixtures/old-campaign/corpus.json"
-acceptance = "Closed proof exists."
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-
-            let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-            assert!(parse_violations.is_empty(), "{parse_violations:?}");
-            let mut violations = Vec::new();
-
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            assert!(violations.is_empty(), "{violations:?}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn campaign_source_truth_accepts_focused_tracker_with_proof_links() -> Result<(), String> {
-        let violations = with_temp_cwd("campaign-source-truth-focused", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
-            );
-            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
-            write(&root.join("docs/ROADMAP.md"), "");
-            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
-            write(&root.join("docs/CODEX_GOALS.md"), "");
-            write(
-                &root.join("docs/CAPABILITY_MATRIX.md"),
-                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `maintenance` | focused_metric |\n",
-            );
-            write(
-                &root.join("docs/specs/RIPR-SPEC-0999-focused.md"),
-                "# Spec\n",
-            );
-            write(
-                &root.join("docs/proposals/RIPR-PROP-0999-focused.md"),
-                "# Proposal\n",
-            );
-            write(
-                &root.join("docs/handoffs/focused-receipt.md"),
-                "# Receipt\n",
-            );
-            write(
-                &root.join("docs/handoffs/focused-closeout.md"),
-                "# Closeout\n",
-            );
-            write(
-                &root.join(".ripr/goals/active.toml"),
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "closed"
-end_state = ["closed"]
-
-[[work_item]]
-id = "docs/active"
-status = "done"
-branch = "docs-active"
-stackable = false
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            write(
-                &root.join(".ripr/goals/lane9-focused.toml"),
-                r#"
-id = "focused-tracker"
-title = "Focused Tracker"
-status = "closed"
-lane = 9
-
-# Focused tracker. This is not the active Codex Goals manifest.
-
-end_state = ["focused tracker closed"]
-
-[[work_item]]
-id = "spec/focused-contract"
-status = "done"
-branch = "spec-focused-contract"
-stackable = false
-proposal = "docs/proposals/RIPR-PROP-0999-focused.md"
-spec = "docs/specs/RIPR-SPEC-0999-focused.md"
-receipt = "docs/handoffs/focused-receipt.md"
-closeout = "docs/handoffs/focused-closeout.md"
-acceptance = "RIPR-SPEC-0999 defines the focused contract."
-commands = ["cargo xtask check-spec-format"]
-"#,
-            );
-
-            campaign_source_truth_violations_for_root(root)
-        })?;
-
-        assert!(violations.is_empty(), "{violations:?}");
-        Ok(())
-    }
-
-    #[test]
-    fn active_manifest_source_truth_accepts_registered_ids_and_existing_paths() -> Result<(), String>
-    {
-        with_temp_cwd("active-source-truth-valid", |root| {
-            write_doc_artifact_fixture(
-                root,
-                "docs/proposals/RIPR-PROP-0001-valid.md",
-                "RIPR-PROP-0001",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "plans/example/implementation-plan.md",
-                "RIPR-PLAN-0001",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "docs/specs/RIPR-SPEC-0009-fallback.md",
-                "RIPR-SPEC-0009",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "docs/specs/RIPR-SPEC-0001-valid.md",
-                "RIPR-SPEC-0001",
-            );
-            write(&root.join("docs/handoffs/valid-receipt.md"), "# Receipt\n");
-            write(
-                &root.join("docs/handoffs/valid-closeout.md"),
-                "# Closeout\n",
-            );
-            write_doc_artifact_ledger_fixture(
-                root,
-                r#"
-schema_version = "1.0"
-
-[[artifact]]
-id = "RIPR-PLAN-0001"
-path = "plans/example/implementation-plan.md"
-"#,
-            );
-            let manifest_path = root.join(".ripr/goals/active.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["done"]
-
-[[work_item]]
-id = "docs/valid"
-status = "done"
-branch = "docs-valid"
-stackable = false
-proposal = "RIPR-PROP-0001"
-plan = "RIPR-PLAN-0001"
-spec = "RIPR-SPEC-0009"
-specs = ["docs/specs/RIPR-SPEC-0001-valid.md"]
-receipt = "docs/handoffs/valid-receipt.md"
-closeout = "docs/handoffs/valid-closeout.md"
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let (manifest, parse_violations) = super::parse_campaign_manifest(&manifest_path)?;
-            if !parse_violations.is_empty() {
-                return Err(format!("unexpected parse violations: {parse_violations:?}"));
-            }
-
-            let mut violations = Vec::new();
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            if !violations.is_empty() {
-                return Err(format!(
-                    "unexpected active source truth violations: {violations:?}"
-                ));
-            }
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn active_manifest_source_truth_reports_missing_artifact_references() -> Result<(), String> {
-        with_temp_cwd("active-source-truth-missing", |root| {
-            write_doc_artifact_fixture(
-                root,
-                "docs/proposals/RIPR-PROP-0001-other.md",
-                "RIPR-PROP-0001",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "plans/example/implementation-plan.md",
-                "RIPR-PLAN-0001",
-            );
-            write_doc_artifact_ledger_fixture(
-                root,
-                r#"
-schema_version = "1.0"
-
-[[artifact]]
-id = "RIPR-PLAN-0001"
-path = "plans/example/implementation-plan.md"
-"#,
-            );
-            let manifest_path = root.join(".ripr/goals/active.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["done"]
-
-[[work_item]]
-id = "docs/missing"
-status = "ready"
-branch = "docs-missing"
-stackable = false
-proposal = "RIPR-PROP-0999"
-plan = "RIPR-PLAN-0001"
-spec = "docs/specs/missing.md"
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let (manifest, parse_violations) = super::parse_campaign_manifest(&manifest_path)?;
-            if !parse_violations.is_empty() {
-                return Err(format!("unexpected parse violations: {parse_violations:?}"));
-            }
-
-            let mut violations = Vec::new();
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    ".ripr/goals/active.toml:docs/missing `proposal` references missing source-of-truth artifact or path `RIPR-PROP-0999`"
-                )),
-                "{violations:?}"
-            );
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    ".ripr/goals/active.toml:docs/missing `spec` references missing source-of-truth artifact or path `docs/specs/missing.md`"
-                )),
-                "{violations:?}"
-            );
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn active_manifest_source_truth_reports_empty_and_registered_missing_references()
-    -> Result<(), String> {
-        with_temp_cwd("active-source-truth-empty-registered-missing", |root| {
-            write_doc_artifact_fixture(
-                root,
-                "docs/specs/RIPR-SPEC-0001-valid.md",
-                "RIPR-SPEC-0001",
-            );
-            write_doc_artifact_ledger_fixture(
-                root,
-                r#"
-schema_version = "1.0"
-
-[[artifact]]
-id = "RIPR-PLAN-0001"
-path = "plans/example/missing-plan.md"
-"#,
-            );
-            let manifest_path = root.join(".ripr/goals/active.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["done"]
-
-[[work_item]]
-id = "docs/empty"
-status = "ready"
-branch = "docs-empty"
-stackable = false
-proposal = ""
-plan = "RIPR-PLAN-0001"
-spec = "RIPR-SPEC-0001"
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            let (manifest, parse_violations) = super::parse_campaign_manifest(&manifest_path)?;
-            if !parse_violations.is_empty() {
-                return Err(format!("unexpected parse violations: {parse_violations:?}"));
-            }
-
-            let mut violations = Vec::new();
-            super::validate_active_manifest_source_truth(
-                root,
-                ".ripr/goals/active.toml",
-                &manifest,
-                &mut violations,
-            )?;
-
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    ".ripr/goals/active.toml:docs/empty has empty `proposal` source-of-truth reference"
-                )),
-                "{violations:?}"
-            );
-            assert!(
-                violations.iter().any(|violation| violation.contains(
-                    ".ripr/goals/active.toml:docs/empty `plan` references registered artifact `RIPR-PLAN-0001`, but `plans/example/missing-plan.md` is missing"
-                )),
-                "{violations:?}"
-            );
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn goals_status_and_next_validate_active_manifest_source_truth() -> Result<(), String> {
-        with_temp_cwd("goals-entrypoints-source-truth", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "active-campaign\n\n| `docs/valid` | ready |\n",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "docs/proposals/RIPR-PROP-0001-valid.md",
-                "RIPR-PROP-0001",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "plans/example/implementation-plan.md",
-                "RIPR-PLAN-0001",
-            );
-            write_doc_artifact_fixture(
-                root,
-                "docs/specs/RIPR-SPEC-0001-valid.md",
-                "RIPR-SPEC-0001",
-            );
-            write_doc_artifact_ledger_fixture(
-                root,
-                r#"
-schema_version = "1.0"
-
-[[artifact]]
-id = "RIPR-PLAN-0001"
-path = "plans/example/implementation-plan.md"
-"#,
-            );
-            write(
-                &root.join(".ripr/goals/active.toml"),
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "active"
-end_state = ["done"]
-
-[[work_item]]
-id = "docs/valid"
-status = "ready"
-branch = "docs-valid"
-stackable = false
-proposal = "RIPR-PROP-0001"
-plan = "RIPR-PLAN-0001"
-spec = "RIPR-SPEC-0001"
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-
-            super::run_output("git", &["init"])?;
-            super::run_output("git", &["add", "."])?;
-
-            super::goals_status()?;
-            super::goals_next()?;
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn campaign_source_truth_reports_focused_tracker_drift() -> Result<(), String> {
-        let violations = with_temp_cwd("campaign-source-truth-drift", |root| {
-            write(
-                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
-                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
-            );
-            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
-            write(&root.join("docs/ROADMAP.md"), "");
-            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
-            write(&root.join("docs/CODEX_GOALS.md"), "");
-            write(
-                &root.join("docs/CAPABILITY_MATRIX.md"),
-                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `ready` | focused_metric |\n",
-            );
-            write(
-                &root.join(".ripr/goals/active.toml"),
-                r#"
-id = "active-campaign"
-title = "Active Campaign"
-status = "closed"
-end_state = ["closed"]
-
-[[work_item]]
-id = "docs/active"
-status = "done"
-branch = "docs-active"
-stackable = false
-acceptance = "done"
-commands = ["cargo xtask check-pr"]
-"#,
-            );
-            write(
-                &root.join(".ripr/goals/lane9-focused.toml"),
-                r#"
-id = "focused-tracker"
-title = "Focused Tracker"
-status = "closed"
-lane = 9
-
-# Focused tracker.
-
-end_state = ["focused tracker closed"]
-
-[[work_item]]
-id = "spec/focused-contract"
-status = "done"
-branch = "spec-focused-contract"
-stackable = false
-spec = "docs/specs/RIPR-SPEC-0999-focused.md"
-closeout = "docs/handoffs/focused-closeout.md"
-acceptance = "RIPR-SPEC-0999 defines the focused contract."
-"#,
-            );
-
-            campaign_source_truth_violations_for_root(root)
-        })?;
-
-        assert!(
-            violations
-                .iter()
-                .any(|violation| violation.contains("not the active Codex Goals manifest")),
-            "{violations:?}"
-        );
-        assert!(
-            violations
-                .iter()
-                .any(|violation| violation.contains("done but has no proof command entries")),
-            "{violations:?}"
-        );
-        assert!(
-            violations.iter().any(|violation| violation
-                .contains("references missing `docs/specs/RIPR-SPEC-0999-focused.md`")),
-            "{violations:?}"
-        );
-        assert!(
-            violations.iter().any(|violation| {
-                violation.contains("references `RIPR-SPEC-0999` in acceptance")
-            }),
-            "{violations:?}"
-        );
-        assert!(
-            violations
-                .iter()
-                .any(|violation| violation.contains("instead of `maintenance`")),
-            "{violations:?}"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn spec_id_file_lookup_requires_filename_boundary() -> Result<(), String> {
-        with_temp_cwd("spec-id-file-boundary", |root| {
-            write(
-                &root.join("docs/specs/RIPR-SPEC-00010-larger.md"),
-                "# Larger spec\n",
-            );
-            if super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
-                return Err("RIPR-SPEC-0001 must not match RIPR-SPEC-00010".to_string());
-            }
-            write(
-                &root.join("docs/specs/RIPR-SPEC-0001-example.md"),
-                "# Exact spec\n",
-            );
-            if !super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
-                return Err("RIPR-SPEC-0001 should match its own spec file".to_string());
-            }
-            Ok(())
-        })
     }
 
     #[test]

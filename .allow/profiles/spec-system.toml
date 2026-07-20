@@ -1,13 +1,13 @@
 schema_version = "1.0"
 profile = "spec-system"
 mode = "advisory"
+generation = "current-v2"
 
 [roots]
 proposals = "docs/proposals"
 specs = "docs/specs"
 adrs = "docs/adr"
 plans = "plans"
-goals = ".ripr/goals"
 support_tiers = "docs/status/SUPPORT_TIERS.md"
 artifact_ledger = ".allow/artifacts/doc-artifacts.toml"
 
@@ -15,8 +15,10 @@ artifact_ledger = ".allow/artifacts/doc-artifacts.toml"
 ledger_required = true
 templates_required = false
 support_tiers_required = true
-# cargo-allow #2119: the native active-goal dialect cannot parse RIPR's sole
-# execution manifest without rejecting its execution metadata. Do not create a
-# second `.allow/goals/active.toml` while that upstream compatibility gap exists.
-active_goal_required = false
+# current-v2 has no global goal root and no active manifest. Live work comes
+# from the controlling GitHub issue and a PR-local implementation slice under
+# `.allow/spec-system/slices/`; legacy `.ripr/goals` files are read-only
+# historical artifacts and cannot authorize work, proof, mutation, or support
+# promotion. Do not create `.allow/goals/active.toml` or any successor
+# repository-global goal pointer.
 closeout_required_for_done_items = false

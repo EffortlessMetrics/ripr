@@ -1,20 +1,16 @@
-# Selected 2026-07-12 after reconciling the accepted targeted-rerun contract
-# with the remaining Rust repair trust and adoption work. This campaign owns
-# the Rust evidence-to-repair protocol.
-#
-# Spec-system authority: cargo-allow's advisory spec-system profile owns
-# structural artifact governance and its ledger. RIPR xtask executes product
-# proof; it must not become a second structural graph authority. The sole RIPR
-# active manifest remains excluded from cargo-allow native validation until
-# cargo-allow #2119 can preserve this execution dialect without duplication.
-# active_goal_required = false for cargo-allow native validation during that
-# interval; this file remains the sole RIPR execution manifest.
+# Historical record (2026-07-20): this file is a read-only compatibility
+# artifact. It does not select, authorize, prioritize, block, or prove work.
+# Live work selection and ownership come from GitHub issues, PRs, checks,
+# reviews, and the local worktree; one PR's scope comes from its PR-local
+# implementation slice under `.allow/spec-system/slices/`. The spec-system
+# profile runs `generation = "current-v2"` with no global goal root.
 id = "rust-one-shot-evidence-to-repair"
 title = "Rust Evidence-Bound Repair Trust and Adoption"
 status = "active"
 lane = "lane1"
 issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/1440"
 no_current_goal = false
+authority = "historical_read_only"
 
 objective = """
 Make RIPR the default evidence-to-repair protocol for Rust pull requests.

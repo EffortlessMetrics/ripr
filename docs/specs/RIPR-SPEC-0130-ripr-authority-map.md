@@ -37,20 +37,30 @@ it only documents where they live so consumers can find them.
 | `specifications` | `docs/specs/RIPR-SPEC-*.md` | Normative behavior specs |
 | `adr` | `docs/adr/*.md` | Architecture decision records |
 | `plans` | `plans/*/implementation-plan.md` | Implementation plans for campaigns |
-| `goals` | `.ripr/goals/*.toml` | Campaign goal manifests |
-| `traceability` | `.ripr/traceability.toml` | Spec-to-test-to-code traceability graph |
+| `implementation_slices` | `.allow/spec-system/slices/*.toml` | One PR's scope and claim boundary (`ImplementationSliceV1`; no live execution state) |
+| `goals_historical` | `.ripr/goals/*.toml` | Historical campaign records (read-only; no selection, mutation, proof, or support authority) |
+| `live_state` | GitHub issues, PRs, checks, reviews, local worktrees | Live work selection and ownership (not a tracked file) |
+| `traceability` | `.ripr/traceability.toml` | Spec-to-test-to-code traceability graph (legacy/derived compatibility context) |
 | `support_tiers` | `docs/status/SUPPORT_TIERS.md` | Language/platform support tier declarations |
 | `policy_ledgers` | `policy/*.toml`, `policy/*.txt` | Controlled vocabularies and allowlists |
 | `receipts` | `target/ripr/receipts/`, `docs/handoffs/` | Proof receipts and closeout handoffs |
 | `metrics` | `metrics/*.json` | Corpus/scorecard metrics |
 | `capabilities` | `docs/CAPABILITY_MATRIX.md` | Capability status matrix |
 
+`.ripr/goals/` is not a current authority: no goal file may select or
+authorize repository-wide live work. The spec-system profile runs
+`generation = "current-v2"` with no goals root and no active-goal
+requirement.
+
 ### Conformance fixture
 
 A conformance fixture (`.allow/conformance/legacy-dialect.json`) asserts
 that the legacy TOML dialects (`.ripr/goals/active.toml`,
-`.ripr/traceability.toml`) parse without error against their expected
-schema. This fixture is consumed by cargo-allow's spec-system profile.
+`.ripr/traceability.toml`) still parse without error against their expected
+schema. This fixture is explicitly historical: parsing proves only that the
+retired dialect remains readable during migration, never that the parsed
+content carries current authority. It is consumed by cargo-allow's
+spec-system profile and is removed once `.ripr/goals/` is deleted.
 
 ## Required Evidence
 

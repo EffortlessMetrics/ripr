@@ -531,9 +531,10 @@ authorizes recursive fan-out.
 
 Before spawning a wave:
 
-1. Reconcile live Git, open PRs, `.ripr/goals/active.toml`, linked plans/specs,
-   current base/head, and working-tree state. Live source beats transcript or
-   stale planning prose.
+1. Reconcile live Git, open PRs, open issues, linked plans/specs, current
+   base/head, and working-tree state. Live source beats transcript or stale
+   planning prose; `.ripr/goals/` files are historical context only and never
+   select or authorize work.
 2. Give every subtask one bounded objective, decision contribution, input/base
    identity, read scope, edit policy, dependency list, conflict resources,
    stop conditions, expected evidence, and result budget.
@@ -549,7 +550,7 @@ Before spawning a wave:
    normal review/CI/PR/merge flow and clean up every orchestration artifact.
 
 The durable campaign and work-item authority remains the existing issue/spec/
-plan/active-goal graph. Subtasks are ephemeral execution detail inside one work
+plan graph. Subtasks are ephemeral execution detail inside one work
 item; do not create a second committed task hierarchy from subagent threads.
 
 ### Context and result discipline
@@ -614,8 +615,9 @@ Therefore:
 - parallel writers require disjoint path cages **and** disjoint semantic
   resources; different files do not make two tasks independent;
 - treat output schemas and their goldens, fixture corpora, spec-number
-  allocation, the active goal, traceability, policy ledgers, workflows, release
-  assets, and default mutable report/Cargo/npm roots as single-writer resources;
+  allocation, the legacy `.ripr/goals/` records, traceability, policy ledgers,
+  workflows, release assets, and default mutable report/Cargo/npm roots as
+  single-writer resources;
 - never run `git add -A` while a background workflow is live; stage explicit
   paths and inspect all tracked/untracked changes before commit;
 - workers must not run `git checkout`, `git switch`, `git stash`,
@@ -645,8 +647,8 @@ from repository artifacts instead of chat history.
 When picking up work:
 
 - start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
-- use `docs/IMPLEMENTATION_CAMPAIGNS.md` and `.ripr/goals/active.toml` when
-  working through a Codex Goals campaign
+- use `docs/IMPLEMENTATION_CAMPAIGNS.md` for campaign history; `.ripr/goals/`
+  files are read-only historical records that never select or authorize work
 - use `docs/CAPABILITY_MATRIX.md` to identify current capability status
 - use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
 - use `docs/CODEX_GOALS.md` for the multi-PR campaign model
