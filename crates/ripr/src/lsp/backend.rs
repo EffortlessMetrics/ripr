@@ -419,6 +419,33 @@ impl Backend {
             return cancellation_outcome(request);
         }
         if !self.pull_diagnostics_enabled() {
+            // Apply the diagnostic delivery budget to the push path (#1911).
+            // Build budget items from all publish batches, evaluate the budget,
+            // and filter each batch's diagnostics to only include selected IDs.
+            // On any budget error, fall back to publishing everything (empty
+            // selected set = no filtering applied).
+            let mut batches_by_uri: std::collections::BTreeMap<
+                tower_lsp_server::ls_types::Uri,
+                Vec<tower_lsp_server::ls_types::Diagnostic>,
+            > = std::collections::BTreeMap::new();
+            for batch in &plan.publish_batches {
+                batches_by_uri.insert(batch.uri.clone(), batch.diagnostics.clone());
+            }
+            let budget_selected_ids: std::collections::BTreeSet<String> =
+                crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(&batches_by_uri)
+                    .ok()
+                    .and_then(|items| {
+                        crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
+                            items,
+                            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+                            "push_delivery",
+                            "push_delivery",
+                        )
+                        .ok()
+                    })
+                    .map(|result| result.selected_ids().map(|s| s.to_string()).collect())
+                    .unwrap_or_default();
+
             for batch in &plan.publish_batches {
                 if !self.refresh_request_is_current(request) {
                     self.rollback_refresh_transaction_if_authority_is_current(
@@ -429,8 +456,26 @@ impl Backend {
                     .await;
                     return cancellation_outcome(request);
                 }
+                let diagnostics_to_publish = if budget_selected_ids.is_empty() {
+                    // Budget not computed or empty — publish everything
+                    batch.diagnostics.clone()
+                } else {
+                    let document = batch.uri.as_str().to_string();
+                    batch
+                        .diagnostics
+                        .iter()
+                        .filter(|diagnostic| {
+                            let payload = serde_json::to_vec(diagnostic).unwrap_or_default();
+                            let id = crate::lsp::diagnostic_budget::diagnostic_canonical_id(
+                                diagnostic, &document, &payload,
+                            );
+                            budget_selected_ids.contains(id.as_str())
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                };
                 self.client
-                    .publish_diagnostics(batch.uri.clone(), batch.diagnostics.clone(), None)
+                    .publish_diagnostics(batch.uri.clone(), diagnostics_to_publish, None)
                     .await;
             }
             for uri in &plan.clear_uris {

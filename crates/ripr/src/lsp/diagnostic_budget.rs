@@ -333,7 +333,7 @@ pub fn build_budget_items_from_diagnostics(
     Ok(items)
 }
 
-fn diagnostic_canonical_id(
+pub(crate) fn diagnostic_canonical_id(
     diagnostic: &tower_lsp_server::ls_types::Diagnostic,
     document: &str,
     payload: &[u8],
