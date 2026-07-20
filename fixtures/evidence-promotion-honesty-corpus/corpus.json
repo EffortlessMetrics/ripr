@@ -167,6 +167,74 @@
       ]
     },
     {
+      "id": "py_attribute_sink_other_receiver",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_attribute_sink_other_receiver",
+      "vector": "attribute_sink_other_receiver_value_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_free_function_module_collision",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_free_function_module_collision",
+      "vector": "free_function_same_name_different_module_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_method_owner_imported_unbound_receiver",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_method_owner_imported_unbound_receiver",
+      "vector": "method_owner_imported_unbound_receiver_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_same_method_other_class",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_same_method_other_class",
+      "vector": "method_owner_same_name_different_class_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_broad_tothrow",
       "language": "typescript",
       "tier": "pure",
