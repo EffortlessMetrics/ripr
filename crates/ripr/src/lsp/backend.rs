@@ -2592,32 +2592,12 @@ fn workspace_status_receipt_summary(
 }
 
 fn workspace_status_run_status(snapshot: &AnalysisSnapshot) -> &'static str {
-    if snapshot
-        .gap_artifact_rejections
-        .iter()
-        .any(|r| matches!(r, super::gap_artifacts::GapArtifactRejection::StaleArtifact))
-    {
-        return "stale";
-    }
-    if !snapshot.gap_artifact_rejections.is_empty() {
-        return "cache_limited";
-    }
-    let has_static_limit = snapshot
-        .findings
-        .iter()
-        .any(|f| f.static_limit_kind.is_some())
-        || snapshot.gap_artifacts.iter().any(|a| a.has_static_limit());
-    if has_static_limit {
-        return "limited";
-    }
-    // Seam inventory was deferred on this interactive refresh (RIPR-SPEC-0105).
-    // Diff-scoped findings are complete but seam evidence is absent. The
-    // cockpit must NOT present this as "full" — use the disclosed deferral
-    // status so the refresh_command affordance is shown instead.
-    if snapshot.seams_deferred {
-        return "seams_deferred";
-    }
-    "full"
+    super::diagnostics::derive_run_status(
+        &snapshot.findings,
+        &snapshot.gap_artifact_rejections,
+        &snapshot.gap_artifacts,
+        snapshot.seams_deferred,
+    )
 }
 
 fn workspace_status_top_actionable_packet(snapshot: &AnalysisSnapshot) -> serde_json::Value {

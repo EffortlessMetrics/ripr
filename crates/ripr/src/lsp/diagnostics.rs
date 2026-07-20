@@ -462,9 +462,10 @@ pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &U
         [
             snapshot.mode.as_str(),
             snapshot.diagnostic_profile.as_str(),
-            snapshot_run_status(
+            derive_run_status(
                 &snapshot.findings,
                 &snapshot.gap_artifact_rejections,
+                &snapshot.gap_artifacts,
                 snapshot.seams_deferred,
             ),
             snapshot.base.as_deref().unwrap_or("no-base"),
@@ -481,9 +482,10 @@ pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> Str
     let mut parts = vec![
         snapshot.mode.as_str().to_string(),
         snapshot.diagnostic_profile.as_str().to_string(),
-        snapshot_run_status(
+        derive_run_status(
             &snapshot.findings,
             &snapshot.gap_artifact_rejections,
+            &snapshot.gap_artifacts,
             snapshot.seams_deferred,
         )
         .to_string(),
@@ -652,9 +654,10 @@ pub(super) fn workspace_diagnostics_with_config(
     // per-file spam. See RIPR-SPEC-0076 diagnostics policy.
     let gap_artifact_report =
         validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
-    let run_status = snapshot_run_status(
+    let run_status = derive_run_status(
         &findings,
         &gap_artifact_report.rejections,
+        &gap_artifact_report.artifacts,
         defer_seam_inventory,
     );
     let is_full_run = run_status == "full";
@@ -809,18 +812,19 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
 }
 
 /// Compute the run status from findings, gap-artifact rejections, and the
-/// seam-deferral flag. This replicates the logic of
-/// `backend::workspace_status_run_status` but operates directly on the raw
-/// ingredients so diagnostics.rs does not need to import from backend.rs
-/// (keeping the module boundary clean).
+/// Shared run-status derivation from the raw ingredients. Both
+/// `backend::workspace_status_run_status` (for workspace status) and
+/// `diagnostics::snapshot_run_status` (for diagnostic severity) call
+/// this to avoid drift between the two surfaces (#1939).
 ///
 /// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`, or
 /// `"seams_deferred"`. `"seams_deferred"` is returned when
 /// `defer_seam_inventory` is `true` and no other limitation applies; it is
 /// a member of the `limited` family for severity-downgrade policy purposes.
-fn snapshot_run_status(
+pub(super) fn derive_run_status(
     findings: &[Finding],
     rejections: &[GapArtifactRejection],
+    gap_artifacts: &[super::gap_artifacts::ValidatedGapArtifact],
     defer_seam_inventory: bool,
 ) -> &'static str {
     if rejections
@@ -832,7 +836,8 @@ fn snapshot_run_status(
     if !rejections.is_empty() {
         return "cache_limited";
     }
-    let has_static_limit = findings.iter().any(|f| f.static_limit_kind.is_some());
+    let has_static_limit = findings.iter().any(|f| f.static_limit_kind.is_some())
+        || gap_artifacts.iter().any(|a| a.has_static_limit());
     if has_static_limit {
         return "limited";
     }
@@ -842,7 +847,7 @@ fn snapshot_run_status(
     "full"
 }
 
-/// Test-only re-export of `snapshot_run_status` so RIPR-SPEC-0105 control 4
+/// Test-only re-export of `derive_run_status` so RIPR-SPEC-0105 control 4
 /// can verify the limited-policy wiring without going through the full workspace
 /// analysis stack. Gated behind `#[cfg(test)]` so it never leaks to production.
 #[cfg(test)]
@@ -851,7 +856,7 @@ pub(super) fn snapshot_run_status_for_test(
     rejections: &[GapArtifactRejection],
     defer_seam_inventory: bool,
 ) -> &'static str {
-    snapshot_run_status(findings, rejections, defer_seam_inventory)
+    derive_run_status(findings, rejections, &[], defer_seam_inventory)
 }
 
 #[cfg(test)]
@@ -2497,7 +2502,7 @@ mod diagnostic_policy_tests {
         finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
 
         // Confirm run status is "limited" when finding has a static limit.
-        let run_status = snapshot_run_status(&[finding.clone()], &[], false);
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false);
         if run_status != "limited" {
             return Err(format!(
                 "expected run_status=limited for finding with static_limit_kind, got {run_status}"
@@ -2541,7 +2546,7 @@ mod diagnostic_policy_tests {
     fn stale_run_suppresses_gap_record_diagnostics() -> Result<(), String> {
         // StaleArtifact rejection → run_status "stale" → not full → suppress gap records.
         let stale_rejections = vec![GapArtifactRejection::StaleArtifact];
-        let run_status = snapshot_run_status(&[], &stale_rejections, false);
+        let run_status = derive_run_status(&[], &stale_rejections, &[], false);
         if run_status != "stale" {
             return Err(format!(
                 "expected run_status=stale for StaleArtifact rejection, got {run_status}"
@@ -2553,7 +2558,7 @@ mod diagnostic_policy_tests {
 
         // cache_limited rejection → also not full → suppress gap records.
         let cache_rejections = vec![GapArtifactRejection::WrongRoot("other-root".to_string())];
-        let run_status = snapshot_run_status(&[], &cache_rejections, false);
+        let run_status = derive_run_status(&[], &cache_rejections, &[], false);
         if run_status != "cache_limited" {
             return Err(format!(
                 "expected run_status=cache_limited for non-stale rejection, got {run_status}"
