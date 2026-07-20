@@ -9,6 +9,18 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- `cargo xtask module-health` now reports a **responsibility signal** alongside
+  its line count: a heuristic count of distinct top-level concerns (distinct
+  `impl` blocks plus distinct public-API identifier prefixes) per file, flagged
+  when it exceeds a fixed threshold. This surfaces the "structurally entangled
+  even if not huge" case that a pure line count misses (e.g. a small file
+  exposing many distinct concern families). Both signals appear in the JSON and
+  Markdown reports (`module-health.json` schema bumped to `0.2`, additive). The
+  responsibility signal is documented as a smell, not a measurement; the
+  advisory still always exits 0 and is never wired into CI gates.
+
 ### Fixed
 
 - Rust equality-boundary analysis now credits exact, source-ordered direct
