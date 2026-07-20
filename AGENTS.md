@@ -306,14 +306,29 @@ Rules:
 - Every status claim must cite a **verifiable artifact**: a `file:line`
   reference, a merged PR number, a `gh run` / `gh release` result, or a `git
   log --grep` output. "Not started" is not a valid verdict without evidence.
-- "No PR references it" is **forbidden** without a `git log --all --grep
-  <issue-number>` (or `gh pr list --search`) result attached inline. Many
-  issues have merged PRs that cite them in the PR body but not the commit
-  subject — `git log --grep` alone misses these.
-- Use the closed `status/*` label set (`status/done-open`,
-  `status/blocked-upstream`, `status/blocked-repo`, `status/needs-work`,
-  `status/mis-scoped`) as the primary status signal. Labels don't bury
-  signal; a status comment is secondary.
+- "No PR references it" is **forbidden** without an **all-state PR search**
+  attached inline: `gh pr list --state all --search <issue-number>` (or the
+  MCP `search_pull_requests` equivalent). Many issues have merged PRs that
+  cite them only in the PR body, not the commit subject, so `git log --all
+  --grep <issue-number>` alone misses these — it is supplemental, not the
+  primary check.
+- Use the closed `status/*` label set as the primary status signal (labels
+  don't bury signal; a status comment is secondary):
+  - `status/done-open` — delivered; the issue is intentionally kept open.
+  - `status/blocked-upstream` / `status/blocked-repo` — waiting on an external
+    or in-repo dependency.
+  - `status/needs-work` — actionable and **not started**. Do **not** use it
+    for partially landed work; that understates delivery and invites
+    duplicate implementation.
+  - `status/partial` — a **bounded portion has merged** to `main` (or another
+    authoritative repository) and the residual acceptance plus next owner are
+    recorded. Apply it only when a merged deliverable exists — never merely
+    because a branch or PR is open.
+  - `status/mis-scoped` — the issue needs re-scoping before work proceeds.
+- A partially landed slice gets **one** evidence-bound reconciliation comment
+  (landed PR + exact merge SHA, acceptance covered, acceptance remaining, next
+  owner/dependency, claim boundary). Closing a child issue never closes its
+  parent capability. See #1863 for the canonical reconciliation format.
 - One status comment per issue per pass. A second pass must **edit** (or
   minimize/hide) the prior comment, not append a near-duplicate. Re-posting
   the same review minutes apart is noise that buries substantive comments.
