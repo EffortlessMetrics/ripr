@@ -50,8 +50,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Debounce window for interactive refresh triggers (did_open, did_save,
+/// did_close). Rapid saves within this window collapse into a single
+/// analysis run instead of canceling and re-queuing on every keystroke.
+/// Explicit refresh and config reload bypass the debounce (#1908).
+const INTERACTIVE_REFRESH_DEBOUNCE: Duration = Duration::from_millis(200);
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
@@ -161,6 +166,32 @@ impl Backend {
         let Some(config) = self.analysis_config() else {
             return;
         };
+        // Debounce interactive triggers (did_open/did_save/did_close) so
+        // rapid saves collapse into one analysis run. Explicit refresh and
+        // config reload bypass the debounce (#1908).
+        let is_interactive = matches!(
+            reason,
+            RefreshReason::DidOpen | RefreshReason::DidSave | RefreshReason::DidClose
+        );
+        if is_interactive {
+            tokio::select! {
+                _ = tokio::time::sleep(INTERACTIVE_REFRESH_DEBOUNCE) => {}
+                _ = self.refresh_idle.notified() => {
+                    // A superseding notification arrived during the debounce
+                    // window. The newer call will handle the analysis.
+                    return;
+                }
+            }
+            // Re-check preconditions after the debounce window — config or
+            // authority may have changed during the wait.
+            if self.configuration_failure().is_some() {
+                return;
+            }
+            let post_authority = self.workspace_root_authority();
+            if !post_authority.allows_analysis() {
+                return;
+            }
+        }
         let workspace_revision = self.workspace_revision();
         let authority_epoch = self.workspace_root_epoch.load(Ordering::SeqCst);
         let decision = self.refresh_scheduler.request(
