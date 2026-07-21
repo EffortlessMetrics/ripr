@@ -137,7 +137,7 @@
         "ripr.server.autoDownload": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available.",
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available. Downloads over HTTPS — by default from github.com/EffortlessMetrics/ripr releases, configurable via ripr.server.downloadBaseUrl — and archives are SHA-256 verified against the release manifest before extraction.",
           "scope": "resource"
         },
         "ripr.server.version": {
