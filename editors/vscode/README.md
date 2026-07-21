@@ -138,3 +138,24 @@ binaries from matching GitHub Releases when available. It does not auto-install
 Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
 buffer overlays by default. Bundled platform-specific VSIXs are planned after
 the downloader path is proven.
+
+## Coexisting with rust-analyzer
+
+ripr and rust-analyzer both publish diagnostics for Rust files, and both are
+expected to appear in the Problems panel at the same time. They answer
+different questions and are not duplicates:
+
+- **rust-analyzer** reports compiler, type, and lint diagnostics for the code
+  as written.
+- **ripr** reports static mutation-exposure evidence for the behavior changed
+  in your diff: whether the current tests appear to contain a discriminator
+  that would notice if the changed behavior were wrong.
+
+Every ripr diagnostic carries the source label `ripr`, so you can tell the two
+apart in the Problems panel and use the panel's source filter to show only one
+tool. ripr diagnostics never suppress, rewrite, or merge rust-analyzer
+diagnostics, and disabling one tool does not affect the other.
+
+There is no client-side de-duplication setting today. If the volume bothers
+you, prefer the Problems panel source filter over disabling either tool, and
+file an issue describing the collision you are seeing.
