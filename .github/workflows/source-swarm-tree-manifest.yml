@@ -45,23 +45,30 @@ jobs:
 
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('/tmp/promote-original.sh')
           script = path.read_text(encoding='utf-8')
 
-          old_copy = '''    cp "$report" source-swarm-promotion-report.txt
-              git add source-swarm-promotion-report.txt'''
-          new_copy = '''    cp "$report" source-swarm-promotion-report.txt
-              cp /tmp/source-swarm-final-tree-summary.json source-swarm-final-tree-summary.json
-              cp /tmp/source-swarm-final-tree-entries.ndjson source-swarm-final-tree-entries.ndjson
-              git add source-swarm-promotion-report.txt source-swarm-final-tree-summary.json source-swarm-final-tree-entries.ndjson'''
-          if old_copy not in script:
-              raise SystemExit('publish_report copy block not found')
-          script = script.replace(old_copy, new_copy, 1)
+          copy_pattern = re.compile(
+              r'(?m)^(?P<indent>[ \t]*)cp "\$report" source-swarm-promotion-report\.txt\n'
+              r'(?P=indent)git add source-swarm-promotion-report\.txt$'
+          )
 
-          old_end = '''git push origin "HEAD:refs/heads/$PROMOTION_BRANCH"
-          publish_report promotion_branch_pushed'''
-          new_end = r'''python3 <<'PYTREE'
+          def replace_copy(match):
+              indent = match.group('indent')
+              return '\n'.join([
+                  f'{indent}cp "$report" source-swarm-promotion-report.txt',
+                  f'{indent}cp /tmp/source-swarm-final-tree-summary.json source-swarm-final-tree-summary.json',
+                  f'{indent}cp /tmp/source-swarm-final-tree-entries.ndjson source-swarm-final-tree-entries.ndjson',
+                  f'{indent}git add source-swarm-promotion-report.txt source-swarm-final-tree-summary.json source-swarm-final-tree-entries.ndjson',
+              ])
+
+          script, copy_count = copy_pattern.subn(replace_copy, script, count=1)
+          if copy_count != 1:
+              raise SystemExit(f'publish_report copy block count={copy_count}')
+
+          manifest_block = r'''python3 <<'PYTREE'
           import json
           import os
           import subprocess
@@ -123,9 +130,15 @@ jobs:
                   handle.write(json.dumps(entry, sort_keys=True, separators=(',', ':')) + '\n')
           PYTREE
           publish_report ready_for_api_publish'''
-          if old_end not in script:
-              raise SystemExit('promotion push block not found')
-          script = script.replace(old_end, new_end, 1)
+
+          end_pattern = re.compile(
+              r'(?m)^git push origin "HEAD:refs/heads/\$PROMOTION_BRANCH"\n'
+              r'publish_report promotion_branch_pushed$'
+          )
+          script, end_count = end_pattern.subn(manifest_block, script, count=1)
+          if end_count != 1:
+              raise SystemExit(f'promotion push block count={end_count}')
+
           path.write_text(script, encoding='utf-8')
           PY
 
