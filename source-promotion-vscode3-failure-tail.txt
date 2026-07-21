@@ -1,0 +1,500 @@
+2026-07-21T21:07:09.6528416Z [1m[92m   Compiling[0m cow-utils v0.1.3
+2026-07-21T21:07:09.6657025Z [1m[92m   Compiling[0m crunchy v0.2.4
+2026-07-21T21:07:09.8177284Z [1m[92m   Compiling[0m num-integer v0.1.46
+2026-07-21T21:07:09.8282236Z [1m[92m   Compiling[0m oxc_span v0.130.0
+2026-07-21T21:07:10.1517098Z [1m[92m   Compiling[0m tracing-attributes v0.1.31
+2026-07-21T21:07:10.3367121Z [1m[92m   Compiling[0m tracing-core v0.1.36
+2026-07-21T21:07:10.3656885Z [1m[92m   Compiling[0m getopts v0.2.24
+2026-07-21T21:07:10.7176989Z [1m[92m   Compiling[0m unicode-id-start v1.4.0
+2026-07-21T21:07:10.7797158Z [1m[92m   Compiling[0m zmij v1.0.21
+2026-07-21T21:07:10.9406751Z [1m[92m   Compiling[0m tiny-keccak v2.0.2
+2026-07-21T21:07:10.9776186Z [1m[92m   Compiling[0m nonmax v0.5.5
+2026-07-21T21:07:11.0054287Z [1m[92m   Compiling[0m typenum v1.20.0
+2026-07-21T21:07:11.0400584Z [1m[92m   Compiling[0m either v1.15.0
+2026-07-21T21:07:11.1912244Z [1m[92m   Compiling[0m anyhow v1.0.102
+2026-07-21T21:07:11.2454739Z [1m[92m   Compiling[0m ref-cast v1.0.25
+2026-07-21T21:07:11.4087327Z [1m[92m   Compiling[0m tracing v0.1.44
+2026-07-21T21:07:11.4396928Z [1m[92m   Compiling[0m oxc_index v4.1.0
+2026-07-21T21:07:11.4735640Z [1m[92m   Compiling[0m unicode_names2_generator v1.3.0
+2026-07-21T21:07:11.5796865Z [1m[92m   Compiling[0m num-bigint v0.4.6
+2026-07-21T21:07:11.9797345Z [1m[92m   Compiling[0m oxc_diagnostics v0.130.0
+2026-07-21T21:07:12.1047128Z [1m[92m   Compiling[0m futures-channel v0.3.32
+2026-07-21T21:07:12.2766995Z [1m[92m   Compiling[0m ref-cast-impl v1.0.25
+2026-07-21T21:07:12.3173017Z [1m[92m   Compiling[0m futures-macro v0.3.32
+2026-07-21T21:07:12.3417128Z [1m[92m   Compiling[0m memoffset v0.9.1
+2026-07-21T21:07:12.4437147Z [1m[92m   Compiling[0m unic-common v0.9.0
+2026-07-21T21:07:12.4887786Z [1m[92m   Compiling[0m heck v0.5.0
+2026-07-21T21:07:12.6427199Z [1m[92m   Compiling[0m futures-io v0.3.32
+2026-07-21T21:07:12.6456492Z [1m[92m   Compiling[0m futures-task v0.3.32
+2026-07-21T21:07:12.7407301Z [1m[92m   Compiling[0m smallvec v1.15.1
+2026-07-21T21:07:12.7497137Z [1m[92m   Compiling[0m parking_lot_core v0.9.12
+2026-07-21T21:07:12.8762964Z [1m[92m   Compiling[0m hashbrown v0.14.5
+2026-07-21T21:07:12.9038565Z [1m[92m   Compiling[0m serde_json v1.0.151
+2026-07-21T21:07:12.9947300Z [1m[92m   Compiling[0m unic-char-range v0.9.0
+2026-07-21T21:07:13.0527994Z [1m[92m   Compiling[0m slab v0.4.12
+2026-07-21T21:07:13.0549904Z [1m[92m   Compiling[0m unic-char-property v0.9.0
+2026-07-21T21:07:13.1176807Z [1m[92m   Compiling[0m is-macro v0.3.7
+2026-07-21T21:07:13.1697474Z [1m[92m   Compiling[0m futures-util v0.3.32
+2026-07-21T21:07:13.3086957Z [1m[92m   Compiling[0m unic-ucd-version v0.9.0
+2026-07-21T21:07:13.3863466Z [1m[92m   Compiling[0m oxc_regular_expression v0.130.0
+2026-07-21T21:07:13.4664427Z [1m[92m   Compiling[0m unicode_names2 v1.3.0
+2026-07-21T21:07:13.6137387Z [1m[92m   Compiling[0m oxc_syntax v0.130.0
+2026-07-21T21:07:14.2526767Z [1m[92m   Compiling[0m tokio-macros v2.7.1
+2026-07-21T21:07:14.4347038Z [1m[92m   Compiling[0m rustpython-parser-vendored v0.4.0
+2026-07-21T21:07:14.8166786Z [1m[92m   Compiling[0m borrow-or-share v0.2.4
+2026-07-21T21:07:14.8276966Z [1m[92m   Compiling[0m rustc-hash v1.1.0
+2026-07-21T21:07:14.8610495Z [1m[92m   Compiling[0m httparse v1.10.1
+2026-07-21T21:07:14.8757057Z [1m[92m   Compiling[0m bytes v1.11.1
+2026-07-21T21:07:15.0767281Z [1m[92m   Compiling[0m scopeguard v1.2.0
+2026-07-21T21:07:15.1207879Z [1m[92m   Compiling[0m unicode-properties v0.1.4
+2026-07-21T21:07:15.1986991Z [1m[92m   Compiling[0m crc32fast v1.5.0
+2026-07-21T21:07:15.3016943Z [1m[92m   Compiling[0m winnow v0.7.15
+2026-07-21T21:07:15.3617133Z [1m[92m   Compiling[0m ra-ap-rustc_lexer v0.160.0
+2026-07-21T21:07:15.5827595Z [1m[92m   Compiling[0m tokio v1.53.0
+2026-07-21T21:07:15.6197494Z [1m[92m   Compiling[0m lock_api v0.4.14
+2026-07-21T21:07:15.8246806Z [1m[92m   Compiling[0m fluent-uri v0.4.1
+2026-07-21T21:07:16.0246780Z [1m[92m   Compiling[0m phf v0.11.3
+2026-07-21T21:07:16.1366824Z [1m[92m   Compiling[0m rustpython-parser-core v0.4.0
+2026-07-21T21:07:16.2785453Z [1m[92m   Compiling[0m oxc_ast v0.130.0
+2026-07-21T21:07:16.6997060Z [1m[92m   Compiling[0m rustpython-parser v0.4.0
+2026-07-21T21:07:18.5676786Z [1m[92m   Compiling[0m block-buffer v0.10.4
+2026-07-21T21:07:18.6337097Z [1m[92m   Compiling[0m crypto-common v0.1.7
+2026-07-21T21:07:18.6899500Z [1m[92m   Compiling[0m itertools v0.14.0
+2026-07-21T21:07:19.6546807Z [1m[92m   Compiling[0m crossbeam-channel v0.5.15
+2026-07-21T21:07:20.1437401Z [1m[92m   Compiling[0m ra_ap_edition v0.0.330
+2026-07-21T21:07:20.1766725Z [1m[92m   Compiling[0m drop_bomb v0.1.5
+2026-07-21T21:07:20.2296798Z [1m[92m   Compiling[0m countme v3.0.1
+2026-07-21T21:07:20.2337787Z [1m[92m   Compiling[0m winnow v1.0.2
+2026-07-21T21:07:20.3626839Z [1m[92m   Compiling[0m tower-service v0.3.3
+2026-07-21T21:07:20.4026875Z [1m[92m   Compiling[0m jod-thread v1.0.0
+2026-07-21T21:07:20.4502030Z [1m[92m   Compiling[0m tower-layer v0.3.3
+2026-07-21T21:07:20.5697391Z [1m[92m   Compiling[0m text-size v1.1.1
+2026-07-21T21:07:20.5762966Z [1m[92m   Compiling[0m rustc-literal-escaper v0.0.4
+2026-07-21T21:07:20.6336783Z [1m[92m   Compiling[0m sync_wrapper v1.0.2
+2026-07-21T21:07:20.6577191Z [1m[92m   Compiling[0m rowan v0.15.18
+2026-07-21T21:07:20.6716775Z [1m[92m   Compiling[0m ra_ap_parser v0.0.330
+2026-07-21T21:07:20.6948728Z [1m[92m   Compiling[0m tower v0.5.3
+2026-07-21T21:07:21.0302744Z [1m[92m   Compiling[0m toml_parser v1.1.2+spec-1.1.0
+2026-07-21T21:07:21.7646892Z [1m[92m   Compiling[0m oxc_ecmascript v0.130.0
+2026-07-21T21:07:21.8406988Z [1m[92m   Compiling[0m ra_ap_stdx v0.0.330
+2026-07-21T21:07:22.7177005Z [1m[92m   Compiling[0m digest v0.10.7
+2026-07-21T21:07:22.8618285Z [1m[92m   Compiling[0m tokio-util v0.7.18
+2026-07-21T21:07:22.8707559Z [1m[92m   Compiling[0m dashmap v6.1.0
+2026-07-21T21:07:23.0186662Z [1m[92m   Compiling[0m ls-types v0.0.6
+2026-07-21T21:07:23.3246910Z [1m[92m   Compiling[0m rustpython-ast v0.4.0
+2026-07-21T21:07:23.4272579Z [1m[92m   Compiling[0m futures v0.3.32
+2026-07-21T21:07:23.8651970Z [1m[92m   Compiling[0m unic-emoji-char v0.9.0
+2026-07-21T21:07:23.9957191Z [1m[92m   Compiling[0m unic-ucd-ident v0.9.0
+2026-07-21T21:07:24.1216689Z [1m[92m   Compiling[0m itertools v0.11.0
+2026-07-21T21:07:25.3766839Z [1m[92m   Compiling[0m serde_spanned v1.1.1
+2026-07-21T21:07:25.4657000Z [1m[92m   Compiling[0m toml_datetime v0.7.5+spec-1.1.0
+2026-07-21T21:07:25.6087097Z [1m[92m   Compiling[0m lalrpop-util v0.20.2
+2026-07-21T21:07:25.7147102Z [1m[92m   Compiling[0m toml_writer v1.1.1+spec-1.1.0
+2026-07-21T21:07:25.7310920Z [1m[92m   Compiling[0m seq-macro v0.3.6
+2026-07-21T21:07:25.8197212Z [1m[92m   Compiling[0m zlib-rs v0.6.3
+2026-07-21T21:07:25.8727336Z [1m[92m   Compiling[0m bumpalo v3.20.2
+2026-07-21T21:07:26.0866900Z [1m[92m   Compiling[0m cpufeatures v0.2.17
+2026-07-21T21:07:26.0987295Z [1m[92m   Compiling[0m simd-adler32 v0.3.9
+2026-07-21T21:07:26.1156894Z [1m[92m   Compiling[0m triomphe v0.1.15
+2026-07-21T21:07:26.3186872Z [1m[92m   Compiling[0m equivalent v1.0.2
+2026-07-21T21:07:26.3397497Z [1m[92m   Compiling[0m smol_str v0.3.6
+2026-07-21T21:07:26.3517050Z [1m[92m   Compiling[0m indexmap v2.14.0
+2026-07-21T21:07:26.5287287Z [1m[92m   Compiling[0m ra_ap_syntax v0.0.330
+2026-07-21T21:07:27.0166866Z [1m[92m   Compiling[0m zopfli v0.8.3
+2026-07-21T21:07:27.9406362Z [1m[92m   Compiling[0m sha2 v0.10.9
+2026-07-21T21:07:28.3016753Z [1m[92m   Compiling[0m oxc_parser v0.130.0
+2026-07-21T21:07:30.8977151Z [1m[92m   Compiling[0m flate2 v1.1.9
+2026-07-21T21:07:31.3136707Z [1m[92m   Compiling[0m toml v0.9.12+spec-1.1.0
+2026-07-21T21:07:33.2191735Z [1m[92m   Compiling[0m zip v5.1.1
+2026-07-21T21:07:34.0574129Z [1m[92m   Compiling[0m tower-lsp-server v0.23.0
+2026-07-21T21:07:35.8827732Z [1m[92m   Compiling[0m ripr v0.10.1 (/home/runner/work/ripr/ripr/crates/ripr)
+2026-07-21T21:08:05.0249748Z [1m[92m   Compiling[0m xtask v0.1.0 (/home/runner/work/ripr/ripr/xtask)
+2026-07-21T21:08:20.5552889Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 1m 21s
+2026-07-21T21:08:20.5905941Z [1m[92m     Running[0m `/home/runner/work/ripr/ripr/target/debug/xtask vscode-compile`
+2026-07-21T21:08:20.6004813Z $ (cd /home/runner/work/ripr/ripr/editors/vscode && /home/runner/work/ripr/ripr/editors/vscode/node_modules/.bin/tsc -p ./)
+2026-07-21T21:08:22.6747482Z ##[group]Run npm run package
+2026-07-21T21:08:22.6747777Z [36;1mnpm run package[0m
+2026-07-21T21:08:22.6804330Z shell: /usr/bin/bash -e {0}
+2026-07-21T21:08:22.6804589Z env:
+2026-07-21T21:08:22.6804790Z   CARGO_HOME: /home/runner/.cargo
+2026-07-21T21:08:22.6805459Z   CARGO_INCREMENTAL: 0
+2026-07-21T21:08:22.6805698Z   CARGO_TERM_COLOR: always
+2026-07-21T21:08:22.6805927Z ##[endgroup]
+2026-07-21T21:08:22.7798387Z 
+2026-07-21T21:08:22.7798957Z > ripr@0.10.1 package
+2026-07-21T21:08:22.7799386Z > cargo xtask vscode-package
+2026-07-21T21:08:22.7799626Z 
+2026-07-21T21:08:22.9096496Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+2026-07-21T21:08:22.9154527Z [1m[92m     Running[0m `/home/runner/work/ripr/ripr/target/debug/xtask vscode-package`
+2026-07-21T21:08:22.9210597Z $ (cd /home/runner/work/ripr/ripr/editors/vscode && /home/runner/work/ripr/ripr/editors/vscode/node_modules/.bin/vsce package --out dist/ripr-0.10.1.vsix)
+2026-07-21T21:08:24.1380408Z ##[warning]This extension consists of 344 files, out of which 181 are JavaScript files. For performance reasons, you should bundle your extension: https://aka.ms/vscode-bundle-extension. You should also exclude unnecessary files by adding them to your .vscodeignore: https://aka.ms/vscode-vscodeignore.
+
+2026-07-21T21:08:24.1470922Z Files included in the VSIX:
+2026-07-21T21:08:24.1471440Z ripr-0.10.1.vsix
+2026-07-21T21:08:24.1471936Z ├─ [Content_Types].xml 
+2026-07-21T21:08:24.1472239Z ├─ extension.vsixmanifest 
+2026-07-21T21:08:24.1472498Z └─ extension/
+2026-07-21T21:08:24.1472741Z    ├─ LICENSE.txt [0.17 KB]
+2026-07-21T21:08:24.1472998Z    ├─ changelog.md 
+2026-07-21T21:08:24.1473235Z    ├─ icon.png [8.11 KB]
+2026-07-21T21:08:24.1473499Z    ├─ package.json [11.09 KB]
+2026-07-21T21:08:24.1473750Z    ├─ readme.md 
+2026-07-21T21:08:24.1473966Z    ├─ node_modules/
+2026-07-21T21:08:24.1474253Z    │  ├─ semver/ (52 files) [95.51 KB]
+2026-07-21T21:08:24.1474657Z    │  ├─ vscode-jsonrpc/ (48 files) [203.49 KB]
+2026-07-21T21:08:24.1475542Z    │  ├─ vscode-languageclient/ (137 files) [696.94 KB]
+2026-07-21T21:08:24.1476148Z    │  ├─ vscode-languageserver-protocol/ (68 files) [356.78 KB]
+2026-07-21T21:08:24.1476878Z    │  └─ vscode-languageserver-types/ (9 files) [367.87 KB]
+2026-07-21T21:08:24.1477261Z    ├─ out/
+2026-07-21T21:08:24.1477523Z    │  ├─ src/ (9 files) [221.53 KB]
+2026-07-21T21:08:24.1477836Z    │  └─ test/ (8 files) [232.04 KB]
+2026-07-21T21:08:24.1478114Z    ├─ test-fixtures/
+2026-07-21T21:08:24.1478411Z    │  └─ workspace/ (2 files) [0.11 KB]
+2026-07-21T21:08:24.1478705Z    └─ walkthrough/
+2026-07-21T21:08:24.1478983Z       ├─ code-action.md [0.35 KB]
+2026-07-21T21:08:24.1479302Z       ├─ diagnostics.md [0.27 KB]
+2026-07-21T21:08:24.1479698Z       ├─ open-file.md [0.21 KB]
+2026-07-21T21:08:24.1480222Z       └─ trust.md [0.29 KB]
+2026-07-21T21:08:24.1480480Z 
+2026-07-21T21:08:24.1480816Z => Run vsce ls --tree to see all included files.
+2026-07-21T21:08:24.1481288Z 
+2026-07-21T21:08:24.5763305Z Packaged: dist/ripr-0.10.1.vsix (344 files, 554.62 KB)
+2026-07-21T21:08:24.6074034Z ##[group]Run cargo build -p ripr
+2026-07-21T21:08:24.6074357Z [36;1mcargo build -p ripr[0m
+2026-07-21T21:08:24.6130794Z shell: /usr/bin/bash -e {0}
+2026-07-21T21:08:24.6131044Z env:
+2026-07-21T21:08:24.6131266Z   CARGO_HOME: /home/runner/.cargo
+2026-07-21T21:08:24.6131531Z   CARGO_INCREMENTAL: 0
+2026-07-21T21:08:24.6131751Z   CARGO_TERM_COLOR: always
+2026-07-21T21:08:24.6131973Z ##[endgroup]
+2026-07-21T21:08:24.7432063Z [1m[92m   Compiling[0m ripr v0.10.1 (/home/runner/work/ripr/ripr/crates/ripr)
+2026-07-21T21:08:25.4128019Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.76s
+2026-07-21T21:08:25.4314945Z ##[group]Run sudo apt-get update && sudo apt-get install -y xvfb
+2026-07-21T21:08:25.4315755Z [36;1msudo apt-get update && sudo apt-get install -y xvfb[0m
+2026-07-21T21:08:25.4372133Z shell: /usr/bin/bash -e {0}
+2026-07-21T21:08:25.4372380Z env:
+2026-07-21T21:08:25.4372583Z   CARGO_HOME: /home/runner/.cargo
+2026-07-21T21:08:25.4372850Z   CARGO_INCREMENTAL: 0
+2026-07-21T21:08:25.4373077Z   CARGO_TERM_COLOR: always
+2026-07-21T21:08:25.4373307Z ##[endgroup]
+2026-07-21T21:08:25.5300000Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-07-21T21:08:25.5594148Z Hit:6 https://packages.microsoft.com/repos/azure-cli noble InRelease
+2026-07-21T21:08:25.5596011Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-07-21T21:08:25.5597528Z Get:7 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-07-21T21:08:25.5625368Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-07-21T21:08:25.5665890Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-07-21T21:08:25.5699024Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-07-21T21:08:25.6565634Z Get:8 https://dl.google.com/linux/chrome-stable/deb stable InRelease [2548 B]
+2026-07-21T21:08:25.7372994Z Get:9 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [11.7 kB]
+2026-07-21T21:08:25.7468065Z Get:10 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [234 kB]
+2026-07-21T21:08:25.7515768Z Get:11 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [201 kB]
+2026-07-21T21:08:25.7876177Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1124 kB]
+2026-07-21T21:08:25.7946204Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [274 kB]
+2026-07-21T21:08:25.7967352Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [180 kB]
+2026-07-21T21:08:25.7982017Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1666 kB]
+2026-07-21T21:08:25.8062547Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [329 kB]
+2026-07-21T21:08:25.8106900Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [388 kB]
+2026-07-21T21:08:25.8140974Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1274 kB]
+2026-07-21T21:08:25.8264877Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [291 kB]
+2026-07-21T21:08:25.8300738Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+2026-07-21T21:08:25.8432126Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [5752 B]
+2026-07-21T21:08:25.8959648Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [10.5 kB]
+2026-07-21T21:08:25.8976673Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [862 kB]
+2026-07-21T21:08:25.9029454Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [193 kB]
+2026-07-21T21:08:25.9048627Z Get:25 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Components [46.3 kB]
+2026-07-21T21:08:25.9060581Z Get:26 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1180 kB]
+2026-07-21T21:08:25.9122976Z Get:27 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [233 kB]
+2026-07-21T21:08:25.9150292Z Get:28 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+2026-07-21T21:08:25.9253267Z Get:29 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1178 kB]
+2026-07-21T21:08:25.9316382Z Get:30 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [272 kB]
+2026-07-21T21:08:26.0007409Z Get:31 https://dl.google.com/linux/chrome-stable/deb stable/main amd64 Packages [1418 B]
+2026-07-21T21:08:30.1872193Z Fetched 10.4 MB in 1s (8174 kB/s)
+2026-07-21T21:08:30.9593723Z Reading package lists...
+2026-07-21T21:08:30.9919288Z Reading package lists...
+2026-07-21T21:08:31.2049185Z Building dependency tree...
+2026-07-21T21:08:31.2056462Z Reading state information...
+2026-07-21T21:08:31.3924627Z xvfb is already the newest version (2:21.1.12-1ubuntu1.6).
+2026-07-21T21:08:31.3925737Z 0 upgraded, 0 newly installed, 0 to remove and 66 not upgraded.
+2026-07-21T21:08:31.3984195Z ##[group]Run xvfb-run -a npm run test:e2e
+2026-07-21T21:08:31.3984766Z [36;1mxvfb-run -a npm run test:e2e[0m
+2026-07-21T21:08:31.4045946Z shell: /usr/bin/bash -e {0}
+2026-07-21T21:08:31.4046211Z env:
+2026-07-21T21:08:31.4046408Z   CARGO_HOME: /home/runner/.cargo
+2026-07-21T21:08:31.4046669Z   CARGO_INCREMENTAL: 0
+2026-07-21T21:08:31.4046883Z   CARGO_TERM_COLOR: always
+2026-07-21T21:08:31.4047206Z   RIPR_TEST_SERVER_PATH: /home/runner/work/ripr/ripr/target/debug/ripr
+2026-07-21T21:08:31.4047562Z ##[endgroup]
+2026-07-21T21:08:31.9172074Z 
+2026-07-21T21:08:31.9172593Z > ripr@0.10.1 test:e2e
+2026-07-21T21:08:31.9173277Z > cargo xtask vscode-test-e2e
+2026-07-21T21:08:31.9173647Z 
+2026-07-21T21:08:32.0447292Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+2026-07-21T21:08:32.0517224Z [1m[92m     Running[0m `/home/runner/work/ripr/ripr/target/debug/xtask vscode-test-e2e`
+2026-07-21T21:08:32.0568106Z $ cargo build -p ripr
+2026-07-21T21:08:32.1595002Z [1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+2026-07-21T21:08:32.1699893Z $ (cd /home/runner/work/ripr/ripr/editors/vscode && /home/runner/work/ripr/ripr/editors/vscode/node_modules/.bin/tsc -p ./)
+2026-07-21T21:08:34.1108891Z $ (cd /home/runner/work/ripr/ripr/editors/vscode && RIPR_TEST_SERVER_PATH=/home/runner/work/ripr/ripr/target/debug/ripr RIPR_TEST_WORKSPACE_PATH=/home/runner/work/ripr/ripr/fixtures/boundary_gap/input node out/test/runTest.js)
+2026-07-21T21:08:34.2038923Z - Resolving version...
+2026-07-21T21:08:34.2578616Z ✔ Validated version: 1.129.1
+2026-07-21T21:08:34.2591235Z - Found at https://update.code.visualstudio.com/1.129.1/linux-x64/stable?released=true
+2026-07-21T21:08:34.3004562Z ✔ Found at https://update.code.visualstudio.com/1.129.1/linux-x64/stable?released=true
+2026-07-21T21:08:34.3006524Z - Downloading (295.16 MB)
+2026-07-21T21:08:41.0653180Z ✔ Downloaded VS Code into /home/runner/work/ripr/ripr/target/ripr/vscode-test-cache/vscode-linux-x64-1.129.1
+2026-07-21T21:08:44.3512655Z [5533:0721/210844.350409:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+2026-07-21T21:08:44.3698942Z [5533:0721/210844.368931:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+2026-07-21T21:08:44.3718142Z [5533:0721/210844.369010:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+2026-07-21T21:08:44.3720041Z [5533:0721/210844.371461:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+2026-07-21T21:08:44.5282147Z [90m[main 2026-07-21T21:08:44.527Z][0m StorageMainService: creating application shared storage
+2026-07-21T21:08:44.6232063Z [5533:0721/210844.621183:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+2026-07-21T21:08:44.6237344Z [90m[main 2026-07-21T21:08:44.621Z][0m [shared storage] Creating shared storage database at ':memory:' (wasCreated: true)
+2026-07-21T21:08:44.6244366Z [90m[main 2026-07-21T21:08:44.623Z][0m [shared storage] Initializing fallback application storage (path: in-memory)
+2026-07-21T21:08:44.7407357Z [90m[main 2026-07-21T21:08:44.739Z][0m [shared storage] Fallback application storage initialized with 3 items
+2026-07-21T21:08:44.7408917Z [90m[main 2026-07-21T21:08:44.740Z][0m update#setState disabled
+2026-07-21T21:08:44.7410684Z [90m[main 2026-07-21T21:08:44.740Z][0m update#ctor - updates are disabled by the environment
+2026-07-21T21:08:44.7528818Z [5533:0721/210844.751804:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+2026-07-21T21:08:45.9877782Z workbench#open()
+2026-07-21T21:08:46.6419422Z Started local extension host with pid 5776.
+2026-07-21T21:08:46.6451057Z IExtensionHostStarter.start() took 33 ms.
+2026-07-21T21:08:46.8334480Z Started initializing default profile extensions in extensions installation folder. file:///home/runner/work/ripr/ripr/target/ripr/vscode-test-extensions/5518
+2026-07-21T21:08:46.8591682Z [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-07-21T21:08:47.3550534Z Completed initializing default profile extensions in extensions installation folder. file:///home/runner/work/ripr/ripr/target/ripr/vscode-test-extensions/5518
+2026-07-21T21:08:47.6426151Z Loading development extension at /home/runner/work/ripr/ripr/editors/vscode
+2026-07-21T21:08:47.6499634Z NativeExtensionHostFactory._createLocalProcessExtensionHostDataProvider.scannedExtensions: TypeScriptTeam.jsts-chat-features,vscode.bat,vscode.clojure,vscode.coffeescript,vscode.configuration-editing,GitHub.copilot-chat,vscode.cpp,vscode.csharp,vscode.css,vscode.css-language-features,vscode.dart,vscode.debug-auto-launch,vscode.debug-server-ready,vscode.diff,vscode.docker,vscode.dotenv,vscode.emmet,vscode.extension-editing,vscode.fsharp,vscode.git,vscode.git-base,vscode.github,vscode.github-authentication,vscode.go,vscode.groovy,vscode.grunt,vscode.gulp,vscode.handlebars,vscode.hlsl,vscode.html,vscode.html-language-features,vscode.ini,vscode.ipynb,vscode.jake,vscode.java,vscode.javascript,vscode.json,vscode.json-language-features,vscode.julia,vscode.latex,vscode.less,vscode.log,vscode.lua,vscode.make,vscode.markdown,vscode.markdown-language-features,vscode.markdown-math,vscode.media-preview,vscode.merge-conflict,vscode.mermaid-markdown-features,vscode.microsoft-authentication,ms-vscode.js-debug,ms-vscode.js-debug-companion,ms-vscode.vscode-js-profile-table,vscode.builtin-notebook-renderers,vscode.npm,vscode.objective-c,vscode.perl,vscode.php,vscode.php-language-features,vscode.powershell,vscode.prompt,vscode.pug,vscode.python,vscode.r,vscode.razor,vscode.references-view,vscode.restructuredtext,vscode.ruby,vscode.rust,vscode.scss,vscode.search-result,vscode.shaderlab,vscode.shellscript,vscode.simple-browser,vscode.sql,vscode.swift,vscode.terminal-suggest,vscode.theme-abyss,vscode.theme-defaults,vscode.theme-kimbie-dark,vscode.theme-monokai,vscode.theme-monokai-dimmed,vscode.theme-quietlight,vscode.theme-red,vscode.vscode-theme-seti,vscode.theme-solarized-dark,vscode.theme-solarized-light,vscode.theme-tomorrow-night-blue,vscode.tunnel-forwarding,vscode.typescript,vscode.typescript-language-features,vscode.vb,vscode.xml,vscode.yaml,EffortlessMetrics.ripr
+2026-07-21T21:08:47.6568491Z filterEnabledExtensions: extension 'GitHub.copilot-chat' is disabled
+2026-07-21T21:08:47.6637483Z NativeExtensionHostFactory._createLocalProcessExtensionHostDataProvider.localExtensions: EffortlessMetrics.ripr,TypeScriptTeam.jsts-chat-features,vscode.bat,vscode.clojure,vscode.coffeescript,vscode.configuration-editing,vscode.cpp,vscode.csharp,vscode.css,vscode.css-language-features,vscode.dart,vscode.debug-auto-launch,vscode.debug-server-ready,vscode.diff,vscode.docker,vscode.dotenv,vscode.emmet,vscode.extension-editing,vscode.fsharp,vscode.git,vscode.git-base,vscode.github,vscode.github-authentication,vscode.go,vscode.groovy,vscode.grunt,vscode.gulp,vscode.handlebars,vscode.hlsl,vscode.html,vscode.html-language-features,vscode.ini,vscode.ipynb,vscode.jake,vscode.java,vscode.javascript,vscode.json,vscode.json-language-features,vscode.julia,vscode.latex,vscode.less,vscode.log,vscode.lua,vscode.make,vscode.markdown,vscode.markdown-language-features,vscode.markdown-math,vscode.media-preview,vscode.merge-conflict,vscode.mermaid-markdown-features,vscode.microsoft-authentication,ms-vscode.js-debug,ms-vscode.js-debug-companion,ms-vscode.vscode-js-profile-table,vscode.builtin-notebook-renderers,vscode.npm,vscode.objective-c,vscode.perl,vscode.php,vscode.php-language-features,vscode.powershell,vscode.prompt,vscode.pug,vscode.python,vscode.r,vscode.razor,vscode.references-view,vscode.restructuredtext,vscode.ruby,vscode.rust,vscode.scss,vscode.search-result,vscode.shaderlab,vscode.shellscript,vscode.simple-browser,vscode.sql,vscode.swift,vscode.terminal-suggest,vscode.theme-abyss,vscode.theme-defaults,vscode.theme-kimbie-dark,vscode.theme-monokai,vscode.theme-monokai-dimmed,vscode.theme-quietlight,vscode.theme-red,vscode.vscode-theme-seti,vscode.theme-solarized-dark,vscode.theme-solarized-light,vscode.theme-tomorrow-night-blue,vscode.tunnel-forwarding,vscode.typescript,vscode.typescript-language-features,vscode.vb,vscode.xml,vscode.yaml
+2026-07-21T21:08:47.6721085Z NativeExtensionHostFactory._createLocalProcessExtensionHostDataProvider.myExtensions: EffortlessMetrics.ripr,TypeScriptTeam.jsts-chat-features,vscode.bat,vscode.clojure,vscode.coffeescript,vscode.configuration-editing,vscode.cpp,vscode.csharp,vscode.css,vscode.css-language-features,vscode.dart,vscode.debug-auto-launch,vscode.debug-server-ready,vscode.diff,vscode.docker,vscode.dotenv,vscode.emmet,vscode.extension-editing,vscode.fsharp,vscode.git,vscode.git-base,vscode.github,vscode.github-authentication,vscode.go,vscode.groovy,vscode.grunt,vscode.gulp,vscode.handlebars,vscode.hlsl,vscode.html,vscode.html-language-features,vscode.ini,vscode.ipynb,vscode.jake,vscode.java,vscode.javascript,vscode.json,vscode.json-language-features,vscode.julia,vscode.latex,vscode.less,vscode.log,vscode.lua,vscode.make,vscode.markdown,vscode.markdown-language-features,vscode.markdown-math,vscode.media-preview,vscode.merge-conflict,vscode.mermaid-markdown-features,vscode.microsoft-authentication,ms-vscode.js-debug,ms-vscode.js-debug-companion,ms-vscode.vscode-js-profile-table,vscode.builtin-notebook-renderers,vscode.npm,vscode.objective-c,vscode.perl,vscode.php,vscode.php-language-features,vscode.powershell,vscode.prompt,vscode.pug,vscode.python,vscode.r,vscode.razor,vscode.references-view,vscode.restructuredtext,vscode.ruby,vscode.rust,vscode.scss,vscode.search-result,vscode.shaderlab,vscode.shellscript,vscode.simple-browser,vscode.sql,vscode.swift,vscode.terminal-suggest,vscode.theme-abyss,vscode.theme-defaults,vscode.theme-kimbie-dark,vscode.theme-monokai,vscode.theme-monokai-dimmed,vscode.theme-quietlight,vscode.theme-red,vscode.vscode-theme-seti,vscode.theme-solarized-dark,vscode.theme-solarized-light,vscode.theme-tomorrow-night-blue,vscode.tunnel-forwarding,vscode.typescript,vscode.typescript-language-features,vscode.vb,vscode.xml,vscode.yaml
+2026-07-21T21:08:47.6759881Z filterEnabledExtensions: extension 'GitHub.copilot-chat' is disabled
+2026-07-21T21:08:47.6761005Z [vscode.mermaid-markdown-features]: Extension 'vscode.mermaid-markdown-features' CANNOT use 'legacyToolReferenceFullNames' without the 'chatParticipantPrivate' API proposal enabled
+2026-07-21T21:08:47.8699462Z Settings Sync: Account status changed from uninitialized to unavailable
+2026-07-21T21:08:48.7798228Z [0m[0m
+2026-07-21T21:08:48.8023768Z [0m  Extension Smoke[0m
+2026-07-21T21:08:49.0739122Z (node:5776) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-07-21T21:08:49.0740347Z (Use `exe --trace-deprecation ...` to show where the warning was created)
+2026-07-21T21:08:49.3776678Z   [32m  ✔[0m[90m extension is present[0m
+2026-07-21T21:08:49.3778268Z   [32m  ✔[0m[90m extension activates in a Rust workspace[0m
+2026-07-21T21:08:49.3829329Z   [32m  ✔[0m[90m commands are registered[0m
+2026-07-21T21:08:50.1657342Z   [32m  ✔[0m[90m real extension first-pr bridge commands use safe packet artifacts[0m[31m (761ms)[0m
+2026-07-21T21:08:50.4045264Z   [32m  ✔[0m[90m real extension first-pr bridge commands fail closed for unsafe packet states[0m[31m (247ms)[0m
+2026-07-21T21:08:50.4731709Z   [32m  ✔[0m[90m real extension actionable gap queue commands copy bounded packets for safe artifacts[0m[31m (81ms)[0m
+2026-07-21T21:08:50.4919254Z   [32m  ✔[0m[90m real extension actionable gap queue commands fail closed for unsafe artifacts[0m
+2026-07-21T21:08:50.7276833Z   [32m  ✔[0m[90m real extension adoption assurance smoke keeps setup repair and first-pr actions bounded[0m[31m (239ms)[0m
+2026-07-21T21:08:50.7278648Z   [32m  ✔[0m[90m defaults-first check mode is draft[0m
+2026-07-21T21:08:51.8154619Z [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-07-21T21:09:50.8466250Z   [31m  1) real server surfaces seam diagnostic, hover provider, and agent actions[0m
+2026-07-21T21:10:51.3991443Z   [31m  2) real server surfaces preview gap diagnostic, hover, status, and bounded actions[0m
+2026-07-21T21:10:51.4410431Z   [32m  ✔[0m[90m restartServer command is callable[0m[33m (50ms)[0m
+2026-07-21T21:10:51.4651991Z   [32m  ✔[0m[90m copyContext with no active editor completes[0m
+2026-07-21T21:10:51.4653322Z   [32m  ✔[0m[90m copyContext accepts target with finding_id[0m
+2026-07-21T21:10:51.4658295Z   [32m  ✔[0m[90m copyContext with seam_id asks LSP before CLI fallback[0m
+2026-07-21T21:10:51.5853577Z   [32m  ✔[0m[90m copyContext copies static-limit notes without LSP fallback for active workspace file[0m[31m (113ms)[0m
+2026-07-21T21:10:51.7576687Z   [32m  ✔[0m[90m copyContext copies first repair packets without LSP fallback for active workspace file[0m[31m (171ms)[0m
+2026-07-21T21:10:51.7705503Z   [32m  ✔[0m[90m direct repair commands fail closed without active file or target URI[0m
+2026-07-21T21:10:51.8683565Z   [32m  ✔[0m[90m root-scoped repair commands reject active files outside selected root[0m[31m (86ms)[0m
+2026-07-21T21:10:52.0814173Z   [32m  ✔[0m[90m startCurrentRepair executes the nearest existing repair action[0m[31m (201ms)[0m
+2026-07-21T21:10:52.0833335Z   [32m  ✔[0m[90m status bar reports server readiness and refresh state[0m
+2026-07-21T21:10:52.0847459Z   [32m  ✔[0m[90m typed analysis status takes precedence over lifecycle log parsing[0m
+2026-07-21T21:10:52.0849157Z   [32m  ✔[0m[90m typed analysis status surfaces server-owned ambiguous root state[0m
+2026-07-21T21:10:52.0850648Z   [32m  ✔[0m[90m typed analysis status surfaces a changed root as stale[0m
+2026-07-21T21:10:52.0852076Z   [32m  ✔[0m[90m status bar projects existing first useful action report[0m
+2026-07-21T21:10:52.0853410Z   [32m  ✔[0m[90m status model reports setup files found and missing[0m
+2026-07-21T21:10:52.0858407Z   [32m  ✔[0m[90m status model projects existing receipt state without producing receipts[0m
+2026-07-21T21:10:52.0875400Z   [32m  ✔[0m[90m first-pr packet validation is read-only and fail-closed[0m
+2026-07-21T21:10:52.0889661Z   [32m  ✔[0m[90m actionable gap queue validation is read-only and fail-closed[0m
+2026-07-21T21:10:52.0901644Z   [32m  ✔[0m[90m status model projects first-pr packet state without producing packets[0m
+2026-07-21T21:10:52.1880203Z   [32m  ✔[0m[90m status model projects actionable gap queue state without producing packets[0m[31m (90ms)[0m
+2026-07-21T21:10:52.1896046Z   [32m  ✔[0m[90m copyCurrentRepairPacket copies bounded queue packet for safe actionable state[0m
+2026-07-21T21:10:52.1930633Z   [32m  ✔[0m[90m copyCurrentRepairPacket fails closed for no-action stale and unsafe queue states[0m
+2026-07-21T21:10:52.1948926Z   [32m  ✔[0m[90m copyRepoGapMap copies read-only orientation for safe queue states[0m
+2026-07-21T21:10:52.1997052Z   [32m  ✔[0m[90m copyRepoGapMap suppresses unsafe and mismatched queue artifacts[0m
+2026-07-21T21:10:52.1998958Z   [32m  ✔[0m[90m editor adoption baseline keeps setup receipt and first-pr projection read-only[0m
+2026-07-21T21:10:52.2937181Z   [32m  ✔[0m[90m first-pr packet actions copy bounded payloads for matching diagnostics[0m[31m (82ms)[0m
+2026-07-21T21:10:52.6223060Z   [32m  ✔[0m[90m first-pr packet actions open only safe workspace-local markdown packets[0m[31m (326ms)[0m
+2026-07-21T21:10:52.7285476Z Tool "renderMermaidDiagram" was not contributed.
+2026-07-21T21:10:52.8392200Z   [32m  ✔[0m[90m first-pr packet diagnostic actions fail closed on mismatched or stale evidence[0m[31m (183ms)[0m
+2026-07-21T21:10:52.8401687Z   [32m  ✔[0m[90m first-pr packet actions suppress unsafe, malformed, and missing packet states[0m
+2026-07-21T21:10:52.8405308Z   [32m  ✔[0m[90m diagnoseSetup writes read-only setup report[0m
+2026-07-21T21:10:52.8408111Z   [32m  ✔[0m[90m diagnoseSetup distinguishes first-run and no-output states[0m
+2026-07-21T21:10:52.8411310Z   [32m  ✔[0m[90m status bar ignores first useful action report for another workspace[0m
+2026-07-21T21:10:52.8414662Z   [32m  ✔[0m[90m first useful action report does not hide stale editor status[0m
+2026-07-21T21:10:52.8622059Z   [32m  ✔[0m[90m first useful action report fails closed for unsupported or incomplete JSON[0m
+2026-07-21T21:10:52.8651362Z   [32m  ✔[0m[90m first useful action status projection covers fallback statuses[0m
+2026-07-21T21:10:52.8654868Z   [32m  ✔[0m[90m status bar reports disabled configuration without starting server[0m
+2026-07-21T21:10:52.8662240Z   [32m  ✔[0m[90m status bar reports missing workspace without starting server[0m
+2026-07-21T21:10:52.8663998Z   [32m  ✔[0m[90m status bar reports ambiguous multi-root without starting server[0m
+2026-07-21T21:10:52.8669571Z   [32m  ✔[0m[90m status model reports explicit multi-root selection[0m
+2026-07-21T21:10:52.8678502Z   [32m  ✔[0m[90m status bar reports unavailable server without hanging on modal UI[0m
+2026-07-21T21:10:52.9671945Z   [31m  3) setup diagnosis reports compatibility states and blocks unsafe repair start[0m
+2026-07-21T21:10:52.9675865Z   [32m  ✔[0m[90m language client registers workspace-scoped Rust default and preview document selectors[0m
+2026-07-21T21:10:53.0727175Z   [32m  ✔[0m[90m first-pr diagnostic commands fail closed when active file is outside selected root[0m[31m (91ms)[0m
+2026-07-21T21:10:53.0728893Z   [32m  ✔[0m[90m status bar reports stale saved-workspace analysis after routed file edits[0m
+2026-07-21T21:10:53.0729882Z   [32m  ✔[0m[90m preview-language edits mark stale status while unsupported files are ignored[0m
+2026-07-21T21:10:53.0730835Z   [32m  ✔[0m[90m copyContext falls back to CLI when seam LSP returns null[0m
+2026-07-21T21:10:53.0731828Z   [32m  ✔[0m[90m copyContext falls back to CLI when seam LSP request fails[0m
+2026-07-21T21:10:53.0732750Z   [32m  ✔[0m[90m copySuggestedAssertion copies assertion text[0m
+2026-07-21T21:10:53.0826479Z   [32m  ✔[0m[90m copySuggestedAssertion ignores malformed args without throwing[0m
+2026-07-21T21:10:53.0829169Z   [32m  ✔[0m[90m copyTargetedTestBrief copies brief text[0m
+2026-07-21T21:10:53.0896055Z   [32m  ✔[0m[90m copyTargetedTestBrief ignores malformed args without throwing[0m
+2026-07-21T21:10:53.2206678Z   [32m  ✔[0m[90m copyAgentLoopCommand copies command text[0m[31m (144ms)[0m
+2026-07-21T21:10:53.2388536Z   [32m  ✔[0m[90m agent loop command handlers ignore malformed args without throwing[0m
+2026-07-21T21:10:53.2390493Z   [32m  ✔[0m[90m agent loop command handler rejects unsupported or unsafe payloads[0m
+2026-07-21T21:10:53.3149211Z   [32m  ✔[0m[90m openRelatedTest opens the target uri and line[0m[31m (79ms)[0m
+2026-07-21T21:10:53.3151949Z   [32m  ✔[0m[90m openRelatedTest rejects stale, disabled, non-workspace, and unsupported targets[0m
+2026-07-21T21:10:53.3202923Z   [32m  ✔[0m[90m openRelatedTest ignores malformed args without throwing[0m
+2026-07-21T21:10:53.3207184Z   [32m  ✔[0m[90m showReceiptStatus shows real receipt_status when LSP returns live fields[0m
+2026-07-21T21:10:53.3211211Z   [32m  ✔[0m[90m showReceiptStatus shows not_available message when LSP returns not_available fields[0m
+2026-07-21T21:10:53.3214310Z   [32m  ✔[0m[90m showReceiptStatus shows info message when no LSP client is running[0m
+2026-07-21T21:10:53.3219503Z   [32m  ✔[0m[90m copyReceiptCommand writes real command to clipboard when LSP returns a real value[0m
+2026-07-21T21:10:53.3223158Z   [32m  ✔[0m[90m copyReceiptCommand shows info message and does NOT write to clipboard when LSP returns not_available[0m
+2026-07-21T21:10:53.3225576Z   [32m  ✔[0m[90m copyReceiptCommand shows info message and does NOT write to clipboard when field is missing[0m
+2026-07-21T21:10:53.3229418Z   [32m  ✔[0m[90m copyReceiptCommand shows info message and does NOT write to clipboard when no LSP client is running[0m
+2026-07-21T21:10:53.3232367Z   [32m  ✔[0m[90m openAttemptLedger shows info message when LSP returns not_available[0m
+2026-07-21T21:10:53.3237749Z   [32m  ✔[0m[90m openAttemptLedger shows info message when no LSP client is running[0m
+2026-07-21T21:10:53.3244325Z   [32m  ✔[0m[90m showRouteQuality shows real summary when LSP returns a real value[0m
+2026-07-21T21:10:53.3253770Z   [32m  ✔[0m[90m showRouteQuality shows not_available message when LSP returns not_available[0m
+2026-07-21T21:10:53.3254751Z   [32m  ✔[0m[90m showRouteQuality fails closed for malformed structured summaries[0m
+2026-07-21T21:10:53.3255646Z   [32m  ✔[0m[90m showRouteQuality shows info message when no LSP client is running[0m
+2026-07-21T21:10:53.3573190Z   [32m  ✔[0m[90m receipt inspection commands are registered[0m
+2026-07-21T21:10:53.3589605Z [0m  Show Output Warning Action[0m
+2026-07-21T21:10:53.3593107Z   [32m  ✔[0m[90m a failed copy warns with a Show Output button that reveals the channel[0m
+2026-07-21T21:10:53.3598300Z [0m  Walkthrough Contribution Contract[0m
+2026-07-21T21:10:53.3602223Z   [32m  ✔[0m[90m the get-started walkthrough pins its ordered flow, media, and completion events[0m
+2026-07-21T21:10:53.3606405Z   [32m  ✔[0m[90m every media file exists and completion events use the supported vocabulary[0m
+2026-07-21T21:10:53.3609996Z [0m  Workspace Trust Manifest[0m
+2026-07-21T21:10:53.3614420Z   [32m  ✔[0m[90m limited support restricts executable server settings centrally[0m
+2026-07-21T21:10:53.3619411Z [0m  Workspace Trust Runtime[0m
+2026-07-21T21:10:53.3626675Z   [32m  ✔[0m[90m untrusted start performs zero resolver, process, watcher, or client work[0m
+2026-07-21T21:10:53.3628845Z [0m  Workspace Trust Transition[0m
+2026-07-21T21:10:53.3631066Z   [32m  ✔[0m[90m concurrent trust-grant starts coalesce into one controller start[0m
+2026-07-21T21:10:53.3636031Z   [32m  ✔[0m[90m startServerOnce coalesces concurrent starts and retries after failure[0m
+2026-07-21T21:10:53.3638797Z   [32m  ✔[0m[90m a failed trust-grant start can be retried[0m
+2026-07-21T21:10:53.3642076Z [0m  Workspace Trust Start Failure Recovery[0m
+2026-07-21T21:10:53.3648013Z   [32m  ✔[0m[90m a rejected real controller start leaves no stale client and the retry re-initializes[0m
+2026-07-21T21:10:53.3659872Z [92m [0m[32m 88 passing[0m[90m (2m)[0m
+2026-07-21T21:10:53.3677068Z [31m  3 failing[0m
+2026-07-21T21:10:53.3677821Z [0m  1) Extension Smoke
+2026-07-21T21:10:53.3679783Z        real server surfaces seam diagnostic, hover provider, and agent actions:
+2026-07-21T21:10:53.3681075Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+2026-07-21T21:10:53.3682197Z Workspace folders: /home/runner/work/ripr/ripr/fixtures/boundary_gap/input
+2026-07-21T21:10:53.3683540Z Target URI: file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/lib.rs
+2026-07-21T21:10:53.3755593Z Current URI diagnostics:
+2026-07-21T21:10:53.3760081Z 
+2026-07-21T21:10:53.3769091Z All diagnostics:
+2026-07-21T21:10:53.3772272Z file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/first-pr-actions.rs
+2026-07-21T21:10:53.3774274Z file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/lib.rs[0m[90m
+2026-07-21T21:10:53.3778246Z   	at waitForDiagnostic (out/test/suite/extension.test.js:3693:11)
+2026-07-21T21:10:53.3780712Z   	at async Context.<anonymous> (out/test/suite/extension.test.js:279:28)
+2026-07-21T21:10:53.3781670Z [0m
+2026-07-21T21:10:53.3782251Z [0m  2) Extension Smoke
+2026-07-21T21:10:53.3783180Z        real server surfaces preview gap diagnostic, hover, status, and bounded actions:
+2026-07-21T21:10:53.3784894Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+2026-07-21T21:10:53.3786344Z Workspace folders: /home/runner/work/ripr/ripr/fixtures/boundary_gap/input
+2026-07-21T21:10:53.3787876Z Target URI: file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/pricing.ts
+2026-07-21T21:10:53.3788962Z Current URI diagnostics:
+2026-07-21T21:10:53.3789407Z 
+2026-07-21T21:10:53.3789709Z All diagnostics:
+2026-07-21T21:10:53.3790692Z file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/first-pr-actions.rs
+2026-07-21T21:10:53.3792284Z file:///home/runner/work/ripr/ripr/fixtures/boundary_gap/input/src/pricing.ts[0m[90m
+2026-07-21T21:10:53.3793498Z   	at waitForDiagnostic (out/test/suite/extension.test.js:3693:11)
+2026-07-21T21:10:53.3794541Z   	at async Context.<anonymous> (out/test/suite/extension.test.js:355:32)
+2026-07-21T21:10:53.3795701Z [0m
+2026-07-21T21:10:53.3796297Z [0m  3) Extension Smoke
+2026-07-21T21:10:53.3797237Z        setup diagnosis reports compatibility states and blocks unsafe repair start:
+2026-07-21T21:10:53.3798022Z 
+2026-07-21T21:10:53.3799242Z       [31mAssertionError [ERR_ASSERTION]: expected setup report to include ripr server state: ripr_version_ok (ripr 0.8.0-test)
+2026-07-21T21:10:53.3800655Z 
+2026-07-21T21:10:53.3800993Z ripr setup diagnosis:
+2026-07-21T21:10:53.3801821Z Status: ripr requires a trusted workspace to start the server.
+2026-07-21T21:10:53.3802877Z Workspace: /home/runner/work/ripr/ripr/fixtures/boundary_gap/input
+2026-07-21T21:10:53.3804267Z Workspace root state: workspace_single_root (/home/runner/work/ripr/ripr/fixtures/boundary_gap/input)
+2026-07-21T21:10:53.3805866Z Extension state: extension_version_ok (0.8.0)
+2026-07-21T21:10:53.3806657Z Expected ripr server version: 0.8.0
+2026-07-21T21:10:53.3807358Z ripr server state: ripr_missing
+2026-07-21T21:10:53.3808098Z Workspace trust state: workspace_untrusted
+2026-07-21T21:10:53.3808795Z Config state: config_missing
+2026-07-21T21:10:53.3809528Z Artifact directory state: artifact_dir_missing
+2026-07-21T21:10:53.3812756Z Server: not resolved
+2026-07-21T21:10:53.3813518Z Server version: not reported
+2026-07-21T21:10:53.3814078Z Server started: no; server stopped
+2026-07-21T21:10:53.3814865Z Config: ripr.toml (missing; built-in defaults are active until ripr.toml is added)
+2026-07-21T21:10:53.3833807Z Enabled languages: not reported yet; read from ripr.toml by the server refresh.
+2026-07-21T21:10:53.3835489Z Available languages: not reported by server; editor selectors can route enabled stable and preview languages.
+2026-07-21T21:10:53.3836929Z Editor selectors: rust, typescript, typescriptreact, javascript, javascriptreact, python
+2026-07-21T21:10:53.3837998Z Evidence freshness: unknown until the next server refresh
+2026-07-21T21:10:53.3839638Z Artifact actionable gap queue: target/ripr/reports/actionable-gaps.json (missing; artifact missing; run or refresh saved-workspace evidence when needed)
+2026-07-21T21:10:53.3841988Z Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing; artifact missing; run or refresh saved-workspace evidence when needed)
+2026-07-21T21:10:53.3844354Z Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (missing; artifact missing; run or refresh saved-workspace evidence when needed)
+2026-07-21T21:10:53.3858168Z Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (missing; artifact missing; run or refresh saved-workspace evidence when needed)
+2026-07-21T21:10:53.3859158Z 
+2026-07-21T21:10:53.3859307Z Detail:
+2026-07-21T21:10:53.3860207Z The workspace is not trusted. ripr does not download, launch, or run repair actions in untrusted workspaces.
+2026-07-21T21:10:53.3860970Z 
+2026-07-21T21:10:53.3861692Z Next safe action: Trust the workspace (Manage > Trust Workspace), then run ripr: Restart Server.
+2026-07-21T21:10:53.3862366Z 
+2026-07-21T21:10:53.3862983Z Actionable gap queue: missing; target/ripr/reports/actionable-gaps.json was not found.
+2026-07-21T21:10:53.3864654Z Next safe queue action: run cargo xtask evidence-quality-audit or refresh saved-workspace evidence.
+2026-07-21T21:10:53.3865690Z 
+2026-07-21T21:10:53.3866241Z First PR packet: missing; target/ripr/reports/start-here.json was not found.
+2026-07-21T21:10:53.3867670Z Next safe first-pr action: run cargo xtask first-pr for the current workspace after verify/receipt artifacts exist.
+2026-07-21T21:10:53.3868480Z 
+2026-07-21T21:10:53.3869785Z Limits: read-only setup diagnosis only; no source edits, generated tests, provider calls, mutation execution, or gate decision.[0m
+2026-07-21T21:10:53.3871157Z       [32m+ expected[0m [31m- actual[0m
+2026-07-21T21:10:53.3871517Z 
+2026-07-21T21:10:53.3871759Z       [31m-false[0m
+2026-07-21T21:10:53.3872208Z       [32m+true[0m
+2026-07-21T21:10:53.3872660Z       [0m[90m
+2026-07-21T21:10:53.3873308Z   	at assertReportIncludes (out/test/suite/extension.test.js:3284:16)
+2026-07-21T21:10:53.3874416Z   	at /home/runner/work/ripr/ripr/editors/vscode/out/test/suite/extension.test.js:2413:13
+2026-07-21T21:10:53.3875903Z   	at async withControllerTestContext (out/test/suite/extension.test.js:3266:9)
+2026-07-21T21:10:53.3876939Z   	at async Context.<anonymous> (out/test/suite/extension.test.js:2408:9)
+2026-07-21T21:10:53.3878023Z [0m
+2026-07-21T21:10:53.3878396Z Error: 3 tests failed.
+2026-07-21T21:10:53.3879125Z 	at /home/runner/work/ripr/ripr/editors/vscode/out/test/suite/index.js:55:24
+2026-07-21T21:10:53.3880311Z 	at done (/home/runner/work/ripr/ripr/editors/vscode/node_modules/mocha/lib/mocha.js:1028:7)
+2026-07-21T21:10:53.3881373Z Extension host test runner error Error: 3 tests failed.
+2026-07-21T21:10:53.3882272Z 	at /home/runner/work/ripr/ripr/editors/vscode/out/test/suite/index.js:55:24
+2026-07-21T21:10:53.3883374Z 	at done (/home/runner/work/ripr/ripr/editors/vscode/node_modules/mocha/lib/mocha.js:1028:7)
+2026-07-21T21:10:53.4004539Z [90m[main 2026-07-21T21:10:53.396Z][0m Extension host with pid 5776 exited with code: 0, signal: unknown.
+2026-07-21T21:10:53.4083392Z Asking native host service to exit with code 1.
+2026-07-21T21:10:53.5765527Z Exit code:   1
+2026-07-21T21:10:53.5778090Z Failed to run tests: TestRunFailedError: Test run failed with code 1
+2026-07-21T21:10:53.5780026Z     at ChildProcess.onProcessClosed (/home/runner/work/ripr/ripr/editors/vscode/node_modules/@vscode/test-electron/out/runTest.js:110:24)
+2026-07-21T21:10:53.5781540Z     at ChildProcess.emit (node:events:509:28)
+2026-07-21T21:10:53.5782424Z     at ChildProcess._handle.onexit (node:internal/child_process:295:12) {
+2026-07-21T21:10:53.5783138Z   code: 1,
+2026-07-21T21:10:53.5783537Z   signal: undefined
+2026-07-21T21:10:53.5783954Z }
+2026-07-21T21:10:53.5867863Z xtask: node out/test/runTest.js failed with exit status: 1 in /home/runner/work/ripr/ripr/editors/vscode
+2026-07-21T21:10:53.6022334Z ##[error]Process completed with exit code 1.
+2026-07-21T21:10:53.6130205Z Post job cleanup.
+2026-07-21T21:10:53.7071755Z [command]/usr/bin/git version
+2026-07-21T21:10:53.7113268Z git version 2.54.0
+2026-07-21T21:10:53.7158412Z Temporarily overriding HOME='/home/runner/work/_temp/dbdc5dd5-5851-4bcb-bb70-023659c1fc04' before making global git config changes
+2026-07-21T21:10:53.7159713Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-21T21:10:53.7164534Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ripr/ripr
+2026-07-21T21:10:53.7201184Z Removing SSH command configuration
+2026-07-21T21:10:53.7209710Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-21T21:10:53.7250524Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-21T21:10:53.7500470Z Removing HTTP extra header
+2026-07-21T21:10:53.7506959Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-21T21:10:53.7545885Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-21T21:10:53.7790601Z Removing includeIf entries pointing to credentials config files
+2026-07-21T21:10:53.7798774Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-21T21:10:53.7841590Z includeif.gitdir:/home/runner/work/ripr/ripr/.git.path
+2026-07-21T21:10:53.7843003Z includeif.gitdir:/home/runner/work/ripr/ripr/.git/worktrees/*.path
+2026-07-21T21:10:53.7844080Z includeif.gitdir:/github/workspace/.git.path
+2026-07-21T21:10:53.7845357Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-07-21T21:10:53.7854370Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/ripr/ripr/.git.path
+2026-07-21T21:10:53.7879715Z /home/runner/work/_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.7891904Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/ripr/ripr/.git.path /home/runner/work/_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.7929786Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/ripr/ripr/.git/worktrees/*.path
+2026-07-21T21:10:53.7954059Z /home/runner/work/_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.7964356Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/ripr/ripr/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.7999418Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-07-21T21:10:53.8022722Z /github/runner_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.8034309Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.8087499Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-07-21T21:10:53.8122205Z /github/runner_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.8138163Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config
+2026-07-21T21:10:53.8172041Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-21T21:10:53.8446000Z Removing credentials config '/home/runner/work/_temp/git-credentials-789bf96c-4069-4011-bfbc-5e2699e07c03.config'
+2026-07-21T21:10:53.8633279Z Cleaning up orphan processes
