@@ -221,6 +221,17 @@ export class RiprClientController {
    * review feedback.)
    */
   private startingPromise: Promise<void> | undefined;
+  /**
+   * Monotonic generation counter bumped by every stop(). startOnce() captures
+   * the generation at entry and checks it again before assigning this.client.
+   * If stop() ran during the async setup window (e.g. the user hit Restart
+   * Server while a workspace-folder-event start() was mid-flight), the
+   * generation no longer matches and startOnce() aborts without assigning —
+   * preventing the late assignment from overwriting the fresh client that
+   * restart()'s subsequent start() already installed. This closes the
+   * server-leak race described in #2123.
+   */
+  private startGeneration = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -244,7 +255,8 @@ export class RiprClientController {
     if (this.startingPromise) {
       return this.startingPromise;
     }
-    const promise = this.startOnce();
+    const generation = this.startGeneration;
+    const promise = this.startOnce(generation);
     this.startingPromise = promise;
     try {
       await promise;
@@ -255,7 +267,7 @@ export class RiprClientController {
     }
   }
 
-  private async startOnce(): Promise<void> {
+  private async startOnce(startGeneration: number): Promise<void> {
     if (this.client) {
       return;
     }
@@ -362,27 +374,48 @@ export class RiprClientController {
 
     this.output.appendLine(`Resolved ripr server from ${server.source}: ${server.detail}`);
     this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
-    this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
-    this.client.setTrace(traceFromConfig(config.traceServer));
+    // Guard against the restart race (#2123): if stop() ran during the async
+    // setup window (resolveServer / createLanguageClient), this start is stale.
+    // Assigning this.client now would overwrite the fresh client that the
+    // caller's subsequent start() (after stop()) already installed, leaking
+    // our process and listeners. Abort without assigning.
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start aborted: stop() ran during setup.');
+      return;
+    }
+    const client = this.runtime.createLanguageClient(serverOptions, clientOptions);
+    this.client = client;
+    client.setTrace(traceFromConfig(config.traceServer));
     this.notificationDisposables.push(
-      this.client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
-      this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
+      client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
+      client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
     );
     try {
-      await this.client.start();
+      await client.start();
     } catch (error) {
       // A rejected start must not strand a half-initialized client: clear the
       // reference and detach listeners so a later start() re-initializes
-      // instead of returning early against stale state.
-      const failed = this.client;
-      this.client = undefined;
+      // instead of returning early against stale state. Only clear this.client
+      // if it still points at OUR client — a replacement start() may have
+      // already installed a different one (the restart race, #2123).
+      if (this.client === client) {
+        this.client = undefined;
+      }
       while (this.notificationDisposables.length > 0) {
         this.notificationDisposables.pop()?.dispose();
       }
-      if (failed) {
-        await failed.stop().catch(() => undefined);
-      }
+      await client.stop().catch(() => undefined);
       throw error;
+    }
+    // If stop() ran during `await this.client.start()`, the generation no
+    // longer matches and a newer start() may have already installed a fresh
+    // client. Don't overwrite the fresh client's status or run setup-status
+    // refreshes against the stale session — just return. The client we
+    // started here was already stopped by stop() (which captures this.client
+    // at entry and calls client.stop()). (#2123 review feedback.)
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start completed but stop() ran during startup; aborting setup.');
+      return;
     }
     await this.refreshSetupStatusFiles();
     this.updateStatus({
@@ -418,6 +451,12 @@ export class RiprClientController {
     // block will see startingPromise !== its own promise and leave the field
     // cleared.
     this.startingPromise = undefined;
+    // Bump the generation so any in-flight startOnce() detects that stop()
+    // ran during its async setup window and aborts before assigning
+    // this.client. This prevents the late assignment from overwriting the
+    // fresh client that the caller's subsequent start() installed after
+    // stop(). (#2123)
+    this.startGeneration++;
     this.server = undefined;
     this.receivedTypedAnalysisStatus = false;
     this.typedAnalysisStatusState = undefined;
