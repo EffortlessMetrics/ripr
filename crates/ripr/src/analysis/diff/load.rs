@@ -157,20 +157,68 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
 /// excluded because `git diff <base>` does not include them unless the user
 /// stages them.
 /// Fail-closed: if git cannot be run or the directory is not a git repo,
-/// returns `false` (does NOT fabricate a disclosure).
+/// returns `false` (does NOT fabricate a disclosure) — but the probe failure
+/// is named on stderr so a broken git install is not mistaken for a clean
+/// tree (#2074).
 ///
 /// RIPR-SPEC-0112: used to disclose when `--base` analyzed committed history
 /// while uncommitted working-tree changes were silently excluded.
 pub fn working_tree_has_tracked_changes(root: &Path) -> bool {
+    match working_tree_probe(root) {
+        WorkingTreeProbe::Dirty => true,
+        WorkingTreeProbe::Clean => false,
+        // Fail-closed on disclosure (unchanged): a probe error never
+        // fabricates a positive "uncommitted changes exist" signal. But the
+        // error is no longer silent (#2074): name the probe failure so a
+        // broken git install is not mistaken for a clean tree.
+        WorkingTreeProbe::Error(reason) => {
+            eprintln!("{}", working_tree_probe_error_warning(&reason));
+            false
+        }
+    }
+}
+
+/// The stderr warning for a failed working-tree probe (#2074). Pure so the
+/// exact phrasings ("git could not be run", "git status exited with") are
+/// unit-testable without capturing stderr.
+fn working_tree_probe_error_warning(reason: &str) -> String {
+    format!(
+        "ripr: working-tree change probe failed ({reason}); treating the tree as \
+         unchanged — the uncommitted-changes disclosure may be incomplete"
+    )
+}
+
+/// Outcome of the working-tree change probe (#2074): a clean tree is
+/// distinguishable from a failed probe.
+#[derive(Debug)]
+enum WorkingTreeProbe {
+    Dirty,
+    Clean,
+    Error(String),
+}
+
+fn working_tree_probe(root: &Path) -> WorkingTreeProbe {
     let result = Command::new("git")
         .args(["status", "--porcelain", "--", "."])
         .current_dir(root)
         .output();
     match result {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .any(|line| !line.starts_with("??")),
-        _ => false,
+        Ok(out) if out.status.success() => {
+            if String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .any(|line| !line.starts_with("??"))
+            {
+                WorkingTreeProbe::Dirty
+            } else {
+                WorkingTreeProbe::Clean
+            }
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let detail = stderr.lines().next().unwrap_or("unknown git error");
+            WorkingTreeProbe::Error(format!("git status exited with {}: {detail}", out.status))
+        }
+        Err(err) => WorkingTreeProbe::Error(format!("git could not be run: {err}")),
     }
 }
 
@@ -413,6 +461,52 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn working_tree_probe_error_warning_names_both_failure_arms() {
+        // #2074 review: the contracted phrasings are unit-testable without
+        // capturing stderr.
+        let spawn_err = working_tree_probe_error_warning("git could not be run: not a directory");
+        assert!(spawn_err.contains("git could not be run"));
+        assert!(spawn_err.contains("disclosure may be incomplete"));
+        let exit_err =
+            working_tree_probe_error_warning("git status exited with exit code: 128: fatal");
+        assert!(exit_err.contains("git status exited with"));
+    }
+
+    #[test]
+    fn working_tree_probe_distinguishes_error_from_clean() -> std::io::Result<()> {
+        // A file (not a directory) as the probe root fails deterministically
+        // on every host: spawn errors with "not a directory" (#2074). A plain
+        // non-repo temp dir is NOT a portable error case — git walks up to a
+        // parent repo when one exists.
+        let file = std::env::temp_dir().join("ripr-wt-probe-notdir");
+        fs::write(&file, "not a directory\n")?;
+
+        match working_tree_probe(&file) {
+            WorkingTreeProbe::Error(reason) => {
+                // The spawn-failure arm carries the contracted phrasing.
+                assert!(
+                    reason.contains("git could not be run"),
+                    "unexpected probe error: {reason}"
+                );
+            }
+            other => {
+                return Err(std::io::Error::other(format!(
+                    "expected probe error for a file-as-root, got {other:?}"
+                )));
+            }
+        }
+        // The public fn still fails closed to false on a probe error.
+        if working_tree_has_tracked_changes(&file) {
+            return Err(std::io::Error::other(
+                "a failed probe must not report tracked changes",
+            ));
+        }
+
+        let _ = fs::remove_file(&file);
         Ok(())
     }
 
