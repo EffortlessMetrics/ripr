@@ -197,34 +197,33 @@ The active campaign manifest is:
 .ripr/goals/active.toml
 ```
 
-It is the machine-readable pointer for campaign state. It names the active
+It was the machine-readable pointer for campaign state. It named the active
 campaign, end state, work items, dependencies, stackability, and required
-commands.
+commands. The file was deleted in #2056 along with the rest of `.ripr/goals/`;
+this section survives as history.
 
-The current `xtask` goals commands read this manifest:
+The `xtask` goals commands described below were **deleted in #2056** and no
+longer exist (`goals status|next|report`, `check-goals`, `check-campaign`,
+`pr-body --work-item`, `closeout`). They are kept here as campaign history
+only — do not run them; use the live GitHub board instead.
 
-```bash
-rtk cargo xtask goals status
-rtk cargo xtask goals next
-rtk cargo xtask goals report
-```
-
-Validate the manifest with:
+Historical record: the retired commands read the active manifest:
 
 ```bash
-rtk cargo xtask check-goals
+cargo xtask goals status
+cargo xtask goals next
+cargo xtask goals report
+cargo xtask check-goals
 ```
 
-`check-goals` validates the active execution manifest and the focused tracker
-rails around it. `check-campaign` remains a compatibility alias. Focused
-tracker manifests must stay outside
-`.ripr/goals/active.toml`, done work items must stay tied to proof commands,
-and declared source-of-truth paths must point at existing proposal, plan, spec,
-receipt, and closeout files. When campaign docs reference a tracker manifest,
-the referenced manifest path must exist.
+`check-goals` validated the active execution manifest and the focused tracker
+rails around it. Focused tracker manifests had to stay outside
+`.ripr/goals/active.toml`, done work items had to stay tied to proof commands,
+and declared source-of-truth paths had to point at existing proposal, plan,
+spec, receipt, and closeout files.
 
-Blocked work items are manifest state, not a separate mutation command. Record
-blocked work in the active manifest with `status = "blocked"`,
-`blocked_reason`, and `blocked_by` when applicable. `cargo xtask goals next`
-surfaces those blocked items and their reasons so agents do not infer ready work
-from chat history when the queue is intentionally blocked.
+Blocked work items were manifest state, not a separate mutation command, and
+`cargo xtask goals next` surfaced blocked items and reasons so agents did not
+infer ready work from chat history when the queue was intentionally blocked.
+Today the live GitHub board plays that role: open issues, PRs, and required
+checks are the queue.
