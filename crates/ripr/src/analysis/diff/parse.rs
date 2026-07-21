@@ -171,6 +171,22 @@ mod parser_state {
             }
             self.saw_old_path_marker = false;
             if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+                // Overflow guard: if either start coordinate is at usize::MAX,
+                // the counter cannot advance and every line in this hunk would
+                // be tagged with a meaningless line number. usize::MAX is never
+                // a real source line, and downstream consumers (classifier,
+                // probe generator) trust `line` unconditionally — emitting a
+                // probe at usize::MAX produces a finding that points nowhere.
+                // Drop the entire hunk (including the first line) by refusing
+                // to enter it. The earlier fail-closed variant recorded the
+                // first line at usize::MAX and then closed; this stricter
+                // variant drops even that first line, because usize::MAX is
+                // not an honest coordinate for any line. See the post-merge
+                // review of #2050.
+                if old_start == usize::MAX || new_start == usize::MAX {
+                    self.in_hunk = false;
+                    return true;
+                }
                 self.old_line = old_start;
                 self.new_line = new_start;
                 self.in_hunk = true;
@@ -835,21 +851,22 @@ deleted file mode 100644
     }
 
     #[test]
-    fn parser_handles_hunk_line_numbers_near_usize_max() {
-        // The first changed line in an overflow hunk header is recorded at
-        // usize::MAX (the only honest coordinate we have). The counter then
-        // cannot advance, so the parser closes the hunk fail-closed rather
-        // than emitting every subsequent line with a false line: usize::MAX.
-        // We verify both halves: the first line is kept, the second is not.
+    fn parser_handles_hunk_line_numbers_at_usize_max() {
+        // A hunk header whose start coordinate is usize::MAX cannot produce
+        // any honest line number: usize::MAX is never a real source line,
+        // and the counter cannot advance. The parser refuses to enter the
+        // hunk at all, so NO changed line is recorded — not even the first.
+        // This is stricter than the earlier fail-closed variant (which
+        // recorded the first line at usize::MAX and then closed); the
+        // stricter behaviour avoids emitting a probe at usize::MAX that
+        // downstream consumers (classifier, probe generator) would trust
+        // unconditionally. See the post-merge review of #2050.
         let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551615,2 +18446744073709551615,2 @@\n+a\n-b\n c\n";
         let files = parse_unified_diff(diff);
         assert_eq!(files.len(), 1);
         let file = &files[0];
-        assert_eq!(file.added_lines.len(), 1);
-        assert_eq!(file.added_lines[0].line, usize::MAX);
-        // The second changed line (`-b`) and the context line (` c`) are
-        // dropped: emitting them at line: usize::MAX would create ownerless
-        // probes that masquerade as a long run of changes.
+        // The entire hunk is dropped: no added, no removed lines.
+        assert_eq!(file.added_lines.len(), 0);
         assert_eq!(file.removed_lines.len(), 0);
     }
 
@@ -957,17 +974,33 @@ deleted file mode 100644
 
     #[test]
     fn parser_drops_all_lines_after_usize_max_overflow_in_hunk() {
-        // A hunk header that saturates the line counter at usize::MAX must
-        // close the hunk after the first line. Subsequent `+`/`-`/` ` lines
-        // are dropped rather than tagged with a misleading line: usize::MAX.
-        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551615,5 +18446744073709551615,5 @@\n+first\n+second\n+third\n fourth\n-fifth\n";
+        // Secondary overflow defense: a hunk header whose start is NEAR but
+        // not AT usize::MAX (here usize::MAX - 2) enters the hunk normally,
+        // but after the first few lines the counter saturates and the parser
+        // closes the hunk fail-closed. This test exercises the checked_add
+        // close-on-overflow path in consume_hunk_line (the primary defense
+        // is in handle_hunk_header, tested by parser_handles_hunk_line_numbers_at_usize_max).
+        //
+        // Start at usize::MAX - 2 = 18446744073709551613. The first `+first`
+        // line is recorded at that line number (a valid coordinate). The
+        // second `+second` advances to usize::MAX - 1 (valid). The third
+        // `+third` advances to usize::MAX (valid). The fourth context line
+        // ` fourth` cannot advance (usize::MAX + 1 overflows), so the hunk
+        // closes and `-fifth` is dropped.
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551613,5 +18446744073709551613,5 @@\n+first\n+second\n+third\n fourth\n-fifth\n";
         let files = parse_unified_diff(diff);
         assert_eq!(files.len(), 1);
         let file = &files[0];
-        // Only `+first` is recorded; the rest are dropped fail-closed.
-        assert_eq!(file.added_lines.len(), 1);
+        // Three added lines recorded (at usize::MAX-2, usize::MAX-1, usize::MAX);
+        // the context line ` fourth` triggers the close; `-fifth` is dropped.
+        assert_eq!(file.added_lines.len(), 3);
         assert_eq!(file.added_lines[0].text, "first");
-        assert_eq!(file.added_lines[0].line, usize::MAX);
+        assert_eq!(file.added_lines[0].line, usize::MAX - 2);
+        assert_eq!(file.added_lines[1].text, "second");
+        assert_eq!(file.added_lines[1].line, usize::MAX - 1);
+        assert_eq!(file.added_lines[2].text, "third");
+        assert_eq!(file.added_lines[2].line, usize::MAX);
+        // The fifth line (`-fifth`) is dropped fail-closed.
         assert_eq!(file.removed_lines.len(), 0);
     }
 
