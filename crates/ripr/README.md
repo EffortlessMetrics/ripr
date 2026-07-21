@@ -194,11 +194,12 @@ Recommended next step:
 Human output is optimized for local use.
 
 JSON output is versioned and intended for editor integrations, CI, and coding
-agents:
+agents. The `schema_version` field is the contract discriminator — consumers
+should branch on it before reading the rest of the envelope:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "draft",
   "base": "origin/main",
