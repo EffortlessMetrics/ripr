@@ -4900,12 +4900,15 @@ fn perl_next_command(producer_configured: Option<&str>, found_bin: Option<&str>)
         Some("perl-ripr-facts") | Some("perllsp") | Some("perl-lsp")
     );
     if managed && found_bin.is_some() {
-        // Managed mode + producer present: ripr invokes the exporter itself.
-        "ripr check --languages perl --base origin/main --head HEAD".to_string()
+        // Managed mode + producer present: ripr invokes the exporter
+        // itself. There is no --languages flag (#2105): perl is enabled
+        // through config, and check then runs the enabled set.
+        // Name the additive edit, not a replacement list, so a user with
+        // TypeScript/Python already enabled keeps them (#2105 review).
+        "add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD".to_string()
     } else if managed {
         // Managed mode configured but producer missing.
-        "install perllsp on PATH (or set [perl].executable), then: ripr check --languages perl"
-            .to_string()
+        "install perllsp on PATH (or set [perl].executable) and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD".to_string()
     } else {
         // Explicit packet mode (or producer absent): supply --perl-facts.
         "ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string()
@@ -10544,6 +10547,31 @@ language = "rust"
         assert!(config_text.contains("[analysis]"));
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
+    }
+
+    #[test]
+    fn perl_next_command_never_recommends_a_flag_check_rejects() {
+        // #2105: `ripr check` has no --languages flag; every doctor
+        // recommendation must stay within the check parser's contract.
+        for (producer, found) in [
+            (Some("perllsp"), Some("perllsp")),
+            (Some("perllsp"), None),
+            (Some("perl-ripr-facts"), None),
+            (None, None),
+        ] {
+            let command = perl_next_command(producer, found);
+            assert!(
+                !command.contains("--languages"),
+                "recommendation must not name --languages: {command}"
+            );
+        }
+        // The managed-present branch points at the config-driven route.
+        let managed = perl_next_command(Some("perllsp"), Some("perllsp"));
+        assert!(managed.contains("[languages]"));
+        assert!(managed.contains("ripr check --base origin/main --head HEAD"));
+        // The packet-mode branch is unchanged.
+        let packet = perl_next_command(None, None);
+        assert!(packet.contains("--perl-facts"));
     }
 
     #[test]
