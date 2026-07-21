@@ -1069,6 +1069,15 @@ export class RiprClientController {
     this.statusBar.text = statusText(this.status.kind, this.firstUsefulAction);
     this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     this.statusBar.command = 'ripr.showStatus';
+    // Set background and foreground colors so error and warning states are
+    // visible at a glance — otherwise `ripr: failed` and `ripr: ready` differ
+    // only in codicon, which is hard to read in peripheral vision. VS Code's
+    // documented convention is red for errors, yellow for warnings. When no
+    // color applies (idle/OK/transient), both are cleared so the theme
+    // default re-applies.
+    const colors = statusBarColors(this.status.kind);
+    this.statusBar.backgroundColor = colors?.background;
+    this.statusBar.color = colors?.foreground;
     this.statusBar.show();
   }
 
@@ -1818,6 +1827,50 @@ function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionS
     return status.summary;
   }
   return `${status.summary} First useful action: ${firstAction.title}`;
+}
+
+/**
+ * Background + foreground `ThemeColor` pair for the status bar item, or
+ * `undefined` for the default idle/OK colour. The mapping follows VS Code's
+ * documented convention (`statusBarItem.errorBackground`,
+ * `statusBarItem.warningBackground` — note: `statusBar.*Background` does not
+ * exist; the correct key is `statusBarItem.*`):
+ *
+ * - error (red): the analysis run failed or the server is unavailable.
+ *   These need user attention.
+ * - warning (yellow): the run is stale, the workspace is untrusted or
+ *   ambiguous, or the gap-artifact validation flagged something. These are
+ *   degraded-but-not-failed states.
+ * - default: transient (analysisRunning/starting/analysisQueued), idle
+ *   (ready/analysisReady/gapActionable/...), and the initial `stopped`
+ *   state. Setting a colour here would cry wolf; the codicon + text already
+ *   convey the state. `stopped` is the extension's initial state and must
+ *   not turn the bar red on startup.
+ */
+interface StatusBarColors {
+  background: vscode.ThemeColor;
+  foreground: vscode.ThemeColor;
+}
+
+function statusBarColors(kind: RiprStatusKind): StatusBarColors | undefined {
+  switch (kind) {
+    case 'analysisFailed':
+    case 'serverUnavailable':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.errorBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.errorForeground'),
+      };
+    case 'stale':
+    case 'workspaceAmbiguous':
+    case 'workspaceUntrusted':
+    case 'gapArtifactWarning':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.warningBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.warningForeground'),
+      };
+    default:
+      return undefined;
+  }
 }
 
 function statusTooltip(
