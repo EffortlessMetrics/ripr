@@ -159,6 +159,22 @@ pub(crate) struct TypeScriptRepoReadiness {
     pub(crate) top_blocker: Option<String>,
 }
 
+/// Detect the TypeScript/JavaScript test framework for a workspace root
+/// (#2106): one detector shared by doctor and the adapter's package
+/// discovery. Fail-closed: `None` when no evidence marker matches.
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn detect_typescript_test_framework(root: &Path) -> Option<&'static str> {
+    language::detect_framework_for_root(root).map(|framework| framework.as_str())
+}
+
+/// Detect the Python test framework for a workspace root (#2106): one
+/// detector shared by doctor and any adapter-side repo-level check.
+/// Fail-closed: `None` when no evidence marker matches.
+#[cfg(feature = "lang-python")]
+pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> {
+    language::detect_python_test_framework(root)
+}
+
 #[cfg(feature = "lang-typescript")]
 pub(crate) fn workspace_typescript_repo_readiness(root: &Path) -> Option<TypeScriptRepoReadiness> {
     use language::{

@@ -41,6 +41,7 @@ mod discovery;
 mod oracle;
 mod owners;
 mod package;
+pub(crate) use package::detect_framework_for_root;
 mod parse;
 mod paths;
 mod probe_shape;
