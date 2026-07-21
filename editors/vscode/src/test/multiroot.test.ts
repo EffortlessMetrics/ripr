@@ -38,9 +38,12 @@ suite('Multi-root workspace activation', () => {
             riprCommands.length > 0,
             `expected ripr.* commands to be registered, got: ${riprCommands.join(', ')}`,
         );
-        // Key commands that must exist.
+        // Key commands that must exist. Note: `ripr.refresh` is intentionally
+        // NOT registered — there is no lightweight refresh-only command. The
+        // fallback retry hint in client.ts points users at `ripr: Restart
+        // Server` (ripr.restartServer) instead. See #2001.
         assert.ok(commands.includes('ripr.restartServer'), 'ripr.restartServer should be registered');
-        assert.ok(commands.includes('ripr.refresh'), 'ripr.refresh should be registered');
+        assert.ok(commands.includes('ripr.showStatus'), 'ripr.showStatus should be registered');
     });
 
     test('workspace folders are accessible', () => {

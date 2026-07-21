@@ -977,7 +977,12 @@ export class RiprClientController {
       : 'The last analysis attempt failed.';
     const retry = typeof status.retry_command === 'string'
       ? status.retry_command
-      : 'ripr.refresh';
+      // Fallback must reference a registered command. `ripr.refresh` is not
+      // registered in package.json/extension.ts, so instructing the user to
+      // run it produces a palette error. `ripr: Restart Server` IS registered
+      // (ripr.restartServer) and triggers a full re-analysis. The title form
+      // matches the next-step convention used elsewhere in this file (#2001).
+      : 'ripr: Restart Server';
     const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
     switch (status.state) {
       case 'queued':
