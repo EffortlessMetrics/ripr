@@ -59,6 +59,31 @@ use run::{
     run_with_envs,
 };
 
+/// Process-wide mutex serialising tests that mutate the process working
+/// directory. The xtask test suite spawns subprocesses (rustc, cargo, git) that
+/// inherit the current cwd; meanwhile other tests (`with_temp_cwd`,
+/// `with_repo_cwd`) call `std::env::set_current_dir` and delete the temporary
+/// directory on teardown. Without serialisation, a subprocess spawn can land
+/// in the tiny window between `set_current_dir(temp)` and
+/// `remove_dir_all(temp)`, producing "Could not locate working directory" or
+/// exit-status-1 failures in unrelated `run_output*` / `capture_output*`
+/// tests. Both `main.rs` and `run.rs` test suites acquire this lock around any
+/// code path that either mutates cwd or spawns a subprocess, so they cannot
+/// race. See issue #2044.
+#[cfg(test)]
+pub(crate) static CWD_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+/// Acquire the shared cwd lock for a test body. Returned guard serialises the
+/// caller against every other test that mutates cwd or spawns a subprocess
+/// inheriting cwd.
+#[cfg(test)]
+pub(crate) fn acquire_test_cwd_lock() -> std::sync::MutexGuard<'static, ()> {
+    CWD_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
 #[derive(Debug)]
 struct GlobAllow {
     glob: String,
@@ -75337,6 +75362,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 mod tests {
     use std::io::Read;
 
+    use crate::acquire_test_cwd_lock;
     use ripr::output::receipt_lifecycle::{
         RECEIPT_MISSING, RECEIPT_MOVEMENT_IMPROVED, RECEIPT_NOT_APPLICABLE,
     };
@@ -75562,10 +75588,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::ExitStatus;
-    use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn temp_dir(name: &str) -> PathBuf {
         let stamp = SystemTime::now()
@@ -82660,7 +82683,7 @@ TypeScript repair packet (advisory)
     }
 
     fn with_temp_cwd<T>(name: &str, f: impl FnOnce(&Path) -> T) -> T {
-        let lock = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let lock = acquire_test_cwd_lock();
         let old = std::env::current_dir().unwrap();
         let root = temp_dir(name);
         std::env::set_current_dir(&root).unwrap();
@@ -82682,10 +82705,7 @@ TypeScript repair packet (advisory)
     }
 
     fn with_repo_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-        let mutex = CWD_LOCK.get_or_init(|| Mutex::new(()));
-        let guard = mutex
-            .lock()
-            .map_err(|err| format!("failed to lock cwd mutex: {err}"))?;
+        let guard = acquire_test_cwd_lock();
         let old = std::env::current_dir()
             .map_err(|err| format!("failed to capture current dir: {err}"))?;
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
