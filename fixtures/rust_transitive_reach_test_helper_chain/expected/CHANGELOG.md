@@ -105,3 +105,16 @@ cargo xtask goldens check
 
 Updated:
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_test_helper_chain --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

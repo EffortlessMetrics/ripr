@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/multi_hunk_removed_line_wrong_target/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":3},
+  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":3,"changed_files_by_language":[{"language":"rust","files":1}]},
   "findings": [
     {
       "id": "probe:src_lib.rs:static_unknown:17e03c34",

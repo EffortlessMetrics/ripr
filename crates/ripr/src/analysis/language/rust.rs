@@ -1135,6 +1135,7 @@ impl RustAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_rust_files,
+            changed_files_by_language: Vec::new(),
             partial_scope,
         })
     }

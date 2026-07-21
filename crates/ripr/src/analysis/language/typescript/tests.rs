@@ -3811,6 +3811,39 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
 }
 
 #[test]
+fn analyze_diff_splits_changed_files_into_typescript_and_javascript() -> Result<(), String> {
+    // #2103 review: this adapter covers .js/.jsx as javascript; the summary
+    // must not attribute JS files to typescript.
+    let adapter = TypeScriptAdapter;
+    let options = AnalysisOptions {
+        root: PathBuf::from("/nonexistent_workspace"),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![
+        changed("src/index.ts"),
+        changed("src/app.js"),
+        changed("src/Header.jsx"),
+        changed("src/lib.rs"),
+    ];
+    let result = adapter.analyze_diff(&options, &policy, &changed_files)?;
+    assert_eq!(result.changed_files, 3);
+    assert_eq!(
+        result.changed_files_by_language,
+        vec![
+            (crate::analysis::language::LanguageId::TypeScript, 1),
+            (crate::analysis::language::LanguageId::JavaScript, 2),
+        ]
+    );
+    Ok(())
+}
+
+#[test]
 fn analyze_repo_returns_empty_scaffold() -> Result<(), String> {
     let adapter = TypeScriptAdapter;
     let options = AnalysisOptions {

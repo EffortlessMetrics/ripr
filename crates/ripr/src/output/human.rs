@@ -144,7 +144,28 @@ fn render_header_summary(output: &CheckOutput) -> String {
             + output.summary.infection_unknown
             + output.summary.propagation_unknown
     ));
+    render_language_file_breakdown(&mut out, output);
     out
+}
+
+/// Emit a per-language changed-file breakdown only when a non-Rust language
+/// adapter counted at least one file (#2103). Pure-Rust runs emit nothing, so
+/// Rust-only output stays byte-identical. `changed_rust_files` itself now
+/// carries the Rust adapter's count only; this line shows the full split.
+fn render_language_file_breakdown(out: &mut String, output: &CheckOutput) {
+    let counts = &output.summary.changed_files_by_language;
+    let has_non_rust = counts
+        .iter()
+        .any(|count| count.language != "rust" && count.files > 0);
+    if !has_non_rust {
+        return;
+    }
+    let parts = counts
+        .iter()
+        .map(|count| format!("{}: {}", count.language, count.files))
+        .collect::<Vec<_>>()
+        .join(", ");
+    out.push_str(&format!("Changed file(s) by language: {parts}.\n\n"));
 }
 
 /// Emit the `--suppression-policy` application block (#1441): which policy
@@ -390,10 +411,10 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
-        FlowSinkFact, FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact,
-        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
-        ValueFact,
+        FlowSinkFact, FlowSinkKind, LanguageFileCount, LanguageId, LanguageStatus,
+        MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -432,6 +453,82 @@ mod tests {
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
+    }
+
+    /// #2103: a Rust-only run emits no per-language breakdown line, so
+    /// Rust-only human output stays byte-identical.
+    #[test]
+    fn render_omits_language_breakdown_for_rust_only_run() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                changed_rust_files: 2,
+                changed_files_by_language: vec![LanguageFileCount {
+                    language: "rust".to_string(),
+                    files: 2,
+                }],
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("by language"),
+            "Rust-only output must not contain a per-language breakdown; got:\n{rendered}"
+        );
+    }
+
+    /// #2103: when a non-Rust adapter counted files, the breakdown line shows
+    /// the per-language split.
+    #[test]
+    fn render_emits_language_breakdown_when_non_rust_files_counted() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                changed_rust_files: 1,
+                changed_files_by_language: vec![
+                    LanguageFileCount {
+                        language: "python".to_string(),
+                        files: 5,
+                    },
+                    LanguageFileCount {
+                        language: "rust".to_string(),
+                        files: 1,
+                    },
+                ],
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("Changed file(s) by language: python: 5, rust: 1."),
+            "expected per-language breakdown line; got:\n{rendered}"
+        );
     }
 
     #[test]

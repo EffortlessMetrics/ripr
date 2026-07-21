@@ -28,7 +28,8 @@ pub(crate) fn render_diff_scope_limited_check_json(
             "no_static_path": 0,
             "infection_unknown": 0,
             "propagation_unknown": 0,
-            "static_unknown": 0
+            "static_unknown": 0,
+            "changed_files_by_language": []
         },
         "findings": [],
         "analysis_scope": {
@@ -79,6 +80,30 @@ mod tests {
             include_unchanged_tests: true,
             perl_facts_path: None,
             suppression_policy: None,
+        }
+    }
+
+    #[test]
+    fn limited_artifact_summary_carries_empty_language_breakdown() -> Result<(), String> {
+        // #2103 review: the limited artifact must keep the same summary
+        // shape as every normal check output at the same schema version.
+        let rendered = render_diff_scope_limited_check_json(
+            &input(),
+            "diff_scope_oversized: 900 indexed Rust files exceed the limit (800)",
+        )?;
+        let Some(rendered) = rendered else {
+            return Err("expected a limited artifact for the oversized error".to_string());
+        };
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse limited artifact: {err}"))?;
+        let breakdown = value
+            .pointer("/summary/changed_files_by_language")
+            .and_then(Value::as_array);
+        match breakdown {
+            Some(entries) if entries.is_empty() => Ok(()),
+            other => Err(format!(
+                "expected summary.changed_files_by_language to be an empty array, got {other:?}"
+            )),
         }
     }
 

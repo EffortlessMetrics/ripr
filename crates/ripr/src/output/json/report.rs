@@ -310,6 +310,21 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
         s.propagation_unknown,
         s.static_unknown
     ));
+    // Additive (#2103): per-language changed-file counts, one entry per
+    // adapter that ran, sorted by language wire string. `changed_rust_files`
+    // above carries the Rust adapter's count only.
+    out.push_str(",\"changed_files_by_language\":[");
+    for (idx, count) in s.changed_files_by_language.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"language\":\"{}\",\"files\":{}}}",
+            escape(&count.language),
+            count.files
+        ));
+    }
+    out.push(']');
     // Additive: present only when a suppression policy was applied (#1441).
     // The per-class buckets above count unsuppressed findings only; buckets
     // plus `suppressed_by_policy` add back up to `findings`.

@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/typescript_reexport_two_hop_limit/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "findings": [
     {
       "id": "probe:src_util.ts:typescript_preview:5a933676",

@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/typescript_static_limit_taxonomy/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":4,"probes":4,"findings":4,"exposed":0,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":4,"findings":4,"exposed":0,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"javascript","files":2},{"language":"rust","files":0},{"language":"typescript","files":2}]},
   "findings": [
     {
       "id": "probe:src_decorated.tsx:typescript_preview:a66c44ee",

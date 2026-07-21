@@ -4,6 +4,8 @@ root: fixtures/typescript_negated_t_oracle/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Changed file(s) by language: rust: 0, typescript: 1.
+
 WARNING src/discount.ts:2
 
 Changed

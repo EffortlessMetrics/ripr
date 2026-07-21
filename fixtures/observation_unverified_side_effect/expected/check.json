@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/observation_unverified_side_effect/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "findings": [
     {
       "id": "probe:src_lib.rs:return_value:880ed6e6",

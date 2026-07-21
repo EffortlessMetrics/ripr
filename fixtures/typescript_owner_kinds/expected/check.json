@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/typescript_owner_kinds/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":1,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":4,"findings":4,"exposed":1,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "findings": [
     {
       "id": "probe:src_owners.ts:typescript_preview:f895095a",

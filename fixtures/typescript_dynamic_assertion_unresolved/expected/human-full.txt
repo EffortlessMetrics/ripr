@@ -4,6 +4,8 @@ root: fixtures/typescript_dynamic_assertion_unresolved/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Changed file(s) by language: rust: 0, typescript: 1.
+
 INFO src/clamp.ts:2
 
 Changed

@@ -4,6 +4,8 @@ root: fixtures/ts_heuristic_relation/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Changed file(s) by language: rust: 0, typescript: 1.
+
 Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.

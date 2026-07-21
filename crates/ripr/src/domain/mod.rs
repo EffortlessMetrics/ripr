@@ -38,6 +38,6 @@ pub use probe::{
     MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest, StopReason,
     ValueContext, ValueFact,
 };
-pub use summary::Summary;
+pub use summary::{LanguageFileCount, Summary};
 pub use support::{ProbeId, SourceLocation, SymbolId};
 pub use test_evidence_summary::{TestEvidenceEntry, TestEvidenceSummary};

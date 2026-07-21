@@ -4,6 +4,8 @@ root: fixtures/python_adversarial_buffer_token/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Changed file(s) by language: python: 1, rust: 0.
+
 WARNING src/pack.py:3
 
 Changed

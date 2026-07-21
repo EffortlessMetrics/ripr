@@ -4,6 +4,8 @@ root: fixtures/javascript_jsx_preview/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Changed file(s) by language: javascript: 1, rust: 0.
+
 Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.

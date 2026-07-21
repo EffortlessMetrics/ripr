@@ -21,6 +21,12 @@ use std::path::Path;
 pub(crate) struct LanguageDiffResult {
     pub(crate) findings: Vec<Finding>,
     pub(crate) changed_files: usize,
+    /// Per-output-language breakdown of `changed_files` for adapters that
+    /// cover more than one output language — the TypeScript adapter handles
+    /// `.ts/.tsx` (typescript) and `.js/.jsx` (javascript) (#2103 review).
+    /// Empty when the adapter covers exactly one language; the pipeline then
+    /// attributes `changed_files` to the adapter's own language.
+    pub(crate) changed_files_by_language: Vec<(super::LanguageId, usize)>,
     pub(crate) partial_scope: Option<PartialDiffScope>,
 }
 

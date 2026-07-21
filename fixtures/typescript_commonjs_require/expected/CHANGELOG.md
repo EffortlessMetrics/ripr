@@ -83,3 +83,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless typescript_commonjs_require --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

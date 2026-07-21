@@ -63,7 +63,10 @@ fn run_pipeline_for_diff_text(
     let changed_files = diff::parse_unified_diff(diff_text);
 
     let mut findings: Vec<Finding> = Vec::new();
-    let mut total_changed_files: usize = 0;
+    // `changed_rust_files` counts Rust adapter files only (#2103); every
+    // adapter that ran records its own count in `changed_files_by_language`.
+    let mut rust_changed_files: usize = 0;
+    let mut changed_files_by_language: Vec<(LanguageId, usize)> = Vec::new();
     let mut language_runs: Vec<LanguageRun> = Vec::new();
     let mut partial_scope: Option<PartialDiffScope> = None;
 
@@ -85,7 +88,8 @@ fn run_pipeline_for_diff_text(
         cancellation::checkpoint()?;
         partial_scope = result.partial_scope.clone();
         findings.extend(result.findings);
-        total_changed_files += result.changed_files;
+        rust_changed_files += result.changed_files;
+        changed_files_by_language.push((LanguageId::Rust, result.changed_files));
     }
     // When the Rust adapter returned a partial partition, preview adapters
     // analyze only the selected files; uninspected accounting lives on the
@@ -128,7 +132,14 @@ fn run_pipeline_for_diff_text(
             Ok(result) => {
                 cancellation::checkpoint()?;
                 findings.extend(result.findings);
-                total_changed_files += result.changed_files;
+                if result.changed_files_by_language.is_empty() {
+                    changed_files_by_language.push((*language, result.changed_files));
+                } else {
+                    // An adapter covering several output languages (the
+                    // TypeScript adapter handles .js/.jsx as javascript)
+                    // reports its own split (#2103 review).
+                    changed_files_by_language.extend(result.changed_files_by_language);
+                }
             }
             Err(reason) => language_runs.push(LanguageRun {
                 language: language.as_str().to_string(),
@@ -148,7 +159,10 @@ fn run_pipeline_for_diff_text(
 
     sort::sort_findings(&mut findings);
     cancellation::checkpoint()?;
-    let summary_result = summary::summarize_findings(total_changed_files, &findings);
+    let mut summary_result = summary::summarize_findings(rust_changed_files, &findings);
+    for (language, files) in changed_files_by_language {
+        summary_result.record_changed_files_by_language(language.as_str(), files);
+    }
 
     Ok(AnalysisResult {
         summary: summary_result,
@@ -165,7 +179,10 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
     let mut findings: Vec<Finding> = Vec::new();
-    let mut total_production_files: usize = 0;
+    // Same accounting as the diff loop (#2103): `changed_rust_files` carries
+    // the Rust adapter's count only; every adapter records its own count.
+    let mut rust_production_files: usize = 0;
+    let mut files_by_language: Vec<(LanguageId, usize)> = Vec::new();
     let mut language_runs: Vec<LanguageRun> = Vec::new();
     for language in languages {
         cancellation::checkpoint()?;
@@ -176,7 +193,8 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
             let result = RustAdapter.analyze_repo(options, oracle_policy)?;
             cancellation::checkpoint()?;
             findings.extend(result.findings);
-            total_production_files += result.production_files;
+            rust_production_files += result.production_files;
+            files_by_language.push((LanguageId::Rust, result.production_files));
             continue;
         }
         let attempted = match language {
@@ -193,7 +211,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
             Ok(result) => {
                 cancellation::checkpoint()?;
                 findings.extend(result.findings);
-                total_production_files += result.production_files;
+                files_by_language.push((*language, result.production_files));
             }
             Err(reason) => language_runs.push(LanguageRun {
                 language: language.as_str().to_string(),
@@ -211,7 +229,10 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
 
     sort::sort_findings(&mut findings);
     cancellation::checkpoint()?;
-    let summary_result = summary::summarize_findings(total_production_files, &findings);
+    let mut summary_result = summary::summarize_findings(rust_production_files, &findings);
+    for (language, files) in files_by_language {
+        summary_result.record_changed_files_by_language(language.as_str(), files);
+    }
 
     Ok(AnalysisResult {
         summary: summary_result,
@@ -752,7 +773,74 @@ index 0000000..1111111 100644
         )?;
 
         assert!(result.findings.is_empty());
-        assert_eq!(result.summary.changed_rust_files, 2);
+        // #2103: preview-language file counts must not inflate the Rust count.
+        assert_eq!(result.summary.changed_rust_files, 0);
+        let per_language: Vec<(&str, usize)> = result
+            .summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| (count.language.as_str(), count.files))
+            .collect();
+        assert_eq!(per_language, vec![("python", 1), ("typescript", 1)]);
+        Ok(())
+    }
+
+    /// #2103: a mixed Rust+Python diff must attribute `changed_rust_files` to
+    /// the Rust adapter only; every adapter that ran records its own count in
+    /// `changed_files_by_language`.
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn diff_pipeline_attributes_changed_files_per_language() -> Result<(), String> {
+        let root = temp_root("mixed-rust-python")?;
+        let src = root.join("src/lib.rs");
+        write(&src, "pub fn discount(price: u32) -> u32 { price / 2 }\n")?;
+        let diff_file = root.join("mixed.diff");
+        write(
+            &diff_file,
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -1 +1 @@\n\
+             -pub fn discount(price: u32) -> u32 { price / 2 }\n\
+             +pub fn discount(price: u32) -> u32 { price / 4 }\n\
+             diff --git a/app/main.py b/app/main.py\n\
+             --- /dev/null\n\
+             +++ b/app/main.py\n\
+             @@ -0,0 +1 @@\n\
+             +def price(): return 1\n",
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust, LanguageId::Python],
+        )?;
+
+        assert_eq!(
+            result.summary.changed_rust_files, 1,
+            "changed_rust_files must count Rust adapter files only (#2103)"
+        );
+        let per_language: Vec<(&str, usize)> = result
+            .summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| (count.language.as_str(), count.files))
+            .collect();
+        assert_eq!(
+            per_language,
+            vec![("python", 1), ("rust", 1)],
+            "every adapter that ran must record its own changed-file count"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 
@@ -914,6 +1002,18 @@ index 0000000..1111111 100644
                 result.preview_language_advisories
             ));
         }
+        // #2103: a Rust-only run records a single `rust` entry.
+        let languages: Vec<&str> = result
+            .summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| count.language.as_str())
+            .collect();
+        assert_eq!(
+            languages,
+            vec!["rust"],
+            "Rust-only run must record only a rust per-language entry"
+        );
         Ok(())
     }
 

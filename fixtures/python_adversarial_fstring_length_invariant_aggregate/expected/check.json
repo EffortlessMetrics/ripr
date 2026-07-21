@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/python_adversarial_fstring_length_invariant_aggregate/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "findings": [
     {
       "id": "probe:src_status.py:python_preview:f3e3e6b2",

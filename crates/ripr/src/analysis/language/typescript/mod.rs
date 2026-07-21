@@ -146,6 +146,11 @@ impl LanguageAdapter for TypeScriptAdapter {
         // line that falls inside an owner.
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
+        // Per-output-language tally (#2103 review): this adapter covers both
+        // typescript (.ts/.tsx) and javascript (.js/.jsx), so the summary
+        // must not attribute JS files to typescript.
+        let mut changed_typescript: usize = 0;
+        let mut changed_javascript: usize = 0;
         for changed in changed_files {
             for added in &changed.added_lines {
                 if let Some(finding) = bun_cross_language_finding_for_changed_rust_line(
@@ -161,6 +166,10 @@ impl LanguageAdapter for TypeScriptAdapter {
                 continue;
             }
             changed_count += 1;
+            match output_language_for(&changed.path) {
+                DomainLanguageId::JavaScript => changed_javascript += 1,
+                _ => changed_typescript += 1,
+            }
             // Skip test-file changes for finding generation; classifier
             // operates on production owners. Test file edits are still
             // counted in the file tally.
@@ -246,9 +255,17 @@ impl LanguageAdapter for TypeScriptAdapter {
                 }
             }
         }
+        let mut changed_files_by_language = Vec::new();
+        if changed_typescript > 0 {
+            changed_files_by_language.push((LanguageId::TypeScript, changed_typescript));
+        }
+        if changed_javascript > 0 {
+            changed_files_by_language.push((LanguageId::JavaScript, changed_javascript));
+        }
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            changed_files_by_language,
             partial_scope: None,
         })
     }

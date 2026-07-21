@@ -4,7 +4,7 @@
   "mode": "fast",
   "root": "fixtures/plain_diff_multifile_boundary/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":2,"probes":4,"findings":4,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":4,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":2,"probes":4,"findings":4,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":4,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":2}]},
   "findings": [
     {
       "id": "probe:src_a.rs:predicate:668eac8e",

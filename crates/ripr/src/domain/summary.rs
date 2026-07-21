@@ -1,8 +1,24 @@
 use crate::domain::ExposureClass;
 
+/// Changed-file count attributed to one language adapter run.
+///
+/// `language` is the stable wire string from `LanguageId::as_str`
+/// (`"rust"`, `"typescript"`, `"javascript"`, `"python"`, `"perl"`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LanguageFileCount {
+    pub language: String,
+    pub files: usize,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Summary {
+    /// Changed files attributed to the Rust adapter only (#2103). Preview
+    /// language adapters report their own counts in
+    /// `changed_files_by_language`; they must never inflate this field.
     pub changed_rust_files: usize,
+    /// Per-language changed-file counts, one entry per adapter that ran,
+    /// sorted by language wire string for deterministic serialization.
+    pub changed_files_by_language: Vec<LanguageFileCount>,
     pub probes: usize,
     pub findings: usize,
     pub exposed: usize,
@@ -15,6 +31,27 @@ pub struct Summary {
 }
 
 impl Summary {
+    /// Record `files` changed files for `language`, merging into an existing
+    /// entry when the adapter already reported one. Entries stay sorted by
+    /// language wire string so JSON output order is deterministic.
+    pub fn record_changed_files_by_language(&mut self, language: &str, files: usize) {
+        match self
+            .changed_files_by_language
+            .iter_mut()
+            .find(|count| count.language == language)
+        {
+            Some(count) => count.files += files,
+            None => {
+                self.changed_files_by_language.push(LanguageFileCount {
+                    language: language.to_string(),
+                    files,
+                });
+                self.changed_files_by_language
+                    .sort_by(|a, b| a.language.cmp(&b.language));
+            }
+        }
+    }
+
     pub fn increment_exposure_class(&mut self, class: &ExposureClass) {
         match class {
             ExposureClass::Exposed => self.exposed += 1,
@@ -55,6 +92,7 @@ mod tests {
         let summary = Summary::default();
 
         assert_eq!(summary.changed_rust_files, 0);
+        assert!(summary.changed_files_by_language.is_empty());
         assert_eq!(summary.probes, 0);
         assert_eq!(summary.findings, 0);
         assert_eq!(summary.exposed, 0);
@@ -64,6 +102,22 @@ mod tests {
         assert_eq!(summary.infection_unknown, 0);
         assert_eq!(summary.propagation_unknown, 0);
         assert_eq!(summary.static_unknown, 0);
+    }
+
+    #[test]
+    fn record_changed_files_by_language_merges_and_stays_sorted() {
+        let mut summary = Summary::default();
+
+        summary.record_changed_files_by_language("rust", 2);
+        summary.record_changed_files_by_language("python", 5);
+        summary.record_changed_files_by_language("rust", 1);
+
+        let entries: Vec<(&str, usize)> = summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| (count.language.as_str(), count.files))
+            .collect();
+        assert_eq!(entries, vec![("python", 5), ("rust", 3)]);
     }
 
     #[test]

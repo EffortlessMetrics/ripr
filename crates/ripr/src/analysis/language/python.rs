@@ -6435,6 +6435,7 @@ impl LanguageAdapter for PythonAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            changed_files_by_language: Vec::new(),
             partial_scope: None,
         })
     }
