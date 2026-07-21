@@ -1,0 +1,12 @@
+{
+  "entry_count": 29,
+  "parent_1": "ec7dc6beaec8ad2efca4abd502f9253cdb4f939c",
+  "parent_2": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "resolved_join_sha": "4f1a10028ac91aa5d805dd1466baca20b8a0060d",
+  "resolved_tree_sha": "ec58a9d25fcd170e70be8ff62da7dbc7b040e336",
+  "schema_version": 1,
+  "source_parent": "ec7dc6beaec8ad2efca4abd502f9253cdb4f939c",
+  "source_tree_sha": "d34c9d59d425867e52c89396fa8346a27bd04313",
+  "swarm_candidate": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "swarm_tree_sha": "d46265067090e484676770be608422e0edbd88f0"
+}

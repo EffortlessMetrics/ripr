@@ -1,0 +1,1757 @@
+source_swarm_promotion_report=v1
+source_parent=ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+source_main_at_run=ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+swarm_candidate=3a80c634f2157dee0e7f74fc72b7975f07699143
+swarm_freeze_ref=freeze/source-sync-2026-07-21
+swarm_freeze_sha=3a80c634f2157dee0e7f74fc72b7975f07699143
+merge_base=36909460db013ed3a3238ee8b2fc3ccda1135c15
+swarm_commits_since_merge_base=335
+promotion_branch=promote/0.10.1-swarm
+preflight_status=0
+merge_status=1
+conflict_set_status=0
+--- unresolved before ---
+CHANGELOG.md
+crates/ripr/src/analysis/probes/diff.rs
+crates/ripr/src/output/review_comments.rs
+docs/specs/README.md
+editors/vscode/package-lock.json
+editors/vscode/package.json
+fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json
+policy/process_allowlist.txt
+new_spec_id=RIPR-SPEC-0133
+--- unresolved after ---
+
+--- staged diff stat ---
+ .allow/artifacts/doc-artifacts.toml                |    58 +
+ .allow/profiles/spec-system.toml                   |    23 +
+ .allow/spec-system/slices/README.md                |    17 +
+ .../slices/remove-singleton-goal-authority.v1.toml |    50 +
+ .../slices/spec-v2-runtime-promotion.v1.toml       |    55 +
+ .github/ISSUE_TEMPLATE/implementation-slice.yml    |     2 +-
+ .github/workflows/ci.yml                           |     3 +
+ .github/workflows/routed-rust.yml                  |   142 +-
+ .github/workflows/source-of-truth.yml              |     4 -
+ .github/workflows/ub-review.yml                    |    63 +
+ .gitignore                                         |     1 +
+ .ripr/allow-attributes.txt                         |     3 +
+ .ripr/goals/README.md                              |    87 -
+ .ripr/goals/active.toml                            |    67 -
+ .../2026-05-11-pr-inline-comment-publisher.toml    |   149 -
+ .../2026-05-13-language-adapter-preview.toml       |   316 -
+ .../2026-05-15-rust-usable-gap-projection.toml     |   152 -
+ .../archive/2026-05-22-first-useful-pr-loop.toml   |   199 -
+ ...026-05-22-lane1-finding-alignment-burndown.toml |   289 -
+ .../2026-05-22-start-here-surface-convergence.toml |   180 -
+ .../2026-05-23-actionable-surface-translation.toml |   180 -
+ ...26-05-23-first-useful-pr-loop-continuation.toml |   178 -
+ ...6-05-23-lane1-value-resolution-audit-fixes.toml |   180 -
+ ...-lane1-language-aware-placement-navigation.toml |   113 -
+ ...6-03-lane1-large-repo-runtime-completeness.toml |    96 -
+ ...2026-06-03-lane1-real-repo-trust-readiness.toml |   118 -
+ ...2026-06-03-self-hosted-routed-runner-proof.toml |   139 -
+ ...06-04-lane1-cross-language-guidance-safety.toml |    63 -
+ ...06-04-lane1-cross-language-oracle-followup.toml |   161 -
+ .../2026-06-04-lane1-post-08-operating-loop.toml   |   257 -
+ ...cript-bun-081-placement-receipt-correction.toml |    70 -
+ ...26-06-05-cross-language-evidence-router-ux.toml |   253 -
+ .ripr/goals/archive/README.md                      |    40 -
+ .ripr/goals/lane2-policy-operations.toml           |   252 -
+ .ripr/goals/lane2-policy-readiness.toml            |   205 -
+ .ripr/goals/lane4-pr-ci-review-cockpit.toml        |   182 -
+ .ripr/goals/modularization.toml                    |   316 -
+ .ripr/goals/python-repair-routing.toml             |   275 -
+ .ripr/no-panic-allowlist.toml                      |    10 +-
+ .ripr/traceability.toml                            |  1025 +-
+ .ub-review.toml                                    |    19 +
+ AGENTS.md                                          |   308 +-
+ CHANGELOG.md                                       |    40 +-
+ CONTRIBUTING.md                                    |    39 +
+ Cargo.lock                                         |    65 +-
+ README.md                                          |    93 +-
+ badges/README.md                                   |    24 +
+ benchmarks/targeted_rerun_benchmark/README.md      |     9 +
+ .../targeted_rerun_benchmark/input/Cargo.toml      |     8 +
+ .../targeted_rerun_benchmark/input/src/lib.rs      |  1004 +
+ .../input/tests/targeted.rs                        |     6 +
+ crates/ripr/Cargo.toml                             |     2 +-
+ crates/ripr/README.md                              |     7 +-
+ crates/ripr/src/analysis/cancellation.rs           |   129 +
+ crates/ripr/src/analysis/classifier.rs             |   145 +-
+ crates/ripr/src/analysis/classifier/evidence.rs    |    11 +-
+ crates/ripr/src/analysis/classify/decision.rs      |     2 +-
+ crates/ripr/src/analysis/classify/flow.rs          |   137 +-
+ crates/ripr/src/analysis/classify/mod.rs           |    17 +-
+ crates/ripr/src/analysis/classify/related_tests.rs |   143 +-
+ crates/ripr/src/analysis/classify/reveal.rs        |    98 +-
+ crates/ripr/src/analysis/classify/text.rs          |     5 +
+ .../ripr/src/analysis/classify/text/constructor.rs |   409 +
+ .../src/analysis/classify/text/error_variant.rs    |    17 +-
+ .../ripr/src/analysis/classify/transitive_reach.rs |  1445 +
+ crates/ripr/src/analysis/diff/load.rs              |   154 +-
+ crates/ripr/src/analysis/diff/mod.rs               |     5 +-
+ crates/ripr/src/analysis/diff/parse.rs             |   335 +-
+ crates/ripr/src/analysis/diff/path.rs              |    53 +-
+ crates/ripr/src/analysis/extract/mod.rs            |     6 +-
+ .../ripr/src/analysis/extract/oracles/arguments.rs |     6 +-
+ .../ripr/src/analysis/extract/oracles/classify.rs  |   131 +-
+ crates/ripr/src/analysis/extract/oracles/mod.rs    |     1 +
+ .../ripr/src/analysis/extract/oracles/patterns.rs  |   231 +-
+ crates/ripr/src/analysis/extract/oracles/scan.rs   |   225 +-
+ crates/ripr/src/analysis/extract/probe_shapes.rs   |    48 +
+ crates/ripr/src/analysis/facts/build.rs            |     9 +
+ crates/ripr/src/analysis/language/mod.rs           |     8 +-
+ crates/ripr/src/analysis/language/perl.rs          |  4036 --
+ crates/ripr/src/analysis/language/perl/mod.rs      |  3310 ++
+ crates/ripr/src/analysis/language/perl/tests.rs    |  3598 ++
+ crates/ripr/src/analysis/language/python.rs        |  2713 +-
+ .../src/analysis/language/python/python_tests.rs   |     3 +
+ crates/ripr/src/analysis/language/router.rs        |    19 +
+ crates/ripr/src/analysis/language/rust.rs          |  1056 +-
+ .../analysis/language/typescript/actionability.rs  |     7 +-
+ .../src/analysis/language/typescript/classifier.rs |    15 +-
+ .../src/analysis/language/typescript/discovery.rs  |    36 +-
+ .../ripr/src/analysis/language/typescript/mod.rs   |     8 +
+ .../src/analysis/language/typescript/oracle.rs     |   207 +-
+ .../analysis/language/typescript/static_limit.rs   |   117 +-
+ .../ripr/src/analysis/language/typescript/tests.rs |   433 +-
+ .../analysis/language/typescript/tests_extract.rs  |    34 +-
+ crates/ripr/src/analysis/mod.rs                    |   397 +-
+ crates/ripr/src/analysis/pipeline.rs               |   377 +-
+ crates/ripr/src/analysis/probes/classify.rs        |   261 +-
+ crates/ripr/src/analysis/probes/diff.rs            |   468 +-
+ crates/ripr/src/analysis/probes/family.rs          |     6 +-
+ crates/ripr/src/analysis/probes/lexical.rs         |    40 +
+ crates/ripr/src/analysis/probes/mod.rs             |     1 +
+ crates/ripr/src/analysis/repair_route.rs           |   601 +
+ crates/ripr/src/analysis/rust_index.rs             |     4 +-
+ crates/ripr/src/analysis/seam_cache.rs             |   526 +-
+ crates/ripr/src/analysis/seam_inventory.rs         |   339 +-
+ crates/ripr/src/analysis/seams.rs                  |     6 +
+ crates/ripr/src/analysis/syntax/ra.rs              |    56 +-
+ crates/ripr/src/analysis/test_grip_evidence.rs     | 16028 +-----
+ .../analysis/test_grip_evidence/related_tests.rs   |   769 +
+ .../test_grip_evidence/related_tests/context.rs    |  2002 +
+ .../ripr/src/analysis/test_grip_evidence/tests.rs  | 11645 +++++
+ crates/ripr/src/analysis/value_resolution.rs       |   935 +-
+ crates/ripr/src/analysis/value_resolution/tests.rs |   763 +
+ crates/ripr/src/analysis/workspace/discover.rs     |     2 +
+ crates/ripr/src/app.rs                             |    50 +-
+ crates/ripr/src/app/agent_brief.rs                 |     7 +
+ crates/ripr/src/app/agent_gap_packet.rs            |    40 +
+ crates/ripr/src/app/annotations.rs                 |   270 +
+ crates/ripr/src/app/causal_projection.rs           |   265 +
+ crates/ripr/src/app/check.rs                       |   718 +-
+ crates/ripr/src/app/check/options_builder.rs       |     1 +
+ crates/ripr/src/app/check/output_builder.rs        |     3 +
+ crates/ripr/src/app/explain.rs                     |    90 +
+ crates/ripr/src/app/impacted_evidence.rs           |   655 +
+ crates/ripr/src/app/pr_evidence.rs                 |  1321 +
+ crates/ripr/src/app/pr_summary/io.rs               |    33 +
+ crates/ripr/src/app/pr_summary/json.rs             |  1186 +
+ crates/ripr/src/app/pr_summary/mod.rs              |   229 +
+ crates/ripr/src/app/pr_summary/model.rs            |   145 +
+ crates/ripr/src/app/pr_summary/render.rs           |   474 +
+ crates/ripr/src/app/pr_summary/util.rs             |    61 +
+ crates/ripr/src/app/receipt.rs                     |    46 +
+ crates/ripr/src/app/ripr_plus.rs                   |   911 +
+ crates/ripr/src/app/temp_diff.rs                   |   134 +
+ crates/ripr/src/app/tests/badge_rendering.rs       |    25 +-
+ crates/ripr/src/app/tests/mod.rs                   |     3 +
+ crates/ripr/src/app/tests/rendering_contracts.rs   |     2 +-
+ crates/ripr/src/cli/command.rs                     |   140 +-
+ crates/ripr/src/cli/commands.rs                    |  1407 +-
+ crates/ripr/src/cli/commands/agent_gap_packet.rs   |    31 +-
+ crates/ripr/src/cli/commands/cache.rs              |   237 +
+ crates/ripr/src/cli/commands/init.rs               |    40 +-
+ crates/ripr/src/cli/commands/pilot.rs              |     8 +-
+ crates/ripr/src/cli/commands/receipt.rs            |    57 +-
+ crates/ripr/src/cli/commands_options.rs            |    15 +
+ crates/ripr/src/cli/execute.rs                     |    24 +-
+ crates/ripr/src/cli/help.rs                        |    18 +-
+ crates/ripr/src/cli/help/core.rs                   |    66 +-
+ crates/ripr/src/cli/help/overview.rs               |     6 +-
+ crates/ripr/src/cli/help/policy.rs                 |    13 +-
+ crates/ripr/src/cli/help/reports.rs                |    27 +
+ crates/ripr/src/cli/help/rerun.rs                  |    32 +
+ crates/ripr/src/cli/mod.rs                         |     1 +
+ crates/ripr/src/cli/parse.rs                       |    12 +
+ crates/ripr/src/cli/rerun.rs                       |  2945 ++
+ crates/ripr/src/config.rs                          |    52 +-
+ crates/ripr/src/config/model.rs                    |    86 +
+ crates/ripr/src/domain/candidate_relation.rs       |   155 +
+ crates/ripr/src/domain/causal_delta.rs             |   677 +
+ crates/ripr/src/domain/classification.rs           |    29 +
+ crates/ripr/src/domain/context_packet.rs           |     4 +-
+ crates/ripr/src/domain/diagnostic_witness.rs       |   330 +
+ crates/ripr/src/domain/fix_instruction.rs          |   203 +
+ crates/ripr/src/domain/language.rs                 |   180 +
+ crates/ripr/src/domain/mod.rs                      |    21 +
+ crates/ripr/src/domain/probe.rs                    |    11 +
+ crates/ripr/src/domain/summary.rs                  |    30 +
+ crates/ripr/src/domain/test_evidence_summary.rs    |   178 +
+ crates/ripr/src/lsp.rs                             |    15 +
+ crates/ripr/src/lsp/actions.rs                     |    27 +-
+ crates/ripr/src/lsp/agent_protocol.rs              |  1030 +
+ crates/ripr/src/lsp/backend.rs                     |  4169 +-
+ crates/ripr/src/lsp/capabilities.rs                |   357 +-
+ crates/ripr/src/lsp/config.rs                      |   288 +-
+ crates/ripr/src/lsp/diagnostic_budget.rs           |   965 +
+ crates/ripr/src/lsp/diagnostic_catalog.rs          |   233 +
+ crates/ripr/src/lsp/diagnostics.rs                 |  1414 +-
+ crates/ripr/src/lsp/gap_artifacts.rs               |    51 +-
+ crates/ripr/src/lsp/hover.rs                       |   109 +-
+ crates/ripr/src/lsp/input_identity.rs              |   429 +
+ crates/ripr/src/lsp/lens.rs                        |     3 +
+ crates/ripr/src/lsp/position.rs                    |   211 +
+ crates/ripr/src/lsp/progress.rs                    |   889 +
+ crates/ripr/src/lsp/refresh_scheduler.rs           |   745 +
+ crates/ripr/src/lsp/state.rs                       |   272 +-
+ crates/ripr/src/lsp/tests.rs                       |  2494 +-
+ crates/ripr/src/lsp/uri.rs                         |   151 +-
+ crates/ripr/src/output/agent_brief.rs              |    43 +-
+ crates/ripr/src/output/agent_seam_packets.rs       |   556 +-
+ crates/ripr/src/output/badge/mod.rs                |     2 +
+ crates/ripr/src/output/badge/model.rs              |    15 +-
+ crates/ripr/src/output/badge/public_projection.rs  |   576 +
+ crates/ripr/src/output/badge/render.rs             |    71 +-
+ crates/ripr/src/output/badge/summaries.rs          |     4 +
+ crates/ripr/src/output/badge/test_efficiency.rs    |     1 +
+ crates/ripr/src/output/badge/tests.rs              |    48 +-
+ crates/ripr/src/output/baseline_delta.rs           |    84 +-
+ crates/ripr/src/output/baseline_update.rs          |    38 +-
+ crates/ripr/src/output/diff_report.rs              |     9 +
+ crates/ripr/src/output/doctor.rs                   |   419 +
+ crates/ripr/src/output/evidence_health.rs          |    14 +
+ crates/ripr/src/output/evidence_record.rs          |   676 +-
+ crates/ripr/src/output/first_pr.rs                 |   333 +-
+ crates/ripr/src/output/first_pr/options.rs         |     3 +
+ crates/ripr/src/output/first_pr/rendering.rs       |     1 +
+ crates/ripr/src/output/first_useful_action.rs      |    11 +-
+ .../ripr/src/output/first_useful_action/tests.rs   |     7 +-
+ crates/ripr/src/output/format.rs                   |    36 +-
+ crates/ripr/src/output/gap_decision_ledger.rs      |   447 +-
+ crates/ripr/src/output/gate.rs                     |  2431 +-
+ crates/ripr/src/output/gate/causal.rs              |   246 +
+ crates/ripr/src/output/gate/exception_policy.rs    |   544 +
+ crates/ripr/src/output/gate/model.rs               |    74 +
+ crates/ripr/src/output/gate/presentation.rs        |   287 +-
+ crates/ripr/src/output/gate/repair_route.rs        |   574 +
+ crates/ripr/src/output/gate/tests.rs               |  2631 +
+ crates/ripr/src/output/github.rs                   |    62 +
+ crates/ripr/src/output/human.rs                    |   737 +-
+ crates/ripr/src/output/human/sections.rs           |   146 +
+ crates/ripr/src/output/human/triage.rs             |   187 +
+ crates/ripr/src/output/json/context_packet.rs      |    12 +
+ crates/ripr/src/output/json/formatter.rs           |    12 +-
+ crates/ripr/src/output/json/mod.rs                 |   147 +
+ crates/ripr/src/output/json/report.rs              |   168 +-
+ crates/ripr/src/output/limited_check.rs            |   171 +
+ crates/ripr/src/output/mod.rs                      |     6 +
+ crates/ripr/src/output/next_step.rs                |     3 +
+ crates/ripr/src/output/outcome/mod.rs              |   368 +-
+ .../ripr/src/output/perl_gap_record_projection.rs  |   640 +
+ crates/ripr/src/output/perl_preview_card.rs        |   115 +-
+ crates/ripr/src/output/pilot/render/complete.rs    |    30 +-
+ .../ripr/src/output/pilot/render/render_helpers.rs |    17 +-
+ crates/ripr/src/output/pilot/tests.rs              |    19 +-
+ .../src/output/pr_inline_comment_publish_plan.rs   |    43 +-
+ crates/ripr/src/output/preview_actionability.rs    |   178 +-
+ crates/ripr/src/output/render.rs                   |    68 +-
+ crates/ripr/src/output/repo_exposure.rs            |   220 +-
+ crates/ripr/src/output/review_comments.rs          |   697 +-
+ crates/ripr/src/output/review_comments_receipt.rs  |   185 +
+ crates/ripr/src/output/sarif.rs                    |    10 +
+ crates/ripr/src/output/suppressions.rs             |   466 +-
+ .../ripr/src/output/typescript_false_actionable.rs |   624 +
+ crates/ripr/src/output/typescript_limitations.rs   |   520 +
+ .../src/output/typescript_packet_projection.rs     |    34 +-
+ crates/ripr/tests/causal_delta_fixture.rs          |    38 +
+ crates/ripr/tests/cli_smoke.rs                     |  3132 +-
+ .../causal-attribution/pr-a-comparison-rules.json  |   144 +
+ crates/ripr/tests/lsp_lifecycle.rs                 |   594 +
+ crates/ripr/tests/perl_two_binary_harness.rs       |   346 +
+ docs/AGENT_OPERATING_MODEL.md                      |    42 +-
+ docs/AGENT_WORKFLOWS.md                            |    19 +-
+ docs/ARCHITECTURE_STATE.md                         |   212 +
+ docs/BADGE_POLICY.md                               |    42 +-
+ docs/CALIBRATED_GATE_POLICY.md                     |    16 +
+ docs/CAPABILITY_MATRIX.md                          |    14 +-
+ docs/CI.md                                         |     2 -
+ docs/CODEX_GOALS.md                                |   113 +-
+ docs/CONFIGURATION.md                              |    28 +-
+ docs/DEFERRED.md                                   |    49 +
+ docs/FIRST_PR_WORKFLOW.md                          |    28 +-
+ docs/IMPLEMENTATION_CAMPAIGNS.md                   |   386 +-
+ docs/IMPLEMENTATION_PLAN.md                        |     9 +-
+ docs/INSTALLATION_VERIFICATION.md                  |     2 +-
+ docs/LANGUAGE_ADAPTER_PREVIEW.md                   |    31 +
+ docs/LEARNINGS.md                                  |   302 +
+ docs/LIBRARY.md                                    |     2 +-
+ docs/LSP_AGENT_REPAIR_WORKFLOW.md                  |    29 +-
+ docs/OUTPUT_SCHEMA.md                              |  1158 +-
+ docs/PROOF_ROUTING.md                              |     9 +
+ docs/RELEASE_BINARIES.md                           |     7 +-
+ docs/REPO_SETTINGS.md                              |    91 +-
+ docs/REPO_TRACKING_MODEL.md                        |    35 +-
+ docs/ROADMAP.md                                    |    24 +-
+ docs/STATIC_EXPOSURE_MODEL.md                      |    31 +
+ docs/STATIC_LIMITS.md                              |    12 +
+ docs/adr/0008-typescript-parser-substrate.md       |     2 +-
+ docs/adr/0009-python-parser-substrate.md           |     2 +-
+ docs/ci/labels.md                                  |    21 +
+ docs/demo/first-successful-pr.md                   |    26 +-
+ docs/dogfood/2026-07-12-rust-pilot-audit.md        |    42 +
+ .../2026-07-13-rust-pilot-reconciliation.md        |    47 +
+ docs/dogfood/2026-07-13-rust-pilot.md              |    51 +
+ docs/dogfood/RUST_REPAIR_ATTEMPTS.md               |    75 +
+ ...26-05-13-lane4-pr-ci-review-cockpit-closeout.md |     2 +-
+ ...26-05-15-rust-usable-gap-projection-closeout.md |     2 +-
+ .../2026-07-11-targeted-rerun-benchmark.md         |    43 +
+ .../2026-07-12-call-presence-evidence-packet.md    |    71 +
+ docs/lanes/TYPESCRIPT_ENABLEMENT.md                |    26 +
+ docs/policy/POLICY_OPERATIONS.md                   |     5 +-
+ docs/proposals/README.md                           |     1 +
+ ...RIPR-PROP-0015-source-of-truth-control-plane.md |     2 +-
+ .../RIPR-PROP-0018-perl-repair-routing-lane.md     |    23 +
+ .../RIPR-PROP-0019-partial-diff-scope-contract.md  |   200 +
+ docs/source-of-truth/agent-operating-model.md      |    51 +-
+ docs/source-of-truth/artifact-taxonomy.md          |     2 +-
+ docs/specs/README.md                               |    26 +-
+ docs/specs/RIPR-SPEC-0001-static-exposure-loop.md  |    28 +
+ docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md   |    24 +
+ .../specs/RIPR-SPEC-0014-calibrated-gate-policy.md |    10 +
+ docs/specs/RIPR-SPEC-0021-evidence-record.md       |     7 +
+ .../RIPR-SPEC-0026-language-adapter-contract.md    |     5 +-
+ ...PR-SPEC-0027-typescript-preview-static-facts.md |     5 +
+ .../RIPR-SPEC-0045-finding-to-gap-alignment.md     |    17 +-
+ .../specs/RIPR-SPEC-0051-first-successful-pr-ux.md |    13 +-
+ .../RIPR-SPEC-0064-perl-fact-packet-contract.md    |    49 +-
+ docs/specs/RIPR-SPEC-0066-repo-badge-use-case.md   |    68 +-
+ docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md      |   116 +-
+ .../RIPR-SPEC-0068-pr-review-card-use-case.md      |   115 +-
+ .../RIPR-SPEC-0069-lsp-agent-feedback-use-case.md  |   126 +-
+ .../RIPR-SPEC-0078-lsp-top-limitation-command.md   |    93 +-
+ ...EC-0085-typescript-evidence-adapter-contract.md |    69 +-
+ ...PEC-0088-typescript-repair-packet-projection.md |    11 +
+ docs/specs/RIPR-SPEC-0089-ts-full-repo-guidance.md |    83 +-
+ .../specs/RIPR-SPEC-0090-all-no-path-disclosure.md |    55 +-
+ ...EC-0108-evidence-promotion-honesty-meta-gate.md |   441 +-
+ ...RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md |    21 +-
+ ...R-SPEC-0112-disclose-unanalyzed-working-tree.md |   223 +
+ ...PR-SPEC-0113-honest-no-static-path-messaging.md |   174 +
+ ...R-SPEC-0114-rust-transitive-reach-limitation.md |   219 +
+ ...RIPR-SPEC-0115-rust-transitive-reach-witness.md |   284 +
+ docs/specs/RIPR-SPEC-0116-check-worktree-mode.md   |   179 +
+ .../RIPR-SPEC-0117-rust-macro-reach-limitation.md  |   204 +
+ ...-rust-integration-public-api-path-limitation.md |   191 +
+ ...-0119-rust-direct-test-macro-call-limitation.md |   182 +
+ ...0120-rust-macro-wrapped-assertion-limitation.md |   179 +
+ ...erl-lsp-swarm-scratch-gc-orphan-reaper-paths.md |   156 +
+ .../RIPR-SPEC-0122-bounded-human-check-output.md   |   242 +
+ docs/specs/RIPR-SPEC-0123-targeted-rerun.md        |   329 +
+ ...-SPEC-0124-lsp-diagnostic-delivery-stability.md |   107 +
+ ...rust-missing-discriminator-evidence-fixtures.md |    87 +
+ ...IPR-SPEC-0126-lsp-diagnostic-delivery-budget.md |   168 +
+ .../RIPR-SPEC-0127-lsp-diagnostic-code-catalog.md  |   127 +
+ .../RIPR-SPEC-0129-editor-integration-contract.md  |   166 +
+ docs/specs/RIPR-SPEC-0130-ripr-authority-map.md    |    87 +
+ .../RIPR-SPEC-0131-ripr-agent-protocol-contract.md |   262 +
+ .../RIPR-SPEC-0132-spec-v2-runtime-promotion.md    |   222 +
+ ...EC-0133-bounded-subprocess-adapter-boundary.md} |     2 +-
+ docs/status/RUST_ROUTE_QUALITY.md                  |    38 +
+ docs/status/SUPPORT_TIERS.md                       |    18 +
+ docs/verification/README.md                        |     1 +
+ docs/verification/pr-evidence-contract.md          |    25 +
+ editors/vscode/README.md                           |    21 +
+ editors/vscode/package-lock.json                   |    30 +-
+ editors/vscode/package.json                        |    89 +-
+ editors/vscode/src/client.ts                       |   479 +-
+ editors/vscode/src/downloader.ts                   |    31 +
+ editors/vscode/src/extension.ts                    |    76 +-
+ editors/vscode/src/test/multiroot.test.ts          |    54 +
+ editors/vscode/src/test/runTest.ts                 |    21 +
+ editors/vscode/src/test/suite/index.ts             |    35 +
+ editors/vscode/test/suite/extension.test.ts        |   119 +-
+ .../vscode/test/suite/show_output_action.test.ts   |    79 +
+ .../vscode/test/suite/walkthrough_contract.test.ts |    73 +
+ .../test/suite/workspace_trust_manifest.test.ts    |    54 +
+ .../test/suite/workspace_trust_runtime.test.ts     |    85 +
+ .../test/suite/workspace_trust_transition.test.ts  |   140 +
+ editors/vscode/walkthrough/code-action.md          |     6 +
+ editors/vscode/walkthrough/diagnostics.md          |     5 +
+ editors/vscode/walkthrough/open-file.md            |     4 +
+ editors/vscode/walkthrough/trust.md                |     5 +
+ fixtures/all_no_path_disclosure/SPEC.md            |     8 +
+ .../all_no_path_disclosure/expected/CHANGELOG.md   |    36 +
+ .../all_no_path_disclosure/expected/check.json     |     4 +-
+ fixtures/all_no_path_disclosure/expected/human.txt |    53 +-
+ fixtures/boundary_gap/expected/CHANGELOG.md        |    61 +
+ .../expected/calibrated-gate/README.md             |     3 +
+ .../acknowledged-waiver/gate-decision.json         |    32 +-
+ .../acknowledged-waiver/gate-decision.md           |    13 +
+ .../baseline-check-existing/gate-decision.json     |    32 +-
+ .../baseline-check-existing/gate-decision.md       |    13 +
+ .../gate-decision.json                             |    32 +-
+ .../gate-decision.md                               |    13 +
+ .../calibration-disagreement/gate-decision.json    |    32 +-
+ .../calibration-disagreement/gate-decision.md      |    13 +
+ .../summary-and-suppressed/gate-decision.json      |    62 +-
+ .../summary-and-suppressed/gate-decision.md        |     7 +
+ .../visible-only-advisory/gate-decision.json       |    32 +-
+ .../visible-only-advisory/gate-decision.md         |    13 +
+ fixtures/boundary_gap/expected/check.json          |     6 +-
+ .../expected/editor-agent-loop/agent-brief.json    |    10 +-
+ .../expected/editor-agent-loop/agent-packet.json   |     6 +-
+ .../actionable/first-useful-action.json            |     4 +-
+ .../actionable/first-useful-action.md              |     4 +-
+ .../first-useful-action.json                       |     4 +-
+ .../unchanged-after-attempt/first-useful-action.md |     4 +-
+ .../boundary_gap/expected/gate-adoption/README.md  |     8 +
+ .../gate-adoption/acknowledged/gate-decision.json  |    32 +-
+ .../gate-adoption/acknowledged/gate-decision.md    |    13 +
+ .../baseline-aware/gate-decision.json              |    32 +-
+ .../gate-adoption/baseline-aware/gate-decision.md  |    13 +
+ .../baseline-new-gap/gate-decision.json            |    32 +-
+ .../baseline-new-gap/gate-decision.md              |    13 +
+ .../calibrated-gate/gate-decision.json             |    32 +-
+ .../gate-adoption/calibrated-gate/gate-decision.md |    13 +
+ .../recommendation-calibration.json                |    10 +-
+ .../gate-adoption/visible-only/gate-decision.json  |    32 +-
+ .../gate-adoption/visible-only/gate-decision.md    |    13 +
+ fixtures/boundary_gap/expected/human-full.txt      |    41 +
+ fixtures/boundary_gap/expected/human.txt           |    53 +-
+ .../boundary_gap/expected/lsp-code-actions.json    |     2 +-
+ .../boundary_gap/expected/lsp-diagnostics.json     |     1 +
+ .../expected/pr-guidance/capped/comments.json      |   200 +-
+ .../expected/pr-guidance/capped/comments.md        |    30 +-
+ .../pr-guidance/configured-off/comments.json       |     3 +-
+ .../expected/pr-guidance/exact-line/comments.json  |    20 +-
+ .../expected/pr-guidance/exact-line/comments.md    |     3 +-
+ .../pr-guidance/owner-function-line/comments.json  |    20 +-
+ .../pr-guidance/owner-function-line/comments.md    |     3 +-
+ .../pr-guidance/same-file-line/comments.json       |    20 +-
+ .../pr-guidance/same-file-line/comments.md         |     3 +-
+ .../pr-guidance/summary-only/comments.json         |    20 +-
+ .../expected/pr-guidance/summary-only/comments.md  |     3 +-
+ .../cap-overflow/comment-publish-plan.json         |     4 +-
+ .../cap-overflow/comment-publish-plan.md           |     2 +-
+ .../pr-inline-comment-publisher/corpus.json        |     2 +-
+ .../actionable/pr-review-front-panel.json          |     6 +-
+ .../actionable/pr-review-front-panel.md            |     6 +-
+ .../blocked/pr-review-front-panel.json             |     6 +-
+ .../blocked/pr-review-front-panel.md               |     6 +-
+ .../recommendation-calibration/expectations.json   |     8 +-
+ .../recommendation-calibration.json                |     8 +-
+ .../canonical/test-oracle-assistant-proof.json     |     4 +-
+ .../canonical/test-oracle-assistant-proof.md       |     4 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |     6 +-
+ .../expected/human.txt                             |    59 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../boundary_gap_nested_tests/expected/check.json  |     6 +-
+ .../boundary_gap_nested_tests/expected/human.txt   |    53 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |     6 +-
+ .../expected/human.txt                             |    53 +-
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../rust_actionable/expected/lsp-diagnostics.json  |     1 +
+ .../expected/lsp-diagnostics.json                  |     1 +
+ fixtures/editor_lsp_workflow/expected/CHANGELOG.md |    24 +
+ fixtures/editor_lsp_workflow/expected/check.json   |     6 +-
+ fixtures/editor_lsp_workflow/expected/human.txt    |    53 +-
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |    91 +-
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |   117 +-
+ .../evidence-promotion-honesty-corpus/corpus.json  |   734 +-
+ .../patches/semver-matches-greater.diff            |    14 +
+ .../reports/perl-preview-advisory-no-packet.json   |    85 +
+ .../scope-clean-complete-empty-may-be-clean.json   |    15 +
+ .../reports/scope-limited-empty-not-clean.json     |    20 +
+ .../reports/scope-no-scope-empty-not-clean.json    |    17 +
+ .../scope-unanalyzed-worktree-empty-not-clean.json |    12 +
+ ...scope-worktree-dirty-analyzed-not-excluded.json |    25 +
+ fixtures/first_successful_pr/README.md             |     6 +
+ fixtures/first_successful_pr/corpus.json           |    24 +
+ .../expected/outcome/closed.json                   |   153 +
+ .../expected/outcome/closed.md                     |   124 +
+ .../expected/start-here.json                       |   110 +
+ .../typescript-preview-gap/expected/start-here.md  |    63 +
+ .../inputs/reports/after-check.json                |    67 +
+ .../inputs/reports/before-check.json               |    74 +
+ .../inputs/reports/gap-decision-ledger.json        |   115 +
+ .../typescript-preview-gap/package.json            |     8 +
+ .../infect_value_returned/expected/CHANGELOG.md    |    48 +
+ fixtures/infect_value_returned/expected/check.json |    97 +-
+ fixtures/infect_value_returned/expected/human.txt  |   115 +-
+ .../infect_wildcard_discard/expected/CHANGELOG.md  |    48 +
+ .../infect_wildcard_discard/expected/check.json    |    40 +-
+ .../infect_wildcard_discard/expected/human.txt     |    90 +-
+ .../javascript_js_preview/expected/CHANGELOG.md    |    12 +
+ fixtures/javascript_js_preview/expected/human.txt  |    81 +-
+ .../javascript_jsx_preview/expected/CHANGELOG.md   |    12 +
+ fixtures/javascript_jsx_preview/expected/human.txt |    81 +-
+ fixtures/lsp_agent_protocol/SPEC.md                |    42 +
+ fixtures/lsp_agent_protocol/capability.json        |    49 +
+ fixtures/lsp_agent_protocol/diff.patch             |     9 +
+ .../errors/analysis-in-flight.json                 |     9 +
+ fixtures/lsp_agent_protocol/errors/cancelled.json  |     9 +
+ .../lsp_agent_protocol/errors/config-invalid.json  |     9 +
+ .../lsp_agent_protocol/errors/item-not-found.json  |     9 +
+ .../lsp_agent_protocol/errors/no-snapshot.json     |     9 +
+ .../errors/route-static-limitation.json            |     9 +
+ .../errors/stale-continuation.json                 |     9 +
+ .../lsp_agent_protocol/errors/stale-snapshot.json  |     9 +
+ fixtures/lsp_agent_protocol/errors/superseded.json |     9 +
+ .../errors/unsupported-profile.json                |     9 +
+ .../errors/unsupported-protocol-version.json       |     9 +
+ .../errors/workspace-ambiguous.json                |     9 +
+ fixtures/lsp_agent_protocol/expected/check.json    |    89 +
+ fixtures/lsp_agent_protocol/input/src/lib.rs       |    13 +
+ .../negative/unsupported-profile.json              |     9 +
+ .../negative/unsupported-protocol.json             |     9 +
+ .../negative/unsupported-request.json              |     9 +
+ .../negative/unsupported-schema.json               |     9 +
+ .../requests/get-evidence-context.json             |     9 +
+ .../requests/get-receipt-status.json               |     9 +
+ .../requests/get-repair-packet.json                |     9 +
+ .../requests/get-top-limitation.json               |     9 +
+ .../requests/list-actionable-items.json            |     9 +
+ .../requests/refresh-analysis.json                 |     9 +
+ .../requests/workspace-status.json                 |     9 +
+ fixtures/lsp_agent_protocol/success-envelope.json  |    27 +
+ fixtures/match_arm_blind/expected/CHANGELOG.md     |    24 +
+ fixtures/match_arm_blind/expected/check.json       |    14 +-
+ fixtures/match_arm_blind/expected/human.txt        |    47 +-
+ fixtures/match_arm_observer/expected/CHANGELOG.md  |    12 +
+ fixtures/match_arm_observer/expected/human.txt     |    37 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../match_arm_type_token_blind/expected/human.txt  |    48 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |     6 +-
+ .../expected/human.txt                             |   117 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/check.json                            |    18 +-
+ .../expected/human.txt                             |   221 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |    12 +-
+ .../expected/human.txt                             |    77 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |     6 +-
+ .../expected/human.txt                             |    81 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    47 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |    71 +-
+ .../expected/human.txt                             |   111 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/check.json                            |    12 +-
+ .../expected/human.txt                             |    65 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    74 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    77 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    65 +-
+ .../opaque_fixture_builder/expected/CHANGELOG.md   |    48 +
+ .../opaque_fixture_builder/expected/check.json     |     6 +-
+ fixtures/opaque_fixture_builder/expected/human.txt |    53 +-
+ fixtures/perl-real-repo-evals/SPEC.md              |    39 +
+ fixtures/perl-real-repo-evals/corpus.json          |   100 +
+ fixtures/perl_cpan_alpha/README.md                 |    90 +
+ fixtures/perl_cpan_alpha/SPEC.md                   |    45 +
+ fixtures/perl_cpan_alpha/diff.patch                |     9 +
+ fixtures/perl_cpan_alpha/expected/CHANGELOG.md     |    13 +
+ fixtures/perl_cpan_alpha/expected/check.json       |    10 +
+ fixtures/perl_cpan_alpha/expected/human.txt        |     7 +
+ .../regression-packets/actionable-weak-ok.json     |   177 +
+ .../already-observed-exact-is.json                 |   177 +
+ .../regression-packets/dynamic-limited.json        |   125 +
+ fixtures/perl_cpan_alpha/input/Makefile.PL         |    10 +
+ .../perl_cpan_alpha/input/boundary_change.diff     |     9 +
+ fixtures/perl_cpan_alpha/input/diff.patch          |     9 +
+ .../perl_cpan_alpha/input/dynamic_dispatch.diff    |     8 +
+ fixtures/perl_cpan_alpha/input/lib/Pricing.pm      |    19 +
+ fixtures/perl_cpan_alpha/input/t/pricing.t         |    12 +
+ fixtures/perl_lsp_facts_exporter/SPEC.md           |    11 +-
+ .../expected/ripr-perl-facts-v1.json               |     2 +-
+ .../ripr-perl-source-test-oracle-facts-v1.json     |     2 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |    16 +-
+ .../expected/human.txt                             |   162 +-
+ .../propagate_log_message/expected/CHANGELOG.md    |    12 +
+ fixtures/propagate_log_message/expected/human.txt  |    87 +-
+ .../propagate_stdout_macro/expected/CHANGELOG.md   |    36 +
+ fixtures/propagate_stdout_macro/expected/human.txt |    90 +-
+ .../propagate_swallowed_ok/expected/CHANGELOG.md   |    48 +
+ .../propagate_swallowed_ok/expected/check.json     |     6 +-
+ fixtures/propagate_swallowed_ok/expected/human.txt |    55 +-
+ .../propagate_value_returned/expected/CHANGELOG.md |    36 +
+ .../propagate_value_returned/expected/check.json   |    77 +-
+ .../propagate_value_returned/expected/human.txt    |    81 +-
+ .../expected/CHANGELOG.md                          |    25 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    23 +
+ .../expected/human-full.txt                        |    70 +
+ .../expected/human.txt                             |    84 +-
+ .../SPEC.md                                        |    51 +
+ .../diff.patch                                     |     9 +
+ .../expected/CHANGELOG.md                          |    72 +
+ .../expected/check.json                            |    83 +
+ .../expected/human-full.txt                        |    45 +
+ .../expected/human.txt                             |    28 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/account.py                           |     7 +
+ .../input/tests/test_account.py                    |     6 +
+ .../SPEC.md                                        |    48 +
+ .../diff.patch                                     |     8 +
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/render.py                            |     2 +
+ .../input/tests/test_render.py                     |     5 +
+ .../SPEC.md                                        |    52 +
+ .../diff.patch                                     |     8 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/conf.py                              |     2 +
+ .../input/tests/test_conf.py                       |     5 +
+ .../SPEC.md                                        |    47 +
+ .../diff.patch                                     |    10 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/parseint.py                          |     4 +
+ .../input/tests/test_parseint.py                   |     5 +
+ .../expected/CHANGELOG.md                          |    25 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    83 +-
+ .../SPEC.md                                        |    46 +
+ .../diff.patch                                     |     8 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/status.py                            |     2 +
+ .../input/tests/test_status.py                     |     5 +
+ .../SPEC.md                                        |    42 +
+ .../diff.patch                                     |     8 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/routes.py                            |     2 +
+ .../input/tests/test_routes.py                     |     5 +
+ .../SPEC.md                                        |    56 +
+ .../diff.patch                                     |     9 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   103 +
+ .../expected/human-full.txt                        |    45 +
+ .../expected/human.txt                             |    31 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/calc.py                              |     3 +
+ .../input/tests/test_calc.py                       |     7 +
+ .../expected/CHANGELOG.md                          |    25 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    23 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    83 +-
+ .../SPEC.md                                        |    57 +
+ .../diff.patch                                     |     8 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   144 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    32 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/counter.py                           |     2 +
+ .../input/tests/test_counter.py                    |     8 +
+ .../expected/CHANGELOG.md                          |    25 +
+ .../expected/human-full.txt                        |    69 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ fixtures/python_async_owner/expected/CHANGELOG.md  |    12 +
+ fixtures/python_async_owner/expected/human.txt     |    52 +-
+ fixtures/python_boundary_gap/expected/CHANGELOG.md |    12 +
+ fixtures/python_boundary_gap/expected/human.txt    |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_call_argument_shape/expected/human.txt  |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_class_method_owner/expected/human.txt   |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../python_dynamic_import_limit/expected/human.txt |    50 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    54 +-
+ .../python_error_path_shape/expected/CHANGELOG.md  |    12 +
+ .../python_error_path_shape/expected/human.txt     |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    48 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    81 +-
+ .../python_metaclass_limit/expected/CHANGELOG.md   |    48 +
+ fixtures/python_metaclass_limit/expected/human.txt |    53 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ fixtures/python_method_owner/expected/CHANGELOG.md |    12 +
+ fixtures/python_method_owner/expected/human.txt    |    84 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_mock_assert_called/expected/human.txt   |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../python_mocked_module_limit/expected/human.txt  |    50 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_no_config_repair_gap/expected/human.txt |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_no_projectable_owner/expected/human.txt |    48 +-
+ .../python_noop_annotation_only_change/SPEC.md     |    48 +
+ .../python_noop_annotation_only_change/diff.patch  |     8 +
+ .../expected/CHANGELOG.md                          |    13 +
+ .../expected/check.json                            |    21 +
+ .../expected/human.txt                             |     9 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/pricing.py                           |     2 +
+ .../input/tests/test_pricing.py                    |     5 +
+ fixtures/python_noop_bare_var_annotation/SPEC.md   |    55 +
+ .../python_noop_bare_var_annotation/diff.patch     |    10 +
+ .../expected/CHANGELOG.md                          |    13 +
+ .../expected/check.json                            |    21 +
+ .../expected/human.txt                             |     9 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/config.py                            |     5 +
+ .../input/tests/test_config.py                     |     5 +
+ fixtures/python_noop_docstring_change/SPEC.md      |    48 +
+ fixtures/python_noop_docstring_change/diff.patch   |     9 +
+ .../expected/CHANGELOG.md                          |    13 +
+ .../expected/check.json                            |    21 +
+ .../expected/human.txt                             |     9 +
+ .../python_noop_docstring_change/input/ripr.toml   |     2 +
+ .../input/src/pricing.py                           |     3 +
+ .../input/tests/test_pricing.py                    |     5 +
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ .../python_owner_file_match/expected/CHANGELOG.md  |    12 +
+ .../python_owner_file_match/expected/human.txt     |    52 +-
+ .../python_parametrize_basic/expected/CHANGELOG.md |    12 +
+ .../python_parametrize_basic/expected/human.txt    |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../python_property_based_limit/expected/human.txt |    50 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_pytest_oracle_shapes/expected/human.txt |    83 +-
+ .../python_pytest_raises/expected/CHANGELOG.md     |    12 +
+ fixtures/python_pytest_raises/expected/human.txt   |    84 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/human.txt                             |   180 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    48 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_return_value_shape/expected/human.txt   |    52 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../python_same_stem_test/expected/CHANGELOG.md    |    12 +
+ fixtures/python_same_stem_test/expected/human.txt  |    48 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../python_strong_oracle/expected/CHANGELOG.md     |    12 +
+ fixtures/python_strong_oracle/expected/human.txt   |    52 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |   144 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../python_unittest_assertions/expected/human.txt  |    52 +-
+ .../python_unittest_basic/expected/CHANGELOG.md    |    12 +
+ fixtures/python_unittest_basic/expected/human.txt  |    81 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    81 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    52 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    50 +-
+ fixtures/real-repair-attempts/corpus.json          |    41 +
+ .../rust_constructor_field_observation/SPEC.md     |    28 +
+ .../rust_constructor_field_observation/diff.patch  |    12 +
+ .../expected/CHANGELOG.md                          |    27 +
+ .../expected/check.json                            |    79 +
+ .../expected/human-full.txt                        |    38 +
+ .../expected/human.txt                             |    24 +
+ .../input/Cargo.toml                               |     8 +
+ .../input/src/lib.rs                               |    26 +
+ .../input/tests/lower.rs                           |     7 +
+ .../SPEC.md                                        |    26 +
+ .../diff.patch                                     |    12 +
+ .../expected/CHANGELOG.md                          |    14 +
+ .../expected/check.json                            |    66 +
+ .../expected/human-full.txt                        |    53 +
+ .../expected/human.txt                             |    26 +
+ .../input/Cargo.toml                               |     8 +
+ .../input/src/lib.rs                               |    26 +
+ .../input/tests/lower.rs                           |     7 +
+ fixtures/rust_macro_reach_limitation/SPEC.md       |    34 +
+ fixtures/rust_macro_reach_limitation/diff.patch    |    13 +
+ .../expected/CHANGELOG.md                          |    83 +
+ .../expected/check.json                            |   122 +
+ .../expected/human-full.txt                        |   100 +
+ .../rust_macro_reach_limitation/expected/human.txt |    26 +
+ .../rust_macro_reach_limitation/input/Cargo.toml   |     9 +
+ .../input/src/internal.rs                          |     7 +
+ .../rust_macro_reach_limitation/input/src/lib.rs   |    11 +
+ .../rust_macro_reach_limitation/input/tests/it.rs  |     7 +
+ .../SPEC.md                                        |    33 +
+ .../diff.patch                                     |    13 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   204 +
+ .../expected/human-full.txt                        |   103 +
+ .../expected/human.txt                             |    24 +
+ .../input/Cargo.toml                               |     9 +
+ .../input/src/internal.rs                          |     7 +
+ .../input/src/lib.rs                               |     3 +
+ .../input/tests/it.rs                              |    11 +
+ .../SPEC.md                                        |    34 +
+ .../diff.patch                                     |    13 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   122 +
+ .../expected/human-full.txt                        |   100 +
+ .../expected/human.txt                             |    26 +
+ .../input/Cargo.toml                               |     9 +
+ .../input/src/internal.rs                          |     7 +
+ .../input/src/lib.rs                               |     8 +
+ .../input/tests/it.rs                              |     5 +
+ .../rust_missing_discriminator_evidence/SPEC.md    |    37 +
+ .../rust_missing_discriminator_evidence/diff.patch |    12 +
+ .../expected/CHANGELOG.md                          |    13 +
+ .../expected/check.json                            |   168 +
+ .../expected/human.txt                             |    24 +
+ .../input/Cargo.toml                               |     4 +
+ .../input/src/lib.rs                               |    13 +
+ .../input/tests/pricing.rs                         |     6 +
+ .../pilot-mappings.json                            |    49 +
+ fixtures/rust_transitive_reach_negative/SPEC.md    |    32 +
+ fixtures/rust_transitive_reach_negative/diff.patch |    13 +
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/check.json                            |    58 +
+ .../expected/human.txt                             |    26 +
+ .../input/Cargo.toml                               |     8 +
+ .../input/src/lib.rs                               |    11 +
+ fixtures/rust_transitive_reach_positive/SPEC.md    |    34 +
+ fixtures/rust_transitive_reach_positive/diff.patch |    13 +
+ .../expected/CHANGELOG.md                          |   154 +
+ .../expected/check.json                            |   122 +
+ .../expected/human-full.txt                        |   100 +
+ .../expected/human.txt                             |    26 +
+ .../input/Cargo.toml                               |     8 +
+ .../input/src/internal.rs                          |     7 +
+ .../input/src/lib.rs                               |     5 +
+ .../input/tests/it.rs                              |     7 +
+ .../SPEC.md                                        |    36 +
+ .../diff.patch                                     |    12 +
+ .../expected/CHANGELOG.md                          |   107 +
+ .../expected/check.json                            |   122 +
+ .../expected/human-full.txt                        |    99 +
+ .../expected/human.txt                             |    26 +
+ .../input/Cargo.toml                               |     8 +
+ .../input/src/eval.rs                              |     7 +
+ .../input/src/lib.rs                               |    17 +
+ .../input/tests/version_req.rs                     |    21 +
+ fixtures/snapshot_oracle/expected/CHANGELOG.md     |    12 +
+ fixtures/snapshot_oracle/expected/human.txt        |    48 +-
+ .../strong_boundary_oracle/expected/CHANGELOG.md   |    24 +
+ .../strong_boundary_oracle/expected/check.json     |     6 +-
+ fixtures/strong_boundary_oracle/expected/human.txt |    46 +-
+ fixtures/strong_error_oracle/expected/CHANGELOG.md |    49 +
+ fixtures/strong_error_oracle/expected/check.json   |    81 +-
+ .../strong_error_oracle/expected/human-full.txt    |    55 +
+ fixtures/strong_error_oracle/expected/human.txt    |   100 +-
+ fixtures/ts_already_observed/expected/CHANGELOG.md |    12 +
+ fixtures/ts_already_observed/expected/human.txt    |    81 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/human.txt                             |    83 +-
+ .../ts_cross_package_test/expected/CHANGELOG.md    |    36 +
+ fixtures/ts_cross_package_test/expected/human.txt  |    89 +-
+ fixtures/ts_dynamic_oracle/expected/CHANGELOG.md   |    12 +
+ fixtures/ts_dynamic_oracle/expected/human.txt      |    82 +-
+ fixtures/ts_full_repo_guidance/SPEC.md             |     4 +
+ .../expected/repo-exposure.json                    |    13 +
+ .../expected/repo-exposure.md                      |    14 +
+ .../ts_heuristic_relation/expected/CHANGELOG.md    |    12 +
+ fixtures/ts_heuristic_relation/expected/human.txt  |    82 +-
+ .../ts_no_verify_command/expected/CHANGELOG.md     |    12 +
+ fixtures/ts_no_verify_command/expected/human.txt   |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../ts_pkg_discovery_monorepo/expected/human.txt   |    83 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../ts_pkg_discovery_no_package/expected/human.txt |   145 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    35 +
+ .../ts_repair_packet_complete/expected/check.json  |     4 +-
+ .../expected/human-full.txt                        |    86 +
+ .../ts_repair_packet_complete/expected/human.txt   |    95 +-
+ fixtures/ts_runner_detect_ava_devdep/SPEC.md       |    11 +-
+ .../expected/CHANGELOG.md                          |    47 +
+ .../expected/check.json                            |    75 +-
+ .../expected/human-full.txt                        |    74 +
+ .../ts_runner_detect_ava_devdep/expected/human.txt |    90 +-
+ fixtures/ts_runner_detect_ava_script/SPEC.md       |     6 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |    75 +-
+ .../ts_runner_detect_ava_script/expected/human.txt |    90 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../ts_runner_detect_no_runner/expected/human.txt  |    82 +-
+ fixtures/ts_static_limit/expected/CHANGELOG.md     |    24 +
+ fixtures/ts_static_limit/expected/human.txt        |    83 +-
+ .../corpus.json                                    |    74 +
+ .../typescript-preview-repair-loop/corpus.json     |    63 +
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |   150 +-
+ .../typescript_boundary_gap/expected/CHANGELOG.md  |    12 +
+ .../typescript_boundary_gap/expected/human.txt     |    85 +-
+ .../typescript_broad_tothrow/expected/CHANGELOG.md |    23 +
+ .../expected/human-full.txt                        |    73 +
+ .../typescript_broad_tothrow/expected/human.txt    |    82 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../typescript_commonjs_require/expected/human.txt |    81 +-
+ .../expected/CHANGELOG.md                          |    23 +
+ .../expected/human-full.txt                        |    72 +
+ .../expected/human.txt                             |    81 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |   153 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/check.json                            |     2 +-
+ .../expected/human.txt                             |   419 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/lsp-diagnostics.json                  |     1 +
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    82 +-
+ fixtures/typescript_negated_t_oracle/SPEC.md       |    64 +
+ fixtures/typescript_negated_t_oracle/diff.patch    |    11 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   168 +
+ .../expected/human-full.txt                        |    76 +
+ .../typescript_negated_t_oracle/expected/human.txt |    27 +
+ .../typescript_negated_t_oracle/input/ripr.toml    |     2 +
+ .../input/src/discount.ts                          |     6 +
+ .../input/tests/discount.test.ts                   |     7 +
+ fixtures/typescript_oracle_helper_gated/SPEC.md    |    55 +
+ fixtures/typescript_oracle_helper_gated/diff.patch |    11 +
+ .../expected/CHANGELOG.md                          |    25 +
+ .../expected/check.json                            |   158 +
+ .../expected/human.txt                             |    27 +
+ .../typescript_oracle_helper_gated/input/ripr.toml |     4 +
+ .../input/src/pricing.ts                           |     6 +
+ .../input/tests/pricing.test.ts                    |    11 +
+ .../expected/CHANGELOG.md                          |    12 +
+ .../typescript_owner_file_match/expected/human.txt |    81 +-
+ .../typescript_owner_kinds/expected/CHANGELOG.md   |    12 +
+ fixtures/typescript_owner_kinds/expected/human.txt |   283 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/human.txt                             |    88 +-
+ .../typescript_probe_facts/expected/CHANGELOG.md   |    24 +
+ fixtures/typescript_probe_facts/expected/human.txt |   691 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/human.txt                             |    86 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    83 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/human.txt                             |    86 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    82 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    85 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../expected/human.txt                             |   282 +-
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |   216 +-
+ .../typescript_strong_oracle/expected/CHANGELOG.md |    23 +
+ .../expected/human-full.txt                        |    73 +
+ .../typescript_strong_oracle/expected/human.txt    |    82 +-
+ fixtures/typescript_t_truthy_oracle/SPEC.md        |    46 +
+ fixtures/typescript_t_truthy_oracle/diff.patch     |     9 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../typescript_t_truthy_oracle/expected/check.json |   159 +
+ .../expected/human-full.txt                        |    76 +
+ .../typescript_t_truthy_oracle/expected/human.txt  |    27 +
+ .../typescript_t_truthy_oracle/input/ripr.toml     |     2 +
+ .../typescript_t_truthy_oracle/input/src/score.ts  |     3 +
+ .../input/tests/score.test.ts                      |     5 +
+ .../typescript_t_unknown_method_no_oracle/SPEC.md  |    47 +
+ .../diff.patch                                     |     9 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   159 +
+ .../expected/human-full.txt                        |    76 +
+ .../expected/human.txt                             |    27 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/score.ts                             |     3 +
+ .../input/tests/score.test.ts                      |     5 +
+ .../typescript_t_wrong_receiver_no_oracle/SPEC.md  |    47 +
+ .../diff.patch                                     |     9 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   159 +
+ .../expected/human-full.txt                        |    76 +
+ .../expected/human.txt                             |    27 +
+ .../input/ripr.toml                                |     2 +
+ .../input/src/score.ts                             |     3 +
+ .../input/tests/score.test.ts                      |    12 +
+ fixtures/typescript_tape_equal_oracle/SPEC.md      |    47 +
+ fixtures/typescript_tape_equal_oracle/diff.patch   |     9 +
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |   139 +
+ .../expected/human-full.txt                        |    73 +
+ .../expected/human.txt                             |    27 +
+ .../typescript_tape_equal_oracle/input/ripr.toml   |     2 +
+ .../input/src/score.ts                             |     3 +
+ .../input/tests/score.test.ts                      |     6 +
+ .../expected/CHANGELOG.md                          |    12 +
+ .../expected/human.txt                             |    84 +-
+ .../typescript_tsx_preview/expected/CHANGELOG.md   |    12 +
+ fixtures/typescript_tsx_preview/expected/human.txt |    81 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/check.json                            |    10 +-
+ .../expected/human.txt                             |    53 +-
+ .../expected/CHANGELOG.md                          |    24 +
+ .../unwrap_err_generic_is_err/expected/check.json  |    92 +-
+ .../unwrap_err_generic_is_err/expected/human.txt   |   117 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../unwrap_err_sibling_variant/expected/check.json |    92 +-
+ .../unwrap_err_sibling_variant/expected/human.txt  |   113 +-
+ .../expected/CHANGELOG.md                          |    49 +
+ .../expected/check.json                            |    82 +-
+ .../expected/human-full.txt                        |    55 +
+ .../unwrap_err_variant_positive/expected/human.txt |   100 +-
+ .../expected/CHANGELOG.md                          |    48 +
+ .../expected/check.json                            |   123 +-
+ .../expected/human.txt                             |   109 +-
+ fixtures/weak_error_oracle/expected/CHANGELOG.md   |    36 +
+ fixtures/weak_error_oracle/expected/check.json     |    81 +-
+ fixtures/weak_error_oracle/expected/human-full.txt |    67 +
+ fixtures/weak_error_oracle/expected/human.txt      |   114 +-
+ .../expected/CHANGELOG.md                          |    36 +
+ .../expected/check.json                            |    81 +-
+ .../expected/human.txt                             |   100 +-
+ metrics/capabilities.toml                          |    55 +-
+ metrics/rust-repair-trust/corpus.json              |   445 +
+ .../implementation-plan.md                         |     2 +-
+ plans/campaign-27/README.md                        |     2 +-
+ .../active-goal-authority-migration.md             |    72 +
+ .../generated-ci-baseline-audit.md                 |     3 +-
+ plans/python-repair-routing/implementation-plan.md |     7 +-
+ plans/rust-one-shot-evidence-to-repair.md          |   232 +
+ .../implementation-plan.md                         |     3 +-
+ plans/use-case-specs/implementation-plan.md        |    34 +-
+ policy/dependency_allowlist.txt                    |     1 +
+ policy/doc-artifacts.toml                          |   143 +-
+ policy/network_allowlist.txt                       |     4 +-
+ policy/no-panic-allowlist.toml                     |   431 +-
+ policy/non-rust-allowlist.toml                     |    81 +
+ policy/output_contracts.txt                        |     2 +
+ policy/process_allowlist.txt                       |    19 +-
+ policy/workflow_allowlist.txt                      |     1 +
+ policy/workspace_shape.txt                         |     1 +
+ ripr.toml.example                                  |    14 +-
+ schemas/ripr/gate-decision.schema.json             |   323 +
+ schemas/ripr/pr-evidence.schema.json               |    48 +-
+ schemas/ripr/review-comments.schema.json           |   297 +-
+ schemas/ripr/ripr-agent-capability.schema.json     |    83 +
+ schemas/ripr/ripr-agent-error.schema.json          |    72 +
+ schemas/ripr/ripr-agent-request.schema.json        |    36 +
+ schemas/ripr/ripr-agent-success.schema.json        |    76 +
+ schemas/ripr/rust-repair-trust-corpus.schema.json  |   237 +
+ .../verification/ripr/gate-decision.valid.json     |   105 +
+ .../verification/ripr/pr-evidence.valid.json       |    17 +-
+ .../verification/ripr/review-comments.valid.json   |    37 +-
+ xtask/src/command.rs                               |    88 +-
+ xtask/src/dispatch.rs                              |    31 +-
+ xtask/src/main.rs                                  | 51081 ++++++++++---------
+ xtask/src/reports/issue_intake.rs                  |   191 +
+ xtask/src/reports/mod.rs                           |     7 +
+ xtask/src/reports/module_health.rs                 |   742 +-
+ xtask/src/reports/pr_causal_delta.rs               |   833 +
+ xtask/src/reports/pr_evidence.rs                   |     8 +
+ xtask/src/reports/recommendation.rs                |     3 +
+ xtask/src/reports/release.rs                       |    98 +-
+ xtask/src/reports/review_comments.rs               |   546 +-
+ xtask/src/reports/rust_repair_trust.rs             |  1311 +
+ xtask/src/reports/targeted_rerun.rs                |   614 +
+ xtask/src/run.rs                                   |    43 +-
+ xtask/src/verification_contracts.rs                |    66 +
+ 1106 files changed, 146030 insertions(+), 63295 deletions(-)
+--- source authority assertions ---
+23:  allow_merge_commit: true
+3:version = "0.10.1"
+5:  "version": "0.10.1",
+6324:name = "bounded subprocess adapter boundary"
+7:This checkout is `EffortlessMetrics/ripr`, the release, publishing, signing,
+
+--- check no_unmerged status=0 ---
+
+--- check diff_check status=0 ---
+
+--- check fmt status=0 ---
+info: syncing channel updates for 1.95.0-x86_64-unknown-linux-gnu
+info: latest update on 2026-04-16 for version 1.95.0 (59807616e 2026-04-14)
+info: downloading 5 components
+
+--- check subprocess_tests status=0 ---
+   Compiling oxc_allocator v0.130.0
+   Compiling phf_generator v0.13.1
+   Compiling compact_str v0.9.0
+   Compiling phf_codegen v0.11.3
+   Compiling phf v0.13.1
+   Compiling oxc-miette v2.7.1
+   Compiling version_check v0.9.5
+   Compiling crossbeam-utils v0.8.21
+   Compiling oxc_estree v0.130.0
+   Compiling bitflags v2.11.1
+   Compiling percent-encoding v2.3.2
+   Compiling oxc_str v0.130.0
+   Compiling generic-array v0.14.7
+   Compiling oxc_ast_macros v0.130.0
+   Compiling phf_macros v0.13.1
+   Compiling crunchy v0.2.4
+   Compiling futures-core v0.3.32
+   Compiling futures-sink v0.3.32
+   Compiling cow-utils v0.1.3
+   Compiling dragonbox_ecma v0.1.12
+   Compiling num-integer v0.1.46
+   Compiling oxc_span v0.130.0
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling getopts v0.2.24
+   Compiling unicode-id-start v1.4.0
+   Compiling tiny-keccak v2.0.2
+   Compiling log v0.4.29
+   Compiling either v1.15.0
+   Compiling anyhow v1.0.102
+   Compiling ref-cast v1.0.25
+   Compiling nonmax v0.5.5
+   Compiling typenum v1.20.0
+   Compiling zmij v1.0.21
+   Compiling tracing v0.1.44
+   Compiling oxc_index v4.1.0
+   Compiling unicode_names2_generator v1.3.0
+   Compiling num-bigint v0.4.6
+   Compiling oxc_diagnostics v0.130.0
+   Compiling futures-channel v0.3.32
+   Compiling ref-cast-impl v1.0.25
+   Compiling futures-macro v0.3.32
+   Compiling memoffset v0.9.1
+   Compiling serde_json v1.0.151
+   Compiling smallvec v1.15.1
+   Compiling parking_lot_core v0.9.12
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.32
+   Compiling futures-io v0.3.32
+   Compiling heck v0.5.0
+   Compiling unic-common v0.9.0
+   Compiling unic-char-range v0.9.0
+   Compiling hashbrown v0.14.5
+   Compiling is-macro v0.3.7
+   Compiling unic-char-property v0.9.0
+   Compiling futures-util v0.3.32
+   Compiling unic-ucd-version v0.9.0
+   Compiling unicode_names2 v1.3.0
+   Compiling oxc_regular_expression v0.130.0
+   Compiling oxc_syntax v0.130.0
+   Compiling tokio-macros v2.7.1
+   Compiling rustpython-parser-vendored v0.4.0
+   Compiling borrow-or-share v0.2.4
+   Compiling scopeguard v1.2.0
+   Compiling httparse v1.10.1
+   Compiling winnow v0.7.15
+   Compiling unicode-properties v0.1.4
+   Compiling bytes v1.11.1
+   Compiling rustc-hash v1.1.0
+   Compiling ra-ap-rustc_lexer v0.160.0
+   Compiling tokio v1.53.0
+   Compiling lock_api v0.4.14
+   Compiling fluent-uri v0.4.1
+   Compiling phf v0.11.3
+   Compiling rustpython-parser-core v0.4.0
+   Compiling oxc_ast v0.130.0
+   Compiling rustpython-parser v0.4.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling itertools v0.14.0
+   Compiling crossbeam-channel v0.5.15
+   Compiling jod-thread v1.0.0
+   Compiling ra_ap_edition v0.0.330
+   Compiling countme v3.0.1
+   Compiling winnow v1.0.2
+   Compiling rustc-literal-escaper v0.0.4
+   Compiling tower-service v0.3.3
+   Compiling sync_wrapper v1.0.2
+   Compiling drop_bomb v0.1.5
+   Compiling text-size v1.1.1
+   Compiling tower-layer v0.3.3
+   Compiling rowan v0.15.18
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling tower v0.5.3
+   Compiling ra_ap_parser v0.0.330
+   Compiling ra_ap_stdx v0.0.330
+   Compiling oxc_ecmascript v0.130.0
+   Compiling tokio-util v0.7.18
+   Compiling digest v0.10.7
+   Compiling dashmap v6.1.0
+   Compiling ls-types v0.0.6
+   Compiling rustpython-ast v0.4.0
+   Compiling futures v0.3.32
+   Compiling unic-emoji-char v0.9.0
+   Compiling unic-ucd-ident v0.9.0
+   Compiling itertools v0.11.0
+   Compiling serde_spanned v1.1.1
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling smol_str v0.3.6
+   Compiling seq-macro v0.3.6
+   Compiling lalrpop-util v0.20.2
+   Compiling toml_writer v1.1.1+spec-1.1.0
+   Compiling cpufeatures v0.2.17
+   Compiling triomphe v0.1.15
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling oxc_parser v0.130.0
+   Compiling ra_ap_syntax v0.0.330
+   Compiling sha2 v0.10.9
+   Compiling tower-lsp-server v0.23.0
+   Compiling ripr v0.10.1 (/home/runner/work/ripr/ripr/crates/ripr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 33s
+     Running unittests src/lib.rs (target/debug/deps/ripr-77b7aad17d1e8594)
+
+running 3 tests
+test analysis::probes::subprocess::tests::dynamic_or_shell_commands_remain_unclassified ... ok
+test analysis::probes::subprocess::tests::bounded_literal_curl_adapter_is_an_observable_effect ... ok
+test analysis::probes::subprocess::tests::probes_for_file_emits_side_effect_for_bounded_adapter_line ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 3364 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/ripr-e5b4abb56e2c08a1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/causal_delta_fixture.rs (target/debug/deps/causal_delta_fixture-7620a6f314d1e8c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/cli_smoke.rs (target/debug/deps/cli_smoke-d42db7401b655211)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 122 filtered out; finished in 0.00s
+
+     Running tests/lsp_lifecycle.rs (target/debug/deps/lsp_lifecycle-3dac4a71c95d3bf9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/perl_two_binary_harness.rs (target/debug/deps/perl_two_binary_harness-a41889e015467a33)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+--- check bounded_probe_test status=0 ---
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (target/debug/deps/ripr-77b7aad17d1e8594)
+
+running 1 test
+test analysis::probes::subprocess::tests::probes_for_file_emits_side_effect_for_bounded_adapter_line ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3366 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/ripr-e5b4abb56e2c08a1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/causal_delta_fixture.rs (target/debug/deps/causal_delta_fixture-7620a6f314d1e8c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/cli_smoke.rs (target/debug/deps/cli_smoke-d42db7401b655211)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 122 filtered out; finished in 0.00s
+
+     Running tests/lsp_lifecycle.rs (target/debug/deps/lsp_lifecycle-3dac4a71c95d3bf9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/perl_two_binary_harness.rs (target/debug/deps/perl_two_binary_harness-a41889e015467a33)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+--- check ripr_lib_tests status=0 ---
+test output::review_comments::tests::review_comments_falls_back_to_summary_only_without_safe_line ... ok
+test output::review_comments::tests::review_comments_gap_ledger_repair_helpers_cover_route_language ... ok
+test output::review_comments::tests::recommendation_calibration_fixture_expectations_pin_required_cases ... ok
+test output::review_comments::tests::review_comments_markdown_fails_closed_when_source_location_is_missing ... ok
+test output::review_comments::tests::review_comments_gap_ledger_renders_only_eligible_repair_cards ... ok
+test output::review_comments::tests::review_comments_markdown_names_static_boundaries ... ok
+test output::review_comments::tests::review_comments_places_exact_changed_seam_line ... ok
+test output::review_comments::tests::review_comments_markdownobject_external_observer_never_suggests_wrong_rust_target ... ok
+test output::review_comments::tests::review_comments_places_nearest_same_file_changed_line ... ok
+test output::review_comments::tests::review_comments_places_owner_function_changed_line ... ok
+test output::review_comments::tests::review_comments_suppresses_repo_actionable_fallback ... ok
+test output::review_comments::tests::review_comments_caps_inline_and_summary_items ... ok
+test output::review_comments::tests::review_comments_suppresses_when_recommended_test_changed ... ok
+test output::review_comments::tests::review_warnings_json_wraps_strings_as_schema_objects_and_drops_empties ... ok
+test output::review_comments::tests::spec0068_actionable_card_carries_verify_and_receipt_commands ... ok
+test output::review_comments::tests::review_comments_surface_external_observer_as_navigation_only_limitation ... ok
+test output::review_comments::tests::spec0068_card_carries_oracle_kind_and_strength ... ok
+test output::review_comments::tests::spec0068_card_carries_structured_related_test ... ok
+test output::review_comments::tests::spec0068_reject_seam_id_without_source_location ... ok
+test output::review_comments::tests::review_comments_gap_ledger_reports_ineligible_records_and_caps ... ok
+test output::review_comments::tests::spec0068_reject_seam_id_without_source_location_summary_only ... ok
+test output::review_comments::tests::spec0068_every_card_carries_gap_state ... ok
+test output::review_comments::tests::spec0068_working_set_card_projects_domain_canonical_gap_id ... ok
+test output::review_comments::tests::working_set_card_emits_null_related_test_without_strong_test ... ok
+test output::review_comments::tests::working_set_card_names_missing_domain_canonical_gap_id_as_null ... ok
+test output::review_comments::tests::working_set_card_projects_first_related_test_oracle_when_no_strong ... ok
+test output::ripr_zero_status::tests::evidence_record_context_handles_invalid_and_fallback_shapes ... ok
+test output::ripr_zero_status::tests::evidence_record_test_labels_accept_partial_labels ... ok
+test output::review_comments::tests::working_set_card_reports_no_oracle_without_related_tests ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_falls_back_to_legacy_fields_when_record_is_partial ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_reports_achieved_when_no_visible_debt_remains ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_prefers_evidence_record_repair_context ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_reports_incomplete_when_delta_is_missing ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_uses_gap_ledger_targets_when_supplied ... ok
+test output::ripr_zero_status::tests::ripr_zero_status_reports_not_yet_with_metadata_and_repair_route ... ok
+test output::sarif::tests::sarif_attaches_suppression_metadata ... ok
+test output::review_comments::tests::spec0068_summary_reason_is_closed_vocabulary ... ok
+test output::sarif::tests::sarif_normalizes_backslash_canonical_gap_file_to_forward_slash ... ok
+test output::sarif::tests::sarif_omits_off_seam_class ... ok
+test output::sarif::tests::sarif_preserves_finding_canonical_gap_properties ... ok
+test output::sarif::tests::sarif_output_is_valid_json ... ok
+test output::sarif::tests::sarif_preserves_bun_cross_language_grip_card_properties ... ok
+test output::sarif::tests::sarif_preserves_static_language ... ok
+test output::sarif::tests::sarif_preserves_preview_actionability_properties ... ok
+test output::sarif::tests::sarif_projects_perl_preview_card_properties ... ok
+test output::sarif::tests::sarif_projects_python_ordinary_no_action_properties ... ok
+test output::sarif::tests::sarif_projects_python_repair_card_properties ... ok
+test output::sarif::tests::sarif_projects_python_static_limit_no_action_properties ... ok
+test output::sarif::tests::sarif_renders_findings_with_stable_rule_ids ... ok
+test output::sarif::tests::sarif_renders_seams_with_stable_rule_ids ... ok
+test output::sarif::tests::sarif_repo_seams_discloses_seam_limit_in_run_properties ... ok
+test output::sarif::tests::sarif_repo_seams_shows_complete_run_status_when_no_cap ... ok
+test output::sarif::tests::sarif_uses_configured_finding_severity ... ok
+test output::sarif::tests::sarif_uses_configured_seam_severity ... ok
+test output::start_here_state::tests::normalizes_no_output_and_fail_closed_states ... ok
+test output::suppression_health::tests::empty_present_manifest_is_no_suppressions_with_warning ... ok
+test output::suppression_health::tests::explicit_broad_scope_is_flagged ... ok
+test output::suppression_health::tests::missing_manifest_is_healthy_no_suppressions ... ok
+test output::suppression_health::tests::complete_manifest_is_healthy_and_keeps_visibility ... ok
+test output::suppression_health::tests::parser_violations_are_config_errors_with_policy_kinds ... ok
+test output::suppression_health::tests::path_scoped_test_efficiency_suppression_can_be_healthy ... ok
+test output::suppression_health::tests::unreadable_manifest_is_config_error ... ok
+test output::suppression_health::tests::stale_and_preview_label_gaps_are_flagged ... ok
+test output::suppressions::tests::application_has_default_constructor ... ok
+test output::suppressions::tests::apply_check_suppressions_first_matching_entry_names_the_selector ... ok
+test output::suppression_health::tests::metadata_gaps_are_advisory_warnings ... ok
+test output::suppressions::tests::apply_check_suppressions_matches_finding_id_entries_exactly ... ok
+test output::suppressions::tests::apply_check_suppressions_matches_path_glob_and_narrows_by_class ... ok
+test output::suppressions::tests::apply_check_suppressions_warns_on_expired_and_unmatched_entries ... ok
+test output::suppressions::tests::apply_exposure_suppressions_moves_matched_findings_into_suppressed_set ... ok
+test output::suppressions::tests::apply_exposure_suppressions_warns_on_expired_and_unmatched_selectors ... ok
+test output::suppressions::tests::apply_test_efficiency_suppressions_surfaces_unmatched_and_expired_warnings ... ok
+test output::suppressions::tests::current_iso_date_returns_yyyy_mm_dd_format ... ok
+test output::suppressions::tests::apply_test_efficiency_suppressions_matches_by_test_or_test_and_path ... ok
+test output::suppressions::tests::days_to_civil_date_round_trips_known_anchors ... ok
+test output::suppressions::tests::exposure_class_labels_match_domain_contract ... ok
+test output::review_comments::tests::review_comments_pr_guidance_fixtures_pin_required_cases ... ok
+test output::suppressions::tests::is_expired_compares_lexicographically_and_treats_none_as_active ... ok
+test output::suppressions::tests::is_iso_date_validates_format_and_ranges ... ok
+test output::suppressions::tests::parse_accepts_exposure_gap_path_glob_selector ... ok
+test output::suppressions::tests::parse_accepts_well_formed_manifest_with_both_kinds ... ok
+test output::suppressions::tests::parse_rejects_blank_owner_or_reason ... ok
+test output::suppressions::tests::parse_rejects_absolute_or_backslash_path ... ok
+test output::suppressions::tests::load_check_suppression_policy_fails_closed_on_missing_and_invalid_files ... ok
+test output::suppressions::tests::parse_rejects_duplicate_selectors ... ok
+test output::suppressions::tests::parse_rejects_invalid_expires_format ... ok
+test output::suppressions::tests::parse_rejects_invalid_policy_date_formats ... ok
+test output::suppressions::tests::parse_rejects_path_selector_with_unknown_static_class ... ok
+test output::suppressions::tests::parse_rejects_unknown_kind ... ok
+test output::suppressions::tests::parse_rejects_kind_field_mismatches ... ok
+test output::suppressions::tests::parse_rejects_unknown_top_level_or_block_field ... ok
+test output::suppressions::tests::parse_requires_schema_version ... ok
+test output::suppressions::tests::parse_requires_kind_owner_reason ... ok
+test output::suppressions::tests::suppressions_path_constant_matches_expected_layout ... ok
+test output::suppressions::tests::path_glob_matches_supports_star_double_star_and_question ... ok
+test output::swarm_ingest::tests::fail_closed_movement_claimed_without_after_sha256 ... ok
+test output::swarm_ingest::tests::fail_closed_forbidden_edit_with_resolved_claim_and_full_provenance ... ok
+test output::swarm_ingest::tests::complete_evidence_unchanged_and_regressed_still_surface ... ok
+test output::swarm_ingest::tests::fail_closed_movement_claimed_without_before_sha256 ... ok
+test output::swarm_ingest::tests::fail_closed_verify_failed_but_movement_claimed ... ok
+test output::swarm_ingest::tests::fail_closed_verify_missing_but_movement_claimed ... ok
+test output::swarm_ingest::tests::ingest_flags_forbidden_edits_before_success_claims ... ok
+test output::swarm_ingest::tests::ingest_requires_verify_before_closure ... ok
+test output::swarm_ingest::tests::fail_closed_movement_claimed_without_any_sha256 ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_handles_guidance_only_regression ... ok
+test output::swarm_ingest::tests::movement_without_provenance_fixture_matches_expected_json ... ok
+test output::swarm_ingest::tests::python_preview_closed_agent_result_fixture_matches_expected_json ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_handles_unknown_movement_and_no_handoff ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_keeps_summary_only_guidance_visible ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_prefers_agent_packet_evidence_record ... ok
+test output::swarm_ingest::tests::ingest_classifies_stopped_failed_improved_and_closed_attempts ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_reports_incomplete_without_selected_seam ... ok
+test output::typescript_false_actionable::tests::false_actionable_audit_blocks_on_incomplete_case_row ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_warns_for_invalid_supplied_inputs ... ok
+test output::test_oracle_assistant_proof::tests::test_oracle_assistant_proof_matches_canonical_fixture ... ok
+test output::typescript_false_actionable::tests::false_actionable_audit_blocks_on_malformed_corpus ... ok
+test output::typescript_false_actionable::tests::false_actionable_audit_counts_packet_ready_and_complete_category ... ok
+test output::typescript_limitations::tests::typescript_limitation_leaderboard_blocks_on_malformed_check_output ... ok
+test output::typescript_false_actionable::tests::false_actionable_audit_reports_zero_rate_for_safe_corpus ... ok
+test output::typescript_false_actionable::tests::false_actionable_audit_renders_json_and_markdown ... ok
+test output::typescript_packet_projection::tests::canonical_gap_id_derives_from_finding_id ... ok
+test output::typescript_limitations::tests::typescript_limitation_leaderboard_counts_unique_kinds_per_finding ... ok
+test output::typescript_packet_projection::tests::canonical_gap_id_normalizes_backslashes ... ok
+test output::typescript_packet_projection::tests::receipt_command_is_ripr_outcome_shape ... ok
+test output::typescript_packet_projection::tests::must_not_change_includes_preview_clause_via_shared_function ... ok
+test output::typescript_packet_projection::tests::validator_parity_complete_finding_passes_shared_validator ... ok
+test output::typescript_limitations::tests::typescript_limitation_leaderboard_renders_json_and_markdown ... ok
+test output::typescript_packet_projection::tests::validator_parity_cross_language_bridge_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_missing_oracle_expected_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_missing_verify_command_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_named_typescript_limitation_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_dynamic_oracle_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_no_missing_discriminators_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_no_related_tests_returns_none ... ok
+test output::typescript_packet_projection::tests::validator_parity_wrong_category_returns_none ... ok
+test output::typescript_preview_card::tests::bun_cross_language_agent_packet_covers_non_edit_states ... ok
+test output::typescript_preview_card::tests::bun_cross_language_agent_packet_covers_missing_discriminator_shapes ... ok
+test output::typescript_preview_card::tests::stable_byte_proof_mode_is_advisory ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_keeps_mock_payload_advisory ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_names_static_limit ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_projects_advisory_fields ... ok
+test output::typescript_preview_card::tests::bun_cross_language_agent_packet_projects_missing_discriminator ... ok
+test output::typescript_preview_card::tests::bun_cross_language_agent_packet_projects_bridge_unknown_stop_condition ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_projects_bun_cross_language_grip ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_projects_bridge_unknown_without_binding_ref ... ok
+test output::typescript_preview_card::tests::typescript_preview_card_projects_missing_external_oracle_grip ... ok
+test output::value_path::tests::path_value_returns_nested_value_or_none ... ok
+test output::value_path::tests::string_path_returns_owned_string_only_for_string_values ... ok
+test output::waiver_aging::tests::current_ledger_without_history_is_visible_but_not_repeated ... ok
+test output::waiver_aging::tests::distinct_waivers_in_same_file_mark_file_repeat ... ok
+test output::waiver_aging::tests::history_jsonl_parse_warnings_do_not_hide_valid_records ... ok
+test output::waiver_aging::tests::numeric_pr_numbers_render_seen_labels ... ok
+test output::waiver_aging::tests::missing_inputs_are_incomplete ... ok
+test output::waiver_aging::tests::history_repeats_same_seam_and_marks_policy_candidates ... ok
+test output::waiver_aging::tests::invalid_supplied_ledger_is_config_error ... ok
+test output::waiver_aging::tests::same_canonical_gap_with_different_seams_is_not_same_seam_repeat ... ok
+
+test result: ok. 3367 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.41s
+
+
+--- check spec_format status=0 ---
+ Downloading crates ...
+  Downloaded simd-adler32 v0.3.9
+  Downloaded crc32fast v1.5.0
+  Downloaded zopfli v0.8.3
+  Downloaded flate2 v1.1.9
+  Downloaded zip v5.1.1
+  Downloaded bumpalo v3.20.2
+  Downloaded zlib-rs v0.6.3
+   Compiling crc32fast v1.5.0
+   Compiling zlib-rs v0.6.3
+   Compiling bumpalo v3.20.2
+   Compiling equivalent v1.0.2
+   Compiling simd-adler32 v0.3.9
+   Compiling indexmap v2.14.0
+   Compiling zopfli v0.8.3
+   Compiling flate2 v1.1.9
+   Compiling zip v5.1.1
+   Compiling xtask v0.1.0 (/home/runner/work/ripr/ripr/xtask)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.28s
+     Running `target/debug/xtask check-spec-format`
+
+--- check spec_numbering status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-spec-numbering`
+
+--- check traceability status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-traceability`
+
+--- check doc_index status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-doc-index`
+
+--- check doc_artifacts status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-doc-artifacts`
+
+--- check file_policy status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-file-policy`
+
+--- check static_language status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-static-language`
+
+--- check workflow_policy status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-workflows`
+
+--- check process_policy status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-process-policy`
+
+--- check network_policy status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-network-policy`
+
+--- check architecture status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-architecture`
+
+--- check workspace_shape status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-workspace-shape`
+
+--- check output_contracts status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask check-output-contracts`
+
+--- check goldens status=0 ---
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask goldens check`
+
+--- check cargo_check status=0 ---
+   Compiling proc-macro2 v1.0.106
+   Compiling getrandom v0.2.17
+    Checking serde_core v1.0.229
+   Compiling rand_core v0.6.4
+   Compiling phf_shared v0.13.1
+    Checking once_cell v1.21.4
+   Compiling quote v1.0.45
+    Checking allocator-api2 v0.2.21
+   Compiling syn v2.0.117
+    Checking itoa v1.0.18
+    Checking hashbrown v0.17.0
+   Compiling rand_chacha v0.3.1
+    Checking pin-project-lite v0.2.17
+    Checking static_assertions v1.1.0
+   Compiling rand v0.8.6
+   Compiling syn v3.0.2
+   Compiling phf_shared v0.11.3
+    Checking unicode-width v0.2.2
+    Checking unicode-linebreak v0.1.5
+    Checking smawk v0.3.2
+    Checking rustc-hash v2.1.2
+    Checking textwrap v0.16.2
+   Compiling phf_generator v0.11.3
+    Checking castaway v0.2.4
+    Checking owo-colors v4.3.0
+    Checking oxc_data_structures v0.130.0
+    Checking ryu v1.0.23
+    Checking unicode-segmentation v1.13.2
+   Compiling phf_generator v0.13.1
+    Checking compact_str v0.9.0
+    Checking oxc_allocator v0.130.0
+   Compiling phf_codegen v0.11.3
+   Compiling phf v0.13.1
+    Checking oxc_estree v0.130.0
+    Checking percent-encoding v2.3.2
+    Checking bitflags v2.11.1
+    Checking oxc_str v0.130.0
+    Checking num-traits v0.2.19
+   Compiling serde_derive v1.0.229
+    Checking futures-sink v0.3.32
+    Checking futures-core v0.3.32
+    Checking cow-utils v0.1.3
+   Compiling getopts v0.2.24
+    Checking num-integer v0.1.46
+    Checking libc v0.2.186
+    Checking crossbeam-utils v0.8.21
+    Checking tracing-core v0.1.36
+    Checking typenum v1.20.0
+    Checking nonmax v0.5.5
+    Checking either v1.15.0
+    Checking unicode-id-start v1.4.0
+   Compiling log v0.4.29
+    Checking generic-array v0.14.7
+   Compiling unicode_names2_generator v1.3.0
+   Compiling thiserror-impl v2.0.18
+   Compiling oxc-miette-derive v2.7.1
+   Compiling oxc_ast_macros v0.130.0
+   Compiling phf_macros v0.13.1
+    Checking serde v1.0.229
+    Checking thiserror v2.0.18
+   Compiling tracing-attributes v0.1.31
+    Checking oxc_index v4.1.0
+    Checking oxc-miette v2.7.1
+   Compiling futures-macro v0.3.32
+   Compiling ref-cast-impl v1.0.25
+    Checking oxc_span v0.130.0
+    Checking oxc_diagnostics v0.130.0
+    Checking num-bigint v0.4.6
+    Checking dragonbox_ecma v0.1.12
+    Checking futures-channel v0.3.32
+    Checking unic-common v0.9.0
+    Checking smallvec v1.15.1
+    Checking unic-char-range v0.9.0
+    Checking tracing v0.1.44
+    Checking slab v0.4.12
+    Checking hashbrown v0.14.5
+    Checking futures-task v0.3.32
+    Checking futures-io v0.3.32
+    Checking unic-char-property v0.9.0
+    Checking futures-util v0.3.32
+    Checking unic-ucd-version v0.9.0
+   Compiling is-macro v0.3.7
+    Checking oxc_syntax v0.130.0
+    Checking oxc_regular_expression v0.130.0
+    Checking ref-cast v1.0.25
+    Checking zmij v1.0.21
+   Compiling unicode_names2 v1.3.0
+   Compiling tokio-macros v2.7.1
+    Checking rustpython-parser-vendored v0.4.0
+    Checking borrow-or-share v0.2.4
+    Checking winnow v0.7.15
+    Checking unicode-properties v0.1.4
+    Checking scopeguard v1.2.0
+    Checking rustc-hash v1.1.0
+    Checking bytes v1.11.1
+    Checking lock_api v0.4.14
+    Checking ra-ap-rustc_lexer v0.160.0
+    Checking rustpython-parser-core v0.4.0
+    Checking tokio v1.53.0
+    Checking fluent-uri v0.4.1
+    Checking phf v0.11.3
+    Checking oxc_ast v0.130.0
+   Compiling rustpython-parser v0.4.0
+    Checking serde_json v1.0.151
+    Checking memoffset v0.9.1
+    Checking parking_lot_core v0.9.12
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking itertools v0.14.0
+    Checking crossbeam-channel v0.5.15
+    Checking sync_wrapper v1.0.2
+    Checking tower-service v0.3.3
+    Checking text-size v1.1.1
+    Checking jod-thread v1.0.0
+    Checking countme v3.0.1
+    Checking drop_bomb v0.1.5
+    Checking tower-layer v0.3.3
+    Checking ra_ap_edition v0.0.330
+    Checking winnow v1.0.2
+    Checking rustc-literal-escaper v0.0.4
+    Checking ra_ap_parser v0.0.330
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking ra_ap_stdx v0.0.330
+    Checking tower v0.5.3
+    Checking rowan v0.15.18
+    Checking tokio-util v0.7.18
+    Checking digest v0.10.7
+    Checking dashmap v6.1.0
+    Checking ls-types v0.0.6
+    Checking futures v0.3.32
+    Checking httparse v1.10.1
+    Checking rustpython-ast v0.4.0
+    Checking unic-emoji-char v0.9.0
+    Checking unic-ucd-ident v0.9.0
+    Checking itertools v0.11.0
+    Checking oxc_ecmascript v0.130.0
+    Checking toml_datetime v0.7.5+spec-1.1.0
+    Checking serde_spanned v1.1.1
+    Checking cpufeatures v0.2.17
+    Checking toml_writer v1.1.1+spec-1.1.0
+    Checking smol_str v0.3.6
+    Checking lalrpop-util v0.20.2
+    Checking triomphe v0.1.15
+    Checking toml v0.9.12+spec-1.1.0
+    Checking ra_ap_syntax v0.0.330
+    Checking oxc_parser v0.130.0
+    Checking sha2 v0.10.9
+    Checking crc32fast v1.5.0
+    Checking bumpalo v3.20.2
+    Checking zlib-rs v0.6.3
+    Checking simd-adler32 v0.3.9
+    Checking equivalent v1.0.2
+    Checking indexmap v2.14.0
+    Checking zopfli v0.8.3
+    Checking flate2 v1.1.9
+    Checking zip v5.1.1
+    Checking tower-lsp-server v0.23.0
+    Checking ripr v0.10.1 (/home/runner/work/ripr/ripr/crates/ripr)
+    Checking xtask v0.1.0 (/home/runner/work/ripr/ripr/xtask)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 51.08s
+join_sha=4f1a10028ac91aa5d805dd1466baca20b8a0060d
+join_parent_count=2
+join_parent_1=ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+join_parent_2=3a80c634f2157dee0e7f74fc72b7975f07699143
+topology_status=0
+--- join summary ---
+join 4f1a10028ac91aa5d805dd1466baca20b8a0060d
+parents ec7dc6beaec8ad2efca4abd502f9253cdb4f939c 3a80c634f2157dee0e7f74fc72b7975f07699143
+subject promote: join frozen ripr-swarm candidate for 0.10.1
+outcome=ready_for_api_publish
