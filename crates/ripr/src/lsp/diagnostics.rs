@@ -701,7 +701,23 @@ pub(super) fn workspace_diagnostics_with_config(
     let base = output.base;
     let mode = output.mode;
     let partial_scope = output.partial_scope;
-    let findings = output.findings;
+    // Scope the LSP projection to production Rust anchors, matching the CLI
+    // review surface (`changed_production_files_plus_immediate_callers`).
+    // Diff probe seeding already skips `tests/` trees, but the seeding
+    // predicate is narrower than the shared production classifier
+    // (`workspace::is_production_rust_path`): `src/tests.rs`, `examples/`,
+    // `benches/`, and other non-production trees can still seed findings.
+    // Dropping them here — with the suppressed count disclosed on the
+    // snapshot — keeps the editor from pinning line-local gap diagnostics in
+    // files the review surface explicitly treats as out of scope (#2130).
+    let (findings, out_of_scope_test_file_findings) =
+        partition_out_of_scope_test_file_findings(&root, output.findings);
+    if out_of_scope_test_file_findings > 0 {
+        eprintln!(
+            "ripr lsp: {out_of_scope_test_file_findings} finding(s) anchored in non-production \
+             Rust paths are out of scope for LSP diagnostics and were not projected"
+        );
+    }
 
     // Validate gap artifacts first so we can determine run status before
     // assembling diagnostics. Run status governs severity downgrade/suppression
@@ -853,6 +869,7 @@ pub(super) fn workspace_diagnostics_with_config(
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope,
+        out_of_scope_test_file_findings,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
 }
@@ -1606,6 +1623,45 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
     } else {
         root.join(&finding.probe.location.file)
     }
+}
+
+/// Split diff-analysis findings into the production scope the LSP publishes
+/// and the out-of-scope tail it must not pin as line-local diagnostics.
+///
+/// The scope predicate is the shared `workspace::is_production_rust_path`
+/// classifier — the same production/test boundary the CLI review surface and
+/// the seam inventory use — not a parallel LSP-only test-path matcher. It is
+/// applied only to Rust anchors (`.rs`); other languages keep their own
+/// adapter-owned test-file handling. Paths are relativized against the
+/// workspace root first so an absolute anchor cannot be misclassified by a
+/// root prefix component (e.g. a checkout under a `target/` parent).
+fn partition_out_of_scope_test_file_findings(
+    root: &Path,
+    findings: Vec<Finding>,
+) -> (Vec<Finding>, usize) {
+    let mut scoped = Vec::with_capacity(findings.len());
+    let mut out_of_scope = 0usize;
+    for finding in findings {
+        if finding_anchor_is_out_of_scope_rust_path(root, &finding) {
+            out_of_scope += 1;
+        } else {
+            scoped.push(finding);
+        }
+    }
+    (scoped, out_of_scope)
+}
+
+fn finding_anchor_is_out_of_scope_rust_path(root: &Path, finding: &Finding) -> bool {
+    let file = &finding.probe.location.file;
+    if file.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+        return false;
+    }
+    let relative = if file.is_absolute() {
+        file.strip_prefix(root).unwrap_or(file.as_path())
+    } else {
+        file.as_path()
+    };
+    !crate::analysis::is_production_rust_path(relative)
 }
 
 #[cfg(test)]
@@ -2941,6 +2997,7 @@ mod delivery_tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            out_of_scope_test_file_findings: 0,
         })
     }
 

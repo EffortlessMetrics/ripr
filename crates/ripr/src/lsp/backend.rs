@@ -3061,6 +3061,7 @@ impl Backend {
                         "gap_artifacts": gap_artifacts,
                         "actionable_gap_artifacts": actionable_gap_artifacts,
                         "gap_artifact_rejections": gap_artifact_rejections,
+                        "out_of_scope_test_file_findings": snapshot.out_of_scope_test_file_findings,
                     },
                     "diagnostic_budget": diagnostic_budget_json.clone(),
                     "diagnostic_budget_state": diagnostic_budget_state.clone(),
@@ -3095,6 +3096,7 @@ impl Backend {
                 "gap_artifacts": gap_artifacts,
                 "actionable_gap_artifacts": actionable_gap_artifacts,
                 "gap_artifact_rejections": gap_artifact_rejections,
+                "out_of_scope_test_file_findings": snapshot.out_of_scope_test_file_findings,
             },
             "diagnostic_budget": diagnostic_budget_json,
             "diagnostic_budget_state": diagnostic_budget_state,
@@ -5687,6 +5689,7 @@ mod delivery_selection_parity_tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            out_of_scope_test_file_findings: 0,
         };
         WorkspaceDiagnostics { snapshot, batches }
     }

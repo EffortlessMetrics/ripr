@@ -284,6 +284,17 @@ pub(super) struct AnalysisSnapshot {
     /// diagnostics like the other limited-family states; the result is never
     /// a gate, baseline, badge, or RIPR Zero input.
     pub(super) partial_scope: Option<crate::analysis::PartialDiffScope>,
+    /// Count of diff-analysis findings the projection dropped because their
+    /// anchor is a Rust path outside the production scope (the shared
+    /// `workspace::is_production_rust_path` classifier: `tests/`,
+    /// `examples/`, `benches/`, `tests.rs`, and other non-production trees).
+    /// The LSP scope must match the CLI review surface, which scopes to
+    /// changed production files; an editor that pins line-local gap
+    /// diagnostics in a test-only file inverts that signal. The findings are
+    /// removed before snapshot construction so diagnostics, hover, actions,
+    /// and status counts agree; this count is the disclosure that the
+    /// suppression happened — it is never silent.
+    pub(super) out_of_scope_test_file_findings: usize,
 }
 
 impl AnalysisSnapshot {
@@ -1084,6 +1095,7 @@ mod tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            out_of_scope_test_file_findings: 0,
         };
 
         if !snapshot.is_consistent() {
@@ -1112,6 +1124,7 @@ mod tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            out_of_scope_test_file_findings: 0,
         };
 
         if snapshot.is_consistent() {

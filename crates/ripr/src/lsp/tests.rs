@@ -642,6 +642,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        out_of_scope_test_file_findings: 0,
     };
 
     // Call the pure code_lens_response directly to verify the handler→helper path.
@@ -4601,6 +4602,216 @@ enabled = []
     Ok(())
 }
 
+/// Base fixture for the test-file scoping tests (#2130): one production file,
+/// one `src/tests.rs` helper (a path the diff probe seeder does not skip but
+/// the shared production classifier excludes), and one `tests/` integration
+/// test file.
+fn write_lsp_test_scope_fixture(root: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(root.join("src"))
+        .map_err(|err| format!("create fixture src failed: {err}"))?;
+    std::fs::create_dir_all(root.join("tests"))
+        .map_err(|err| format!("create fixture tests failed: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"lsp-test-scope\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write fixture manifest failed: {err}"))?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool { flag }\n",
+    )
+    .map_err(|err| format!("write fixture production file failed: {err}"))?;
+    std::fs::write(
+        root.join("src/tests.rs"),
+        "pub fn helper_state(flag: bool) -> bool { flag }\n",
+    )
+    .map_err(|err| format!("write fixture src/tests.rs failed: {err}"))?;
+    std::fs::write(
+        root.join("tests/end_to_end.rs"),
+        "#[test]\nfn end_to_end_placeholder() {\n    assert_eq!(true, true);\n}\n",
+    )
+    .map_err(|err| format!("write fixture tests/end_to_end.rs failed: {err}"))
+}
+
+fn run_lsp_test_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("run git {args:?} failed: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
+fn init_lsp_test_scope_repo(root: &Path) -> Result<(), String> {
+    write_lsp_test_scope_fixture(root)?;
+    run_lsp_test_scope_git(root, &["init"])?;
+    run_lsp_test_scope_git(root, &["config", "user.email", "ripr@example.invalid"])?;
+    run_lsp_test_scope_git(root, &["config", "user.name", "RIPR Test"])?;
+    // Do not inherit commit.gpgSign from the host environment: a
+    // signing-enabled host would fail the fixture commits before the
+    // scoping assertions ever run (#2158 review).
+    run_lsp_test_scope_git(root, &["config", "commit.gpgSign", "false"])?;
+    run_lsp_test_scope_git(root, &["add", "."])?;
+    run_lsp_test_scope_git(root, &["commit", "-m", "base"])
+}
+
+fn commit_lsp_test_scope_change(root: &Path, message: &str) -> Result<(), String> {
+    run_lsp_test_scope_git(root, &["add", "."])?;
+    run_lsp_test_scope_git(root, &["commit", "-m", message])
+}
+
+fn lsp_test_scope_config() -> LspAnalysisConfig {
+    LspAnalysisConfig {
+        base_ref: Some("HEAD~1".to_string()),
+        mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        ..LspAnalysisConfig::default()
+    }
+}
+
+fn lsp_test_scope_diagnostic_count(
+    diagnostics: &WorkspaceDiagnostics,
+    root: &Path,
+    relative: &str,
+) -> Result<usize, String> {
+    let uri = file_uri_for_path(&root.join(relative))?;
+    Ok(diagnostics
+        .batches
+        .iter()
+        .find(|batch| batch.uri == uri)
+        .map(|batch| batch.diagnostics.len())
+        .unwrap_or(0))
+}
+
+#[test]
+fn workspace_diagnostics_scope_changed_test_file_findings_out_of_projection() -> Result<(), String>
+{
+    let root = unique_lsp_test_root("lsp-test-file-scope-mixed")?;
+    init_lsp_test_scope_repo(root.path())?;
+    std::fs::write(
+        root.path().join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production file failed: {err}"))?;
+    std::fs::write(
+        root.path().join("src/tests.rs"),
+        "pub fn helper_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed src/tests.rs failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/end_to_end.rs"),
+        "#[test]\nfn end_to_end_changed() {\n    let value = if true { 1 } else { 2 };\n    assert_eq!(value, 1);\n}\n",
+    )
+    .map_err(|err| format!("write changed tests/end_to_end.rs failed: {err}"))?;
+    commit_lsp_test_scope_change(root.path(), "change production and test files")?;
+
+    let diagnostics =
+        workspace_diagnostics_with_config(root.path(), &lsp_test_scope_config(), true)?;
+
+    let production_count =
+        lsp_test_scope_diagnostic_count(&diagnostics, root.path(), "src/lib.rs")?;
+    if production_count == 0 {
+        return Err("changed production file received no LSP diagnostics".to_string());
+    }
+    for scoped_out in ["src/tests.rs", "tests/end_to_end.rs"] {
+        let count = lsp_test_scope_diagnostic_count(&diagnostics, root.path(), scoped_out)?;
+        if count != 0 {
+            return Err(format!(
+                "out-of-scope test file {scoped_out} received {count} line-local LSP diagnostics"
+            ));
+        }
+    }
+    if diagnostics
+        .snapshot
+        .findings
+        .iter()
+        .any(|finding| finding.probe.location.file.ends_with("src/tests.rs"))
+    {
+        return Err(
+            "out-of-scope src/tests.rs finding must not remain in the snapshot".to_string(),
+        );
+    }
+    if diagnostics.snapshot.out_of_scope_test_file_findings == 0 {
+        return Err(
+            "suppressed test-file findings must be disclosed with a non-zero count".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_diagnostics_test_only_diff_publishes_no_line_local_diagnostics() -> Result<(), String>
+{
+    let root = unique_lsp_test_root("lsp-test-file-scope-test-only")?;
+    init_lsp_test_scope_repo(root.path())?;
+    std::fs::write(
+        root.path().join("src/tests.rs"),
+        "pub fn helper_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed src/tests.rs failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/end_to_end.rs"),
+        "#[test]\nfn end_to_end_changed() {\n    let value = if true { 1 } else { 2 };\n    assert_eq!(value, 1);\n}\n",
+    )
+    .map_err(|err| format!("write changed tests/end_to_end.rs failed: {err}"))?;
+    commit_lsp_test_scope_change(root.path(), "change test files only")?;
+
+    let diagnostics =
+        workspace_diagnostics_with_config(root.path(), &lsp_test_scope_config(), true)?;
+
+    let total = diagnostics
+        .batches
+        .iter()
+        .map(|batch| batch.diagnostics.len())
+        .sum::<usize>();
+    if total != 0 {
+        return Err(format!(
+            "test-only diff published {total} line-local diagnostics; expected zero"
+        ));
+    }
+    if !diagnostics.snapshot.findings.is_empty() {
+        return Err("test-only diff findings must be scoped out of the LSP snapshot".to_string());
+    }
+    if diagnostics.snapshot.out_of_scope_test_file_findings == 0 {
+        return Err(
+            "test-only diff must disclose the suppressed test-file findings count".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_diagnostics_production_only_diff_keeps_full_projection() -> Result<(), String> {
+    let root = unique_lsp_test_root("lsp-test-file-scope-production")?;
+    init_lsp_test_scope_repo(root.path())?;
+    std::fs::write(
+        root.path().join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production file failed: {err}"))?;
+    commit_lsp_test_scope_change(root.path(), "change production file only")?;
+
+    let diagnostics =
+        workspace_diagnostics_with_config(root.path(), &lsp_test_scope_config(), true)?;
+
+    let production_count =
+        lsp_test_scope_diagnostic_count(&diagnostics, root.path(), "src/lib.rs")?;
+    if production_count == 0 {
+        return Err("changed production file received no LSP diagnostics".to_string());
+    }
+    assert_eq!(
+        diagnostics.snapshot.out_of_scope_test_file_findings, 0,
+        "production-only diff must not report suppressed test-file findings"
+    );
+    Ok(())
+}
+
 #[test]
 fn file_uri_to_path_decodes_spaces_and_windows_drive_prefix() -> Result<(), String> {
     let uri = test_uri(&format!("file:///{}{}", "C%3A", "/path/to/ripr%20repo"))?;
@@ -4934,6 +5145,7 @@ fn sample_analysis_snapshot(
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        out_of_scope_test_file_findings: 0,
     }
 }
 
@@ -8946,6 +9158,7 @@ fn quarantine_workspace_diagnostics(fixture: &QuarantineFixture) -> WorkspaceDia
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        out_of_scope_test_file_findings: 0,
     };
     WorkspaceDiagnostics {
         snapshot,
