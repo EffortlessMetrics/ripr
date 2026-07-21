@@ -730,6 +730,18 @@ export class RiprClientController {
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
+    // Invoked from the palette without a diagnostic target: say what to do
+    // instead of appearing to no-op (#2083). This must precede the root
+    // blocker check, which would otherwise swallow the guidance when no
+    // editor is active. Platform-neutral: Quick Fix is Ctrl+. on
+    // Windows/Linux and Cmd+. on macOS.
+    if (!target) {
+      this.runtime.showInformationMessage(
+        'ripr agent loop commands run from a ripr diagnostic: open a file with ripr diagnostics, use Quick Fix (Ctrl+. or Cmd+.) on one, and pick the agent command from there.'
+      );
+      return;
+    }
+
     const rootBlocker = this.repairActionRootBlocker();
     if (rootBlocker) {
       this.runtime.showInformationMessage(rootBlocker);
