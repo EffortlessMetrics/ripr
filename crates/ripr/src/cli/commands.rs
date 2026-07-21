@@ -453,8 +453,11 @@ pub(super) fn gate(args: &[String]) -> Result<(), String> {
         help::print_gate_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("gate requires subcommand `evaluate`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "evaluate"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("evaluate", &[][..]),
     };
     if subcommand != "evaluate" {
         return Err(format!(
@@ -504,8 +507,11 @@ pub(super) fn zero(args: &[String]) -> Result<(), String> {
         help::print_zero_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("zero requires subcommand `status`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "status"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("status", &[][..]),
     };
     if subcommand != "status" {
         return Err(format!(
@@ -545,8 +551,11 @@ pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
         help::print_pr_ledger_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-ledger requires subcommand `record`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "record"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("record", &[][..]),
     };
     if subcommand != "record" {
         return Err(format!(
@@ -561,8 +570,11 @@ pub(super) fn pr_comments(args: &[String]) -> Result<(), String> {
         help::print_pr_comments_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-comments requires subcommand `plan`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "plan"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("plan", &[][..]),
     };
     if subcommand != "plan" {
         return Err(format!(
@@ -577,8 +589,11 @@ pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
         help::print_pr_review_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-review requires subcommand `front-panel`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "front-panel"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("front-panel", &[][..]),
     };
     if subcommand != "front-panel" {
         return Err(format!(
@@ -593,8 +608,11 @@ pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
         help::print_coverage_grip_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("coverage-grip requires subcommand `frontier`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "frontier"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("frontier", &[][..]),
     };
     if subcommand != "frontier" {
         return Err(format!(
@@ -6181,10 +6199,42 @@ mod tests {
     }
 
     #[test]
-    fn gate_rejects_bad_surface_and_unknown_args() {
+    fn pr_review_bare_dispatches_to_front_panel() {
+        // Bare `ripr pr-review` is the `front-panel` alias (#2013).
         assert_eq!(
-            gate(&args(&[])),
-            Err("gate requires subcommand `evaluate`".to_string())
+            pr_review(&args(&[])),
+            Err("pr-review front-panel requires at least one explicit artifact input".to_string())
+        );
+        assert_eq!(
+            pr_review(&args(&["bogus"])),
+            Err("unknown pr-review subcommand \"bogus\"; expected `front-panel`".to_string())
+        );
+    }
+
+    #[test]
+    fn gate_rejects_bad_surface_and_unknown_args() {
+        // Bare `ripr gate` is the `evaluate` alias (#2013): it dispatches
+        // instead of erroring on a missing subcommand. The full path writes
+        // the default report files, so they are cleaned on both sides.
+        for residue in [
+            "target/ripr/reports/gate-decision.json",
+            "target/ripr/reports/gate-decision.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        let bare_result = gate(&args(&[]));
+        for residue in [
+            "target/ripr/reports/gate-decision.json",
+            "target/ripr/reports/gate-decision.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        assert_eq!(
+            bare_result,
+            Err(
+                "ripr gate decision is config_error; see target/ripr/reports/gate-decision.json"
+                    .to_string()
+            )
         );
         assert_eq!(
             gate(&args(&["inspect"])),
@@ -6494,9 +6544,10 @@ mod tests {
 
     #[test]
     fn ripr_zero_status_requires_inputs_and_rejects_unknown_args() {
+        // Bare `ripr zero` is the `status` alias (#2013).
         assert_eq!(
             zero(&args(&[])),
-            Err("zero requires subcommand `status`".to_string())
+            Err("zero status requires --delta <path>".to_string())
         );
         assert_eq!(
             zero(&args(&["unknown"])),
@@ -7480,9 +7531,13 @@ language = "rust"
 
     #[test]
     fn pr_evidence_ledger_requires_identity_and_evidence() {
+        // Bare `ripr pr-ledger` is the `record` alias (#2013).
         assert_eq!(
             pr_ledger(&args(&[])),
-            Err("pr-ledger requires subcommand `record`".to_string())
+            Err(
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
+                    .to_string()
+            )
         );
         assert_eq!(
             pr_ledger(&args(&["unknown"])),
@@ -7595,9 +7650,41 @@ language = "rust"
 
     #[test]
     fn pr_comments_plan_rejects_bad_subcommands_and_options() {
-        assert_eq!(
-            pr_comments(&args(&[])),
-            Err("pr-comments requires subcommand `plan`".to_string())
+        // Bare `ripr pr-comments` is the `plan` alias (#2013). The dispatch
+        // writes the default plan files, so they are cleaned on both sides.
+        for residue in [
+            "target/ripr/review/comment-publish-plan.json",
+            "target/ripr/review/comment-publish-plan.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        let bare_result = pr_comments(&args(&[]));
+        let json_path = "target/ripr/review/comment-publish-plan.json";
+        let md_path = "target/ripr/review/comment-publish-plan.md";
+        let json_text = std::fs::read_to_string(json_path);
+        assert!(json_text.is_ok(), "bare dispatch must write {json_path}");
+        let json_text = json_text.unwrap_or_default();
+        let plan = serde_json::from_str::<serde_json::Value>(&json_text);
+        assert!(
+            plan.is_ok(),
+            "plan output must be valid JSON: {}",
+            plan.err().map(|err| err.to_string()).unwrap_or_default()
+        );
+        let plan = plan.unwrap_or_default();
+        assert!(
+            plan.get("schema_version").is_some() || plan.get("mode").is_some(),
+            "plan output lost its contract shape: {json_text}"
+        );
+        assert!(
+            std::path::Path::new(md_path).is_file(),
+            "bare dispatch must write the markdown plan"
+        );
+        for residue in [json_path, md_path] {
+            let _ = std::fs::remove_file(residue);
+        }
+        assert!(
+            bare_result.is_ok(),
+            "bare pr-comments must dispatch to plan with defaults"
         );
         assert_eq!(
             pr_comments(&args(&["publish"])),
@@ -7974,9 +8061,13 @@ language = "rust"
 
     #[test]
     fn coverage_grip_frontier_requires_movement_input() {
+        // Bare `ripr coverage-grip` is the `frontier` alias (#2013).
         assert_eq!(
             coverage_grip(&args(&[])),
-            Err("coverage-grip requires subcommand `frontier`".to_string())
+            Err(
+                "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                    .to_string()
+            )
         );
         assert_eq!(
             coverage_grip(&args(&["unknown"])),
