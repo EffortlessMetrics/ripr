@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { RiprClientController, RiprClientRuntime } from '../../src/client';
 import { RiprConfig } from '../../src/config';
-import { startAfterWorkspaceTrust } from '../../src/extension';
+import { startAfterWorkspaceTrust, startServerOnce } from '../../src/extension';
 
 suite('Workspace Trust Transition', () => {
   test('concurrent trust-grant starts coalesce into one controller start', async () => {
@@ -25,6 +25,25 @@ suite('Workspace Trust Transition', () => {
     assert.strictEqual(startCalls, 1);
     releaseStart?.();
     await Promise.all([first, second]);
+  });
+
+  test('startServerOnce coalesces concurrent starts and retries after failure', async () => {
+    let startCalls = 0;
+    const controller = {
+      start: async () => {
+        startCalls += 1;
+        if (startCalls === 1) {
+          throw new Error('sentinel start failure');
+        }
+      }
+    } as Pick<RiprClientController, 'start'>;
+
+    await assert.rejects(startServerOnce(controller), /sentinel start failure/);
+    const first = startServerOnce(controller);
+    const second = startServerOnce(controller);
+    await Promise.all([first, second]);
+
+    assert.strictEqual(startCalls, 2, 'failure resets the in-flight slot; concurrent retries coalesce');
   });
 
   test('a failed trust-grant start can be retried', async () => {

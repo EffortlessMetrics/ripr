@@ -9,28 +9,34 @@ import {
 } from './client';
 
 let controller: RiprClientController | undefined;
-let workspaceTrustStart: Promise<void> | undefined;
+let coalescedStart: Promise<void> | undefined;
 
-export async function startAfterWorkspaceTrust(
+export async function startServerOnce(
   currentController: Pick<RiprClientController, 'start'> | undefined
 ): Promise<void> {
   if (!currentController) {
     return;
   }
-  if (workspaceTrustStart) {
-    await workspaceTrustStart;
+  if (coalescedStart) {
+    await coalescedStart;
     return;
   }
 
   const start = currentController.start();
-  workspaceTrustStart = start;
+  coalescedStart = start;
   try {
     await start;
   } finally {
-    if (workspaceTrustStart === start) {
-      workspaceTrustStart = undefined;
+    if (coalescedStart === start) {
+      coalescedStart = undefined;
     }
   }
+}
+
+export async function startAfterWorkspaceTrust(
+  currentController: Pick<RiprClientController, 'start'> | undefined
+): Promise<void> {
+  await startServerOnce(currentController);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -149,6 +155,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidCloseTextDocument((document) => {
       controller?.markWorkspaceClosed(document);
     }),
+    vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      if (event.added.length === 0) {
+        return;
+      }
+      output.appendLine(
+        `ripr workspace folder added (${event.added.length}); starting the server if none is running.`
+      );
+      try {
+        await startServerOnce(controller);
+      } catch (error) {
+        output.appendLine(`ripr server start after workspace folder change failed: ${String(error)}`);
+      }
+    }),
     vscode.workspace.onDidGrantWorkspaceTrust(async () => {
       output.appendLine('ripr workspace trust granted; starting a fresh server session.');
       try {
@@ -170,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  await controller.start();
+  await startServerOnce(controller);
 }
 
 export async function deactivate(): Promise<void> {
