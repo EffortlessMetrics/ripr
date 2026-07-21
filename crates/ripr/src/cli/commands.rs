@@ -19,7 +19,6 @@ use crate::config::{
 use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cli::commands_agent_support::{
     agent_brief_lines_from_diff, agent_brief_owners_for_lines, build_agent_receipt_provenance,
@@ -3861,10 +3860,15 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&options.root)?;
     let diff_text = analysis::load_diff_range(&options.root, &options.base, &options.head)?;
     let changed_files = diff_changed_files_from_text(&diff_text);
-    let diff_file = write_temporary_diff_file(&diff_text)?;
+    let diff_file = crate::app::temp_diff::write_temporary_diff_file(&diff_text)?;
 
     let check_result = run_diff_check_from_file(&options, &config, &diff_file);
     let _ = std::fs::remove_file(&diff_file);
+    // The temporary diff lives in a per-invocation private directory
+    // (#2102); remove it too so runs do not accumulate empty dirs.
+    if let Some(parent) = diff_file.parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
     let output = check_result?;
 
     let report = output::diff_report::build_diff_report(
@@ -3990,20 +3994,6 @@ fn diff_changed_files_from_text(diff_text: &str) -> Vec<output::diff_report::Dif
             }
         })
         .collect()
-}
-
-fn write_temporary_diff_file(diff_text: &str) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("ripr-diff");
-    std::fs::create_dir_all(&dir)
-        .map_err(|err| format!("create temporary diff dir {} failed: {err}", dir.display()))?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let path = dir.join(format!("diff-{}-{stamp}.patch", std::process::id()));
-    std::fs::write(&path, diff_text)
-        .map_err(|err| format!("write temporary diff file {} failed: {err}", path.display()))?;
-    Ok(path)
 }
 
 fn diff_receipt_path(base: &str, head: &str) -> String {
