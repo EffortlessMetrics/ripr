@@ -10388,6 +10388,36 @@ language = "rust"
     }
 
     #[test]
+    #[cfg(unix)]
+    fn init_force_replaces_symlink_without_clobbering_target() -> Result<(), String> {
+        // #2101: a pre-placed ripr.toml symlink plus --force must not
+        // clobber the symlink target; the link itself is replaced by a
+        // regular config file.
+        let dir = unique_command_test_dir("init-force-symlink");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let target = dir.join("target.txt");
+        std::fs::write(&target, "do not clobber\n")
+            .map_err(|err| format!("write target: {err}"))?;
+        let config = dir.join(CONFIG_FILE_NAME);
+        std::os::unix::fs::symlink(&target, &config)
+            .map_err(|err| format!("plant symlink: {err}"))?;
+
+        init(&args(&["--root", &dir.display().to_string(), "--force"]))?;
+
+        let target_text =
+            std::fs::read_to_string(&target).map_err(|err| format!("read target: {err}"))?;
+        assert_eq!(target_text, "do not clobber\n");
+        let metadata =
+            std::fs::symlink_metadata(&config).map_err(|err| format!("stat config: {err}"))?;
+        assert!(metadata.file_type().is_file());
+        let config_text =
+            std::fs::read_to_string(&config).map_err(|err| format!("read config: {err}"))?;
+        assert!(config_text.contains("[analysis]"));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
     fn doctor_rejects_unknown_arguments() {
         assert_eq!(
             doctor(&args(&["--verbose"])),

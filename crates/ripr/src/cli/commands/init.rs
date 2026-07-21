@@ -52,16 +52,32 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
         // and the write. create_new fails if the path already exists,
         // including symlinks. (#1948)
         if options.force {
-            std::fs::write(&config_path, generated_init_config())
-                .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
-        } else {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&config_path)
-                .and_then(|_| std::fs::write(&config_path, generated_init_config()))
-                .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+            // --force must not follow a pre-placed symlink either (#2101):
+            // remove_file unlinks the entry itself (it never follows a
+            // symlink to its target), and the create_new write below then
+            // fails closed if anything reappears at the path.
+            match std::fs::remove_file(&config_path) {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(format!(
+                        "remove existing {} for --force failed: {err}",
+                        config_path.display()
+                    ));
+                }
+            }
         }
+        // Write through the create_new handle: reopening the path after
+        // creation would leave a swap window where a planted symlink is
+        // followed (#2101 review, CWE-367).
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&config_path)
+            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        use std::io::Write;
+        file.write_all(generated_init_config().as_bytes())
+            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
         println!("Wrote {}", config_path.display());
     }
 
