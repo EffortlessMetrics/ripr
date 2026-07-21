@@ -53,13 +53,14 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, Diagnostic,
     DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    ExecuteCommandParams, FileChangeType, FileEvent, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, MarkedString, NumberOrString, PartialResultParams,
-    Position, PositionEncodingKind, PreviousResultId, Range, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
-    WindowClientCapabilities, WorkspaceDiagnosticParams, WorkspaceFolder,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType, FileEvent, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString,
+    PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WindowClientCapabilities, WorkspaceDiagnosticParams,
+    WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -3926,6 +3927,197 @@ fn stale_refresh_does_not_rollback_after_root_authority_transition() -> Result<(
         }
         Ok(())
     })
+}
+
+#[tokio::test]
+async fn did_save_with_unchanged_content_deduplicates_without_refresh() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    // First save after open: nothing recorded yet, so it always counts as
+    // changed (conservative) and records the digest.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "first save did not advance the revision: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    // A repeated save of the same bytes now dedups.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "unchanged repeated save advanced the revision: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_save_with_changed_content_advances_and_refreshes() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn changed() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "changed save did not advance the revision exactly once: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+
+    // A repeated save of the now-recorded content dedups again.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn changed() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "repeated save of recorded content did not deduplicate: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_save_without_text_falls_back_to_document_store_content() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn stored() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    // Clients without includeText send no content: the digest comes from the
+    // document store. First save records; the repeat dedups.
+    for expected_revision in [baseline + 1, baseline + 1] {
+        backend
+            .did_save(DidSaveTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                text: None,
+            })
+            .await;
+        if backend.workspace_revision() != expected_revision {
+            return Err(format!(
+                "text-less save path drifted: expected revision {expected_revision}, got {}",
+                backend.workspace_revision()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_close_clears_the_saved_content_digest() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    let after_record = backend.workspace_revision();
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+    // did_close advances the revision by design; the digest must be gone.
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                2,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    let after_reopen = backend.workspace_revision();
+
+    // The same bytes after close+reopen are treated as changed (conservative):
+    // nothing is recorded for the document anymore.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != after_reopen + 1 {
+        return Err(format!(
+            "reopened document kept its digest: record={after_record} reopen={after_reopen} now={}",
+            backend.workspace_revision()
+        ));
+    }
+    Ok(())
 }
 
 #[test]

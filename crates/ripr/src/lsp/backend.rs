@@ -81,6 +81,7 @@ pub(super) struct Backend {
     workspace_root_epoch: AtomicU64,
     workspace_root_transition: AsyncMutex<()>,
     documents: Mutex<DocumentStore>,
+    saved_content_digests: Mutex<BTreeMap<tower_lsp_server::ls_types::Uri, String>>,
     analysis_config: Mutex<LspAnalysisConfig>,
     configuration_failure: Mutex<Option<AnalysisFailure>>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
@@ -113,6 +114,7 @@ impl Backend {
             workspace_root_epoch: AtomicU64::new(0),
             workspace_root_transition: AsyncMutex::new(()),
             documents: Mutex::new(DocumentStore::default()),
+            saved_content_digests: Mutex::new(BTreeMap::new()),
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
             configuration_failure: Mutex::new(None),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
@@ -763,14 +765,14 @@ impl Backend {
         self.refresh_scheduler.is_current_generation(generation)
     }
 
-    fn workspace_revision(&self) -> u64 {
+    pub(super) fn workspace_revision(&self) -> u64 {
         self.workspace_revision
             .lock()
             .map(|revision| *revision)
             .unwrap_or(0)
     }
 
-    fn advance_workspace_revision(&self) {
+    pub(super) fn advance_workspace_revision(&self) {
         if let Ok(mut revision) = self.workspace_revision.lock() {
             *revision = revision.saturating_add(1);
         }
@@ -1524,6 +1526,33 @@ impl Backend {
         documents.close(params);
     }
 
+    fn document_text(&self, uri: &tower_lsp_server::ls_types::Uri) -> Option<String> {
+        self.documents
+            .lock()
+            .ok()?
+            .documents
+            .get(uri)
+            .map(|state| state.text.clone())
+    }
+
+    fn saved_content_digest_matches(
+        &self,
+        uri: &tower_lsp_server::ls_types::Uri,
+        digest: &str,
+    ) -> bool {
+        self.saved_content_digests
+            .lock()
+            .ok()
+            .and_then(|digests| digests.get(uri).cloned())
+            .is_some_and(|recorded| recorded == digest)
+    }
+
+    fn record_saved_content_digest(&self, uri: &tower_lsp_server::ls_types::Uri, digest: String) {
+        if let Ok(mut digests) = self.saved_content_digests.lock() {
+            digests.insert(uri.clone(), digest);
+        }
+    }
+
     pub(super) fn hover_for_position(&self, params: &HoverParams) -> Option<Hover> {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = &params.text_document_position_params.position;
@@ -2127,6 +2156,10 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        // No digest seeding here: didOpen may carry unsaved or recovered
+        // buffer text rather than persisted bytes, and deduping a later save
+        // against that would skip a real persistence change. The digest is
+        // only recorded from didSave, whose content is persisted by definition.
         self.open_document(params);
         self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
@@ -2140,6 +2173,9 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        if let Ok(mut digests) = self.saved_content_digests.lock() {
+            digests.remove(&params.text_document.uri);
+        }
         self.close_document(params);
         self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
@@ -2147,7 +2183,29 @@ impl LanguageServer for Backend {
             .await;
     }
 
-    async fn did_save(&self, _: DidSaveTextDocumentParams) {
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        // Deduplicate by saved-content input identity (#1908): a save whose
+        // bytes did not change since the last recorded save cannot change
+        // analysis input, so it neither advances the workspace revision nor
+        // schedules a refresh. The save event is still disclosed.
+        let text = params
+            .text
+            .or_else(|| self.document_text(&params.text_document.uri));
+        let digest = text.as_deref().map(saved_content_digest);
+        if let Some(digest) = &digest
+            && self.saved_content_digest_matches(&params.text_document.uri, digest)
+        {
+            self.client
+                .log_message(
+                    MessageType::INFO,
+                    "ripr didSave deduplicated: saved content is unchanged since the last recorded save; no refresh scheduled",
+                )
+                .await;
+            return;
+        }
+        if let Some(digest) = digest {
+            self.record_saved_content_digest(&params.text_document.uri, digest);
+        }
         self.advance_workspace_revision();
         // Interactive path: defer the seam inventory (RIPR-SPEC-0105).
         // Diff-scoped findings are complete; seams run on explicit refresh only.
@@ -5147,4 +5205,9 @@ mod work_done_progress_guard_tests {
             Ok(())
         })
     }
+}
+
+fn saved_content_digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(text.as_bytes()))
 }
