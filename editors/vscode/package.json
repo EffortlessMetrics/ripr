@@ -44,6 +44,7 @@
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
     "onCommand:ripr.showStatus",
+    "onCommand:ripr.showOutput",
     "onCommand:ripr.diagnoseSetup",
     "onCommand:ripr.startCurrentRepair",
     "onCommand:ripr.copyCurrentRepairPacket",
