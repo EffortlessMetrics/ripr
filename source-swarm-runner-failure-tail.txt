@@ -1,0 +1,350 @@
+2026-07-21T20:20:27.5599934Z [36;1m[0m
+2026-07-21T20:20:27.5600237Z [36;1mmod_path = "crates/ripr/src/analysis/probes/mod.rs"[0m
+2026-07-21T20:20:27.5600628Z [36;1mtext = read(mod_path)[0m
+2026-07-21T20:20:27.5600947Z [36;1mif "mod subprocess;\n" not in text:[0m
+2026-07-21T20:20:27.5601409Z [36;1m    text = text.replace("mod repo;\n", "mod repo;\nmod subprocess;\n", 1)[0m
+2026-07-21T20:20:27.5601857Z [36;1mwrite(mod_path, text)[0m
+2026-07-21T20:20:27.5602141Z [36;1m[0m
+2026-07-21T20:20:27.5602506Z [36;1m# Resolve the semantic RIPR-SPEC-0112 collision by allocating the next[0m
+2026-07-21T20:20:27.5603418Z [36;1m# identity from the merged registry rather than guessing in advance.[0m
+2026-07-21T20:20:27.5604086Z [36;1mold_spec = Path("docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md")[0m
+2026-07-21T20:20:27.5604600Z [36;1mids = [][0m
+2026-07-21T20:20:27.5604954Z [36;1mfor candidate in Path("docs/specs").glob("RIPR-SPEC-*.md"):[0m
+2026-07-21T20:20:27.5605391Z [36;1m    if candidate == old_spec:[0m
+2026-07-21T20:20:27.5605705Z [36;1m        continue[0m
+2026-07-21T20:20:27.5606064Z [36;1m    match = re.match(r"RIPR-SPEC-(\d{4})-", candidate.name)[0m
+2026-07-21T20:20:27.5606460Z [36;1m    if match:[0m
+2026-07-21T20:20:27.5606791Z [36;1m        ids.append(int(match.group(1)))[0m
+2026-07-21T20:20:27.5607140Z [36;1mnew_num = max(ids) + 1[0m
+2026-07-21T20:20:27.5607462Z [36;1mnew_id = f"RIPR-SPEC-{new_num:04d}"[0m
+2026-07-21T20:20:27.5607979Z [36;1mnew_spec = old_spec.with_name(f"{new_id}-bounded-subprocess-adapter-boundary.md")[0m
+2026-07-21T20:20:27.5608485Z [36;1mold_spec.rename(new_spec)[0m
+2026-07-21T20:20:27.5608927Z [36;1mwrite(str(new_spec), read(str(new_spec)).replace("RIPR-SPEC-0112", new_id))[0m
+2026-07-21T20:20:27.5609643Z [36;1mPath("/tmp/new-spec-id.txt").write_text(new_id, encoding="utf-8")[0m
+2026-07-21T20:20:27.5610065Z [36;1m[0m
+2026-07-21T20:20:27.5610333Z [36;1mtrace_path = ".ripr/traceability.toml"[0m
+2026-07-21T20:20:27.5610682Z [36;1mtext = read(trace_path)[0m
+2026-07-21T20:20:27.5610986Z [36;1mtext = text.replace([0m
+2026-07-21T20:20:27.5611395Z [36;1m    'id = "RIPR-SPEC-0112"\nname = "bounded subprocess adapter boundary"',[0m
+2026-07-21T20:20:27.5611927Z [36;1m    f'id = "{new_id}"\nname = "bounded subprocess adapter boundary"',[0m
+2026-07-21T20:20:27.5612327Z [36;1m    1,[0m
+2026-07-21T20:20:27.5612563Z [36;1m)[0m
+2026-07-21T20:20:27.5612811Z [36;1mtext = text.replace([0m
+2026-07-21T20:20:27.5613600Z [36;1m    "RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md",[0m
+2026-07-21T20:20:27.5614125Z [36;1m    f"{new_id}-bounded-subprocess-adapter-boundary.md",[0m
+2026-07-21T20:20:27.5614515Z [36;1m)[0m
+2026-07-21T20:20:27.5614766Z [36;1mwrite(trace_path, text)[0m
+2026-07-21T20:20:27.5615054Z [36;1m[0m
+2026-07-21T20:20:27.5615324Z [36;1mspecs_index = "docs/specs/README.md"[0m
+2026-07-21T20:20:27.5615693Z [36;1mtext = read(specs_index).rstrip() + "\n"[0m
+2026-07-21T20:20:27.5616035Z [36;1mrow = ([0m
+2026-07-21T20:20:27.5616441Z [36;1m    f"| [{new_id}]({new_id}-bounded-subprocess-adapter-boundary.md) | accepted | "[0m
+2026-07-21T20:20:27.5617070Z [36;1m    "Bounded literal allowlisted subprocess adapters with argument, timeout, "[0m
+2026-07-21T20:20:27.5617716Z [36;1m    "captured-output, and cleanup evidence use the existing side_effect probe "[0m
+2026-07-21T20:20:27.5618353Z [36;1m    "family; dynamic, shell, and unbounded commands retain strict exposure "[0m
+2026-07-21T20:20:27.5618837Z [36;1m    "behavior; closes #1454 |\n"[0m
+2026-07-21T20:20:27.5619144Z [36;1m)[0m
+2026-07-21T20:20:27.5619388Z [36;1mif row not in text:[0m
+2026-07-21T20:20:27.5619673Z [36;1m    text += row[0m
+2026-07-21T20:20:27.5619960Z [36;1mwrite(specs_index, text)[0m
+2026-07-21T20:20:27.5620251Z [36;1m[0m
+2026-07-21T20:20:27.5620551Z [36;1mprocess_path = "policy/process_allowlist.txt"[0m
+2026-07-21T20:20:27.5620929Z [36;1mtext = read(process_path)[0m
+2026-07-21T20:20:27.5621237Z [36;1mprocess_row = ([0m
+2026-07-21T20:20:27.5621635Z [36;1m    "crates/ripr/src/analysis/probes/subprocess.rs|Command::new|7|"[0m
+2026-07-21T20:20:27.5622234Z [36;1m    f"analysis/probes|{new_id}: bounded subprocess adapter recognizer inspects "[0m
+2026-07-21T20:20:27.5622862Z [36;1m    "source text and fixture bodies for one literal allowlisted command; it does "[0m
+2026-07-21T20:20:27.5623669Z [36;1m    "not execute a subprocess or broaden the runtime command surface.\n"[0m
+2026-07-21T20:20:27.5624107Z [36;1m)[0m
+2026-07-21T20:20:27.5624367Z [36;1mif process_row not in text:[0m
+2026-07-21T20:20:27.5624824Z [36;1m    anchor = "crates/ripr/src/analysis/diff/load.rs|use std::process::Command"[0m
+2026-07-21T20:20:27.5625311Z [36;1m    position = text.find(anchor)[0m
+2026-07-21T20:20:27.5625640Z [36;1m    if position < 0:[0m
+2026-07-21T20:20:27.5626058Z [36;1m        raise SystemExit("process allowlist insertion anchor not found")[0m
+2026-07-21T20:20:27.5626577Z [36;1m    text = text[:position] + process_row + text[position:][0m
+2026-07-21T20:20:27.5626982Z [36;1mwrite(process_path, text)[0m
+2026-07-21T20:20:27.5627278Z [36;1m[0m
+2026-07-21T20:20:27.5627567Z [36;1mnetwork_path = "policy/network_allowlist.txt"[0m
+2026-07-21T20:20:27.5627938Z [36;1mtext = read(network_path)[0m
+2026-07-21T20:20:27.5628247Z [36;1mtext = text.replace([0m
+2026-07-21T20:20:27.5628748Z [36;1m    "crates/ripr/src/analysis/probes/subprocess.rs|curl|6|analysis/probes|RIPR-SPEC-0112:",[0m
+2026-07-21T20:20:27.5629473Z [36;1m    f"crates/ripr/src/analysis/probes/subprocess.rs|curl|6|analysis/probes|{new_id}:",[0m
+2026-07-21T20:20:27.5629963Z [36;1m)[0m
+2026-07-21T20:20:27.5630200Z [36;1mnetwork_row = ([0m
+2026-07-21T20:20:27.5630612Z [36;1m    "crates/ripr/src/analysis/probes/subprocess.rs|curl|6|analysis/probes|"[0m
+2026-07-21T20:20:27.5631362Z [36;1m    f"{new_id}: bounded subprocess adapter recognizer and fixture corpus inspect "[0m
+2026-07-21T20:20:27.5632000Z [36;1m    "an allowlisted literal command; this source does not execute networking or "[0m
+2026-07-21T20:20:27.5632490Z [36;1m    "add a network client.\n"[0m
+2026-07-21T20:20:27.5632798Z [36;1m)[0m
+2026-07-21T20:20:27.5633289Z [36;1mif network_row not in text:[0m
+2026-07-21T20:20:27.5633626Z [36;1m    anchors = [[0m
+2026-07-21T20:20:27.5634034Z [36;1m        "crates/ripr/src/output/perl_gap_record_projection.rs|curl",[0m
+2026-07-21T20:20:27.5634585Z [36;1m        "crates/ripr/src/output/typescript_packet_projection.rs|curl",[0m
+2026-07-21T20:20:27.5635155Z [36;1m    ][0m
+2026-07-21T20:20:27.5635605Z [36;1m    position = next((text.find(anchor) for anchor in anchors if text.find(anchor) >= 0), -1)[0m
+2026-07-21T20:20:27.5636133Z [36;1m    if position < 0:[0m
+2026-07-21T20:20:27.5636560Z [36;1m        raise SystemExit("network allowlist insertion anchor not found")[0m
+2026-07-21T20:20:27.5637103Z [36;1m    text = text[:position] + network_row + text[position:][0m
+2026-07-21T20:20:27.5637517Z [36;1mwrite(network_path, text)[0m
+2026-07-21T20:20:27.5637815Z [36;1m[0m
+2026-07-21T20:20:27.5638166Z [36;1m# Preserve source's already-staged 0.10.1 release metadata while[0m
+2026-07-21T20:20:27.5638739Z [36;1m# retaining swarm's accumulated Unreleased history and dependency tree.[0m
+2026-07-21T20:20:27.5639214Z [36;1mchangelog_path = "CHANGELOG.md"[0m
+2026-07-21T20:20:27.5639553Z [36;1mtext = read(changelog_path)[0m
+2026-07-21T20:20:27.5643508Z [36;1msection = f"""## 0.10.1 - Bounded subprocess adapter analysis\n\nRelease date: staged (unreleased).\n\nRIPR 0.10.1 adds a narrow, deny-by-default boundary for recognizing bounded\nallowlisted subprocess adapters as observable side effects during static\nanalysis. The boundary preserves strict exposure behavior for dynamic, shell,\nunbounded, or otherwise unsupported subprocess shapes.\n\n### Fixed\n\n- **Bounded subprocess adapter classification** ({new_id}, #1454):\n  receipt-producing adapters with a literal allowlisted command, arguments,\n  timeout, captured output, cleanup, and explicit error handling can use the\n  existing `side_effect` probe family. Dynamic command names and shell-shaped\n  dispatch remain unclassified and continue through the conservative exposure\n  path.\n\n### Non-claims\n\n- RIPR remains static mutation-exposure analysis; this release does not execute\n  subprocesses, prove runtime subprocess safety, run mutation testing, or add a\n  network client.\n\n"""[0m
+2026-07-21T20:20:27.5647435Z [36;1mmarker = "## 0.10.0 - Honest-by-construction evidence and downstream gate adoption"[0m
+2026-07-21T20:20:27.5647938Z [36;1mif section not in text:[0m
+2026-07-21T20:20:27.5648252Z [36;1m    if marker not in text:[0m
+2026-07-21T20:20:27.5648640Z [36;1m        raise SystemExit("0.10.0 changelog marker not found")[0m
+2026-07-21T20:20:27.5649121Z [36;1m    text = text.replace(marker, section + marker, 1)[0m
+2026-07-21T20:20:27.5649515Z [36;1mwrite(changelog_path, text)[0m
+2026-07-21T20:20:27.5649818Z [36;1m[0m
+2026-07-21T20:20:27.5650088Z [36;1mcargo_toml = "crates/ripr/Cargo.toml"[0m
+2026-07-21T20:20:27.5650437Z [36;1mtext, count = re.subn([0m
+2026-07-21T20:20:27.5650803Z [36;1m    r'(\[package\]\nname = "ripr"\nversion = ")[^"]+("\n)',[0m
+2026-07-21T20:20:27.5651190Z [36;1m    r'\g<1>0.10.1\2',[0m
+2026-07-21T20:20:27.5651482Z [36;1m    read(cargo_toml),[0m
+2026-07-21T20:20:27.5651769Z [36;1m    count=1,[0m
+2026-07-21T20:20:27.5652024Z [36;1m)[0m
+2026-07-21T20:20:27.5652263Z [36;1mif count != 1:[0m
+2026-07-21T20:20:27.5652619Z [36;1m    raise SystemExit("crate version replacement failed")[0m
+2026-07-21T20:20:27.5653260Z [36;1mwrite(cargo_toml, text)[0m
+2026-07-21T20:20:27.5653557Z [36;1m[0m
+2026-07-21T20:20:27.5653804Z [36;1mcargo_lock = "Cargo.lock"[0m
+2026-07-21T20:20:27.5654113Z [36;1mtext, count = re.subn([0m
+2026-07-21T20:20:27.5654632Z [36;1m    r'(\[\[package\]\]\nname = "ripr"\nversion = ")[^"]+("\n)',[0m
+2026-07-21T20:20:27.5655036Z [36;1m    r'\g<1>0.10.1\2',[0m
+2026-07-21T20:20:27.5655322Z [36;1m    read(cargo_lock),[0m
+2026-07-21T20:20:27.5655609Z [36;1m    count=1,[0m
+2026-07-21T20:20:27.5655860Z [36;1m)[0m
+2026-07-21T20:20:27.5656095Z [36;1mif count != 1:[0m
+2026-07-21T20:20:27.5656523Z [36;1m    raise SystemExit("Cargo.lock ripr version replacement failed")[0m
+2026-07-21T20:20:27.5657010Z [36;1mwrite(cargo_lock, text)[0m
+2026-07-21T20:20:27.5657300Z [36;1m[0m
+2026-07-21T20:20:27.5657589Z [36;1mpackage_json = "editors/vscode/package.json"[0m
+2026-07-21T20:20:27.5657960Z [36;1mtext, count = re.subn([0m
+2026-07-21T20:20:27.5658420Z [36;1m    r'("version": ")[^"]+("[,])',[0m
+2026-07-21T20:20:27.5658733Z [36;1m    r'\g<1>0.10.1\2',[0m
+2026-07-21T20:20:27.5659022Z [36;1m    read(package_json),[0m
+2026-07-21T20:20:27.5659313Z [36;1m    count=1,[0m
+2026-07-21T20:20:27.5659563Z [36;1m)[0m
+2026-07-21T20:20:27.5659804Z [36;1mif count != 1:[0m
+2026-07-21T20:20:27.5660188Z [36;1m    raise SystemExit("VS Code package version replacement failed")[0m
+2026-07-21T20:20:27.5660625Z [36;1mwrite(package_json, text)[0m
+2026-07-21T20:20:27.5660922Z [36;1m[0m
+2026-07-21T20:20:27.5661233Z [36;1mpackage_lock = "editors/vscode/package-lock.json"[0m
+2026-07-21T20:20:27.5661643Z [36;1mtext, count = re.subn([0m
+2026-07-21T20:20:27.5661951Z [36;1m    r'("version": ")[^"]+("[,])',[0m
+2026-07-21T20:20:27.5662267Z [36;1m    r'\g<1>0.10.1\2',[0m
+2026-07-21T20:20:27.5662559Z [36;1m    read(package_lock),[0m
+2026-07-21T20:20:27.5662850Z [36;1m    count=2,[0m
+2026-07-21T20:20:27.5663234Z [36;1m)[0m
+2026-07-21T20:20:27.5663478Z [36;1mif count != 2:[0m
+2026-07-21T20:20:27.5663858Z [36;1m    raise SystemExit("VS Code lock versions replacement failed")[0m
+2026-07-21T20:20:27.5664300Z [36;1mwrite(package_lock, text)[0m
+2026-07-21T20:20:27.5664604Z [36;1m[0m
+2026-07-21T20:20:27.5664976Z [36;1m# The merged settings document must describe source policy rather than[0m
+2026-07-21T20:20:27.5665556Z [36;1m# silently applying the swarm-only squash/auto-merge contract to ripr.[0m
+2026-07-21T20:20:27.5666039Z [36;1msettings_doc = "docs/REPO_SETTINGS.md"[0m
+2026-07-21T20:20:27.5666391Z [36;1mtext = read(settings_doc)[0m
+2026-07-21T20:20:27.5667329Z [36;1mold_intro = """This checkout is `EffortlessMetrics/ripr-swarm`, the public development landing\nzone for trusted same-repo `ripr` PRs. The release-facing source repository\nremains `EffortlessMetrics/ripr`.\n"""[0m
+2026-07-21T20:20:27.5669044Z [36;1mnew_intro = """This checkout is `EffortlessMetrics/ripr`, the release, publishing, signing,\nmarketplace, badge, and distribution authority. Reviewed development lands in\n`EffortlessMetrics/ripr-swarm` and is promoted here with preserved history.\n"""[0m
+2026-07-21T20:20:27.5670166Z [36;1mif old_intro not in text:[0m
+2026-07-21T20:20:27.5670582Z [36;1m    raise SystemExit("repository settings intro anchor not found")[0m
+2026-07-21T20:20:27.5671074Z [36;1mtext = text.replace(old_intro, new_intro, 1)[0m
+2026-07-21T20:20:27.5672262Z [36;1mold_managed = """- merge policy: squash merge enabled, merge commits disabled, rebase merge\n  disabled, auto-merge enabled, update branch enabled, and delete branch on\n  merge enabled\n- branch protection for `main` requires only the routed `Ripr Rust Small\n  Result` check\n"""[0m
+2026-07-21T20:20:27.5674325Z [36;1mnew_managed = """- merge policy: squash and merge commits enabled, rebase merge and auto-merge\n  disabled, update branch enabled, and delete branch on merge enabled\n- branch protection for `main` requires `rust`, `msrv`, `vscode`, `cargo-deny`,\n  and `dependency-review`\n"""[0m
+2026-07-21T20:20:27.5675459Z [36;1mif old_managed not in text:[0m
+2026-07-21T20:20:27.5675910Z [36;1m    raise SystemExit("repository settings managed-policy anchor not found")[0m
+2026-07-21T20:20:27.5676437Z [36;1mtext = text.replace(old_managed, new_managed, 1)[0m
+2026-07-21T20:20:27.5677259Z [36;1mtext = text.replace("`EffortlessMetrics/ripr-swarm`.\n- Let the app apply", "`EffortlessMetrics/ripr`.\n- Let the app apply", 1)[0m
+2026-07-21T20:20:27.5678084Z [36;1mtext = text.replace("## Swarm Development Boundary", "## Source / Swarm Boundary", 1)[0m
+2026-07-21T20:20:27.5678587Z [36;1mtext = text.replace([0m
+2026-07-21T20:20:27.5679306Z [36;1m    "`ripr-swarm` is not the release authority for `ripr`. Keep these surfaces in\n`EffortlessMetrics/ripr` until a focused promotion changes that boundary:",[0m
+2026-07-21T20:20:27.5680368Z [36;1m    "`ripr` is the release authority. Keep these surfaces here unless a focused,\nreviewed boundary change explicitly moves them:",[0m
+2026-07-21T20:20:27.5681114Z [36;1m    1,[0m
+2026-07-21T20:20:27.5681358Z [36;1m)[0m
+2026-07-21T20:20:27.5681600Z [36;1mtext = text.replace([0m
+2026-07-21T20:20:27.5682465Z [36;1m    "must pass the protected routed result and any owner-required security review\nbefore merge. Security, coverage, and `xtask` lanes remain review signals unless\npromoted in a focused policy PR.",[0m
+2026-07-21T20:20:27.5684102Z [36;1m    "must pass the protected source checks and any owner-required security review\nbefore merge. Additional security, coverage, and `xtask` lanes remain review\nsignals unless promoted in a focused policy PR.",[0m
+2026-07-21T20:20:27.5685014Z [36;1m    1,[0m
+2026-07-21T20:20:27.5685248Z [36;1m)[0m
+2026-07-21T20:20:27.5685591Z [36;1mbranch_start = text.index("## Branch Protection And Rulesets")[0m
+2026-07-21T20:20:27.5686099Z [36;1mrelease_start = text.index("## Release Environments")[0m
+2026-07-21T20:20:27.5691187Z [36;1msource_branch_section = """## Branch Protection And Rulesets\n\nRequired checks use emitted check-run names, not display-style workflow\nprefixes. Source `main` requires:\n\n- `rust`\n- `msrv`\n- `vscode`\n- `cargo-deny`\n- `dependency-review`\n\nThe routed `Ripr Rust Small Result` remains useful development-trunk evidence,\nbut it does not replace the source repository's release-oriented protected\nchecks.\n\nSettings App managed rules:\n\n- block force pushes to `main`;\n- block branch deletion for `main`;\n- leave conversation resolution disabled unless a focused policy change\n  promotes it;\n- leave linear history disabled so history-preserving source promotions are\n  possible;\n- permit squash merges for ordinary PRs and merge commits for audited source\n  promotions;\n- keep rebase merge and auto-merge disabled; and\n- require release workflow changes to pass security review.\n\nGitHub Rulesets should separately block direct pushes to `main` and require the\nPR merge path. A source promotion must use **Create a merge commit** so the\nreviewed two-parent join remains reachable; it must never be squashed or\nrebased. See [Source Promotion](SOURCE_PROMOTION.md).\n\nAdvisory lanes should not become protected requirements without a focused\npolicy change after calibration.\n\n"""[0m
+2026-07-21T20:20:27.5696501Z [36;1mtext = text[:branch_start] + source_branch_section + text[release_start:][0m
+2026-07-21T20:20:27.5696986Z [36;1mwrite(settings_doc, text)[0m
+2026-07-21T20:20:27.5697287Z [36;1m[0m
+2026-07-21T20:20:27.5697660Z [36;1m# Normalize inherited whitespace that makes the source promotion diff[0m
+2026-07-21T20:20:27.5698225Z [36;1m# fail `git diff --check`; preserve the actual blank patch lines.[0m
+2026-07-21T20:20:27.5698654Z [36;1mwhitespace_paths = [[0m
+2026-07-21T20:20:27.5699045Z [36;1m    "docs/handoffs/2026-07-11-targeted-rerun-benchmark.md",[0m
+2026-07-21T20:20:27.5699566Z [36;1m    "docs/handoffs/2026-07-12-call-presence-evidence-packet.md",[0m
+2026-07-21T20:20:27.5700024Z [36;1m    "docs/status/RUST_ROUTE_QUALITY.md",[0m
+2026-07-21T20:20:27.5700574Z [36;1m    "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",[0m
+2026-07-21T20:20:27.5701214Z [36;1m    "fixtures/rust_transitive_reach_test_helper_chain/diff.patch",[0m
+2026-07-21T20:20:27.5701708Z [36;1m    "plans/rust-one-shot-evidence-to-repair.md",[0m
+2026-07-21T20:20:27.5702070Z [36;1m][0m
+2026-07-21T20:20:27.5702468Z [36;1mfor item in whitespace_paths:[0m
+2026-07-21T20:20:27.5702800Z [36;1m    path_obj = Path(item)[0m
+2026-07-21T20:20:27.5703439Z [36;1m    lines = path_obj.read_text(encoding="utf-8").splitlines()[0m
+2026-07-21T20:20:27.5704047Z [36;1m    path_obj.write_text("\n".join(line.rstrip(" \t") for line in lines) + "\n", encoding="utf-8")[0m
+2026-07-21T20:20:27.5704550Z [36;1mPY[0m
+2026-07-21T20:20:27.5704782Z [36;1m[0m
+2026-07-21T20:20:27.5705017Z [36;1mgit add -A[0m
+2026-07-21T20:20:27.5705397Z [36;1munresolved_after="$(git diff --name-only --diff-filter=U | sort)"[0m
+2026-07-21T20:20:27.5705875Z [36;1mnew_spec_id="$(cat /tmp/new-spec-id.txt)"[0m
+2026-07-21T20:20:27.5706354Z [36;1m{[0m
+2026-07-21T20:20:27.5706631Z [36;1m  printf 'new_spec_id=%s\n' "$new_spec_id"[0m
+2026-07-21T20:20:27.5707029Z [36;1m  echo '--- unresolved after ---'[0m
+2026-07-21T20:20:27.5707381Z [36;1m  printf '%s\n' "$unresolved_after"[0m
+2026-07-21T20:20:27.5707730Z [36;1m  echo '--- staged diff stat ---'[0m
+2026-07-21T20:20:27.5708072Z [36;1m  git diff --cached --stat[0m
+2026-07-21T20:20:27.5708424Z [36;1m  echo '--- source authority assertions ---'[0m
+2026-07-21T20:20:27.5708861Z [36;1m  grep -n 'allow_merge_commit' .github/settings.yml || true[0m
+2026-07-21T20:20:27.5709347Z [36;1m  grep -n '^version = "0.10.1"' crates/ripr/Cargo.toml || true[0m
+2026-07-21T20:20:27.5709869Z [36;1m  grep -n '"version": "0.10.1"' editors/vscode/package.json | head -1 || true[0m
+2026-07-21T20:20:27.5710472Z [36;1m  grep -n 'bounded subprocess adapter boundary' .ripr/traceability.toml || true[0m
+2026-07-21T20:20:27.5711110Z [36;1m  grep -n 'This checkout is `EffortlessMetrics/ripr`' docs/REPO_SETTINGS.md || true[0m
+2026-07-21T20:20:27.5711597Z [36;1m} >> "$report"[0m
+2026-07-21T20:20:27.5711862Z [36;1m[0m
+2026-07-21T20:20:27.5712104Z [36;1mrequired_failed=0[0m
+2026-07-21T20:20:27.5712398Z [36;1mrun_required() {[0m
+2026-07-21T20:20:27.5712881Z [36;1m  name="$1"[0m
+2026-07-21T20:20:27.5713319Z [36;1m  shift[0m
+2026-07-21T20:20:27.5713584Z [36;1m  log="/tmp/${name}.log"[0m
+2026-07-21T20:20:27.5713882Z [36;1m  set +e[0m
+2026-07-21T20:20:27.5714130Z [36;1m  "$@" >"$log" 2>&1[0m
+2026-07-21T20:20:27.5714406Z [36;1m  status=$?[0m
+2026-07-21T20:20:27.5714667Z [36;1m  set -e[0m
+2026-07-21T20:20:27.5714906Z [36;1m  {[0m
+2026-07-21T20:20:27.5715234Z [36;1m    printf '\n--- check %s status=%s ---\n' "$name" "$status"[0m
+2026-07-21T20:20:27.5715633Z [36;1m    tail -160 "$log"[0m
+2026-07-21T20:20:27.5715931Z [36;1m  } >> "$report"[0m
+2026-07-21T20:20:27.5716212Z [36;1m  if [ "$status" -ne 0 ]; then[0m
+2026-07-21T20:20:27.5716539Z [36;1m    required_failed=1[0m
+2026-07-21T20:20:27.5716832Z [36;1m  fi[0m
+2026-07-21T20:20:27.5717057Z [36;1m}[0m
+2026-07-21T20:20:27.5717285Z [36;1m[0m
+2026-07-21T20:20:27.5717700Z [36;1mrun_required no_unmerged bash -lc 'test -z "$(git diff --name-only --diff-filter=U)"'[0m
+2026-07-21T20:20:27.5718277Z [36;1mrun_required diff_check git diff --cached --check[0m
+2026-07-21T20:20:27.5718695Z [36;1mrun_required fmt cargo fmt --all -- --check[0m
+2026-07-21T20:20:27.5719187Z [36;1mrun_required subprocess_tests cargo test -p ripr subprocess --locked[0m
+2026-07-21T20:20:27.5719931Z [36;1mrun_required bounded_probe_test cargo test -p ripr probes_for_file_emits_side_effect_for_bounded_adapter_line --locked[0m
+2026-07-21T20:20:27.5720647Z [36;1mrun_required ripr_lib_tests cargo test -p ripr --lib --locked[0m
+2026-07-21T20:20:27.5721151Z [36;1mrun_required spec_format cargo xtask check-spec-format[0m
+2026-07-21T20:20:27.5721645Z [36;1mrun_required spec_numbering cargo xtask check-spec-numbering[0m
+2026-07-21T20:20:27.5722170Z [36;1mrun_required traceability cargo xtask check-traceability[0m
+2026-07-21T20:20:27.5722651Z [36;1mrun_required doc_index cargo xtask check-doc-index[0m
+2026-07-21T20:20:27.5723239Z [36;1mrun_required doc_artifacts cargo xtask check-doc-artifacts[0m
+2026-07-21T20:20:27.5723877Z [36;1mrun_required file_policy cargo xtask check-file-policy[0m
+2026-07-21T20:20:27.5724394Z [36;1mrun_required static_language cargo xtask check-static-language[0m
+2026-07-21T20:20:27.5724914Z [36;1mrun_required workflow_policy cargo xtask check-workflows[0m
+2026-07-21T20:20:27.5725419Z [36;1mrun_required process_policy cargo xtask check-process-policy[0m
+2026-07-21T20:20:27.5725943Z [36;1mrun_required network_policy cargo xtask check-network-policy[0m
+2026-07-21T20:20:27.5726446Z [36;1mrun_required architecture cargo xtask check-architecture[0m
+2026-07-21T20:20:27.5726959Z [36;1mrun_required workspace_shape cargo xtask check-workspace-shape[0m
+2026-07-21T20:20:27.5727507Z [36;1mrun_required output_contracts cargo xtask check-output-contracts[0m
+2026-07-21T20:20:27.5728117Z [36;1mrun_required goldens cargo xtask goldens check[0m
+2026-07-21T20:20:27.5728665Z [36;1mrun_required cargo_check cargo check --workspace --all-targets --all-features --locked[0m
+2026-07-21T20:20:27.5729162Z [36;1m[0m
+2026-07-21T20:20:27.5729432Z [36;1mif [ "$required_failed" -ne 0 ]; then[0m
+2026-07-21T20:20:27.5729798Z [36;1m  publish_report validation_failed[0m
+2026-07-21T20:20:27.5730125Z [36;1m  exit 1[0m
+2026-07-21T20:20:27.5730365Z [36;1mfi[0m
+2026-07-21T20:20:27.5730593Z [36;1m[0m
+2026-07-21T20:20:27.5730951Z [36;1mgit commit -m "promote: join frozen ripr-swarm candidate for 0.10.1" \[0m
+2026-07-21T20:20:27.5731532Z [36;1m  -m "Parent 1 preserves source release authority at $SOURCE_PARENT." \[0m
+2026-07-21T20:20:27.5732094Z [36;1m  -m "Parent 2 preserves reviewed swarm history at $SWARM_CANDIDATE."[0m
+2026-07-21T20:20:27.5732546Z [36;1mjoin_sha="$(git rev-parse HEAD)"[0m
+2026-07-21T20:20:27.5732906Z [36;1mparent_one="$(git rev-parse HEAD^1)"[0m
+2026-07-21T20:20:27.5733418Z [36;1mparent_two="$(git rev-parse HEAD^2)"[0m
+2026-07-21T20:20:27.5733866Z [36;1mparent_count="$(git show -s --format='%P' HEAD | wc -w | tr -d ' ')"[0m
+2026-07-21T20:20:27.5734308Z [36;1mtopology_failed=0[0m
+2026-07-21T20:20:27.5734649Z [36;1m[ "$parent_count" = "2" ] || topology_failed=1[0m
+2026-07-21T20:20:27.5735080Z [36;1m[ "$parent_one" = "$SOURCE_PARENT" ] || topology_failed=1[0m
+2026-07-21T20:20:27.5735543Z [36;1m[ "$parent_two" = "$SWARM_CANDIDATE" ] || topology_failed=1[0m
+2026-07-21T20:20:27.5736093Z [36;1mgit merge-base --is-ancestor "$SOURCE_PARENT" "$join_sha" || topology_failed=1[0m
+2026-07-21T20:20:27.5736738Z [36;1mgit merge-base --is-ancestor "$SWARM_CANDIDATE" "$join_sha" || topology_failed=1[0m
+2026-07-21T20:20:27.5737220Z [36;1m{[0m
+2026-07-21T20:20:27.5737491Z [36;1m  printf 'join_sha=%s\n' "$join_sha"[0m
+2026-07-21T20:20:27.5737894Z [36;1m  printf 'join_parent_count=%s\n' "$parent_count"[0m
+2026-07-21T20:20:27.5738312Z [36;1m  printf 'join_parent_1=%s\n' "$parent_one"[0m
+2026-07-21T20:20:27.5738700Z [36;1m  printf 'join_parent_2=%s\n' "$parent_two"[0m
+2026-07-21T20:20:27.5739118Z [36;1m  printf 'topology_status=%s\n' "$topology_failed"[0m
+2026-07-21T20:20:27.5739505Z [36;1m  echo '--- join summary ---'[0m
+2026-07-21T20:20:27.5739931Z [36;1m  git show -s --format='join %H%nparents %P%nsubject %s' "$join_sha"[0m
+2026-07-21T20:20:27.5740350Z [36;1m} >> "$report"[0m
+2026-07-21T20:20:27.5740651Z [36;1mif [ "$topology_failed" -ne 0 ]; then[0m
+2026-07-21T20:20:27.5741001Z [36;1m  publish_report topology_failed[0m
+2026-07-21T20:20:27.5741325Z [36;1m  exit 1[0m
+2026-07-21T20:20:27.5741571Z [36;1mfi[0m
+2026-07-21T20:20:27.5741799Z [36;1m[0m
+2026-07-21T20:20:27.5742100Z [36;1mgit push origin "HEAD:refs/heads/$PROMOTION_BRANCH"[0m
+2026-07-21T20:20:27.5742518Z [36;1mpublish_report promotion_branch_pushed[0m
+2026-07-21T20:20:27.5826221Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-07-21T20:20:27.5826677Z env:
+2026-07-21T20:20:27.5827012Z   SOURCE_PARENT: ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+2026-07-21T20:20:27.5827465Z   SWARM_CANDIDATE: 3a80c634f2157dee0e7f74fc72b7975f07699143
+2026-07-21T20:20:27.5827889Z   SWARM_FREEZE_REF: freeze/source-sync-2026-07-21
+2026-07-21T20:20:27.5828459Z   PROMOTION_BRANCH: promote/0.10.1-swarm
+2026-07-21T20:20:27.5828860Z   RUNNER_BRANCH: agent/source-swarm-sync-runner-2026-07-21
+2026-07-21T20:20:27.5829236Z ##[endgroup]
+2026-07-21T20:20:27.7484158Z From https://github.com/EffortlessMetrics/ripr
+2026-07-21T20:20:27.7485138Z  * branch              ec7dc6beaec8ad2efca4abd502f9253cdb4f939c -> FETCH_HEAD
+2026-07-21T20:20:27.7486029Z  * branch              agent/source-swarm-sync-runner-2026-07-21 -> FETCH_HEAD
+2026-07-21T20:20:28.9460815Z From https://github.com/EffortlessMetrics/ripr-swarm
+2026-07-21T20:20:28.9461509Z  * branch              main       -> FETCH_HEAD
+2026-07-21T20:20:28.9462275Z  * branch              3a80c634f2157dee0e7f74fc72b7975f07699143 -> FETCH_HEAD
+2026-07-21T20:20:28.9470386Z  * branch              freeze/source-sync-2026-07-21 -> FETCH_HEAD
+2026-07-21T20:20:28.9471241Z  * [new branch]        main       -> swarm/main
+2026-07-21T20:20:28.9472069Z  * [new branch]        freeze/source-sync-2026-07-21 -> swarm/freeze/source-sync-2026-07-21
+2026-07-21T20:20:29.3730959Z Switched to a new branch 'promote/0.10.1-swarm'
+2026-07-21T20:20:29.5826019Z Auto-merging .ripr/traceability.toml
+2026-07-21T20:20:29.5826659Z Auto-merging CHANGELOG.md
+2026-07-21T20:20:29.5827209Z CONFLICT (content): Merge conflict in CHANGELOG.md
+2026-07-21T20:20:29.5827851Z Auto-merging Cargo.lock
+2026-07-21T20:20:29.5828381Z Auto-merging crates/ripr/Cargo.toml
+2026-07-21T20:20:29.5829032Z Auto-merging crates/ripr/src/analysis/probes/diff.rs
+2026-07-21T20:20:29.5829978Z CONFLICT (content): Merge conflict in crates/ripr/src/analysis/probes/diff.rs
+2026-07-21T20:20:29.5830980Z Auto-merging crates/ripr/src/analysis/probes/mod.rs
+2026-07-21T20:20:29.5831900Z Auto-merging crates/ripr/src/output/review_comments.rs
+2026-07-21T20:20:29.5833426Z CONFLICT (content): Merge conflict in crates/ripr/src/output/review_comments.rs
+2026-07-21T20:20:29.5834594Z Auto-merging docs/OUTPUT_SCHEMA.md
+2026-07-21T20:20:29.5835293Z Auto-merging docs/STATIC_EXPOSURE_MODEL.md
+2026-07-21T20:20:29.5836006Z Auto-merging docs/specs/README.md
+2026-07-21T20:20:29.5836864Z CONFLICT (content): Merge conflict in docs/specs/README.md
+2026-07-21T20:20:29.5837925Z Auto-merging editors/vscode/package-lock.json
+2026-07-21T20:20:29.5839014Z CONFLICT (content): Merge conflict in editors/vscode/package-lock.json
+2026-07-21T20:20:29.5840061Z Auto-merging editors/vscode/package.json
+2026-07-21T20:20:29.5841101Z CONFLICT (content): Merge conflict in editors/vscode/package.json
+2026-07-21T20:20:29.5842520Z Auto-merging fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json
+2026-07-21T20:20:29.5844784Z CONFLICT (content): Merge conflict in fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json
+2026-07-21T20:20:29.5846364Z Auto-merging policy/network_allowlist.txt
+2026-07-21T20:20:29.5847036Z Auto-merging policy/process_allowlist.txt
+2026-07-21T20:20:29.5847708Z CONFLICT (content): Merge conflict in policy/process_allowlist.txt
+2026-07-21T20:20:29.5848421Z Auto-merging xtask/src/reports/recommendation.rs
+2026-07-21T20:20:29.5849050Z Auto-merging xtask/src/reports/review_comments.rs
+2026-07-21T20:20:29.5849797Z Automatic merge failed; fix conflicts and then commit the result.
+2026-07-21T20:24:36.7657490Z [promote/0.10.1-swarm 8ea431f3] promote: join frozen ripr-swarm candidate for 0.10.1
+2026-07-21T20:24:43.7584860Z To https://github.com/EffortlessMetrics/ripr
+2026-07-21T20:24:43.7586393Z  ! [remote rejected]   HEAD -> promote/0.10.1-swarm (refusing to allow a GitHub App to create or update workflow `.github/workflows/routed-rust.yml` without `workflows` permission)
+2026-07-21T20:24:43.7587964Z error: failed to push some refs to 'https://github.com/EffortlessMetrics/ripr'
+2026-07-21T20:24:43.7611045Z ##[error]Process completed with exit code 1.
+2026-07-21T20:24:43.7747549Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-21T20:24:43.7749120Z Post job cleanup.
+2026-07-21T20:24:43.8606503Z [command]/usr/bin/git version
+2026-07-21T20:24:43.8642834Z git version 2.54.0
+2026-07-21T20:24:43.8679794Z Temporarily overriding HOME='/home/runner/work/_temp/dfc23b9e-ddd9-4220-897b-c1f83fd64da9' before making global git config changes
+2026-07-21T20:24:43.8681121Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-21T20:24:43.8685753Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ripr/ripr
+2026-07-21T20:24:43.8722767Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-21T20:24:43.8755771Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-21T20:24:43.8980391Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-21T20:24:43.9002036Z http.https://github.com/.extraheader
+2026-07-21T20:24:43.9012275Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-21T20:24:43.9043601Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-21T20:24:43.9268058Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-21T20:24:43.9301447Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-21T20:24:43.9687396Z Cleaning up orphan processes
+2026-07-21T20:24:43.9979424Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
