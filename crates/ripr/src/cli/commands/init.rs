@@ -155,15 +155,38 @@ permissions:
   security-events: write
 
 env:
+  # Upload SARIF to GitHub Security tab when true. Disable with
+  # RIPR_UPLOAD_SARIF=false if your repo does not use code scanning.
   RIPR_UPLOAD_SARIF: "true"
+  # Gate authority for this workflow. Configure as a GitHub Actions
+  # repository variable (Settings > Secrets and variables > Actions >
+  # Variables). Empty (default) = advisory only, the job never fails.
+  # Allowed values:
+  #   visible-only     gate runs and prints, but does not block the job
+  #   acknowledgeable  gate runs; PR author can acknowledge to merge
+  #   baseline-check   gate fails if exposure is worse than the baseline
+  #   calibrated-gate  gate fails on any actionable finding
+  # See docs/CALIBRATED_GATE_POLICY.md for the full policy.
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  # Optional baseline git ref (tag, branch, or SHA) the gate compares
+  # against when RIPR_GATE_MODE includes a baseline check. Empty by default.
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  # PR review-comment publishing. Configure as a repository variable.
+  # Allowed values:
+  #   off     (default) no PR comments; findings only in artifacts
+  #   plan    compute and publish a comment plan; do not post inline
+  #   inline  publish inline review comments on changed lines (needs
+  #           pull-requests: write, which this workflow grants)
   RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
 jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
+    # The whole job is advisory (continue-on-error) unless RIPR_GATE_MODE
+    # is set to a blocking value. With the default empty/visible-only mode
+    # a failure here never fails the PR — set RIPR_GATE_MODE to opt in to
+    # blocking behaviour. See docs/CALIBRATED_GATE_POLICY.md.
     continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
       - uses: actions/checkout@v6
