@@ -31,9 +31,8 @@ const TS_AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
 ///
 /// # Preconditions checked (fail-closed)
 /// - G-A: `actionability_category == "incomplete_repair_packet"`
-/// - G-C: non-dynamic oracle with `expected_value_or_variant` present
-///   (`typescript_oracle_expected` evidence + no `typescript_limitation:
-///   typescript_dynamic_assertion_unresolved`)
+/// - G-C: no named TypeScript limitation, plus a non-dynamic oracle with
+///   `expected_value_or_variant` present (`typescript_oracle_expected` evidence)
 /// - G-D: oracle-eligible relation (not `ambiguous_related_test`; verified by G-A)
 /// - G-E: non-empty `missing_discriminators` list (a target shape exists)
 /// - G-F: no cross-language bridge limitation evidence present
@@ -44,8 +43,11 @@ pub(crate) fn typescript_gap_record_for(finding: &Finding) -> Option<GapRecord> 
         return None;
     }
 
-    // G-C: non-dynamic oracle — `typescript_oracle_expected` must be present
-    // AND no dynamic-assertion limitation may be present.
+    if has_named_typescript_limitation(finding) {
+        return None;
+    }
+
+    // G-C: non-dynamic oracle: `typescript_oracle_expected` must be present.
     let oracle_expected = evidence_value(finding, "typescript_oracle_expected: ")?;
     if oracle_expected.is_empty() {
         return None;
@@ -176,6 +178,7 @@ pub(crate) fn typescript_gap_record_for(finding: &Finding) -> Option<GapRecord> 
     Some(GapRecord {
         gap_id: finding.id.clone(),
         canonical_gap_id,
+        seam_id: None,
         kind: "typescript_preview_boundary".to_string(),
         language: "typescript".to_string(),
         language_status: "preview".to_string(),
@@ -264,6 +267,13 @@ fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
         .find_map(|line| line.strip_prefix(prefix))
         .map(str::trim)
         .filter(|v| !v.is_empty())
+}
+
+fn has_named_typescript_limitation(finding: &Finding) -> bool {
+    finding
+        .evidence
+        .iter()
+        .any(|line| line.starts_with("typescript_limitation: "))
 }
 
 #[cfg(test)]
@@ -443,6 +453,20 @@ mod tests {
         assert!(
             record.is_none(),
             "dynamic oracle limitation must return None (G-C)"
+        );
+    }
+
+    /// Named TypeScript limitations fail closed before packet validation.
+    #[test]
+    fn validator_parity_named_typescript_limitation_returns_none() {
+        let mut finding = complete_finding();
+        finding
+            .evidence
+            .push("typescript_limitation: typescript_custom_matcher_unresolved".to_string());
+        let record = typescript_gap_record_for(&finding);
+        assert!(
+            record.is_none(),
+            "named TypeScript limitation must return None before packet validation"
         );
     }
 

@@ -41,11 +41,12 @@ expires, but repository artifacts remain.
 6. Read [Codex Goals](CODEX_GOALS.md) and
    [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) when the task is part
    of a long implementation campaign.
-7. Run `cargo xtask goals next` when choosing campaign work; the active
-   manifest is the source of truth for current ready items inside that campaign.
-   If the manifest has only blocked work, treat that as a stop sign for the
-   blocked goal, not as a claim that no useful PR or issue exists elsewhere on
-   the live board.
+7. Choose campaign work from the live GitHub board (open issues, PRs, and
+   required checks) and the linked plan/spec. The `.ripr/goals/` manifests were
+   deleted (#1701 PR 3 / #2056); historical campaign records in
+   `docs/IMPLEMENTATION_CAMPAIGNS.md` are context only and never select work.
+   If the linked work is blocked, treat that as a stop sign for that item, not
+   as a claim that no useful PR or issue exists elsewhere on the live board.
 8. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
    evidence bar.
 9. Read the relevant spec in [Specs](specs/README.md).
@@ -64,10 +65,10 @@ Codex Goals is the autonomous loop. The repository provides the harness.
 
 A Codex Goals run should:
 
-- recover state from repo artifacts, not chat history
-- read `.ripr/goals/active.toml`
-- run `cargo xtask goals next` and pick the next unblocked
-  implementation-campaign work item from that report
+- recover state from repo artifacts and the live GitHub board, not chat history
+- `.ripr/goals/active.toml` was deleted (#2056); do not look for it
+- pick the next unblocked work item from open GitHub issues, PRs, and the
+  linked implementation plan, scoped by a PR-local implementation slice
 - produce one scoped PR, blocked report, or explicit planning update per work
   item
 - run `cargo xtask shape`, `cargo xtask fix-pr`, `cargo xtask check-pr`, and

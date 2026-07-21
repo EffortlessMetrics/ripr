@@ -41,6 +41,7 @@ use super::seam_classification::ClassifiedSeam;
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
 use super::seam_inventory::{SeamLimitSource, repo_exposure_seam_limit};
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 /// On-disk representation of seam-limit metadata embedded in the cache envelope.
@@ -62,14 +63,20 @@ pub(crate) struct CachedSeamLimitInfo {
 /// Old envelopes lack those fields and would fail serde deserialization
 /// of the new shape; the version bump routes new entries to a fresh
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
+/// `0.3` → `0.4`: `RelatedTestGrip` gained producer-owned
+/// `TestTargetEvidence`; old envelopes deserialize with a missing target and
+/// would incorrectly turn valid indexed tests into static limitations.
+/// `0.4` → `0.5`: error-variant discriminators changed from surrounding
+/// expressions to producer-owned exact identities; old classified seams must
+/// not be reused by full or compact consumers.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.5";
 const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
 /// under a separate directory because the evidence payload is intentionally
 /// compact and must never satisfy full repo-exposure consumers.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -81,7 +88,7 @@ const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// Per-file fact cache schema. This is intentionally separate from the
 /// workspace-level classified seam cache so warm compute can reuse parser facts
 /// even when a full classified seam entry has not been written yet.
-const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -132,6 +139,86 @@ pub(crate) fn cache_base_dir_from_env(
 /// Resolve the cache base directory using the live process environment.
 pub(crate) fn cache_base_dir(workspace_root: &std::path::Path) -> PathBuf {
     cache_base_dir_from_env(workspace_root, std::env::var(CACHE_DIR_ENV))
+}
+
+/// Read-only summary of a cache directory for status and diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CacheStatus {
+    pub(crate) state: &'static str,
+    pub(crate) total_size_bytes: u64,
+    pub(crate) entry_count: usize,
+}
+
+/// Inspect a cache directory without following symlinks or fabricating counts.
+///
+/// This is best-effort diagnostic output, not a security boundary or an atomic
+/// snapshot. The standard-library path-based traversal has no portable
+/// directory-handle-relative API, so a concurrent rename can still make a
+/// reported total stale. Symlink entries are skipped and traversal failures
+/// are surfaced as `partial`; callers must not use this report to authorize
+/// access or make security decisions.
+pub(crate) fn inspect_cache_dir(cache_dir: &Path) -> CacheStatus {
+    let metadata = match std::fs::symlink_metadata(cache_dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return CacheStatus {
+                state: "not_found",
+                total_size_bytes: 0,
+                entry_count: 0,
+            };
+        }
+        Err(_) => {
+            return CacheStatus {
+                state: "unavailable",
+                total_size_bytes: 0,
+                entry_count: 0,
+            };
+        }
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return CacheStatus {
+            state: "unavailable",
+            total_size_bytes: 0,
+            entry_count: 0,
+        };
+    }
+
+    let mut total_size_bytes = 0u64;
+    let mut entry_count = 0usize;
+    let mut partially_readable = false;
+    let mut stack = vec![cache_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            partially_readable = true;
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                partially_readable = true;
+                continue;
+            };
+            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
+                partially_readable = true;
+                continue;
+            };
+            let file_type = metadata.file_type();
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            } else if file_type.is_file() {
+                total_size_bytes = total_size_bytes.saturating_add(metadata.len());
+                entry_count = entry_count.saturating_add(1);
+            }
+        }
+    }
+
+    CacheStatus {
+        state: if partially_readable { "partial" } else { "ok" },
+        total_size_bytes,
+        entry_count,
+    }
 }
 
 pub(crate) fn classified_seam_cache_store_limit() -> Result<usize, String> {
@@ -199,6 +286,9 @@ pub(crate) struct RepoSeamCacheKey {
     pub(crate) config_hash: String,
     pub(crate) test_intent_hash: String,
     pub(crate) suppressions_hash: String,
+    pub(crate) workspace_manifests_hash: String,
+    pub(crate) lockfile_hash: String,
+    pub(crate) toolchain_hash: String,
     /// Encodes the effective seam limit: `"unlimited"` when the operator
     /// set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` (unbounded opt-out), or
     /// `"limit_N"` for any positive limit (default or configured).
@@ -251,7 +341,7 @@ impl RepoSeamCacheKey {
     /// `seam_limit_key` is included so capped runs and unbounded runs
     /// never share a cache file.
     pub(crate) fn filename(&self) -> String {
-        let parts: [&str; 9] = [
+        let parts: [&str; 12] = [
             &self.schema_version,
             &self.analyzer_version,
             &self.workspace_root_hash,
@@ -260,6 +350,9 @@ impl RepoSeamCacheKey {
             &self.config_hash,
             &self.test_intent_hash,
             &self.suppressions_hash,
+            &self.workspace_manifests_hash,
+            &self.lockfile_hash,
+            &self.toolchain_hash,
             &self.seam_limit_key,
         ];
         let mut buf = String::new();
@@ -326,6 +419,16 @@ impl<'a> WorkspaceState<'a> {
             Some((n, _)) => format!("limit_{n}"),
         };
 
+        let workspace_manifests_hash =
+            hash_named_workspace_files(self.workspace_root, "Cargo.toml");
+        let lockfile_hash = hash_named_workspace_files(self.workspace_root, "Cargo.lock");
+        let toolchain_hash = hash_str(
+            std::env::var("RUSTUP_TOOLCHAIN")
+                .or_else(|_| std::env::var("RIPR_TOOLCHAIN"))
+                .unwrap_or_else(|_| "unavailable".to_string())
+                .as_str(),
+        );
+
         RepoSeamCacheKey {
             schema_version: CACHE_SCHEMA_VERSION.to_string(),
             analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -335,6 +438,9 @@ impl<'a> WorkspaceState<'a> {
             config_hash: hash_str(self.config_text.unwrap_or("")),
             test_intent_hash: hash_str(self.test_intent_text.unwrap_or("")),
             suppressions_hash: hash_str(self.suppressions_text.unwrap_or("")),
+            workspace_manifests_hash,
+            lockfile_hash,
+            toolchain_hash,
             seam_limit_key,
         }
     }
@@ -424,7 +530,7 @@ impl RepoSeamFactCache {
                     CacheLoad::Hit((envelope.classified_seams, envelope.seam_limit_info))
                 } else {
                     // Key collision is unlikely (16-char FNV file
-                    // names + 9 fields hashed in), but possible. Treat
+                    // names + 12 fields hashed in), but possible. Treat
                     // as miss without failing analysis.
                     CacheLoad::Miss
                 }
@@ -644,6 +750,11 @@ pub(crate) struct FileFactCacheStats {
     pub(crate) corrupt_ignored: usize,
     pub(crate) stores: usize,
     pub(crate) store_errors: usize,
+    /// Files whose current content missed the keyed entry while an older
+    /// envelope for the same path was present. This is the narrow, owned
+    /// content-invalidation signal; other input families remain explicit
+    /// `not_available` limitations until they have equivalent provenance.
+    pub(crate) invalidated_files: BTreeSet<PathBuf>,
 }
 
 impl FileFactCacheStats {
@@ -694,6 +805,29 @@ impl RepoFileFactCache {
             }
             Err(reason) => CacheLoad::CorruptIgnored { reason },
         }
+    }
+
+    /// Snapshot paths with valid cached envelopes before a build starts. The
+    /// caller uses this set for O(1) miss attribution and deliberately does not
+    /// observe entries created during the same build.
+    pub(crate) fn known_file_paths(&self) -> HashSet<PathBuf> {
+        let mut paths = HashSet::new();
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return paths;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            if let Ok(envelope) = codec::decode_file_facts(&bytes) {
+                paths.insert(envelope.file_path);
+            }
+        }
+        paths
     }
 
     pub(crate) fn store_file_facts(
@@ -787,6 +921,9 @@ struct CacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     classified_seams: Vec<ClassifiedSeam>,
     /// `None` means this is a complete run (all seams were analyzed).
     /// `Some(...)` means the run was capped; the renderer uses this to
@@ -809,6 +946,9 @@ struct CountCacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     counts: SeamGripClassCounts,
 }
 
@@ -853,6 +993,9 @@ impl CountCacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             counts,
         }
     }
@@ -867,6 +1010,9 @@ impl CountCacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -885,6 +1031,9 @@ impl CacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             classified_seams,
             seam_limit_info,
         }
@@ -899,6 +1048,9 @@ impl CacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -913,6 +1065,9 @@ struct ShardedCacheManifest {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     total_seams: usize,
     shard_count: usize,
     shards: Vec<ShardedCacheShardRef>,
@@ -940,6 +1095,9 @@ struct ShardedCacheEnvelope {
     config_hash: String,
     test_intent_hash: String,
     suppressions_hash: String,
+    workspace_manifests_hash: String,
+    lockfile_hash: String,
+    toolchain_hash: String,
     shard_index: usize,
     shard_count: usize,
     classified_seams: Vec<ClassifiedSeam>,
@@ -963,6 +1121,9 @@ impl ShardedCacheManifest {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             total_seams,
             shard_count,
             shards,
@@ -980,6 +1141,9 @@ impl ShardedCacheManifest {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -1000,6 +1164,9 @@ impl ShardedCacheEnvelope {
             config_hash: key.config_hash,
             test_intent_hash: key.test_intent_hash,
             suppressions_hash: key.suppressions_hash,
+            workspace_manifests_hash: key.workspace_manifests_hash,
+            lockfile_hash: key.lockfile_hash,
+            toolchain_hash: key.toolchain_hash,
             shard_index,
             shard_count,
             classified_seams,
@@ -1016,6 +1183,9 @@ impl ShardedCacheEnvelope {
             && self.config_hash == key.config_hash
             && self.test_intent_hash == key.test_intent_hash
             && self.suppressions_hash == key.suppressions_hash
+            && self.workspace_manifests_hash == key.workspace_manifests_hash
+            && self.lockfile_hash == key.lockfile_hash
+            && self.toolchain_hash == key.toolchain_hash
     }
 }
 
@@ -1080,8 +1250,239 @@ fn hash_str(s: &str) -> String {
     hash_bytes(s.as_bytes())
 }
 
+pub(crate) fn stable_input_hash(bytes: &[u8]) -> String {
+    hash_bytes(bytes)
+}
+
+/// Producer-owned provenance for the local Cargo package and feature graphs.
+/// External dependency metadata is never resolved here: targeted reruns must
+/// not perform network work or imply that registry graph facts were observed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WorkspaceGraphProvenance {
+    pub(crate) package_graph_status: String,
+    pub(crate) package_graph_hash: Option<String>,
+    pub(crate) package_graph_detail: Option<String>,
+    pub(crate) feature_graph_status: String,
+    pub(crate) feature_graph_hash: Option<String>,
+    pub(crate) feature_graph_detail: Option<String>,
+    pub(crate) external_dependency_graph_status: String,
+    pub(crate) external_dependency_graph_detail: String,
+}
+
+/// Read local Cargo manifests and derive deterministic package/feature graph
+/// facts without invoking Cargo, rustc, a registry, or a network client.
+pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenance {
+    let mut manifests = Vec::new();
+    collect_named_workspace_files(root, root, "Cargo.toml", &mut manifests);
+    manifests.sort_by(|left, right| left.0.cmp(&right.0));
+
+    if manifests.is_empty() {
+        return WorkspaceGraphProvenance {
+            package_graph_status: "unavailable".to_string(),
+            package_graph_detail: Some("no local Cargo.toml manifest was found".to_string()),
+            feature_graph_status: "unavailable".to_string(),
+            feature_graph_detail: Some("no local Cargo.toml manifest was found".to_string()),
+            external_dependency_graph_status: "unavailable".to_string(),
+            external_dependency_graph_detail:
+                "external dependency metadata is not resolved; no network access was used"
+                    .to_string(),
+            ..WorkspaceGraphProvenance::default()
+        };
+    }
+
+    let mut package_facts = Vec::new();
+    let mut feature_facts = Vec::new();
+    let mut parse_errors = Vec::new();
+    for (path, bytes) in &manifests {
+        let path_text = path.to_string_lossy().replace('\\', "/");
+        let value = match std::str::from_utf8(bytes)
+            .map_err(|err| err.to_string())
+            .and_then(|text| toml::from_str::<toml::Value>(text).map_err(|err| err.to_string()))
+        {
+            Ok(value) => value,
+            Err(err) => {
+                parse_errors.push(format!("{path_text}: {err}"));
+                continue;
+            }
+        };
+        let package = value.get("package").and_then(toml::Value::as_table);
+        let package_name = package
+            .and_then(|table| table.get("name"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or("<workspace-only>");
+        let workspace_members = value
+            .get("workspace")
+            .and_then(toml::Value::as_table)
+            .and_then(|table| table.get("members"))
+            .map(canonical_toml_value)
+            .unwrap_or_default();
+        let dependencies = ["dependencies", "dev-dependencies", "build-dependencies"]
+            .into_iter()
+            .filter_map(|section| value.get(section).and_then(toml::Value::as_table))
+            .flat_map(|table| table.keys().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        package_facts.push(format!(
+            "{path_text}\0package={package_name}\0members={workspace_members}\0dependencies={dependencies:?}"
+        ));
+
+        let feature_values = value
+            .get("features")
+            .and_then(toml::Value::as_table)
+            .map(|table| {
+                table
+                    .iter()
+                    .map(|(name, value)| format!("{name}={}", canonical_toml_value(value)))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        feature_facts.push(format!("{path_text}\0features={feature_values:?}"));
+    }
+
+    let parse_detail = (!parse_errors.is_empty()).then(|| parse_errors.join("; "));
+    let package_graph_status = if package_facts.is_empty() {
+        "unavailable"
+    } else if parse_detail.is_some() {
+        "limited"
+    } else {
+        "complete"
+    };
+    let feature_graph_status = if parse_detail.is_some() {
+        "limited"
+    } else {
+        "complete"
+    };
+    package_facts.sort();
+    feature_facts.sort();
+    WorkspaceGraphProvenance {
+        package_graph_status: package_graph_status.to_string(),
+        package_graph_hash: (!package_facts.is_empty())
+            .then(|| stable_input_hash(package_facts.join("\n").as_bytes())),
+        package_graph_detail: parse_detail.clone(),
+        feature_graph_status: feature_graph_status.to_string(),
+        feature_graph_hash: Some(stable_input_hash(feature_facts.join("\n").as_bytes())),
+        feature_graph_detail: parse_detail,
+        external_dependency_graph_status: "unavailable".to_string(),
+        external_dependency_graph_detail:
+            "external dependency metadata is not resolved; no network access was used".to_string(),
+    }
+}
+
+fn canonical_toml_value(value: &toml::Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "<unserializable>".to_string())
+}
+
 fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a_64(bytes))
+}
+
+fn hash_named_workspace_files(root: &Path, file_name: &str) -> String {
+    workspace_named_file_identity(root, file_name)
+        .unwrap_or_else(|| hash_str("<no matching workspace files>"))
+}
+
+/// Return the deterministic identity of all matching workspace files.
+///
+/// LSP input identity uses the same path-and-content boundary as the seam
+/// cache so a manifest or lockfile change cannot be treated as equivalent to
+/// the previous analysis input. `None` means no matching workspace file was
+/// found; unreadable files retain the seam-cache placeholder behavior.
+pub(crate) fn workspace_named_file_identity(root: &Path, file_name: &str) -> Option<String> {
+    let mut files = Vec::new();
+    collect_named_workspace_files(root, root, file_name, &mut files);
+    workspace_file_identity(files)
+}
+
+/// Return the Cargo manifest and lockfile identities with one workspace walk.
+///
+/// Refresh scheduling runs this on every analysis request. Keeping the two
+/// identities on the same traversal avoids doubling blocking filesystem work
+/// on the interactive path while preserving each per-name identity boundary.
+pub(crate) fn workspace_named_file_identities(root: &Path) -> (Option<String>, Option<String>) {
+    let mut files = [Vec::new(), Vec::new()];
+    collect_named_workspace_files_by_name(root, root, &mut files);
+    let [manifest_files, lockfile_files] = files;
+    (
+        workspace_file_identity(manifest_files),
+        workspace_file_identity(lockfile_files),
+    )
+}
+
+fn workspace_file_identity(mut files: Vec<(PathBuf, Vec<u8>)>) -> Option<String> {
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut input = String::new();
+    for (path, bytes) in files {
+        input.push_str(&path.to_string_lossy().replace('\\', "/"));
+        input.push('\0');
+        input.push_str(&hash_bytes(&bytes));
+        input.push('\n');
+    }
+    (!input.is_empty()).then(|| hash_str(&input))
+}
+
+fn collect_named_workspace_files_by_name(
+    root: &Path,
+    directory: &Path,
+    files: &mut [Vec<(PathBuf, Vec<u8>)>; 2],
+) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if matches!(
+                name,
+                ".git" | ".ripr" | "target" | "fixtures" | ".direnv" | "node_modules"
+            ) {
+                continue;
+            }
+            collect_named_workspace_files_by_name(root, &path, files);
+        } else if matches!(name, "Cargo.toml" | "Cargo.lock") {
+            let index = usize::from(name == "Cargo.lock");
+            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+            let bytes =
+                std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
+            files[index].push((relative, bytes));
+        }
+    }
+}
+
+fn collect_named_workspace_files(
+    root: &Path,
+    directory: &Path,
+    file_name: &str,
+    files: &mut Vec<(PathBuf, Vec<u8>)>,
+) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if matches!(
+                name,
+                ".git" | ".ripr" | "target" | "fixtures" | ".direnv" | "node_modules"
+            ) {
+                continue;
+            }
+            collect_named_workspace_files(root, &path, file_name, files);
+        } else if name == file_name {
+            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+            let bytes =
+                std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
+            files.push((relative, bytes));
+        }
+    }
 }
 
 /// FNV-1a 64-bit. Same algorithm `seams::compute_seam_id` uses; chosen
@@ -1527,6 +1928,117 @@ mod tests {
     }
 
     #[test]
+    fn workspace_manifest_and_lockfile_changes_change_cache_identity() -> Result<(), String> {
+        let root = isolated_dir("workspace-inputs");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|err| format!("write manifest: {err}"))?;
+        std::fs::write(root.join("Cargo.lock"), "version = 4\n")
+            .map_err(|err| format!("write lockfile: {err}"))?;
+        let files: [(PathBuf, Vec<u8>); 0] = [];
+        let baseline = WorkspaceState {
+            workspace_root: &root,
+            files: &files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crate\"]\n",
+        )
+        .map_err(|err| format!("change manifest: {err}"))?;
+        std::fs::write(root.join("Cargo.lock"), "version = 4\n# changed\n")
+            .map_err(|err| format!("change lockfile: {err}"))?;
+        let updated = WorkspaceState {
+            workspace_root: &root,
+            files: &files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        assert_ne!(
+            baseline.workspace_manifests_hash,
+            updated.workspace_manifests_hash
+        );
+        assert_ne!(baseline.lockfile_hash, updated.lockfile_hash);
+        assert_ne!(baseline.filename(), updated.filename());
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn graph_provenance_reports_local_package_and_feature_facts_without_network()
+    -> Result<(), String> {
+        let root = isolated_dir("graph-provenance");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("crates/app"))
+            .map_err(|err| format!("create workspace: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )
+        .map_err(|err| format!("write root manifest: {err}"))?;
+        std::fs::write(
+            root.join("crates/app/Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[features]\ndefault = []\nfast = []\n",
+        )
+        .map_err(|err| format!("write member manifest: {err}"))?;
+
+        let first = workspace_graph_provenance(&root);
+        assert_eq!(first.package_graph_status, "complete");
+        assert_eq!(first.feature_graph_status, "complete");
+        assert!(first.package_graph_hash.is_some());
+        assert!(first.feature_graph_hash.is_some());
+        assert_eq!(first.external_dependency_graph_status, "unavailable");
+        assert!(
+            first
+                .external_dependency_graph_detail
+                .contains("no network")
+        );
+
+        std::fs::write(
+            root.join("crates/app/Cargo.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[features]\ndefault = []\nslow = []\n",
+        )
+        .map_err(|err| format!("change feature manifest: {err}"))?;
+        let second = workspace_graph_provenance(&root);
+        assert_ne!(first.feature_graph_hash, second.feature_graph_hash);
+        assert_eq!(first.package_graph_hash, second.package_graph_hash);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn graph_provenance_names_unavailable_or_malformed_manifests() -> Result<(), String> {
+        let root = isolated_dir("graph-provenance-limited");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        let missing = workspace_graph_provenance(&root);
+        assert_eq!(missing.package_graph_status, "unavailable");
+        assert_eq!(missing.feature_graph_status, "unavailable");
+
+        std::fs::write(root.join("Cargo.toml"), "[package\nname = \"broken\"\n")
+            .map_err(|err| format!("write malformed manifest: {err}"))?;
+        let malformed = workspace_graph_provenance(&root);
+        assert_eq!(malformed.package_graph_status, "unavailable");
+        assert_eq!(malformed.feature_graph_status, "limited");
+        assert!(malformed.package_graph_detail.is_some());
+        assert!(malformed.feature_graph_detail.is_some());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
     fn given_test_file_content_changes_when_cache_key_is_built_then_classified_seam_cache_is_invalidated()
     -> Result<(), String> {
         // The cache hashes the same Rust file set fed to `build_index`
@@ -1758,6 +2270,9 @@ mod tests {
         cache
             .store_file_facts(&original_key, &facts)
             .map_err(|err| format!("store original file facts: {err}"))?;
+        if !cache.known_file_paths().contains(&path) {
+            return Err("changed content should identify a prior same-path version".to_string());
+        }
 
         let result = match cache.load_file_facts(&changed_key) {
             CacheLoad::Miss => Ok(()),
@@ -1777,6 +2292,7 @@ mod tests {
             corrupt_ignored: 1,
             stores: 3,
             store_errors: 0,
+            invalidated_files: BTreeSet::new(),
         };
         assert_eq!(
             stats.status_label(),

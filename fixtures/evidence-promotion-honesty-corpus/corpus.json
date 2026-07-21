@@ -7,63 +7,771 @@
     {
       "id": "py_token_substring",
       "language": "python",
+      "tier": "pure",
       "source_fixture": "fixtures/python_adversarial_buffer_token",
       "vector": "token_substring_coincidence",
-      "expected_max_class": "weakly_exposed",
-      "must_remain_non_promoted": true
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     },
     {
       "id": "py_mock_call_not_value",
       "language": "python",
+      "tier": "pure",
       "source_fixture": "fixtures/python_adversarial_mock_call_not_value",
       "vector": "mock_call_not_value",
-      "expected_max_class": "weakly_exposed",
-      "must_remain_non_promoted": true
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "mock_expectation", "strength": "medium" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_dict_sibling_key",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_dict_field_sibling_key",
+      "vector": "changed_dict_element_sibling_key_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_list_sibling_index",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_list_element_sibling_index",
+      "vector": "changed_list_element_sibling_index_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_operator_delta_input_operand",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_operator_delta_input_operand",
+      "vector": "operator_only_value_change_input_operand_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_changed_sink_non_delta_operand",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_changed_sink_non_delta_operand",
+      "vector": "changed_sink_token_non_delta_operand",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "static_unknown" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_default_value_overridden",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_default_value_overridden",
+      "vector": "changed_default_value_explicitly_overridden",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_error_path_untaken_branch",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_error_path_untaken_branch",
+      "vector": "changed_exception_type_untaken_branch",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_fstring_length_aggregate",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_fstring_length_invariant_aggregate",
+      "vector": "length_invariant_fstring_aggregate_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_local_assignment_operator_input",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_local_assignment_operator_input",
+      "vector": "local_assignment_operator_input_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_attribute_sink_other_receiver",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_attribute_sink_other_receiver",
+      "vector": "attribute_sink_other_receiver_value_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_free_function_module_collision",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_free_function_module_collision",
+      "vector": "free_function_same_name_different_module_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_method_owner_imported_unbound_receiver",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_method_owner_imported_unbound_receiver",
+      "vector": "method_owner_imported_unbound_receiver_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_same_method_other_class",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_adversarial_same_method_other_class",
+      "vector": "method_owner_same_name_different_class_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     },
     {
       "id": "ts_broad_tothrow",
       "language": "typescript",
+      "tier": "pure",
       "source_fixture": "fixtures/typescript_broad_tothrow",
       "vector": "cross_family_oracle_seam",
-      "expected_max_class": "weakly_exposed",
-      "must_remain_non_promoted": true
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "broad_error", "strength": "weak" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_ava_t_is_exact_value",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_runner_detect_ava_devdep",
+      "vector": "execution_context_ava_t_is_exact_value",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "ts_tape_equal_exact_value",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_tape_equal_oracle",
+      "vector": "execution_context_tape_equal_exact_value",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_truthy_smoke_only",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_truthy_oracle",
+      "vector": "execution_context_truthy_smoke_only",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "smoke_only", "strength": "smoke" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_wrong_receiver_unknown_oracle",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_wrong_receiver_no_oracle",
+      "vector": "execution_context_wrong_receiver_not_credited",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "unknown", "strength": "unknown" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_t_unknown_method_unknown_oracle",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_t_unknown_method_no_oracle",
+      "vector": "execution_context_unknown_method_not_credited",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "unknown", "strength": "unknown" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_negated_t_oracle",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_negated_t_oracle",
+      "vector": "negated_equality_not_exact_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "relational_check", "strength": "weak" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_dynamic_expected_incomplete_packet",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_dynamic_assertion_unresolved",
+      "vector": "dynamic_expected_value_no_packet",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
     },
     {
       "id": "rust_weak_error_oracle",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/weak_error_oracle",
       "vector": "non_variant_observing_error_oracle",
-      "expected_max_class": "weakly_exposed",
-      "must_remain_non_promoted": true
+      "assertions": [
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     },
     {
       "id": "rust_error_path_sibling_oracle",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/error_path_sibling_oracle_fake_clean",
       "vector": "sibling_oracle_does_not_confirm_error_path",
-      "expected_max_class": "weakly_exposed",
-      "must_remain_non_promoted": true
+      "assertions": [
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "rust_constructor_sibling_field_oracle",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_constructor_field_wrong_field_observer",
+      "vector": "constructor_changed_field_sibling_field_oracle",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "no_static_path" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     },
     {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/strong_error_oracle",
       "control": "must_stay_exposed",
-      "expected_promoted": true
+      "assertions": [
+        { "type": "must_promote" }
+      ]
     },
     {
       "id": "rust_unwrap_err_variant_positive_control",
       "language": "rust",
+      "tier": "pure",
       "source_fixture": "fixtures/unwrap_err_variant_positive",
       "control": "must_stay_exposed",
-      "expected_promoted": true
+      "assertions": [
+        { "type": "must_promote" }
+      ]
     },
     {
       "id": "ts_strong_oracle_control",
       "language": "typescript",
+      "tier": "pure",
       "source_fixture": "fixtures/typescript_strong_oracle",
       "control": "must_stay_exposed",
-      "expected_promoted": true
+      "assertions": [
+        { "type": "must_promote" }
+      ]
+    },
+    {
+      "id": "ts_complete_repair_packet_contract",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_repair_packet_complete",
+      "control": "complete_packet_must_keep_contract",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_repair_packet" },
+        { "type": "must_have_verify_command" },
+        { "type": "must_have_receipt_command" },
+        { "type": "must_not_emit_limitation" },
+        { "type": "must_disclose_repair_packet_detail" },
+        {
+          "type": "expected_repair_packet_detail",
+          "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+          "source_file": "src/discount.ts",
+          "source_line": 2,
+          "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+          "assertion_shape": "expect(result).toBe(50)",
+          "authority_boundary": "preview_advisory_only",
+          "repair_kind": "AddBoundaryAssertion",
+          "verify_command": "jest tests/discount.test.ts",
+          "receipt_command": "ripr outcome --before <baseline> --after <repair> --verify-cmd \"jest tests/discount.test.ts\" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json",
+          "allowed_edit_surface": ["tests/discount.test.ts"],
+          "forbidden_files": ["src/discount.ts"]
+        },
+        { "type": "must_not_have_contradictory_packet_messaging" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "rust_integration_public_api_path_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_transitive_reach_positive",
+      "vector": "integration_public_api_path_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer`",
+          "first_unresolved_edge": "entry `outer` -> owner `inner` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "rust_integration_public_api_test_helper_chain_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_transitive_reach_test_helper_chain",
+      "vector": "test_helper_public_api_path_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `greater_than_patch_examples` (tests/version_req.rs:18) -> entry `assert_public_api_accepts`",
+          "first_unresolved_edge": "entry `assert_public_api_accepts` -> owner `matches_greater` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "rust_macro_reach_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_macro_reach_limitation",
+      "vector": "macro_reach_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_outer_returns_difference` (tests/it.rs:4) -> entry `outer` -> macro `call_inner!` at src/lib.rs:10",
+          "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-aware-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "rust_macro_wrapped_test_call_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_macro_wrapped_test_call_limitation",
+      "vector": "direct_test_macro_call_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_wrapped_test_call_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_macro_returns_difference` (tests/it.rs:2) -> direct macro `call_inner!` at tests/it.rs:3",
+          "first_unresolved_edge": "macro `call_inner!` expansion toward owner `inner`",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro-generated path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-aware-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "rust_macro_wrapped_assertion_named_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_macro_wrapped_assertion_limitation",
+      "vector": "custom_assertion_macro_named_not_silently_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_wrapped_assertion_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10",
+          "first_unresolved_edge": "assertion macro `assert_result!` semantics toward the changed owner",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-macro-assertion-oracle"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_preview_card_advisory_no_repair_packet",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl-preview-advisory-no-packet.json",
+      "vector": "perl_preview_card_advisory_only",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "scope_committed_diff_changed_rust_file",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/boundary_gap",
+      "vector": "committed_diff_changed_file_scope_count",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_changed_rust_files", "count": 1 },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "scope_no_scope_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-no-scope-empty-not-clean.json",
+      "vector": "empty_result_no_scope_disclosure_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_no_scope" }
+      ]
+    },
+    {
+      "id": "scope_unanalyzed_worktree_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-unanalyzed-worktree-empty-not-clean.json",
+      "vector": "empty_base_head_dirty_worktree_disclosure_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_unanalyzed_working_tree" }
+      ]
+    },
+    {
+      "id": "scope_worktree_dirty_analyzed_not_excluded",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-worktree-dirty-analyzed-not-excluded.json",
+      "vector": "dirty_worktree_explicitly_analyzed_not_reported_excluded",
+      "assertions": [
+        { "type": "must_see_changed_file", "path": "src/lib.rs" },
+        { "type": "expected_changed_rust_files", "count": 1 },
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_disclose_no_scope" },
+        { "type": "must_not_disclose_unanalyzed_working_tree" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "no_static_path" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "scope_clean_complete_empty_may_be_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-clean-complete-empty-may-be-clean.json",
+      "vector": "empty_complete_scope_can_report_clean",
+      "assertions": [
+        { "type": "must_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_changed_rust_files", "count": 0 },
+        { "type": "expected_completeness", "completeness": "complete" }
+      ]
+    },
+    {
+      "id": "scope_limited_empty_not_clean",
+      "language": "rust",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/scope-limited-empty-not-clean.json",
+      "vector": "empty_limited_scope_not_clean",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "expected_completeness", "completeness": "limited" }
+      ]
+    },
+    {
+      "id": "rust_semver_matches_greater_external_limitation",
+      "language": "rust",
+      "tier": "pinned_external",
+      "external_repo": "https://github.com/dtolnay/semver",
+      "external_commit": "2c18cc482244f4bb9cc65003b07426c18a79a190",
+      "external_patch": "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
+      "external_command": "ripr check --root {checkout} --diff {external_patch} --mode fast --json",
+      "runtime_budget_seconds": 120,
+      "artifact_budget_bytes": 10485760,
+      "assertions": [
+        { "type": "must_see_changed_file", "path": "src/eval.rs" },
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_integration_public_api_path_unresolved"
+        },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_disclose_witness" },
+        { "type": "must_disclose_limitation_detail" },
+        {
+          "type": "expected_limitation_detail",
+          "last_established_edge": "test `test_basic` (tests/test_version_req.rs:38) -> entry `assert_match_all`",
+          "first_unresolved_edge": "entry `assert_match_all` -> owner `matches_greater` through a transitive Rust helper path",
+          "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        },
+        {
+          "type": "expected_limitation_route",
+          "route": "analysis/rust-public-api-transitive-reach"
+        },
+        { "type": "must_not_claim_no_tests_found" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
     }
   ]
 }

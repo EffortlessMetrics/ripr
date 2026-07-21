@@ -34,13 +34,25 @@ not expose receipt commands, edit-boundary authority, or agent packets, and
 remains advisory review context rather than verify, receipt, gate, badge, or
 RIPR Zero authority.
 
+`ripr check --format human` is the bounded default terminal surface. It prints
+header and summary counts, then one `Start here:` triage block with a closed
+state (`top_gap`, `no_actionable_gap`, `preview_limited`, `static_limited`, or
+`missing_scope`), one selected finding digest when available, an omitted-finding
+count, and pointers to `--format human-full` and `--format json`.
+`ripr check --format human-full` (alias `text-full`) preserves the exhaustive
+per-finding human report. These human text formats do not change
+`schema_version`; the machine-readable contract remains `--format json`.
+Repo-scoped formats such as `repo-exposure-json`, `repo-exposure-md`,
+`repo-sarif`, and `agent-seam-packets-json` warn on stderr when paired with
+`--base` or `--diff`, because those flags do not bound full-repo formats.
+
 ## Check Output
 
 `ripr check --json` emits:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "mode": "draft",
   "root": ".",
@@ -66,6 +78,24 @@ When supported raw findings align to a canonical evidence item, `ripr check
 omitted when no supported alignment item is present, so existing consumers can
 continue to read `findings` directly. Raw findings remain unchanged and are
 repeated only as supporting evidence for the canonical item.
+
+When Rust diff-scoped analysis stops at a configured budget before probe
+expansion, `ripr check --json` still exits non-zero, but it writes a limited
+check artifact to stdout before reporting the error on stderr. This artifact
+preserves the normal check envelope (`schema_version`, `tool`, `mode`, `root`,
+`summary`, and `findings`) and adds:
+
+- `analysis_scope.run_status: "diff_scope_oversized"`
+- `analysis_scope.basis: "rust_diff_scope_budget"`
+- `analysis_scope.downstream_consumable: false`
+- `analysis_scope.limitation: "diff_scope_oversized"`
+- `analysis_scope.repair_route: "analysis/diff-scope-budget"`
+- `run_limitations[]` with the same category, run status, repair route, and the
+  budget diagnostic message
+
+Consumers must not treat a limited `diff_scope_oversized` artifact as a clean
+or complete analysis. The zero summary and empty `findings` array mean analysis
+did not run far enough to classify probes, not that the diff has no findings.
 
 ```json
 {
@@ -655,6 +685,16 @@ The evidence-first fields are additive in schema `0.2`:
       `has_dynamic_matcher_arg = true` when the argument is not a resolvable
       literal. The limitation explains that the expected discriminator value
       cannot be statically resolved.
+    - `typescript_table_case_unresolved` — fired when an oracle-eligible
+      `test.each(...)` / `it.each(...)` table case uses a row-derived dynamic
+      matcher argument. The real producer uses table-call test extraction plus
+      `has_dynamic_matcher_arg = true`; the limitation explains that syntax-only
+      preview evidence cannot bind the row to a concrete expected value.
+    - `typescript_oracle_helper_gated` — fired when an oracle-eligible related
+      test calls an assertion-shaped helper around the changed owner call but no
+      direct supported assertion is extracted. The limitation explains that the
+      adapter cannot inspect the helper body or prove its oracle semantics from
+      the call site.
     - `typescript_target_unresolved` — fired (RIPR-SPEC-0085 §PR6) when a test
       in a different package references the owner by call name but is excluded by
       the package-local ownership filter. The real producer is
@@ -662,14 +702,174 @@ The evidence-first fields are additive in schema `0.2`:
       confirms the cross-package exclusion by comparing candidates with vs.
       without the package-local filter. Only emitted when `workspace_root` is
       `Some` (i.e. in production, not in unit tests without a workspace root).
-    Deferred (no producer yet, NOT emitted): `typescript_table_case_unresolved`,
-    `typescript_oracle_helper_gated`.
   - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
     `file:line` of the real AST evidence that triggered the named limitation.
   - `typescript_limitation_why: <name> — <why>` — additive; human-readable
     reason why the finding is not actionable for this limitation.
   - `typescript_limitation_repair_route: <name> → <route>` — additive; pointer
     to the analyzer backlog slice that would resolve this limitation.
+
+#### TypeScript Limitation Leaderboard Report
+
+`ripr reports ts-limitations --check-output <check.json>` writes advisory JSON
+and Markdown reports to:
+
+```text
+target/ripr/reports/typescript-limitations.json
+target/ripr/reports/typescript-limitations.md
+```
+
+The command reads an existing `ripr check --json` artifact. It does not rerun
+analysis, execute TypeScript tests, edit source, generate tests, call providers,
+run mutation testing, publish comments, change gates, or contribute badge
+authority.
+
+JSON fields:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "typescript_limitation_leaderboard",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1720000000000",
+  "inputs": {
+    "check_output": "target/ripr/reports/check.json"
+  },
+  "summary": {
+    "findings_total": 4,
+    "typescript_family_findings_total": 4,
+    "limitations_total": 12,
+    "distinct_limitations_total": 6,
+    "top_limitation_kind": "typescript_package_root_unresolved"
+  },
+  "limitations": [
+    {
+      "kind": "typescript_package_root_unresolved",
+      "count": 4,
+      "sources": ["typescript_package_limitation"],
+      "samples": [
+        {
+          "finding_id": "probe:src_dispatch.ts:typescript_preview:dd0f8848",
+          "language": "typescript",
+          "file": "src/dispatch.ts",
+          "line": 2
+        }
+      ]
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory TypeScript-family preview limitation counts only.",
+    "Counts come from explicit check JSON evidence; this report does not rerun analysis.",
+    "This report does not execute TypeScript tests, edit source, generate tests, call providers, change gates, or contribute badge authority."
+  ]
+}
+```
+
+- `status` is `advisory` when the supplied check output parsed, even when no
+  TypeScript-family limitation signals were found. It is `blocked` when the
+  artifact is missing, unreadable, malformed, or lacks a `findings` array.
+- `limitations[].kind` is counted once per finding per kind. Duplicate evidence
+  lines in the same finding do not inflate counts.
+- `sources[]` names where the limitation signal came from:
+  `typescript_limitation`, `typescript_package_limitation`, or
+  `static_limit_kind`. Static `missing_import_graph` and `mocked_module`
+  findings are normalized to the corresponding TypeScript named limitation
+  (`typescript_import_graph_unresolved` or `typescript_mock_only_observer`) so
+  the leaderboard groups equivalent signals together.
+  Other TypeScript-family `static_limit_kind` values keep their existing
+  static-limit vocabulary.
+  This normalization is for report grouping only and does not change check JSON.
+  It is not a support-tier, gate, badge, baseline, or RIPR Zero claim.
+  Samples are bounded to three findings per limitation kind and are examples,
+  not exhaustive proof.
+
+#### TypeScript False-Actionable Audit Report
+
+`ripr reports ts-false-actionable --corpus
+fixtures/typescript-preview-false-actionable-audit/corpus.json` writes
+advisory JSON and Markdown reports to:
+
+```text
+target/ripr/reports/typescript-false-actionable-audit.json
+target/ripr/reports/typescript-false-actionable-audit.md
+```
+
+The command reads an existing TypeScript-family preview audit corpus. It does
+not rerun analysis, execute TypeScript tests, edit source, generate tests, call
+providers, run mutation testing, publish comments, change gates, contribute
+badge/baseline/RIPR Zero authority, or promote support tiers.
+
+JSON fields:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "typescript_false_actionable_audit",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1720000000000",
+  "inputs": {
+    "corpus": "fixtures/typescript-preview-false-actionable-audit/corpus.json"
+  },
+  "summary": {
+    "cases_total": 14,
+    "must_remain_non_actionable_total": 14,
+    "repair_packet_ready_true_total": 0,
+    "actionable_gap_state_total": 0,
+    "complete_packet_category_total": 0,
+    "false_actionable_total": 0,
+    "false_actionable_denominator": 14,
+    "false_actionable_rate": 0.0,
+    "preview_boundary_violation_total": 0
+  },
+  "disposition_counts": [
+    { "value": "candidate_future_support", "count": 7 }
+  ],
+  "risk_class_counts": [
+    { "value": "mock interaction payload gap", "count": 1 }
+  ],
+  "cases": [
+    {
+      "id": "mock_interaction_without_payload_proof",
+      "language": "typescript",
+      "risk_class": "mock interaction payload gap",
+      "evidence_kind": "mock_interaction",
+      "disposition": "candidate_future_support",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
+      "repair_packet_ready": false,
+      "must_remain_non_actionable": true,
+      "authority_boundary": "preview_advisory_only",
+      "false_actionable": false,
+      "source_fixture": "fixtures/typescript_jest_vitest_assertion_facts",
+      "source_finding_id": "probe:src_checkout.ts:typescript_preview:mock"
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory TypeScript-family preview audit metric only.",
+    "The false-actionable rate is computed from explicit audit corpus rows; this report does not rerun analysis or execute TypeScript tests.",
+    "This report does not edit source, generate tests, call providers, run mutation testing, change gates, contribute badge authority, or promote support tiers."
+  ]
+}
+```
+
+- `status` is `advisory` when the supplied corpus parsed. It is `blocked` when
+  the artifact is missing, unreadable, malformed, or not the expected
+  `typescript_preview_false_actionable_audit_corpus` shape.
+- `summary.false_actionable_total` counts audit rows marked
+  `must_remain_non_actionable` that also set `repair_packet_ready = true`,
+  `gap_state = "actionable"`, or
+  `actionability_category = "complete_repair_packet"`.
+- `summary.false_actionable_denominator` is the number of
+  `must_remain_non_actionable` rows, not all TypeScript findings.
+- The report is an audit over explicit preview rows. It is not evidence that
+  TypeScript support is usable alpha, gate eligible, badge eligible, baseline
+  eligible, RIPR Zero eligible, or runtime adequate.
 - Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5). ADDITIVE: do not change
   `oracle_kind`, `oracle_strength`, `static_limit_kind`, or `repair_packet_ready`.
   Emitted from the strongest oracle-eligible assertion across all oracle-eligible
@@ -758,7 +958,15 @@ The evidence-first fields are additive in schema `0.2`:
   evidence, receipt evidence, stop conditions, must-not-change constraints, and
   safe repo-relative raw evidence refs. It is a check JSON, human CLI, SARIF,
   GitHub annotation, and gap-ledger Markdown advisory card, not a public repair
-  packet. The v1 card carries
+  packet. **Scope caveat (Campaign 31 #1379):** the renderer is real production
+  code, but in the current state it projects only from synthetic test findings —
+  no production Perl source can produce a finding that carries this card,
+  because the Perl adapter module is `#[cfg(test)] mod perl;`, the path router
+  ignores `.pm`/`.pl`/`.t`/`.psgi`, and the upstream `perl-lsp ripr-facts`
+  exporter does not exist yet. Perl's support tier is `scaffold`, not `preview`
+  (see [Support Tiers](status/SUPPORT_TIERS.md)). The card lights up for real
+  Perl source once Campaign 31 lands the production exporter + consumer bridge.
+  The v1 card carries
   `card_version`, `source`,
   `language`, `language_status`, `authority_boundary`, `surface_scope`,
   `public_projection_ready`, `public_repair_packet`, `repair_packet_ready`,
@@ -788,12 +996,13 @@ The evidence-first fields are additive in schema `0.2`:
   forbidden files, receipt argv, PR, CI, LSP, swarm routing, badge authority,
   gate authority, or RIPR Zero authority in this slice.
 - `ripr reports gap-ledger --check-output <check.json>` can derive PR-local
-  Python `GapRecord` entries from findings that carry `python_repair_card`.
-  Those records are advisory preview inputs for `ripr agent packet
-  --gap-ledger ... --gap-id ... --json`; they preserve the canonical Python gap
-  ID, source anchor, suggested test location, verify command, stop conditions,
-  and preview authority boundary without rerunning analysis or claiming
-  before/after closure.
+  Python and TypeScript `GapRecord` entries from findings that carry
+  `python_repair_card` or `typescript_repair_packet`. Those records are
+  advisory preview inputs for `ripr agent packet --gap-ledger ... --gap-id ...
+  --json`; they preserve the canonical preview-language gap ID, source anchor,
+  suggested test location, verify command, stop conditions, and preview
+  authority boundary without rerunning analysis or claiming before/after
+  closure.
 - `canonical_gap_id` is an additive optional stable identity for a
   language-qualified behavioral gap when the producer can name one without
   relying on line numbers alone. Python preview values use
@@ -828,7 +1037,23 @@ The evidence-first fields are additive in schema `0.2`:
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
   `decorator_indirection`, `mocked_module`,
   `opaque_custom_assertion_helper`, `property_based_test`,
-  `unresolved_pytest_fixture`, or `unsupported_syntax`.
+  `unresolved_pytest_fixture`, `unsupported_syntax`,
+  `cross_language_oracle_visibility_unresolved`,
+  `rust_transitive_reach_unresolved`,
+  `rust_integration_public_api_path_unresolved`, or
+  `rust_macro_reach_unresolved`, or
+  `rust_macro_wrapped_test_call_unresolved`, or
+  `rust_macro_wrapped_assertion_unresolved`.
+- `static_limitation` is an additive optional per-finding object emitted only
+  when a finding with `static_limit_kind` also carries a complete structured
+  limitation detail. Current Rust transitive-reach, integration public-API path,
+  macro-reach, direct test macro-call, and macro-wrapped assertion limitations
+  populate it from the same evidence lines rendered in human output. Fields are
+  `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`,
+  and `non_claim`. The object is absent for static limits that do not have all
+  four detail fields; consumers should keep using `static_limit_kind` as the
+  limitation discriminator and treat `static_limitation` as richer detail when
+  present.
 
 ### `preview_languages` (top-level additive advisory, RIPR-SPEC-0082)
 
@@ -900,6 +1125,89 @@ requires no disclosure.
 - `category` — always `"no_scope_disclosure"` for machine filtering
 - `why` — advisory rationale string guiding the user to the correct invocation
 
+### `unanalyzed_working_tree` (top-level additive boolean, RIPR-SPEC-0112)
+
+Added as an additive optional top-level boolean. Emitted (as `true`) only when
+ALL of the following are true:
+
+1. `ripr check --base <rev>` was invoked (i.e. `--base` was explicit).
+2. `--diff <file>` was NOT also supplied.
+3. The working tree has at least one uncommitted change to a tracked source
+   file, as reported by `git status --porcelain`.
+
+Absent (not emitted) when `false`. Does not bump `schema_version`.
+
+This field closes the false-clean gap where `ripr check --base HEAD` with an
+uncommitted `.rs` edit returns 0 probes and exit 0 — a result that is honest
+for the committed diff but misleading if the user assumes it covers their
+working-tree change. When `unanalyzed_working_tree: true` is present, the
+result is NOT a clean pass for the uncommitted changes.
+
+Example:
+
+```json
+"unanalyzed_working_tree": true
+```
+
+The field is absent when the worktree is clean, when `--diff <file>` was used
+instead of `--base`, when `--worktree` was used to include staged and unstaged
+tracked edits in the analyzed diff, or when `git status --porcelain` cannot be
+run (fail-closed: no fabricated disclosure).
+
+### `suppression_policy` and suppressed findings (top-level additive, #1441)
+
+Emitted only when `ripr check` is invoked with `--suppression-policy PATH`.
+Absent otherwise, so consumers without a policy see byte-identical output.
+Does not bump `schema_version`.
+
+The policy file uses the `.ripr/suppressions.toml` schema. `exposure_gap`
+entries select findings either by exact `finding_id` (the existing selector)
+or by a `path` glob over root-relative finding paths (`**` spans path
+segments, `*` and `?` stay within one segment), optionally narrowed by
+`static_class` (which must then be one of the seven `classification` values).
+Expired entries are not applied; expired and unmatched selectors surface as
+warnings. A missing or malformed policy fails the run (fail-closed): the run
+never silently emits unfiltered counts as if a policy had been applied.
+
+Three surfaces change when the flag is present:
+
+- `summary.suppressed_by_policy` — count of suppressed findings. The
+  per-class `summary` buckets (`exposed` … `static_unknown`) count
+  unsuppressed findings only; buckets plus `suppressed_by_policy` add back
+  up to `summary.findings`, which stays the total rendered count.
+- `findings[].suppressed` / `findings[].suppressed_by` — suppressed findings
+  stay fully rendered (visible, not hidden) and carry `"suppressed": true`
+  plus the selector (`finding_id` or path glob) that matched. The first
+  matching entry in policy-file order names the selector.
+- top-level `suppression_policy` object — `path` (as supplied), `suppressed`
+  (count), and `warnings` (expired/unmatched selector strings).
+
+Example:
+
+```json
+"summary": {"findings": 2, "no_static_path": 1, "suppressed_by_policy": 1},
+"findings": [
+  {"id": "probe:docs_gen_a", "suppressed": true, "suppressed_by": "docs/gen/**", ...},
+  {"id": "probe:src_lib", ...}
+],
+"suppression_policy": {
+  "path": "policy/ripr-suppressions.toml",
+  "suppressed": 1,
+  "warnings": []
+}
+```
+
+Scope: the flag applies to the findings-based check formats (`human`,
+`human-full`, `json`, `github`). Human output lists suppressed findings as compact
+one-liners instead of detailed blocks; GitHub-format output skips
+annotations for suppressed findings. SARIF keeps its existing
+`.ripr/suppressions.toml` `finding_id` suppression channel, and badge/repo
+formats keep their own suppression projections — `ripr check` rejects the
+flag for those formats instead of silently ignoring it. Date-expiry
+enforcement beyond `expires` (review-after deadlines, required-active
+ledgers) belongs to the gate exception policy (#1442), not check
+suppression.
+
 ## Enums
 
 `classification` values:
@@ -948,6 +1256,15 @@ requires no disclosure.
 - `unresolved_pytest_fixture`
 - `unsupported_syntax`
 - `cross_language_oracle_visibility_unresolved` — The changed Rust seam owner is FFI/binding-exposed; whether an external-language (e.g. TypeScript) test oracle discriminates this behavior is not statically known — verify the external oracle rather than adding a Rust test.
+- `rust_transitive_reach_unresolved` — (RIPR-SPEC-0114, additive) A test appears to call public API that may transitively reach the changed Rust owner through a pub->pub(crate) helper chain or similar internal call graph, but ripr cannot fully resolve the path (macros, generics, trait dispatch, or depth>5 stop the walk). Classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
+- `rust_integration_public_api_path_unresolved` -- (RIPR-SPEC-0118, additive) An integration test appears to call crate public API, or a test helper that calls crate public API, along a candidate path toward the changed Rust owner. RIPR cannot fully resolve that integration/public-API path, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
+
+- `rust_macro_reach_unresolved` -- (RIPR-SPEC-0117, additive) A test appears to call a Rust entry point whose path toward the changed owner stops at a same-repo macro invocation. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a coverage claim.
+
+- `rust_macro_wrapped_test_call_unresolved` -- (RIPR-SPEC-0119, additive) A Rust test directly invokes a same-repo macro whose definition mentions the changed owner. ripr does not expand macros, so classification stays `no_static_path`; this is a named limitation, not a reach, coverage, or oracle claim.
+
+- `rust_macro_wrapped_assertion_unresolved` -- (RIPR-SPEC-0120, additive) A Rust test reaches the changed owner, but its assertion-like custom macro is not classified as an oracle. Classification stays `reachable_unrevealed`; this is a named limitation, not an oracle, coverage, or repair-packet claim.
 
 Reserved `flow_sink` values:
 
@@ -1026,6 +1343,7 @@ while `call_effect` remains the fallback for other observable calls.
 - `feature_unknown`
 - `async_boundary_opaque`
 - `no_changed_rust_line`
+- `macro_reach_unresolved`
 - `infection_evidence_unknown`
 - `propagation_evidence_unknown`
 - `static_probe_unknown`
@@ -1048,16 +1366,16 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.5`:
+Native schema `0.7`:
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.7",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
   "label": "ripr",
-  "message": "0",
+  "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
   "counts": {
@@ -1090,17 +1408,29 @@ Native schema `0.5`:
     "test_intent_path": ".ripr/test_intent.toml",
     "suppressions_path": ".ripr/suppressions.toml"
   },
-  "warnings": []
+  "warnings": [],
+  "preview_skipped": [],
+  "public_projection": {
+    "state": "zero_actionable",
+    "message": "0 actionable",
+    "run_status": "full",
+    "generated_at": "2026-06-20T00:00:00Z",
+    "actionable_count": 0,
+    "limited_reason": null,
+    "stale_age_secs": 0,
+    "source_report": "target/ripr/reports/repo-ripr-badge.json"
+  }
 }
 ```
 
 Field contract:
 
-- `schema_version` — currently `"0.5"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.7"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
   `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
   `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
-  projection.
+  projection; `0.6` adds `preview_skipped`; `0.7` adds the
+  `public_projection` object (RIPR-SPEC-0066) on repo-scoped public badges.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
@@ -1111,8 +1441,12 @@ Field contract:
   rendered from supplied GapRecord projection targets. Diff-scoped badge
   formats currently use `finding_exposure`; repo-scoped public badge formats
   use `canonical_actionable_gap` unless `--gap-ledger` is supplied.
-- `message` — the headline count rendered as a string for Shields
-  compatibility. It is a count, never a denominator or coverage fraction.
+- `message` — the headline rendered as a string for Shields compatibility.
+  Diff-scoped and internal badges render the bare count (for example `"5"`).
+  Repo-scoped public badges render the closed RIPR-SPEC-0066 vocabulary
+  (`"0 actionable"`, `"<n> actionable"`, `"limited"`, `"stale"`, or
+  `"unknown"`), combined with the `label` to read as `ripr: <n> actionable`.
+  It is a count or a named state, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
   `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
   repo public scope: unresolved actionable canonical repair items; seam-native
@@ -1132,6 +1466,33 @@ Field contract:
   canonical-actionable basis; `0` for finding-exposure and seam-native badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
+- `preview_skipped` — (v0.6) array of preview-language adapter names detected
+  in the diff but not enabled; a non-empty list means the result is not a
+  clean Rust-grade result. Always present as an array (possibly empty).
+- `public_projection` — (v0.7) present only on repo-scoped public badges
+  (`canonical_actionable_gap` or `gap_decision_ledger` basis). The
+  RIPR-SPEC-0066 projection of the badge into one closed public state plus
+  the required sidecar fields. Absent on diff-scoped and internal badges.
+  When present, the native `message` / `status` / `color` are projected from
+  it. Fields:
+  - `state` — one of `zero_actionable`, `actionable`, `limited`, `stale`,
+    `unknown`. Selected with fail-closed precedence
+    (`unknown > stale > limited > count`); a degraded input never resolves
+    toward the cleaner-looking state.
+  - `message` — the Shields message for the state (label-agnostic, e.g.
+    `0 actionable`, `limited`).
+  - `run_status` — Lane-1 completeness state of the source run (`full` or a
+    named `limited_*` value).
+  - `generated_at` — RFC3339 UTC timestamp the badge was generated, or `null`.
+  - `actionable_count` — unresolved canonical actionable gap count; present
+    only for the count states (`zero_actionable` / `actionable`), `null`
+    alongside any degraded state.
+  - `limited_reason` — the `limitation_category` (and repair route) for a
+    `limited` state; `null` otherwise.
+  - `stale_age_secs` — age of the artifact relative to its source at
+    evaluation time, in seconds; `null` when `generated_at` is unknown.
+  - `source_report` — repo-relative path the badge was projected from, or
+    `null`.
 
 Shields projection:
 
@@ -1421,6 +1782,38 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
   "related_tests": [],
   "observed_values": [],
   "missing_discriminators": [],
+  "witness": {
+    "kind": "static_discriminator_gap",
+    "probe_family": "predicate",
+    "changed_expression": "amount >= discount_threshold",
+    "before": "amount > discount_threshold",
+    "after": "amount >= discount_threshold",
+    "expected_sink": "return_value",
+    "missing_discriminators": [
+      {
+        "value": "amount == discount_threshold",
+        "reason": "the current tests do not distinguish the equality boundary"
+      }
+    ],
+    "fix_site": {
+      "file": "tests/pricing.rs",
+      "line": 42,
+      "test_name": "discount_at_threshold",
+      "current_oracle": "assert!(result.is_some())",
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "weak",
+      "oracle_location": { "file": "tests/pricing.rs", "line": 44 }
+    },
+    "suggested_assertion": null,
+    "explain_command": "ripr explain --root . probe:src_lib.rs:predicate:bbaa2c25",
+    "confidence": { "value": 0.75, "basis": "static_only" },
+    "limitations": [
+      {
+        "kind": "suggested_assertion_unavailable",
+        "detail": "No producer-owned symbol-resolved assertion template is available."
+      }
+    ]
+  },
   "missing": [],
   "stop_reasons": [],
   "recommended_next_step": "Add below, equal, and above threshold tests."
@@ -1428,7 +1821,13 @@ Policy reports are advisory unless `--mode fail-on-new-warning` is used.
 ```
 
 The context packet is intentionally smaller than check output. It is optimized
-for coding agents and editor commands.
+for coding agents and editor commands. `witness` is additive and is omitted
+when an exposed finding has no unresolved discriminator. It contains only
+producer-owned facts: `fix_site` and `oracle_location` are absent when the
+producer cannot identify them, and `suggested_assertion` remains `null` until
+the producer supplies a symbol-resolved assertion template. `limitations[]`
+names unavailable evidence; renderers must not infer it from paths, lines,
+classes, or prose.
 
 ## Repo Seam Inventory
 
@@ -1948,22 +2347,42 @@ Field contract:
   truncated the inventory. Consumers must read `run_status` before
   treating counts as complete-repo totals. Added as an additive field
   within schema version `0.3` per RIPR-SPEC-0074.
-- `limitations[]` — present only when `run_status` is
-  `"seam_limit_applied"`. Each entry carries:
-  - `category` — `"repo_seam_limit_applied"`.
-  - `seams_analyzed` — number of seams that were classified.
-  - `seams_total` — total seams before truncation.
-  - `limit_source` — `"default"` when the cap came from the built-in
-    default (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`);
-    `"configured"` when `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly
-    set in the environment. Added as an additive field within schema
-    version `0.3` per RIPR-SPEC-0074 Slice B.
-  - `control` — the env var that triggered the limit:
-    `"RIPR_REPO_EXPOSURE_SEAM_LIMIT"`.
-  - `repair_route` — human-readable instructions. When `limit_source`
-    is `"default"`: set `RIPR_REPO_EXPOSURE_SEAM_LIMIT=0` to analyze
-    all seams. When `limit_source` is `"configured"`: remove or raise
-    the env var.
+- `limitations[]` — present when repo exposure has a named run limitation or
+  guidance disclosure. Consumers must branch on `category`.
+  - `category: "repo_seam_limit_applied"` appears when `run_status` is
+    `"seam_limit_applied"`. It carries `seams_analyzed`, `seams_total`,
+    `limit_source`, `control`, and `repair_route`. `limit_source` is
+    `"default"` when the cap came from the built-in default
+    (`DEFAULT_REPO_EXPOSURE_SEAM_LIMIT = 10_000`) and `"configured"` when
+    `RIPR_REPO_EXPOSURE_SEAM_LIMIT` was explicitly set in the environment.
+  - `category: "typescript_diff_first"` appears when a TS/JS-predominant
+    workspace has TS/JS files, no Rust files, and zero classified seams.
+    `run_status` remains `"complete"` because the Rust repo-exposure scan
+    completed. It carries `ts_file_count`, `repair_route`, and the optional
+    nested `typescript_readiness` object.
+  - `typescript_readiness.source` is
+    `"repo_exposure_typescript_readiness.v1"`.
+  - `typescript_readiness.authority_boundary` is
+    `"preview_advisory_only"`.
+  - `typescript_readiness.analysis_model` is `"diff_first"`.
+  - `typescript_readiness.source_file_count` is the count of TS/JS files not
+    detected as tests.
+  - `typescript_readiness.test_file_count` is the count of detected TS/JS test
+    files.
+  - `typescript_readiness.package_root_count` is the count of distinct package
+    roots resolved from detected TS/JS files.
+  - `typescript_readiness.package_confidence` is `none`, `low`, `medium`, or
+    `high`; it is the highest package discovery confidence across detected
+    TS/JS files.
+  - `typescript_readiness.runner_status` is `no_tests_detected`, `resolved`,
+    `partial`, or `unresolved`.
+  - `typescript_readiness.verify_command_count` is the number of detected test
+    files with a concrete verify command.
+  - `typescript_readiness.top_blocker` is the top missing readiness signal, or
+    `null`.
+  - `typescript_readiness.non_claims[]` states that the card does not emit
+    full-repo TypeScript seams, run TypeScript tests, or create gate/badge
+    authority.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
   zero so consumers can plot stable bar charts.
@@ -2007,9 +2426,15 @@ Field contract:
   `activation_overlap` is a static tie-breaker from already observed call
   values, such as a predicate-boundary equality call. `related_tests_total` is
   unaffected by ranking.
-- `seams[].observed_values` — literal scalar values seen in owner-call
-  arguments across related tests. Bare identifiers and helper-derived
-  values are intentionally excluded.
+- `seams[].observed_values` — statically resolved scalar values seen in
+  owner-call arguments across related tests. In addition to direct literals,
+  Rust predicate boundaries may carry exact values from source-ordered direct
+  field assignments whose right-hand side is a same-file literal constant or
+  that constant plus/minus a bounded integer offset. The write must be an
+  unconditional function-body statement with no intervening explicit mutable
+  borrow before the owner call. Other bare identifiers, helper-derived values,
+  conditional writes, invalidated values, and ambiguous field writes are
+  intentionally excluded.
 - `seams[].missing_discriminators` — per-rule hypothesis strings (e.g.,
   the equality-boundary case for predicate seams). Empty when no rule
   fires.
@@ -2052,6 +2477,9 @@ Field contract:
   unknown states. Downstream canonical-item consumers may use these category
   and repair-route rows to explain why an item is not actionable, but must not
   treat them as user test debt.
+  `field_assignment_value_unresolved` routes to
+  `analysis/field-assignment-value-resolution` when a direct Rust field write
+  is present but its value is outside the safe literal/constant-offset subset.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
@@ -2376,7 +2804,8 @@ Field contract:
   `activation_owner_call_absent_assertion_target_affinity`,
   `activation_owner_call_absent_affinity_only`,
   `activation_owner_call_absent_same_file_only`,
-  `activation_owner_call_unresolved`, `opaque_helper_call`,
+  `activation_owner_call_unresolved`, `constructor_field_owner_ambiguous`,
+  `opaque_helper_call`,
   `cross_file_constant_unresolved`, `dynamic_dispatch`,
   `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
@@ -2404,6 +2833,11 @@ Field contract:
   missing-owner-call routes, so analyzer work can distinguish local receiver
   method evidence from free-function call tracing without making the item
   actionable.
+- `constructor_field_owner_ambiguous` routes to
+  `analysis/constructor-field-observation`; it means an exact-field observer
+  exists but a same-name same-crate caller maps to multiple possible owners.
+  The seam remains a static limitation rather than selecting an owner or
+  presenting the field observer as actionable closure evidence.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.
@@ -5313,8 +5747,8 @@ The report is an advisory receipt for the targeted-test loop. It does not run
 analysis, mutation testing, SARIF policy, or badge generation; it only compares
 the two supplied static artifacts. Repo-exposure seams are matched by
 `seam_id`; check-output findings are matched by `canonical_gap_id`, which lets
-Python preview repair cards produce before/after receipts without a Python-only
-receipt command.
+Python repair cards and TypeScript repair packets produce before/after receipts
+without language-specific receipt commands.
 
 JSON shape:
 
@@ -5450,8 +5884,8 @@ JSON shape:
 }
 ```
 
-For check-output snapshots, `seam_id` is the canonical gap ID. A Python preview
-gap that moves from `weakly_exposed` to `exposed` is rendered as
+For check-output snapshots, `seam_id` is the canonical gap ID. A Python or
+TypeScript preview gap that moves from `weakly_exposed` to `exposed` is rendered as
 `weakly_gripped -> strongly_gripped` with `gap_movement = "closed"`. This is
 still static/advisory evidence: verify success and a closed gap movement are
 receipt signals, not runtime mutation proof or correctness proof.
@@ -5472,6 +5906,12 @@ receipts at
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.json`,
 and
 `fixtures/first_successful_pr/python-preview-gap/expected/outcome/weakened.md`.
+The TypeScript preview packet receipt path is pinned by
+`fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json`,
+`fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json`,
+`fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json`,
+and
+`fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md`.
 The non-boundary return-value receipt path is pinned by
 `fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json`,
 `fixtures/first_successful_pr/python-return-gap/inputs/reports/after-check.json`,
@@ -5852,8 +6292,11 @@ instead of full-repo truth: changed production files plus bounded immediate
 caller files. The JSON and Markdown carry `analysis_scope.run_status =
 "limited_diff_scope"` and the `review_comments_diff_scope_only` limitation
 route so large-repo users can see the narrowed basis. When `--gap-ledger` is
-supplied, the command does not rerun analysis; it renders changed-line repair
-cards only from explicit `GapRecord` entries with
+supplied, the JSON and Markdown carry `analysis_scope.run_status =
+"artifact_scope"` and the `review_comments_gap_ledger_artifact_scope_only`
+limitation route so users can see that RIPR consumed a supplied ledger artifact
+rather than rerunning diff or full-repo analysis. The command renders
+changed-line repair cards only from explicit `GapRecord` entries with
 `projection_eligibility.pr_comment.eligible = true`, PR-local scope, a stable
 anchor, a dedupe fingerprint, a repair route, and verification commands. It
 does not post to GitHub, run mutation testing, refresh LSP state, edit source
@@ -5876,22 +6319,22 @@ JSON shape:
     "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
   },
   "analysis_scope": {
-    "scope": "diff_scoped_changed_files",
-    "run_status": "limited_diff_scope",
-    "basis": "changed_production_files_plus_immediate_callers",
+    "scope": "gap_ledger_artifact",
+    "run_status": "artifact_scope",
+    "basis": "supplied_gap_decision_ledger",
     "changed_files": ["src/pricing.rs"],
     "changed_lines": 1,
-    "changed_owner_functions": 1,
+    "changed_owner_functions": 0,
     "changed_production_files": ["src/pricing.rs"],
-    "immediate_caller_files": ["src/checkout.rs"],
-    "scoped_production_files": ["src/pricing.rs", "src/checkout.rs"],
-    "total_rust_files": 412000,
-    "total_production_files": 411000,
-    "production_files_considered": 2,
-    "classified_seams_considered": 7,
+    "immediate_caller_files": [],
+    "scoped_production_files": ["src/pricing.rs"],
+    "total_rust_files": null,
+    "total_production_files": null,
+    "production_files_considered": 1,
+    "classified_seams_considered": 1,
     "downstream_consumable": true,
-    "limitation": "review_comments_diff_scope_only",
-    "repair_route": "analysis/diff-scoped-large-repo-review-fast-path"
+    "limitation": "review_comments_gap_ledger_artifact_scope_only",
+    "repair_route": "reports/gap-decision-ledger"
   },
   "limits": {
     "max_inline_comments": 3,
@@ -5907,6 +6350,7 @@ JSON shape:
     {
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
+      "canonical_gap_id": "gap:67fc764ba37d77bd",
       "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
       "placement": {
         "path": "src/pricing.rs",
@@ -5916,6 +6360,8 @@ JSON shape:
       },
       "kind": "predicate_boundary",
       "grip_class": "weakly_gripped",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "severity": "warning",
       "source_location": {
         "file": "src/pricing.rs",
@@ -5934,7 +6380,12 @@ JSON shape:
         "assertion_kind": "exact_value",
         "recommended_file": "tests/pricing.rs",
         "recommended_name": "discounted_total_boundary",
-        "near_test": "applies_discount_above_threshold"
+        "near_test": "applies_discount_above_threshold",
+        "related_test": {
+          "name": "applies_discount_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": 18
+        }
       },
       "llm_guidance": {
         "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
@@ -5971,15 +6422,19 @@ Field contract:
   and RIPR analysis mode used to render the report.
 - `inputs.gap_ledger` - optional explicit gap decision ledger used for
   repair-card projection. It is present only when `--gap-ledger` is supplied.
-- `analysis_scope` - optional scoped-input metadata for renderer paths that
-  run analysis. The default diff renderer emits `scope =
-  "diff_scoped_changed_files"`, `run_status = "limited_diff_scope"`, changed
-  files, changed owner count, changed production files, immediate caller files,
-  total production-file counts, the classified seam count considered, and the
-  `review_comments_diff_scope_only` limitation route. This makes the report
-  useful on large repos without representing the scoped review as full-repo
-  evidence. Gap-ledger rendering may omit this field because its authority is
-  the supplied ledger artifact.
+- `analysis_scope` - scoped-input metadata for the renderer path. The default
+  diff renderer emits `scope = "diff_scoped_changed_files"`, `run_status =
+  "limited_diff_scope"`, changed files, changed owner count, changed production
+  files, immediate caller files, total production-file counts, the classified
+  seam count considered, and the `review_comments_diff_scope_only` limitation
+  route. This makes the report useful on large repos without representing the
+  scoped review as full-repo evidence. Gap-ledger rendering emits `scope =
+  "gap_ledger_artifact"` and `run_status = "artifact_scope"` with `basis =
+  "supplied_gap_decision_ledger"`, ledger anchor files, the supplied GapRecord
+  count in `classified_seams_considered`, and the
+  `review_comments_gap_ledger_artifact_scope_only` limitation route. That path
+  does not rerun diff or full-repo analysis; its authority is the supplied
+  ledger artifact.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line
@@ -5995,6 +6450,11 @@ Field contract:
 - `comments[].id` - stable report-local ID derived from the seam when possible.
 - `comments[].seam_id` - static seam identifier from the existing exposure or
   agent packet evidence.
+- `comments[].canonical_gap_id` - required, nullable stable behavioral-gap
+  identity. Working-set cards project it from the canonical analysis domain;
+  gap-ledger cards preserve `GapRecord.canonical_gap_id`. The renderer never
+  derives it from file, line, expression, or related-test navigation. `null`
+  names the absence of an eligible domain identity rather than a fallback.
 - `comments[].dedupe_key` - stable key based on seam ID, path, and seam line.
 - `comments[].placement` - GitHub-compatible changed-line placement. Items
   without safe placement belong in `summary_only[]`.
@@ -6016,6 +6476,13 @@ Field contract:
 - `comments[].suggested_test` - bounded test intent, candidate values,
   assertion shape, recommended test file, and related test to imitate when
   available.
+- `comments[].suggested_test.related_test` - structured navigational object
+  `{name, file, line}` for the nearest strong related test (RIPR-SPEC-0068),
+  or `null` when no strong related test resolves. The flat `recommended_file`,
+  `recommended_name`, and `near_test` strings are retained alongside it; this
+  object adds a directly navigable `file:line` when the related-test location
+  is resolved. On the gap-ledger card path `file` and `line` may be `null`
+  when the supplied repair route names only the related test.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
 - `comments[].repair_card` - optional GapRecord-backed repair card. When
@@ -6023,6 +6490,18 @@ Field contract:
   comment body instead of raw static classes. It carries gap kind, changed
   behavior when available, why the gap matters, the bounded repair route,
   evidence IDs, verification commands, source artifact, and authority boundary.
+- `comments[].oracle_kind` / `comments[].oracle_strength` - card-level oracle
+  facts (RIPR-SPEC-0068) projecting the representative related test's oracle
+  (the nearest strong related test, else the top-ranked related test). When no
+  related test observes the seam they degrade honestly to `oracle_kind =
+  "unknown"` / `oracle_strength = "none"`, never a fabricated observer. These
+  project the same oracle facts agent briefs and seam packets already carry;
+  the review card computes no oracle of its own. Working-set path. `oracle_kind`
+  is one of `"exact_value"`, `"exact_error_variant"`, `"whole_object_equality"`,
+  `"snapshot"`, `"relational_check"`, `"broad_error"`, `"smoke_only"`,
+  `"mock_expectation"`, `"unknown"`; `oracle_strength` is one of `"strong"`,
+  `"medium"`, `"weak"`, `"smoke"`, `"none"`, `"unknown"`. Enforced by
+  `spec0068_card_carries_oracle_kind_and_strength`.
 - `comments[].gap_state` - canonical actionability state per RIPR-SPEC-0061.
   Present on every card (working-set and gap-ledger paths). Values:
   `"actionable"`, `"static_limitation"`, `"already_observed"`,
@@ -6205,8 +6684,9 @@ Field contract:
   claim runtime mutation results.
 - `skipped[]` records capped, summary-only, suppressed, disabled, and
   already-current items.
-- `skip_reason` is `mode_off`, `summary_only`, `suppressed`, `cap_reached`,
-  `unchanged_tests`, `not_publishable`, or `already_current`.
+- `skip_reason` is `mode_off`, `summary_only`, `suppressed`,
+  `inline_comment_cap_reached`, `unchanged_tests`, `not_publishable`, or
+  `already_current`.
 - `blocked[]` records hard safety blockers such as missing permissions,
   untrusted forks, missing PR context, unsafe events, missing dedupe keys, or
   malformed inputs.
@@ -6904,13 +7384,12 @@ JSON shape:
   "decisions": [
     {
       "id": "ripr-gate-67fc764ba37d77bd",
-      "source": "gap_decision_ledger",
+      "source": "pr_guidance",
       "decision": "acknowledged",
       "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
-      "gap_id": "gap:pricing",
-      "gap_kind": "MissingBoundaryAssertion",
       "seam_id": "67fc764ba37d77bd",
       "source_id": "ripr-review-67fc764ba37d77bd",
+      "gap_state": "actionable",
       "static_class": "weakly_gripped",
       "severity": "warning",
       "placement": {
@@ -6923,19 +7402,31 @@ JSON shape:
         "acknowledgement_label": "ripr-waive",
         "baseline_identity": null
       },
+      "repair_route": {
+        "canonical_gap_id": "gap:pricing:threshold",
+        "seam_id": "67fc764ba37d77bd",
+        "classification": "weakly_gripped",
+        "changed_owner": "pricing::discounted_total",
+        "changed_behavior": "amount >= discount_threshold",
+        "missing_discriminator": "amount == discount_threshold",
+        "repair_target": {
+          "kind": "related_test",
+          "name": "discounted_total_boundary",
+          "file": "tests/pricing.rs",
+          "line": 12
+        },
+        "test_intent": "Exercise the production caller at the equality boundary and assert the returned discount.",
+        "verify_command": "cargo test -p pricing discounted_total_boundary",
+        "receipt_command": "ripr receipt write --gap gap:pricing:threshold",
+        "inspection_command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+        "authority_boundary": "static_ripr_evidence_only",
+        "limitation": null
+      },
       "evidence": {
         "missing_discriminator": "amount == discount_threshold",
         "assertion_shape": "Assert the returned discount behavior directly.",
         "candidate_values": ["amount == discount_threshold"],
         "recommended_test": "tests/pricing.rs::discounted_total_boundary",
-        "repair_route": {
-          "route_kind": "AddBoundaryAssertion",
-          "target_file": "tests/pricing.rs",
-          "related_test": "tests/pricing.rs::discounted_total_boundary",
-          "assertion_shape": "Assert the returned discount behavior directly.",
-          "changed_behavior": "amount == discount_threshold"
-        },
-        "verification_commands": ["cargo xtask fixtures boundary_gap"],
         "nearby_test_changed": false,
         "suppressed": false,
         "configured_off": false,
@@ -6996,6 +7487,8 @@ Field contract:
 - `decisions[].decision` - one of `blocking`, `acknowledged`, `advisory`,
   `suppressed`, or `not_applicable`.
 - `decisions[].gate_reason` - short policy explanation for human summaries.
+- `decisions[].gap_state` - producer-owned gap state, or `null` when the source
+  cannot supply it.
 - `decisions[].static_class` - source static class copied without rewriting
   seam-grip classes into finding classes.
 - `decisions[].severity` - configured severity from the source surface.
@@ -7006,6 +7499,28 @@ Field contract:
   ID, dedupe-key, and path/line/static-class fallback identities.
 - `decisions[].evidence` - static evidence and optional calibration confidence
   effects used for the candidate.
+- `decisions[].repair_route` - uniform failure-time route object, present on
+  every decision. It carries nullable producer-owned fields for
+  `canonical_gap_id`, `seam_id`, `classification`, `changed_owner`,
+  `changed_behavior`, `missing_discriminator`, tagged `repair_target`,
+  `test_intent`, `verify_command`, `receipt_command`, and exact producer-owned
+  `inspection_command`. A changed owner is not assumed to be a production
+  caller, generic evidence-vector position is not treated as seam identity,
+  and path/line is not manufactured into an exact inspection selector. The
+  `authority_boundary` is `static_ripr_evidence_only`.
+- `decisions[].repair_route.limitation` - `null` only when the route is
+  complete. Otherwise it has kind `incomplete_repair_route`, a closed list of
+  missing fields, and a bounded detail. A candidate that would otherwise be
+  policy-eligible fails closed to advisory visibility when this limitation is
+  present; no renderer invents a fallback identity, location, test, or command.
+- `gate-decision.md` - human projection consumed directly by generated GitHub
+  step summaries. Blocking, acknowledged, and advisory decisions expand the
+  same structured route into gap/seam identity, gap state, classification,
+  changed owner/behavior, missing discriminator, tagged target, test intent,
+  verify/receipt/inspection commands, and the static authority boundary.
+  Incomplete routes print their named limitation and missing fields without a
+  fabricated inspection command; suppressed and not-applicable decisions do
+  not present an actionable route.
 - `decisions[].evidence.repair_route` and `verification_commands` - optional
   GapRecord repair route and verification commands. These fields are present
   when the gate decision is driven by a repairable gap ledger record.
@@ -7033,14 +7548,17 @@ where ALL of the following hold:
    (policy-eligible class).
 2. `d.decision ∈ {"blocking","advisory"}` — suppressed, acknowledged, and
    not_applicable candidates are EXCLUDED (they are handled or ineligible).
-3. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
-   `basis == "diff"`: all candidates in 1+2 count (diff scope equals "new").
+3. `d.repair_route.limitation == null`. An advisory decision with
+   `incomplete_repair_route` is visible but is not policy-eligible debt for a
+   downstream threshold.
+4. If `basis == "baseline"`: additionally `d.is_baseline_new` is true. If
+   `basis == "diff"`: all candidates in 1+2+3 count (diff scope equals "new").
 
 CRITICAL: `count` INCLUDES policy-eligible `advisory` decisions. It is NOT
 equal to `summary.blocking`. In `visible-only` mode every eligible candidate is
 advisory (`blocking=0`) but `count` is the advisory candidate count. An external
-thresholder applies its own policy; `ripr` reports the candidate count
-regardless of its own blocking/advisory label.
+thresholder applies its own policy; `ripr` reports the complete-route candidate
+count regardless of its own blocking/advisory label.
 
 **`basis` values.**
 
@@ -7054,6 +7572,70 @@ regardless of its own blocking/advisory label.
 `count=0`, and `reason` discloses the first config error. `count=0` with
 `basis=null` must NEVER be read as "clean/pass" — the `reason` field is
 the mandatory disclosure.
+
+### `exception_policy` ledger section (top-level additive, #1442)
+
+Emitted only when `ripr gate evaluate` is invoked with
+`--exception-policy PATH`. Absent otherwise, so existing gate-decision
+consumers and goldens see byte-identical output. Does not bump
+`schema_version`. `inputs.exception_policy` carries the supplied path when
+the flag is present.
+
+The ledger is a `quality-gate-exceptions` TOML file: a dated, auditable list
+of named temporary burndown exceptions. Header fields: `schema_version = 1`,
+`policy = "quality-gate-exceptions"`, optional `owner`, `status`
+(default `"active"`), `updated`, and `due_review = "warn" | "fail"`
+(default `"fail"`, fail-closed). An optional `[requirements] required_active`
+list names exception ids that MUST be active. Each `[[exception]]` requires
+`id`, `kind`, `scope`, `owner`, `reason`, `final_target`, `evidence`,
+`removal_criteria`, and `YYYY-MM-DD` `created`, `review_after`, and `expires`
+dates; `issue` is optional metadata. Unknown keys, blank required fields,
+malformed dates, and duplicate ids are load errors.
+
+Enforcement, evaluated against today's UTC date; ripr owns these semantics
+while the consumer owns only the ledger content:
+
+- `expires < today` → `quality_exception_expired` (blocking).
+- otherwise `review_after <= today` → `quality_exception_review_due`
+  (blocking under `due_review = "fail"`; a gate warning under `"warn"`).
+- a `required_active` id with no active exception →
+  `quality_exception_required_missing` (blocking). An expired required
+  exception raises both violations; both stay visible.
+- ledger `status = "final"` → every still-active exception is
+  `quality_exception_final_active` (blocking): final enforcement means zero
+  active exceptions remain.
+
+Any blocking violation makes the top-level gate `status` `"blocked"` (non-zero
+exit). A missing or malformed ledger is a `config_error`, never a silently
+ignored input — the gate must not report `pass` while believing a policy was
+applied.
+
+```json
+"exception_policy": {
+  "path": "policy/quality-gate-exceptions.toml",
+  "ledger_status": "active",
+  "ledger_owner": "EffortlessMetrics",
+  "due_review": "fail",
+  "active_count": 1,
+  "active": [
+    {"id": "ripr-total-burndown", "kind": "temporary_burndown",
+     "scope": "ripr_plus_total", "owner": "proof-lane",
+     "reason": "Existing repo-wide gaps predate the transition gate.",
+     "review_after": "2026-06-28", "expires": "2026-09-30"}
+  ],
+  "violations": [
+    {"kind": "quality_exception_review_due",
+     "exception_id": "ripr-total-burndown",
+     "detail": "exception `ripr-total-burndown` passed its review_after date 2026-06-28 (today 2026-07-05); re-review it and move review_after forward",
+     "blocking": true}
+  ]
+}
+```
+
+The Markdown report renders a matching `## Exception Policy` section with the
+ledger path, status, active entries, and violations (BLOCKING vs warning).
+These are gate policy states, not static exposure claims: violation kinds are
+`quality_exception_*` terms and never rewrite finding classifications.
 
 Markdown should fit in a job summary. It should name the top-level decision,
 mode, counts, blocking or acknowledged seams, repair action, and limits. It
@@ -10154,8 +10736,8 @@ map.
 `ripr first-pr` writes the first successful PR front-door packet from explicit
 existing RIPR artifacts. `cargo xtask first-pr` remains a repo-local wrapper
 over the same public command. The packet selects one top repairable PR-local
-stable Rust gap or preview Python gap when the gap decision ledger supplies
-one, or emits a bounded no-action or blocked recovery state. It does not rerun
+stable Rust gap or preview Python/TypeScript gap when the gap decision ledger
+supplies one, or emits a bounded no-action or blocked recovery state. It does not rerun
 hidden analysis, edit source, generate tests, call providers, run mutation
 testing, change gate policy, or change CI blocking.
 
@@ -10186,10 +10768,10 @@ target/ripr/reports/start-here.md
 When `--check-output` is supplied, `ripr first-pr` treats the saved check JSON
 as an explicit input artifact and materializes
 `target/ripr/reports/gap-decision-ledger.{json,md}` before selecting the
-start-here repair. This is the direct Python preview path for actionable
-`python_repair_card` records that already came from `ripr check`; it does not
-rerun hidden analysis, run tests, import Python code, generate tests, or change
-gate authority.
+start-here repair. This is the direct preview-language path for actionable
+`python_repair_card` records and `typescript_repair_packet` records that
+already came from `ripr check`; it does not rerun hidden analysis, run tests,
+import preview-language code, generate tests, or change gate authority.
 
 JSON shape:
 
@@ -10280,9 +10862,10 @@ Field contract:
   when a top gap is selected. Generated CI and report indexes should prefer the
   canonical gap id when present.
 - `selected.language` and `selected.language_status` keep stable Rust evidence
-  distinct from preview Python evidence when a top gap is selected. Preview
-  Python top gaps use `selected.output_state = "preview_limited"` and remain
-  advisory repair routing, not support-tier promotion.
+  distinct from preview Python and TypeScript evidence when a top gap is
+  selected. Preview top gaps use
+  `selected.output_state = "preview_limited"` and remain advisory repair
+  routing, not support-tier promotion.
 - `selected.current_evidence_strength`,
   `selected.missing_discriminator`, and `selected.focused_proof_intent`
   provide the one-screen recommendation contract. They are derived from typed
@@ -10322,8 +10905,9 @@ Field contract:
   records read-only front-door checks for root, Git worktree, base/head refs,
   diff presence, supported project marker, `ripr.toml` defaulting, output
   directory, and write/check mode. Supported project markers currently mean a
-  Cargo workspace or Python preview project root. Preflight does not create
-  analyzer facts and does not become gate authority.
+  Cargo workspace, Python preview project root, or TypeScript preview project
+  root. Preflight does not create analyzer facts and does not become gate
+  authority.
 - `inputs.check_output` is present only when `--check-output` was supplied.
   In that mode, the start-here packet can include a `check_output` artifact and
   the `gap_ledger` artifact is the ledger materialized from that saved check
@@ -12218,6 +12802,64 @@ The LSP server publishes a `Diagnostic` for every actionable
 under the built-in saved-workspace default. Clients or repo policy can pass
 `seamDiagnostics: false` to disable seam diagnostics for a session.
 
+### Diff-scoped discriminator witness
+
+Diff-scoped finding diagnostics may carry the same versioned producer witness
+as `ripr context --json`. The witness is placed in diagnostic `data.witness`
+and the copy-context action forwards it unchanged. Hover, context packets,
+and diagnostic data therefore share one typed fact set:
+
+```jsonc
+{
+  "data": {
+    "schema_version": "0.1",
+    "explain_command": "ripr explain --root . probe:pricing:88:error_path",
+    "witness": {
+      "kind": "static_discriminator_gap",
+      "probe_family": "error_path",
+      "changed_expression": "map_error(result)",
+      "before": "Err(PricingError::Other)",
+      "after": "Err(PricingError::Boundary)",
+      "expected_sink": "error_variant",
+      "missing_discriminators": [
+        {
+          "value": "PricingError::Boundary",
+          "reason": "the broad error oracle does not distinguish the variant"
+        }
+      ],
+      "fix_site": {
+        "file": "tests/pricing.rs",
+        "line": 10,
+        "test_name": "rejects_boundary",
+        "current_oracle": "assert!(result.is_err())",
+        "oracle_kind": "broad_error",
+        "oracle_strength": "weak",
+        "oracle_location": { "file": "tests/pricing.rs", "line": 12 }
+      },
+      "suggested_assertion": null,
+      "explain_command": "ripr explain --root . probe:pricing:88:error_path",
+      "confidence": { "value": 0.75, "basis": "static_only" },
+      "limitations": [
+        {
+          "kind": "suggested_assertion_unavailable",
+          "detail": "No producer-owned symbol-resolved assertion template is available."
+        }
+      ]
+    }
+  }
+}
+```
+
+The witness is projection-only. It does not create a repair route or authorize
+an edit. Missing or ambiguous producer evidence is represented by `null`, an
+omitted optional field, or a named `limitations[]` entry. In particular, a
+renderer must never synthesize an assertion, choose a test from path or line
+proximity, or turn a generic oracle into an exact discriminator. The related
+information location points to the exact oracle source line only when the
+producer supplied a matching assertion fact; otherwise it points to the
+producer's test target. The human-facing related-information message uses the
+explicit `Fix site:` role so clients do not confuse it with the changed code.
+
 Diagnostic shape:
 
 ```jsonc
@@ -12480,6 +13122,8 @@ fixtures/finding-alignment-dogfood/corpus.json
 fixtures/surface-projection-alignment/corpus.json
 fixtures/real-repair-attempts/corpus.json
 fixtures/python-real-repo-evals/corpus.json
+fixtures/typescript-preview-repair-loop/corpus.json
+fixtures/typescript-preview-false-actionable-audit/corpus.json
 fixtures/user-surface-projection-alignment/corpus.json
 fixtures/bun-ub-cross-language-dogfood/corpus.json
 ```
@@ -12535,6 +13179,19 @@ validity, concrete-discriminator and test-location coverage,
 false-actionable and crash rates, receipt closure rate, and unsupported
 limitation distribution. Eval cases with fewer than three ranked repair-card
 findings must include an explicit limit reason.
+The checked TypeScript-family preview repair-loop receipts are read from
+`fixtures/typescript-preview-repair-loop/` and preserve advisory preview
+boundaries for useful TypeScript/JavaScript routes, weak-oracle downgrades,
+static limitations, skipped incomplete-packet cases, checked complete-packet
+receipts, and packet-ready counts.
+The checked TypeScript false-actionable audit rows are read from
+`fixtures/typescript-preview-false-actionable-audit/`; dogfood projects
+`typescript_false_actionable_audit.summary.false_actionable_rate` from rows
+that must remain non-actionable and also reports packet-ready, actionable
+gap-state, complete-packet category, and preview-boundary violation rates. This
+section is advisory and does not create repair packets, gates, badge inputs,
+baselines, RIPR Zero input, generated tests, source edits, provider calls,
+mutation testing, or support-tier promotion.
 The checked Bun UB cross-language witness receipts are read from
 `fixtures/bun-ub-cross-language-dogfood/` and record the calibrated
 #31648-shaped known-good, stripped-resizable, maxByteLength mention-only,
@@ -13252,14 +13909,16 @@ agent packets when the evidence record already supplies a repair route and
 verification command.
 
 `ripr reports gap-ledger --check-output <path>` derives PR-local records from
-an existing check JSON `finding_alignment.items[]` section and actionable
-Python `findings[].python_repair_card` objects. Supported visible output text
+an existing check JSON `finding_alignment.items[]` section, actionable Python
+`findings[].python_repair_card` objects, and complete TypeScript
+`findings[].typescript_repair_packet` objects. Supported visible output text
 without a checked observer becomes `MissingOutputContract` with
 `repair_route.route_kind = "AddOutputGolden"` and
 `verification_commands = ["cargo xtask goldens check"]`. Actionable Python
-repair cards become preview-language records with bounded test edit surfaces,
-verify commands, and a synthesized `ripr outcome` command that compares the
-supplied before check JSON with `target/ripr/reports/after-check.json`.
+repair cards and complete TypeScript repair packets become preview-language
+records with bounded test edit surfaces, verify commands, and a synthesized
+`ripr outcome` command that compares the supplied before check JSON with
+`target/ripr/reports/after-check.json`.
 Python static-limit findings with `static_limit_kind` become report-only
 `StaticLimitation` records with `repairability = "analyzer_limitation"` and no
 agent-packet projection. Visibility-unknown presentation text and Python static
@@ -13642,6 +14301,61 @@ warnings. The TOML report uses schema `0.3` with `status = "proposal"` and is a
 copy aid only; reviewers must supply real ids, owners, expiries, and rationale
 before adopting any proposal.
 
+## Canonical PR Delta Artifact
+
+`cargo xtask ripr-pr` writes `target/ripr/pr/canonical-delta.json` after it
+materializes one canonical repo-exposure snapshot for each requested revision.
+The artifact is producer-owned and versioned independently from the check and
+repo-exposure schemas.
+
+The top-level contract is:
+
+```json
+{
+  "schema_version": "0.1",
+  "base": {"revision": "<rev>", "status": "complete", "available": true},
+  "head": {"revision": "<rev>", "status": "complete", "available": true},
+  "coverage": {
+    "base_items": 1,
+    "head_items": 1,
+    "matched_items": 1,
+    "ambiguous_items": 0,
+    "unknown_items": 0,
+    "complete": true,
+    "low_coverage_disclosed": false
+  },
+  "summary": {"attribution_counts": {"changed_surface_existing": 1}},
+  "limitations": [],
+  "deltas": []
+}
+```
+
+Each `deltas[]` entry is the serialized `CanonicalDelta` from
+`ripr::domain`, with base/head locations, seam ids, and a `match_kind` of
+`exact`, `rename_or_move`, `head_only`, `base_only`, or `ambiguous`. The typed
+attribution vocabulary is closed. Only canonical owner, behavior identity,
+discriminator identity, evidence state, and oracle state establish a match;
+line proximity never establishes causality. Missing or ambiguous snapshots
+produce `comparison_unknown`. `low_coverage_disclosed: true` is informational
+and must not be interpreted as a complete causal comparison.
+
+### Causal projection parity
+
+The same producer-owned `CanonicalDelta` fields are projected unchanged into
+gate decisions, baseline-debt-delta items, review-comment JSON, LSP diagnostic
+`data`, agent seam packets, gap-record packets, and agent briefs when the
+canonical PR delta artifact is available. Consumers match only by the exact
+`canonical_gap_id`; they do not derive attribution from paths, line numbers,
+classes, or prose. The projected fields are `delta_attribution`, `base_state`,
+`head_state`, `attribution_basis`, and `comparison_confidence`.
+
+Root-aware envelopes may also include `causal_comparison`, which discloses the
+artifact coverage counts, `complete`, and `low_coverage_disclosed`. A missing
+artifact leaves the optional projection absent. A malformed or unsupported
+artifact is reported as unavailable and never converted into a causal result.
+In particular, `comparison_unknown` and incomplete coverage remain visible but
+cannot be promoted by a renderer into PR-caused debt.
+
 ## PR Evidence Summary
 
 `cargo xtask ripr-pr-summary` writes two sibling files after the legacy
@@ -13765,6 +14479,248 @@ until a real producer is wired in, surfacing a `0` would be a fabricated count
 that no real condition can produce (see #1130 adversarial review).
 
 Spec: `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md`.
+
+## Targeted rerun output
+
+`ripr rerun --changed-test <path>[::<test_node>] [--before <path>] --json` and
+`ripr rerun --gap <canonical-gap-id> --gap-ledger <path> [--before <path>] --json` emit the
+targeted-rerun receipt shape:
+
+```json
+{
+  "schema_version": "ripr-targeted-rerun-v1",
+  "state": "current_state_only",
+  "selector": {
+    "kind": "changed_test",
+    "changed_test": "tests/pricing.rs::discounted_total_case",
+    "selected_test_count": 1,
+    "direct_call_names": ["discounted_total"]
+  },
+  "cache": {
+    "schema_version": "0.1",
+    "reuse_state": "reused_file_facts",
+    "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
+    "hits": 2,
+    "misses": 0,
+    "corrupt_ignored": 0,
+    "stores": 0,
+    "store_errors": 0,
+    "recomputation_reasons": ["selected_test_scope_recomputed"],
+    "invalidation_status": "not_available",
+    "input_fingerprint": {
+      "schema_version": "0.3",
+      "analyzer_version": "0.10.0",
+      "workspace_root_hash": "…",
+      "files_content_hash": "…",
+      "cfg_features_hash": "…",
+      "config_hash": "…",
+      "test_intent_hash": "…",
+      "suppressions_hash": "…",
+      "workspace_manifests_hash": "…",
+      "lockfile_hash": "…",
+      "toolchain_hash": "…",
+      "seam_limit_key": "limit_10000",
+      "selector_ledger_hash": "not_applicable",
+      "graph_provenance": {
+        "package_graph_status": "complete",
+        "package_graph_hash": "…",
+        "package_graph_detail": null,
+        "feature_graph_status": "complete",
+        "feature_graph_hash": "…",
+        "feature_graph_detail": null,
+        "external_dependency_graph_status": "unavailable",
+        "external_dependency_graph_detail": "external dependency metadata is not resolved; no network access was used"
+      }
+    }
+  },
+  "seams": [
+    {
+      "canonical_gap_id": "gap:4b5fdc1a2a157b0d",
+      "seam_id": "67fc764ba37d77bd",
+      "file": "src/lib.rs",
+      "line": 2,
+      "owner": "src/lib.rs::discounted_total",
+      "static_class": "weakly_gripped",
+      "repair_route_readiness": {
+        "state": "ready",
+        "seam_id": "67fc764ba37d77bd",
+        "canonical_gap_id": "gap:4b5fdc1a2a157b0d",
+        "required_evidence": [
+          "producer-owned missing discriminator fact: amount >= discount_threshold",
+          "safe test target"
+        ],
+        "present_evidence": [
+          "producer-owned missing discriminator fact: amount >= discount_threshold",
+          "safe test target"
+        ],
+        "missing_evidence": [],
+        "target_selection": {
+          "proposed": {
+            "kind": "integration",
+            "file": "tests/example.rs",
+            "owner": "pricing::discounted_total",
+            "provenance": "producer_owned"
+          }
+        },
+        "test_target": null,
+        "proposed_oracle": "ExactValue",
+        "current_oracle": null,
+        "authority_boundary": "analysis/producer-owned-repair-route-readiness"
+      },
+      "related_tests": [],
+      "missing_discriminators": []
+    }
+  ],
+  "authority_boundary": "static evidence only; no before snapshot was supplied, so gap movement is not inferred"
+}
+```
+
+For a changed-test selector, `selector.kind` is `changed_test`. `changed_test`
+names the repository-relative parsed test file and may append
+`::<test_node>` to select one test function within that file. An unknown or
+ambiguous node is a named limitation. Without a node, all parsed tests in the
+file participate. The report returns only seams owned by uniquely resolved
+functions directly called from the selected test scope.
+
+For a gap selector, `selector.kind` is `canonical_gap`, with
+`canonical_gap_id` and `gap_ledger`. RIPR resolves every existing ledger record
+with that domain-supplied canonical ID: one canonical gap may legitimately have
+several seam records. `matched_record_count` names that group and
+`recomputed_scope_count` names its stable-deduplicated `file`/`owner` scopes.
+RIPR recomputes each scope, returns only current seams carrying the requested
+canonical ID, and deduplicates them by `seam_id`.
+
+The optional `route` stable-deduplicates existing `verify_commands` across the
+matching records. It emits a singular `receipt_command` only when exactly one
+distinct non-empty command exists; otherwise that field is explicit JSON
+`null`. Multiple commands keep the rerun evidence and emit
+`route.receipt_command_conflict` rather than choosing one arbitrarily. Neither
+command is manufactured.
+
+Anchorless or no-longer-current records appear in `scope_limitations` with their
+matching-record index and do not hide other current scopes. The overall result
+is `limited` only when no current scope resolves. Missing, root-mismatched, or
+otherwise unresolved selectors emit `state: "limited"`, an empty `seams` array,
+and a named `limitation` such as `canonical_gap_unresolved` or
+`stale_gap_ledger`. They never fall back to an unrelated workspace scan.
+
+Both selectors reuse valid file facts but recompute the selected evidence. A
+`canonical_gap_id` is domain-supplied and nullable; it is never derived from a
+file, line, expression, or test navigation. Without `--before`, the command
+reports `state: "current_state_only"`, does not infer movement, and does not
+discover an ambient report as before state.
+
+With one explicit compatible prior targeted-rerun or repo-exposure snapshot,
+it adds:
+
+```json
+"movement": {
+  "state": "closed | improved | unchanged | regressed",
+  "before": "target/ripr/previous-rerun.json",
+  "before_seam_count": 1,
+  "matched_seam_count": 1
+}
+```
+
+The report `state` is the same closed-vocabulary movement value. Every current
+selected `seam_id` must exist in the explicit before artifact. A missing,
+malformed, unsupported, or non-overlapping before artifact returns
+`state: "limited"` with `before_artifact_unavailable` or
+`before_artifact_incompatible`; it never guesses movement. This remains static
+evidence only and does not execute tests or mutations. Test-node, detailed
+invalidation-reason, full-pipeline parity, and benchmark receipt surfaces remain
+specified by [RIPR-SPEC-0123](specs/RIPR-SPEC-0123-targeted-rerun.md).
+
+`cache.schema_version` names the file-fact cache codec contract and
+`cache.reuse_state` is one of `reused_file_facts`, `mixed_file_fact_reuse`,
+`recomputed_file_facts`, or `not_run`. `recomputation_reasons` names the
+selected scope, observed corrupt-entry/store-error fallbacks, and owned
+content invalidations that caused this command to rebuild facts.
+`invalidation_status: "file_content_changed"` is emitted only when a prior
+same-path file-fact envelope is found under a different content key.
+Every targeted receipt also carries `cache.input_fingerprint`, an owned hash
+summary for the analyzer/cache schema, analyzer version, workspace root, Rust
+file set, `RIPR_CFG_FEATURES` when supplied, RIPR config, test intent,
+suppressions, workspace manifests, lockfile, toolchain selector, and seam
+limit. For a `--gap` selector it also fingerprints the explicit ledger bytes;
+changed ledger content is named `input_changed:selector_ledger_hash`. For a
+changed-test selector the field is `not_applicable`. When an explicit
+`--before` receipt carries the same fingerprint shape, changed components are
+added to `cache.recomputation_reasons` as `input_changed:<field>` and the
+receipt uses `invalidation_status: "workspace_input_changed"`. This comparison
+is never inferred from an ambient cache or report. Cold runs and before
+artifacts without fingerprints remain `not_available`; a miss remains an
+observed cache result, not a fabricated claim about which workspace input
+changed.
+
+`input_fingerprint.graph_provenance` records local package/member and feature
+facts with `complete`, `limited`, or `unavailable` statuses. External
+dependency metadata is explicitly unavailable because targeted rerun does not
+use network or ambient Cargo metadata. Graph changes are named as
+`input_changed:package_graph_provenance` or
+`input_changed:feature_graph_provenance` or
+`input_changed:external_dependency_graph_provenance`; parity fails closed when
+required local graph provenance is unavailable.
+
+Pass `--check-parity` to request an explicit full-inventory comparison. The
+optional `parity` object reports `matched` only when the targeted and expected
+full selector-scoped seam sets are identical and every shared seam has the
+same canonical gap ID, seam ID, static class, file, owner, related-test
+evidence, and missing-discriminator evidence. It records
+`missing_from_targeted`, `unexpected_in_targeted`, and `differing` details;
+a difference changes the overall report to `limited` with
+`full_pipeline_parity_mismatch`; it is never rendered as a successful targeted
+result. `parity.mismatches[]` retains a unified actionable view of those
+differences rather than an unexplained count. This also includes
+`parity.input_mismatches[]` when the targeted and full pipeline
+workspace fingerprints differ; that condition is named
+`full_pipeline_parity_input_mismatch` and fails closed.
+
+Targeted seam entries carry `repair_route_readiness` unchanged from the
+analysis authority. It records the readiness state, canonical identity,
+required/present/missing evidence, target selection (`existing`, explicit
+`proposed`, or `missing`), current/proposed oracle, and authority boundary; the
+rerun renderer does not reconstruct those facts. A `ready` route must carry an
+existing or explicit proposed target. `already_gripped` and `policy_excluded`
+are terminal non-repair states; unresolved producer facts are
+`static_limitation`.
+diagnostic is opt-in because it intentionally runs the broad pipeline and is
+not an interactive default. If the full inventory is capped, the report
+instead uses `full_pipeline_parity_incomplete` because an absent seam may
+simply lie outside the analyzed prefix.
+
+Each targeted seam carries the producer-owned `related_tests` and
+`missing_discriminators` arrays used by the parity comparison. These are static
+evidence summaries; they do not claim runtime mutation behavior, correctness,
+coverage adequacy, or complete test quality. Verify and receipt commands remain
+the explicit route supplied by the selected ledger records; the rerun does not
+manufacture commands from seam placement.
+
+For a `--gap` receipt, the ledger may carry an explicit nullable `seam_id`
+beside its behavioral `canonical_gap_id`. RIPR uses that typed producer-owned
+identity only to retain the selected source seam when it becomes strongly
+gripped and no longer produces a current canonical gap. Generic `evidence_ids`
+remain generic references and are never interpreted by position as seam IDs.
+When static evidence changes between incomparable same-rank classes, movement
+is `limited` with `movement_indeterminate` rather than being mislabeled as an
+incompatible before artifact.
+
+## Targeted rerun benchmark receipt
+
+`cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path>`
+writes `target/ripr/reports/targeted-rerun-benchmark.{json,md}`. The JSON
+schema is `ripr-targeted-rerun-benchmark-v1` and records the named root,
+changed-test selector, revision, analyzer version, runner class, sample count,
+exact command templates, cold full/cold targeted/warm targeted timing series,
+an explicit file-fact cache-reset invalidation series, and a separate parity
+result. The report is scoped to the named repository, revision, configuration,
+and runner; it does not claim universal latency, runtime mutation behavior,
+correctness, coverage adequacy, or complete broader-input invalidation.
+
+`status: "pass"` requires matched parity, successful samples, warm targeted
+p50 no greater than 30 seconds, and a cold-full-to-warm-targeted p50 speedup of
+at least 5x. Otherwise the receipt remains `inconclusive` and preserves the
+measured values.
 
 ## Stability Rules
 

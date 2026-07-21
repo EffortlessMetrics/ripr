@@ -123,6 +123,28 @@ fn has_call_shape(text: &str) -> bool {
         && text.contains(')')
         && !is_function_signature(text)
         && !text.contains("assert")
+        && !has_return_shape(text)
+        && !starts_with_binding_or_control(text)
+        && !text.trim_end().ends_with(',')
+        && call_prefix_is_named(text)
+}
+
+fn starts_with_binding_or_control(text: &str) -> bool {
+    ["let ", "if ", "while ", "for ", "match "]
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+}
+
+fn call_prefix_is_named(text: &str) -> bool {
+    text.split_once('(')
+        .map(|(prefix, _)| {
+            prefix
+                .trim_end()
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '!'))
+        })
+        .unwrap_or(false)
 }
 
 fn has_field_shape(text: &str) -> bool {
@@ -275,5 +297,23 @@ mod tests {
                 "{text} should stay static_unknown"
             );
         }
+    }
+
+    #[test]
+    fn classify_changed_line_rejects_non_standalone_call_shapes() -> Result<(), String> {
+        for text in [
+            "let value = read()?;",
+            "let Some(value) = selected else { return None; };",
+            "if let Some(value) = selected {",
+            "(GateState::Pending, None)",
+            "Ok(())",
+            "Vec::new(),",
+        ] {
+            let families = classify_changed_line(text);
+            if families.contains(&ProbeFamily::CallDeletion) {
+                return Err(format!("{text} should not be a call-deletion probe"));
+            }
+        }
+        Ok(())
     }
 }

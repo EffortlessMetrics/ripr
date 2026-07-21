@@ -24,10 +24,30 @@ export async function downloadServer(
   version: string,
   output: vscode.OutputChannel
 ): Promise<string> {
+  const origin = downloadOriginLabel(config, version);
+  return vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ripr: downloading server ${version} for ${platform.target} from ${origin}`,
+      cancellable: false
+    },
+    (progress) => downloadServerWithProgress(context, config, platform, version, output, progress)
+  );
+}
+
+async function downloadServerWithProgress(
+  context: vscode.ExtensionContext,
+  config: RiprConfig,
+  platform: RiprPlatform,
+  version: string,
+  output: vscode.OutputChannel,
+  progress: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<string> {
   const cacheDir = serverCacheDir(context, version, platform.target);
   const executablePath = path.join(cacheDir, platform.executableName);
   await fs.promises.mkdir(cacheDir, { recursive: true });
 
+  progress.report({ message: 'Fetching release manifest…' });
   const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
   const asset = manifest.assets[platform.target];
   if (!asset) {
@@ -35,11 +55,14 @@ export async function downloadServer(
   }
 
   output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
+  progress.report({ message: `Downloading ${platform.executableName}…` });
   const archive = await fetchBuffer(asset.url);
+  progress.report({ message: 'Verifying checksum…' });
   const actualSha = sha256Hex(archive);
   if (actualSha.toLowerCase() !== asset.sha256.toLowerCase()) {
     throw new Error(`Checksum mismatch for ${asset.url}. Expected ${asset.sha256}, got ${actualSha}.`);
   }
+  progress.report({ message: 'Extracting…' });
 
   const archivePath = path.join(cacheDir, `ripr-server.${platform.archiveExtension}`);
   const extractDir = path.join(cacheDir, 'extract');
@@ -67,6 +90,14 @@ export function cachedServerPath(context: vscode.ExtensionContext, version: stri
 
 function serverCacheDir(context: vscode.ExtensionContext, version: string, target: string): string {
   return path.join(context.globalStorageUri.fsPath, 'servers', version, target);
+}
+
+function downloadOriginLabel(config: RiprConfig, version: string): string {
+  try {
+    return new URL(manifestUrl(config.downloadBaseUrl, version)).host;
+  } catch {
+    return 'the configured download mirror';
+  }
 }
 
 function manifestUrl(baseUrl: string, version: string): string {

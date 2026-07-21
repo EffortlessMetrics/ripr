@@ -1,21 +1,32 @@
 use super::actions::code_action_response;
 use super::backend::{
     Backend, RefreshLogSummary, refresh_completed_log_message, refresh_failed_log_message,
+    workspace_input_path_is_relevant,
 };
-use super::capabilities::{initialize_result, root_from_initialize_params};
+use super::capabilities::{
+    WorkspaceRootResolution, initialize_result, root_from_initialize_params,
+};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
-    DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
-    diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
-    workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
+    DiagnosticBatch, WorkspaceDiagnostics, add_canonical_group_data, canonical_finding_groups,
+    canonical_group_has_mixed_classes, diagnostic_for_classified_seam, diagnostic_for_finding,
+    diagnostic_refresh_plan, diagnostic_severity_for_class, finding_diagnostics_by_uri,
+    take_all_uris, workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
     workspace_diagnostics_with_config,
 };
 use super::gap_artifacts::{
     GapArtifactIdentity, GapArtifactKind, GapArtifactRejection, ValidatedGapArtifact,
 };
 use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
+use super::input_identity::LspAnalysisInputIdentity;
 use super::lens::{code_lens_response, lens_title_is_static_language_clean};
-use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
+use super::progress::ProgressEvent;
+use super::refresh_scheduler::{
+    RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
+};
+use super::state::{
+    AnalysisAttemptState, AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration,
+};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -25,12 +36,14 @@ use super::{
     COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
     HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
+use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap, LanguageId, LanguageStatus,
-    OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
+    MissingDiscriminatorFact, OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId,
+    RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    StaticLimitKind, ValueContext, ValueFact,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -38,12 +51,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    ExecuteCommandParams, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
-    MarkedString, NumberOrString, Position, Range, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
+    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, Diagnostic,
+    DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType, FileEvent, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString,
+    PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WindowClientCapabilities, WorkspaceDiagnosticParams,
     WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
@@ -60,6 +76,18 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
         result.capabilities.hover_provider,
         Some(HoverProviderCapability::Simple(true))
     );
+    assert_eq!(
+        result.capabilities.position_encoding,
+        Some(PositionEncodingKind::UTF16),
+        "diagnostic ranges use UTF-16 code-unit offsets"
+    );
+    let Some(workspace) = result.capabilities.workspace else {
+        return Err("expected workspace capability".to_string());
+    };
+    let Some(workspace_folders) = workspace.workspace_folders else {
+        return Err("expected workspace-folder capability".to_string());
+    };
+    assert_eq!(workspace_folders.supported, Some(true));
     let Some(provider) = result.capabilities.execute_command_provider else {
         return Err("expected execute command provider".to_string());
     };
@@ -80,6 +108,74 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
 }
 
 #[test]
+fn workspace_input_watch_requires_contained_cargo_manifest_or_lockfile() {
+    let root = std::env::temp_dir().join("ripr-workspace-input-watch");
+    let root = root.as_path();
+    assert!(workspace_input_path_is_relevant(
+        root,
+        &root.join("Cargo.toml")
+    ));
+    assert!(workspace_input_path_is_relevant(
+        root,
+        &root.join("crates/app/Cargo.lock")
+    ));
+    assert!(!workspace_input_path_is_relevant(
+        root,
+        &root
+            .with_file_name("ripr-workspace-input-watch-sibling")
+            .join("Cargo.toml")
+    ));
+    assert!(!workspace_input_path_is_relevant(
+        root,
+        &root.join("Cargo.toml.bak")
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+fn workspace_input_watch_uses_case_insensitive_windows_containment() {
+    let root = std::env::temp_dir().join("ripr-workspace-input-watch-case");
+    let differently_cased_root = PathBuf::from(root.to_string_lossy().to_ascii_uppercase());
+    assert!(workspace_input_path_is_relevant(
+        &root,
+        &differently_cased_root.join("Cargo.toml")
+    ));
+    assert!(!workspace_input_path_is_relevant(
+        &root,
+        &differently_cased_root
+            .with_file_name("RIPR-WORKSPACE-INPUT-WATCH-CASE-SIBLING")
+            .join("Cargo.toml")
+    ));
+}
+
+#[test]
+fn watched_file_batch_preserves_config_and_workspace_graph_signals() -> Result<(), String> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let backend_root = root.clone();
+    let (service, _socket) =
+        LspService::new(move |client| Backend::new(client, backend_root.clone()));
+    let backend = service.inner();
+    backend.initialize_test_workspace_root();
+    let config_uri = file_uri_for_path(&root.join(crate::config::CONFIG_FILE_NAME))
+        .map_err(|err| format!("config URI failed: {err}"))?;
+    let manifest_uri = file_uri_for_path(&root.join("Cargo.toml"))
+        .map_err(|err| format!("manifest URI failed: {err}"))?;
+    let changes = vec![
+        FileEvent {
+            uri: config_uri,
+            typ: FileChangeType::CHANGED,
+        },
+        FileEvent {
+            uri: manifest_uri,
+            typ: FileChangeType::CHANGED,
+        },
+    ];
+
+    assert_eq!(backend.watched_file_change_kinds(&changes), (true, true));
+    Ok(())
+}
+
+#[test]
 fn capabilities_advertise_code_lens_provider() -> Result<(), String> {
     let result = initialize_result();
     let provider = result
@@ -93,6 +189,334 @@ fn capabilities_advertise_code_lens_provider() -> Result<(), String> {
         },
         "code_lens_provider must advertise resolve_provider: false (advisory text-only; no resolve round-trip)"
     );
+    Ok(())
+}
+
+#[test]
+fn document_pull_reuses_result_id_as_unchanged_report() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let finding = sample_finding();
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        ))
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let request = |previous_result_id| DocumentDiagnosticParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        identifier: None,
+        previous_result_id,
+        work_done_progress_params: Default::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+    let first = runtime
+        .block_on(backend.diagnostic(request(None)))
+        .map_err(|err| format!("first pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first report failed: {err}"))?;
+    if first_json.get("kind").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!("expected full first report: {first_json}"));
+    }
+    let result_id = first_json
+        .get("resultId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "full report did not carry resultId".to_string())?
+        .to_string();
+    let second = runtime
+        .block_on(backend.diagnostic(request(Some(result_id))))
+        .map_err(|err| format!("second pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second report failed: {err}"))?;
+    if second_json.get("kind").and_then(serde_json::Value::as_str) != Some("unchanged") {
+        return Err(format!("expected unchanged second report: {second_json}"));
+    }
+    if second_json.get("items").is_some() {
+        return Err("unchanged report unexpectedly carried items".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_pull_reuses_each_document_result_id() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let finding = sample_finding();
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        ))
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let first = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("first workspace pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first workspace report failed: {err}"))?;
+    let result_id = first_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("resultId"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "workspace full report did not carry resultId".to_string())?
+        .to_string();
+    let second = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: vec![PreviousResultId {
+                uri,
+                value: result_id,
+            }],
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("second workspace pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second workspace report failed: {err}"))?;
+    let kind = second_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("kind"))
+        .and_then(serde_json::Value::as_str);
+    if kind != Some("unchanged") {
+        return Err(format!(
+            "expected unchanged workspace report: {second_json}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn pull_diagnostics_before_first_snapshot_return_empty_full_reports() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    let document = runtime
+        .block_on(backend.diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("cold-start document pull failed: {err}"))?;
+    let document_json = serde_json::to_value(document)
+        .map_err(|err| format!("serialize cold-start document report failed: {err}"))?;
+    if document_json
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        != Some("full")
+        || document_json
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(|items| !items.is_empty())
+    {
+        return Err(format!(
+            "expected an empty full document report before the first snapshot: {document_json}"
+        ));
+    }
+
+    let workspace = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("cold-start workspace pull failed: {err}"))?;
+    let workspace_json = serde_json::to_value(workspace)
+        .map_err(|err| format!("serialize cold-start workspace report failed: {err}"))?;
+    if workspace_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .is_none_or(|items| !items.is_empty())
+    {
+        return Err(format!(
+            "expected an empty workspace report before the first snapshot: {workspace_json}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
+    // Selection-authority contract (#1973): pull serves the stored selected
+    // set and derives result IDs from it, so the changed document must be a
+    // served (budget-actionable) item for its message change to be
+    // selection-relevant. `headline_eligible` is the producer-owned
+    // eligibility signal the budget reads.
+    fn served_diagnostic(root: &Path, finding: &Finding) -> tower_lsp_server::ls_types::Diagnostic {
+        let mut diagnostic = diagnostic_for_finding(root, finding);
+        if let Some(data) = diagnostic
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.insert("headline_eligible".to_string(), serde_json::json!(true));
+        }
+        diagnostic
+    }
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let first_uri = test_uri("file:///workspace/src/first.rs")?;
+    let second_uri = test_uri("file:///workspace/src/second.rs")?;
+    let first_finding = sample_finding();
+    let mut second_finding = sample_finding();
+    second_finding.id = "probe:second:88:predicate".to_string();
+    second_finding.probe.id = ProbeId("probe:second:88:predicate".to_string());
+    second_finding.probe.location.file = PathBuf::from("src/second.rs");
+    let first_diagnostic = served_diagnostic(Path::new("/workspace"), &first_finding);
+    let initial_second_diagnostic = served_diagnostic(Path::new("/workspace"), &second_finding);
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        first_uri.clone(),
+        vec![first_diagnostic.clone()],
+        vec![first_finding.clone(), second_finding.clone()],
+    );
+    snapshot
+        .diagnostics_by_uri
+        .insert(second_uri.clone(), vec![initial_second_diagnostic.clone()]);
+    let diagnostics = WorkspaceDiagnostics {
+        snapshot,
+        batches: vec![
+            DiagnosticBatch {
+                uri: first_uri.clone(),
+                diagnostics: vec![first_diagnostic],
+            },
+            DiagnosticBatch {
+                uri: second_uri.clone(),
+                diagnostics: vec![initial_second_diagnostic],
+            },
+        ],
+    };
+    backend
+        .refresh_plan(diagnostics)
+        .ok_or_else(|| "expected committed multi-document snapshot".to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    let first = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("first multi-document pull failed: {err}"))?;
+    let first_json = serde_json::to_value(first)
+        .map_err(|err| format!("serialize first multi-document report failed: {err}"))?;
+    let previous_result_ids = first_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "first multi-document report had no items".to_string())?
+        .iter()
+        .map(|item| {
+            let uri = item
+                .get("uri")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "multi-document item had no URI".to_string())?
+                .parse()
+                .map_err(|err| format!("parse returned URI failed: {err}"))?;
+            let result_id = item
+                .get("resultId")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "multi-document item had no result ID".to_string())?;
+            Ok(PreviousResultId {
+                uri,
+                value: result_id.to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut changed_second_diagnostic =
+        served_diagnostic(Path::new("/workspace"), &sample_finding());
+    changed_second_diagnostic.message.push_str(" changed");
+    let mut changed_snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        first_uri.clone(),
+        vec![served_diagnostic(
+            Path::new("/workspace"),
+            &sample_finding(),
+        )],
+        vec![first_finding, second_finding],
+    );
+    changed_snapshot
+        .diagnostics_by_uri
+        .insert(second_uri.clone(), vec![changed_second_diagnostic.clone()]);
+    backend
+        .refresh_plan(WorkspaceDiagnostics {
+            snapshot: changed_snapshot,
+            batches: vec![
+                DiagnosticBatch {
+                    uri: first_uri,
+                    diagnostics: vec![served_diagnostic(
+                        Path::new("/workspace"),
+                        &sample_finding(),
+                    )],
+                },
+                DiagnosticBatch {
+                    uri: second_uri,
+                    diagnostics: vec![changed_second_diagnostic],
+                },
+            ],
+        })
+        .ok_or_else(|| "expected changed multi-document snapshot".to_string())?;
+
+    let second = runtime
+        .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        }))
+        .map_err(|err| format!("second multi-document pull failed: {err}"))?;
+    let second_json = serde_json::to_value(second)
+        .map_err(|err| format!("serialize second multi-document report failed: {err}"))?;
+    let kinds = second_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "second multi-document report had no items".to_string())?
+        .iter()
+        .filter_map(|item| {
+            item.get("uri")
+                .and_then(serde_json::Value::as_str)
+                .zip(item.get("kind").and_then(serde_json::Value::as_str))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if kinds.get("file:///workspace/src/first.rs") != Some(&"unchanged")
+        || kinds.get("file:///workspace/src/second.rs") != Some(&"full")
+    {
+        return Err(format!(
+            "expected only the changed document to be full: {second_json}"
+        ));
+    }
     Ok(())
 }
 
@@ -204,14 +628,17 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
 
     let snapshot = AnalysisSnapshot {
         root: std::path::PathBuf::from(root),
+        input_identity: None,
         base: None,
         mode: crate::app::Mode::Draft,
         refresh: RefreshMetadata::default(),
         findings: vec![finding],
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
+        delivery_selection: None,
         seams_deferred: false,
     };
 
@@ -273,6 +700,11 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
 
     runtime.block_on(async {
+        let invalid_root_parent = unique_lsp_test_root("framed-invalid-root")?;
+        let invalid_root = invalid_root_parent.path().join("not-a-directory");
+        std::fs::write(&invalid_root, b"not a workspace directory")
+            .map_err(|err| format!("write invalid LSP root failed: {err}"))?;
+        let invalid_root_uri = file_uri_for_path(&invalid_root)?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (client_read, mut client_write) = tokio::io::split(client_io);
         let (server_read, server_write) = tokio::io::split(server_io);
@@ -293,7 +725,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
                 "method": "initialize",
                 "params": {
                     "processId": null,
-                    "rootUri": "file:///target/ripr/lsp-protocol-smoke-missing-root",
+                    "rootUri": invalid_root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "ripr-lsp-protocol-smoke-missing-base"
+                    },
                     "capabilities": {}
                 }
             }),
@@ -361,6 +796,28 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
                 "id": 2,
                 "method": "workspace/executeCommand",
                 "params": {
+                    "command": COLLECT_WORKSPACE_STATUS_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let status = read_lsp_response(&mut client_read, 2).await?;
+        assert_eq!(
+            status["result"]["analysis_status"]["root_state"],
+            "root_unavailable"
+        );
+        assert_eq!(
+            status["result"]["analysis_status"]["repair_actions_available"],
+            false
+        );
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "workspace/executeCommand",
+                "params": {
                     "command": REFRESH_COMMAND,
                     "arguments": []
                 }
@@ -368,26 +825,16 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         )
         .await?;
         let (refresh, notifications) =
-            read_lsp_response_with_notifications(&mut client_read, 2).await?;
+            read_lsp_response_with_notifications(&mut client_read, 3).await?;
         assert!(refresh.get("error").is_none());
         assert_eq!(refresh["result"], serde_json::Value::Null);
-        let notification_messages = log_notification_messages(&notifications);
-        assert!(
-            notification_messages
-                .iter()
-                .any(|message| message.contains("ripr analysis refresh started"))
-        );
-        assert!(
-            notification_messages
-                .iter()
-                .any(|message| message.contains("ripr analysis refresh failed after"))
-        );
+        assert!(log_notification_messages(&notifications).is_empty());
 
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 3,
+                "id": 4,
                 "method": "textDocument/hover",
                 "params": {
                     "textDocument": { "uri": text_uri },
@@ -396,7 +843,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let hover = read_lsp_response(&mut client_read, 3).await?;
+        let hover = read_lsp_response(&mut client_read, 4).await?;
         let hover_value = hover["result"]["contents"]["value"]
             .as_str()
             .ok_or_else(|| "expected hover markdown value".to_string())?;
@@ -406,7 +853,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 4,
+                "id": 5,
                 "method": "textDocument/codeAction",
                 "params": {
                     "textDocument": { "uri": text_uri },
@@ -419,7 +866,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let actions = read_lsp_response(&mut client_read, 4).await?;
+        let actions = read_lsp_response(&mut client_read, 5).await?;
         assert_eq!(
             actions["result"][0]["title"],
             "Refresh Analysis - Saved Workspace Check"
@@ -430,13 +877,13 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 5,
+                "id": 6,
                 "method": "shutdown",
                 "params": null
             }),
         )
         .await?;
-        let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        let shutdown = read_lsp_response(&mut client_read, 6).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -499,7 +946,8 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                     "rootUri": root_uri.as_str(),
                     "initializationOptions": {
                         "baseRef": "HEAD",
-                        "checkMode": "instant"
+                        "checkMode": "instant",
+                        "diagnosticProfile": "full"
                     },
                     "capabilities": {}
                 }
@@ -826,6 +1274,24 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
     let backend = service.inner();
     let mut finding = sample_finding();
     finding.canonical_gap = Some(sample_canonical_gap());
+    finding.evidence = vec!["related evidence".to_string()];
+    finding.missing = vec!["missing exact discriminator".to_string()];
+    finding.recommended_next_step = Some("Add the exact assertion.".to_string());
+    finding.activation.missing_discriminators = vec![crate::domain::MissingDiscriminatorFact {
+        value: "threshold equality".to_string(),
+        reason: "the equality boundary is not observed".to_string(),
+        flow_sink: None,
+    }];
+    finding.related_tests = vec![RelatedTest {
+        name: "pricing::discount_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 12,
+        oracle: Some("assert_eq".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let canonical_gap_id = diagnostic
         .data
@@ -836,6 +1302,72 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
     assert_eq!(
         canonical_gap_id,
         "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+    );
+    let mut raw_finding = finding.clone();
+    raw_finding.id = "probe:pricing:89:predicate".to_string();
+    raw_finding.probe.id = ProbeId(raw_finding.id.clone());
+    raw_finding.probe.location.line = 89;
+    let mut grouped_diagnostic = diagnostic.clone();
+    add_canonical_group_data(
+        Path::new("/workspace"),
+        &mut grouped_diagnostic,
+        &finding,
+        &[finding.clone(), raw_finding],
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_signal_count"].as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_findings"].as_array())
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["related_tests"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    let mut no_data_diagnostic = tower_lsp_server::ls_types::Diagnostic::default();
+    add_canonical_group_data(
+        Path::new("/workspace"),
+        &mut no_data_diagnostic,
+        &finding,
+        std::slice::from_ref(&finding),
+    );
+    assert!(no_data_diagnostic.data.is_none());
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["evidence"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["missing"].as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        grouped_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["recommended_next_steps"].as_array())
+            .map(Vec::len),
+        Some(1)
     );
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
     let diagnostics = sample_workspace_diagnostics(
@@ -862,6 +1394,108 @@ fn finding_diagnostic_and_hover_include_canonical_gap_id() -> Result<(), String>
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn discriminator_witness_stays_aligned_across_lsp_surfaces() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.recommended_next_step = None;
+    finding.canonical_gap = Some(sample_canonical_gap());
+    finding.probe.family = ProbeFamily::ErrorPath;
+    finding.probe.before = Some("Err(PricingError::Other)".to_string());
+    finding.probe.after = Some("Err(PricingError::Boundary)".to_string());
+    finding.probe.expected_sinks = vec!["error_variant".to_string()];
+    finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+        value: "PricingError::Boundary".to_string(),
+        reason: "the broad error oracle does not distinguish the variant".to_string(),
+        flow_sink: None,
+    }];
+    finding.activation.observed_values = vec![ValueFact {
+        line: 12,
+        text: "assert!(result.is_err())".to_string(),
+        value: "result.is_err()".to_string(),
+        context: ValueContext::AssertionArgument,
+    }];
+    finding.related_tests = vec![RelatedTest {
+        name: "rejects_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 10,
+        oracle: Some("assert!(result.is_err())".to_string()),
+        oracle_kind: OracleKind::BroadError,
+        oracle_strength: OracleStrength::Weak,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let witness = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("witness"))
+        .cloned()
+        .ok_or_else(|| "expected diagnostic discriminator witness".to_string())?;
+    assert_eq!(witness["kind"], "static_discriminator_gap");
+    assert_eq!(witness["probe_family"], "error_path");
+    assert_eq!(
+        witness["missing_discriminators"][0]["value"],
+        "PricingError::Boundary"
+    );
+    assert_eq!(witness["fix_site"]["file"], "tests/pricing.rs");
+    assert!(witness["fix_site"]["oracle_location"].is_null());
+    assert!(witness["suggested_assertion"].is_null());
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("explain_command"))
+            .and_then(|value| value.as_str()),
+        Some("ripr explain --root . probe:pricing:88:predicate")
+    );
+    assert!(diagnostic.message.contains("Exact error variant"));
+    assert!(diagnostic.message.contains("PricingError::Boundary"));
+
+    let related = diagnostic
+        .related_information
+        .as_ref()
+        .ok_or_else(|| "expected fix-site related information".to_string())?;
+    assert_eq!(related.len(), 1);
+    assert!(related[0].message.starts_with("Fix site:"));
+    assert_eq!(related[0].location.range.start.line, 9);
+
+    let hover = super::hover::finding_hover_response(&finding, &diagnostic);
+    let HoverContents::Markup(markup) = hover.contents else {
+        return Err("expected witness hover markdown".to_string());
+    };
+    assert!(markup.value.contains("## Discriminator witness"));
+    assert!(markup.value.contains("PricingError::Boundary"));
+    assert!(markup.value.contains("tests/pricing.rs:10"));
+    assert!(markup.value.contains("suggested_assertion_unavailable"));
+
+    let context_packet = crate::output::json::render_context_packet(&finding, 5);
+    let context_packet: serde_json::Value =
+        serde_json::from_str(&context_packet).map_err(|err| format!("packet JSON: {err}"))?;
+    assert_eq!(context_packet["witness"], witness);
+
+    let params = code_action_params(vec![diagnostic])?;
+    let actions = code_action_response(&params, None);
+    let context_target = actions.iter().find_map(|action| {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return None;
+        };
+        if action.title != "Inspect finding: copy context packet" {
+            return None;
+        }
+        action
+            .command
+            .as_ref()
+            .and_then(|command| command.arguments.as_ref())
+            .and_then(|arguments| arguments.first())
+    });
+    assert_eq!(
+        context_target.and_then(|target| target.get("witness")),
+        Some(&witness)
+    );
+    Ok(())
 }
 
 #[test]
@@ -1343,6 +1977,50 @@ fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
 }
 
 #[test]
+fn refresh_plan_accepts_actionable_snapshot_with_suppressed_finding() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let mut visible = sample_finding();
+    visible.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+        value: "PricingError::Boundary".to_string(),
+        reason: "the exact boundary is not observed".to_string(),
+        flow_sink: None,
+    }];
+    visible.related_tests = vec![RelatedTest {
+        name: "checks_boundary".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 12,
+        oracle: Some("assert_eq!(result, expected)".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
+    }];
+
+    let mut suppressed = sample_finding();
+    suppressed.id = "probe:pricing:9:predicate".to_string();
+    suppressed.probe.id = ProbeId(suppressed.id.clone());
+    suppressed.probe.location.file = PathBuf::from("src/other.rs");
+    suppressed.probe.location.line = 9;
+    suppressed.class = ExposureClass::Exposed;
+
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &visible);
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![visible, suppressed],
+    );
+    diagnostics.snapshot.diagnostic_profile = crate::config::LspDiagnosticProfile::Actionable;
+
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected actionable refresh plan".to_string());
+    };
+    Ok(())
+}
+
+#[test]
 fn refresh_plan_stores_snapshot_refresh_metadata() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
@@ -1650,7 +2328,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
         vec![
             (
                 "Inspect finding: copy context packet",
-                "quickfix",
+                "source.ripr.inspect",
                 "Inspect finding: copy context",
                 COPY_CONTEXT_COMMAND,
             ),
@@ -2708,6 +3386,7 @@ fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Res
             test_name: "nearby_smoke_reaches_owner".to_string(),
             file: PathBuf::from("tests/smoke.rs"),
             line: 7,
+            test_target: None,
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
             evidence_summary: "smoke-only assertion".to_string(),
@@ -2718,6 +3397,7 @@ fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Res
             test_name: "below_threshold_has_no_discount".to_string(),
             file: PathBuf::from("tests/pricing.rs"),
             line: 12,
+            test_target: None,
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
             evidence_summary: "exact value assertion".to_string(),
@@ -2766,6 +3446,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "opaque_fixture_hint".to_string(),
             file: PathBuf::from("tests/opaque.rs"),
             line: 3,
+            test_target: None,
             oracle_kind: OracleKind::Unknown,
             oracle_strength: OracleStrength::None,
             evidence_summary: "opaque relation".to_string(),
@@ -2776,6 +3457,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "low_confidence_smoke".to_string(),
             file: PathBuf::from("tests/low.rs"),
             line: 5,
+            test_target: None,
             oracle_kind: OracleKind::SmokeOnly,
             oracle_strength: OracleStrength::Smoke,
             evidence_summary: "smoke-only assertion".to_string(),
@@ -2786,6 +3468,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "medium_confidence_property".to_string(),
             file: PathBuf::from("tests/medium.rs"),
             line: 9,
+            test_target: None,
             oracle_kind: OracleKind::RelationalCheck,
             oracle_strength: OracleStrength::Medium,
             evidence_summary: "medium oracle".to_string(),
@@ -2796,6 +3479,7 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
             test_name: "high_confidence_weak_assertion".to_string(),
             file: PathBuf::from("tests/high.rs"),
             line: 11,
+            test_target: None,
             oracle_kind: OracleKind::RelationalCheck,
             oracle_strength: OracleStrength::Weak,
             evidence_summary: "weak oracle".to_string(),
@@ -2870,8 +3554,37 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
 }
 
 #[test]
-fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assertion()
--> Result<(), String> {
+fn unknown_stage_value_route_omits_suggested_assertion_action() -> Result<(), String> {
+    use crate::analysis::seams::SeamGripClass;
+
+    let mut seam = sample_classified_seam();
+    seam.class = SeamGripClass::ActivationUnknown;
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let commands = code_action_commands(&actions)?;
+
+    if commands
+        .iter()
+        .any(|(_, command, _)| command == COPY_SUGGESTED_ASSERTION_COMMAND)
+    {
+        return Err(format!(
+            "unknown-stage route must not offer suggested assertion: {commands:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_keep_navigation_when_related_test_is_unresolved() -> Result<(), String> {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason,
     };
@@ -2881,6 +3594,7 @@ fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assert
         test_name: "publish_event_emits_bus_message".to_string(),
         file: PathBuf::from("tests/service.rs"),
         line: 21,
+        test_target: None,
         oracle_kind: OracleKind::SmokeOnly,
         oracle_strength: OracleStrength::Smoke,
         evidence_summary: "related smoke test reaches event publishing".to_string(),
@@ -2903,8 +3617,8 @@ fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assert
     assert!(
         commands
             .iter()
-            .any(|(_, command, _)| command == COPY_TARGETED_TEST_BRIEF_COMMAND),
-        "expected targeted-test brief action when a related test exists, got {commands:?}"
+            .all(|(_, command, _)| command != COPY_TARGETED_TEST_BRIEF_COMMAND),
+        "unresolved related-test evidence must not produce a repair brief: {commands:?}"
     );
     assert!(
         commands
@@ -2984,6 +3698,18 @@ fn diagnostic_for_finding_uses_probe_column_and_expression_width() {
 }
 
 #[test]
+fn diagnostic_for_finding_uses_utf16_width_for_non_ascii_expression() {
+    let mut finding = sample_finding();
+    finding.probe.location.column = 2;
+    finding.probe.expression = "\u{e9}\u{1f389}".to_string();
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert_eq!(diagnostic.range.start.character, 1);
+    assert_eq!(diagnostic.range.end.character, 4);
+}
+
+#[test]
 fn diagnostic_for_finding_uses_one_character_range_for_empty_expression() {
     let mut finding = sample_finding();
     finding.probe.location.column = 3;
@@ -3022,7 +3748,7 @@ fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), Stri
     assert_eq!(related[0].location.range.start.line, 11);
     assert_eq!(
         related[0].message,
-        "Related test `discount_boundary_is_exact` has strong oracle: assert_eq!(total, expected)"
+        "Fix site: related test `discount_boundary_is_exact` has strong exact_value oracle: assert_eq!(total, expected)"
     );
     Ok(())
 }
@@ -3057,15 +3783,15 @@ fn diagnostic_severity_tracks_static_exposure_class() {
 fn diagnostic_refresh_plan_clears_stale_previous_uris() -> Result<(), String> {
     let stale_uri = test_uri("file:///workspace/src/stale.rs")?;
     let current_uri = test_uri("file:///workspace/src/current.rs")?;
-    let mut previous_uris = BTreeSet::new();
-    previous_uris.insert(stale_uri.clone());
-    previous_uris.insert(current_uri.clone());
+    let mut previous = BTreeMap::new();
+    previous.insert(stale_uri.clone(), Vec::new());
+    previous.insert(current_uri.clone(), Vec::new());
 
     let plan = diagnostic_refresh_plan(
-        &previous_uris,
+        &previous,
         vec![DiagnosticBatch {
             uri: current_uri.clone(),
-            diagnostics: Vec::new(),
+            diagnostics: vec![gap_action_diagnostic()],
         }],
     );
 
@@ -3073,6 +3799,40 @@ fn diagnostic_refresh_plan_clears_stale_previous_uris() -> Result<(), String> {
     assert_eq!(plan.publish_batches[0].uri, current_uri);
     assert_eq!(plan.clear_uris, vec![stale_uri]);
     assert_eq!(plan.current_uris.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn diagnostic_refresh_plan_suppresses_unchanged_uri_and_publishes_changed_uri() -> Result<(), String>
+{
+    let uri = test_uri("file:///workspace/src/current.rs")?;
+    let first = gap_action_diagnostic();
+    let mut previous = BTreeMap::new();
+    previous.insert(uri.clone(), vec![first.clone()]);
+
+    let unchanged = diagnostic_refresh_plan(
+        &previous,
+        vec![DiagnosticBatch {
+            uri: uri.clone(),
+            diagnostics: vec![first.clone()],
+        }],
+    );
+    assert!(unchanged.publish_batches.is_empty());
+    assert_eq!(unchanged.unchanged_uri_count, 1);
+    assert!(unchanged.suppressed_payload_bytes > 0);
+
+    let mut changed = first;
+    changed.message.push_str("; changed");
+    let changed_plan = diagnostic_refresh_plan(
+        &previous,
+        vec![DiagnosticBatch {
+            uri,
+            diagnostics: vec![changed],
+        }],
+    );
+    assert_eq!(changed_plan.publish_batches.len(), 1);
+    assert_eq!(changed_plan.unchanged_uri_count, 0);
+    assert!(changed_plan.published_payload_bytes > 0);
     Ok(())
 }
 
@@ -3092,7 +3852,7 @@ fn take_all_uris_returns_and_clears_previous_diagnostic_uris() -> Result<(), Str
 }
 
 #[test]
-fn refresh_failure_clear_helper_clears_tracked_diagnostics() -> Result<(), String> {
+fn explicit_snapshot_clear_helper_clears_tracked_diagnostics() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
     let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
@@ -3145,6 +3905,234 @@ fn refresh_diagnostics_advances_generation_before_analysis() -> Result<(), Strin
     assert_eq!(generation, 1);
     assert!(backend.is_current_refresh_generation(generation));
     assert!(backend.latest_analysis_snapshot().is_none());
+    Ok(())
+}
+
+#[test]
+fn stale_refresh_does_not_rollback_after_root_authority_transition() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let request = RefreshRequest {
+            generation: 1,
+            authority_epoch: 0,
+            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+                PathBuf::from("/workspace"),
+                1,
+                &LspAnalysisConfig::default(),
+            ),
+            root: PathBuf::from("/workspace"),
+            config: LspAnalysisConfig::default(),
+            workspace_revision: 1,
+            scope: RefreshScope::Interactive,
+            reason: RefreshReason::DidSave,
+            cancellation: AnalysisCancellationToken::new(),
+        };
+
+        if !backend.refresh_authority_is_unchanged(&request) {
+            return Err("expected request authority to match before transition".to_string());
+        }
+        backend.invalidate_workspace_root_for_test().await;
+        if backend.refresh_authority_is_unchanged(&request) {
+            return Err("expected root transition to invalidate request authority".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[tokio::test]
+async fn did_save_with_unchanged_content_deduplicates_without_refresh() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    // First save after open: nothing recorded yet, so it always counts as
+    // changed (conservative) and records the digest.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "first save did not advance the revision: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    // A repeated save of the same bytes now dedups.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "unchanged repeated save advanced the revision: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_save_with_changed_content_advances_and_refreshes() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn changed() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "changed save did not advance the revision exactly once: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+
+    // A repeated save of the now-recorded content dedups again.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn changed() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err(format!(
+            "repeated save of recorded content did not deduplicate: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_save_without_text_falls_back_to_document_store_content() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn stored() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    let baseline = backend.workspace_revision();
+
+    // Clients without includeText send no content: the digest comes from the
+    // document store. First save records; the repeat dedups.
+    for expected_revision in [baseline + 1, baseline + 1] {
+        backend
+            .did_save(DidSaveTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                text: None,
+            })
+            .await;
+        if backend.workspace_revision() != expected_revision {
+            return Err(format!(
+                "text-less save path drifted: expected revision {expected_revision}, got {}",
+                backend.workspace_revision()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn did_close_clears_the_saved_content_digest() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/lib.rs")?;
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    backend.advance_workspace_revision();
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    let after_record = backend.workspace_revision();
+
+    backend
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+    // did_close advances the revision by design; the digest must be gone.
+    backend
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                2,
+                "fn same() {}".to_string(),
+            ),
+        })
+        .await;
+    let after_reopen = backend.workspace_revision();
+
+    // The same bytes after close+reopen are treated as changed (conservative):
+    // nothing is recorded for the document anymore.
+    backend
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            text: Some("fn same() {}".to_string()),
+        })
+        .await;
+    if backend.workspace_revision() != after_reopen + 1 {
+        return Err(format!(
+            "reopened document kept its digest: record={after_record} reopen={after_reopen} now={}",
+            backend.workspace_revision()
+        ));
+    }
     Ok(())
 }
 
@@ -3215,8 +4203,7 @@ fn document_store_creates_document_from_full_change_when_missing() -> Result<(),
 }
 
 #[test]
-fn initialize_root_prefers_first_workspace_folder() -> Result<(), String> {
-    let fallback = PathBuf::from("/fallback");
+fn initialize_root_rejects_ambiguous_workspace_folders() -> Result<(), String> {
     let params = initialize_params(
         Some(vec![
             WorkspaceFolder {
@@ -3231,31 +4218,53 @@ fn initialize_root_prefers_first_workspace_folder() -> Result<(), String> {
         Some(test_uri("file:///workspace/root-uri")?),
     );
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, PathBuf::from("/workspace/main"));
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Ambiguous(vec![
+            PathBuf::from("/workspace/main"),
+            PathBuf::from("/workspace/other"),
+        ])
+    );
     Ok(())
 }
 
 #[test]
 fn initialize_root_uses_root_uri_when_workspace_folders_are_missing() -> Result<(), String> {
-    let fallback = PathBuf::from("/fallback");
     let params = initialize_params(None, Some(test_uri("file:///workspace/root-uri")?));
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, PathBuf::from("/workspace/root-uri"));
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Selected(PathBuf::from("/workspace/root-uri"))
+    );
     Ok(())
 }
 
 #[test]
-fn initialize_root_falls_back_to_process_cwd_when_no_lsp_root_exists() {
-    let fallback = PathBuf::from("/fallback");
+fn initialize_root_rejects_empty_workspace_folders_even_with_root_uri() -> Result<(), String> {
+    let params = initialize_params(
+        Some(Vec::new()),
+        Some(test_uri("file:///workspace/root-uri")?),
+    );
+
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Unavailable(
+            "the client explicitly reported no workspace folders".to_string()
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn initialize_root_reports_unavailable_when_no_lsp_root_exists() {
     let params = initialize_params(None, None);
 
-    let root = root_from_initialize_params(&params, &fallback);
-
-    assert_eq!(root, fallback);
+    assert_eq!(
+        root_from_initialize_params(&params),
+        WorkspaceRootResolution::Unavailable(
+            "the client did not provide a workspace folder or root URI".to_string()
+        )
+    );
 }
 
 #[test]
@@ -3411,6 +4420,68 @@ enabled = ["ruby"]
         );
         assert_eq!(config.mode, Mode::Draft);
         assert!(config.enable_seam_diagnostics);
+        let Some(failure) = backend.configuration_failure() else {
+            return Err("invalid config should pause analysis with a typed failure".to_string());
+        };
+        assert_eq!(failure.kind, "config_invalid");
+        backend.invalidate_workspace_root_for_test().await;
+        assert!(backend.configuration_failure().is_none());
+        Ok(())
+    })
+}
+
+#[test]
+fn session_configuration_change_preserves_invalid_repository_config_health() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("invalid-config-session-change")?;
+        std::fs::write(
+            root.path().join("ripr.toml"),
+            "[languages]\nenabled = [\"ruby\"]\n",
+        )
+        .map_err(|err| format!("write invalid config failed: {err}"))?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        if backend.configuration_failure().is_none() {
+            return Err("invalid repository config should latch config_invalid".to_string());
+        }
+        backend
+            .did_change_configuration(DidChangeConfigurationParams {
+                settings: serde_json::json!({"ripr": {"seamDiagnostics": false}}),
+            })
+            .await;
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        assert_eq!(status["analysis_status"]["state"], "failed");
+        assert_eq!(
+            status["analysis_status"]["failure"]["kind"],
+            "config_invalid"
+        );
+        assert!(
+            !backend
+                .analysis_config()
+                .ok_or_else(|| "expected analysis config".to_string())?
+                .enable_seam_diagnostics
+        );
         Ok(())
     })
 }
@@ -3841,16 +4912,24 @@ fn sample_analysis_snapshot(
 ) -> AnalysisSnapshot {
     let mut diagnostics_by_uri = BTreeMap::new();
     diagnostics_by_uri.insert(uri, diagnostics);
+    let input_identity = LspAnalysisInputIdentity::from_refresh_inputs(
+        root.clone(),
+        1,
+        &LspAnalysisConfig::default(),
+    );
     AnalysisSnapshot {
         root,
+        input_identity: Some(input_identity),
         base: Some("origin/main".to_string()),
         mode: Mode::Draft,
         refresh: RefreshMetadata::generated_now(),
         findings,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
+        delivery_selection: None,
         seams_deferred: false,
     }
 }
@@ -3949,6 +5028,7 @@ fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysi
     LspAnalysisConfig {
         base_ref: Some("HEAD".to_string()),
         mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
         repo_config,
         ..LspAnalysisConfig::default()
     }
@@ -4285,6 +5365,87 @@ fn initialize_params(
     }
 }
 
+#[test]
+fn canonical_finding_groups_collapse_same_gap_and_preserve_raw_signals() -> Result<(), String> {
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.id = "probe:pricing:89:predicate".to_string();
+    second.probe.id = ProbeId(second.id.clone());
+    second.probe.location.line = 89;
+
+    let groups = canonical_finding_groups(&[first, second]);
+
+    assert_eq!(groups.len(), 1, "one canonical gap should yield one group");
+    assert_eq!(groups[0].1.len(), 2, "raw findings must remain attached");
+    assert_eq!(
+        groups[0]
+            .0
+            .canonical_gap
+            .as_ref()
+            .map(|gap| gap.id.as_str()),
+        Some(
+            "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn canonical_group_mixed_classes_are_detected_without_promotion() {
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.class = ExposureClass::StaticUnknown;
+
+    assert!(canonical_group_has_mixed_classes(&[first, second]));
+    assert!(!canonical_group_has_mixed_classes(std::slice::from_ref(
+        &sample_finding()
+    )));
+}
+
+#[test]
+fn finding_projection_emits_one_limited_diagnostic_for_mixed_canonical_group() -> Result<(), String>
+{
+    let mut first = sample_finding();
+    first.canonical_gap = Some(sample_canonical_gap());
+    let mut second = first.clone();
+    second.id = "probe:pricing:89:predicate".to_string();
+    second.probe.id = ProbeId(second.id.clone());
+    second.probe.location.line = 89;
+    second.class = ExposureClass::StaticUnknown;
+    let config = LspAnalysisConfig::default();
+    let grouped = finding_diagnostics_by_uri(
+        Path::new("/workspace"),
+        &[first, second],
+        config.repo_config().severity(),
+        true,
+        None,
+    )?;
+    let diagnostics = grouped.values().flatten().collect::<Vec<_>>();
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].severity,
+        Some(DiagnosticSeverity::INFORMATION)
+    );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data["raw_signal_count"].as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data["canonical_limitation"].as_str()),
+        Some("mixed_static_classes")
+    );
+    Ok(())
+}
+
 fn sample_finding() -> Finding {
     Finding {
         id: "probe:pricing:88:predicate".to_string(),
@@ -4385,7 +5546,7 @@ fn sample_classified_seam() -> crate::analysis::ClassifiedSeam {
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
     };
     use crate::analysis::test_grip_evidence::{
-        RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
+        RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
     };
     use crate::domain::{MissingDiscriminatorFact, ValueContext, ValueFact};
 
@@ -4410,6 +5571,11 @@ fn sample_classified_seam() -> crate::analysis::ClassifiedSeam {
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(TestTargetEvidence::fixture(
+                    "below_threshold_has_no_discount",
+                    Path::new("tests/pricing.rs"),
+                    12,
+                )),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
@@ -5230,6 +6396,7 @@ fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_stat
     runtime.block_on(async {
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let params = ExecuteCommandParams {
             command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
@@ -5245,8 +6412,42 @@ fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_stat
         assert_eq!(status["tool"], "ripr");
         assert_eq!(status["kind"], "workspace_status");
         assert_eq!(status["run_status"], "no_snapshot");
+        assert_eq!(status["analysis_status"]["state"], "stopped");
+        assert_eq!(status["analysis_status"]["run_status"], "no_snapshot");
+        assert_eq!(status["analysis_status"]["repair_actions_available"], false);
         assert_eq!(status["top_actionable_packet"], serde_json::Value::Null);
-        assert_eq!(status["top_limitation"], serde_json::Value::Null);
+        assert_eq!(
+            status["diagnostic_budget_state"],
+            serde_json::json!({
+                "status": "unavailable",
+                "reason": "no_snapshot",
+            })
+        );
+        assert_eq!(status["top_limitation"]["status"], "no_snapshot");
+        assert_eq!(
+            status["top_limitation"]["limitation_category"],
+            "no_snapshot"
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["configuration_state"],
+            "valid"
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["repository_config_source"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["session_options_present"],
+            false
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["current"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["last_success"],
+            serde_json::Value::Null
+        );
         assert_eq!(
             status["limits_note"],
             "Static evidence only; advisory, not a gate decision."
@@ -5260,6 +6461,254 @@ fn execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_stat
         );
         Ok(())
     })
+}
+
+#[test]
+fn failed_refresh_retains_last_snapshot_and_reports_stale_health() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let finding = sample_finding();
+        let diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        );
+        backend
+            .refresh_plan(diagnostics)
+            .ok_or_else(|| "expected successful snapshot".to_string())?;
+
+        let request = RefreshRequest {
+            generation: 7,
+            authority_epoch: 0,
+            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+                PathBuf::from("/workspace"),
+                1,
+                &LspAnalysisConfig::default(),
+            ),
+            root: PathBuf::from("/workspace"),
+            config: LspAnalysisConfig::default(),
+            workspace_revision: 1,
+            scope: RefreshScope::Interactive,
+            reason: RefreshReason::DidSave,
+            cancellation: AnalysisCancellationToken::new(),
+        };
+        backend.record_health_outcome(&request, RefreshAttemptOutcome::Published);
+        backend
+            .report_refresh_failure_after(
+                &request,
+                "temporary analysis timeout at /workspace/src/pricing.rs".to_string(),
+                Duration::from_millis(25),
+                "analysis_error",
+            )
+            .await;
+
+        let retained = backend
+            .latest_analysis_snapshot()
+            .ok_or_else(|| "failed refresh erased the last snapshot".to_string())?;
+        if retained.finding_count() != 1 {
+            return Err("failed refresh did not retain diagnostics evidence".to_string());
+        }
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status after failure".to_string())?;
+        assert_eq!(status["run_status"], "stale");
+        assert_eq!(status["analysis_status"]["state"], "failed");
+        assert_eq!(status["analysis_status"]["run_status"], "stale");
+        assert_eq!(
+            status["analysis_status"]["failure"]["kind"],
+            "analysis_error"
+        );
+        assert_eq!(
+            status["analysis_status"]["failure"]["message"],
+            "temporary analysis timeout at <path>"
+        );
+        assert_eq!(
+            status["analysis_status"]["last_success_snapshot_id"],
+            "snapshot:7"
+        );
+        assert!(
+            status["analysis_status"]["current_input_identity"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("input:"))
+        );
+        assert!(
+            status["analysis_status"]["last_success_input_identity"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("input:"))
+        );
+        assert_eq!(status["analysis_status"]["repair_actions_available"], false);
+        assert_eq!(status["top_actionable_packet"], serde_json::Value::Null);
+        assert_eq!(
+            status["top_limitation"]["status"],
+            "analysis_failed_retained_snapshot"
+        );
+        assert_eq!(status["top_limitation"]["run_status"], "stale");
+
+        let retained_input_identity = status["analysis_status"]["input_authority"]["last_success"]
+            ["input_identity"]
+            .as_str()
+            .ok_or_else(|| "expected retained input identity before invalidation".to_string())?
+            .to_string();
+
+        backend.invalidate_analysis_input_for_test("workspace_manifest_or_lockfile_changed");
+        let invalidated_status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command after invalidation failed: {err}"))?
+            .ok_or_else(|| "expected workspace status after invalidation".to_string())?;
+        assert_eq!(
+            invalidated_status["analysis_status"]["input_authority"]["current"],
+            serde_json::Value::Null,
+            "invalidated retained evidence must not be promoted to current input"
+        );
+        assert_eq!(
+            invalidated_status["analysis_status"]["input_authority"]["last_success"]
+                ["input_identity"]
+                .as_str(),
+            Some(retained_input_identity.as_str())
+        );
+
+        let retained_diagnostic = retained
+            .diagnostics_by_uri
+            .values()
+            .flatten()
+            .next()
+            .cloned()
+            .ok_or_else(|| "expected retained diagnostic".to_string())?;
+        let actions = backend
+            .code_action(code_action_params(vec![retained_diagnostic])?)
+            .await
+            .map_err(|err| format!("code_action failed: {err}"))?
+            .ok_or_else(|| "expected code action response".to_string())?;
+        let action_titles = actions
+            .iter()
+            .map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => action.title.as_str(),
+                CodeActionOrCommand::Command(command) => command.title.as_str(),
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            action_titles
+                .iter()
+                .all(|title| { title.contains("Refresh") || title.contains("Inspect") }),
+            "stale snapshots must expose only inspection and refresh actions: {action_titles:?}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn retained_snapshot_during_queued_or_running_refresh_reports_wait_state() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let finding = sample_finding();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        );
+        backend
+            .refresh_plan(diagnostics)
+            .ok_or_else(|| "expected retained snapshot".to_string())?;
+
+        for (state, expected_status) in [
+            (AnalysisAttemptState::Queued, "analysis_queued"),
+            (AnalysisAttemptState::Running, "analysis_running"),
+        ] {
+            backend.set_analysis_attempt_state_for_test(state);
+            let status = backend
+                .execute_command(ExecuteCommandParams {
+                    command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                    arguments: vec![],
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+                .map_err(|err| format!("execute_command failed: {err}"))?
+                .ok_or_else(|| "expected workspace status".to_string())?;
+            assert_eq!(status["top_limitation"]["status"], expected_status);
+            assert_eq!(status["top_limitation"]["completeness"], "pending");
+            assert_eq!(
+                status["top_limitation"]["recovery_route"],
+                "wait_for_analysis"
+            );
+            assert_eq!(status["top_limitation"]["run_status"], "stale");
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn refresh_transaction_does_not_replace_snapshot_before_commit() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let baseline_finding = sample_finding();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(
+                Path::new("/workspace"),
+                &baseline_finding,
+            )],
+            vec![baseline_finding.clone()],
+        ))
+        .ok_or_else(|| "expected baseline snapshot".to_string())?;
+
+    let mut candidate_finding = sample_finding();
+    candidate_finding.id = "probe:pricing:99:predicate".to_string();
+    candidate_finding.probe.id = ProbeId(candidate_finding.id.clone());
+    let transaction = backend
+        .prepare_refresh_transaction(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic_for_finding(
+                Path::new("/workspace"),
+                &candidate_finding,
+            )],
+            vec![candidate_finding.clone()],
+        ))
+        .ok_or_else(|| "expected prepared refresh transaction".to_string())?;
+
+    let retained = backend
+        .latest_analysis_snapshot()
+        .ok_or_else(|| "expected retained baseline snapshot".to_string())?;
+    assert_eq!(retained.findings[0].id, baseline_finding.id);
+
+    let super::backend::RefreshTransaction { plan, snapshot, .. } = transaction;
+    assert!(backend.commit_refresh_snapshot(snapshot, &plan));
+    let committed = backend
+        .latest_analysis_snapshot()
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    assert_eq!(committed.findings[0].id, candidate_finding.id);
+    Ok(())
 }
 
 #[test]
@@ -5320,6 +6769,102 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
             Some(1),
             "expected findings count of 1"
         );
+        assert_eq!(status["diagnostics"]["raw_signals"].as_u64(), Some(1));
+        assert_eq!(status["diagnostics"]["canonical_items"].as_u64(), Some(1));
+        assert_eq!(
+            status["diagnostics"]["actionable_diagnostics"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["total_canonical_items"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["selected_count"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["eligible_items"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["omitted_count"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            status["diagnostic_budget"]["omitted"][0]["reason"],
+            "profile_filtered"
+        );
+        assert_eq!(status["diagnostic_budget_state"]["status"], "available");
+        assert_eq!(
+            status["diagnostic_budget"]["inline_detail_measurement"],
+            "not_available"
+        );
+        let current_input = &status["analysis_status"]["input_authority"]["current"];
+        let input_identity = current_input["input_identity"]
+            .as_str()
+            .ok_or_else(|| "expected input identity in workspace status".to_string())?;
+        assert!(
+            status["diagnostic_budget"]["snapshot_profile_budget_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.contains(input_identity)),
+            "budget identity must bind to the snapshot input identity: {status}"
+        );
+        assert_ne!(
+            status["diagnostic_budget"]["complete_evidence_identity"],
+            "workspace_status"
+        );
+        assert_eq!(status["diagnostic_budget"]["overflowed"], false);
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["configuration_state"],
+            "valid"
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["repository_config_source"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["session_options_present"],
+            false
+        );
+        assert!(
+            current_input["input_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.starts_with("input:")),
+            "status must expose the current producer-owned input identity: {status}"
+        );
+        assert!(
+            current_input["root_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.starts_with("root:")),
+            "status must expose a bounded root identity: {status}"
+        );
+        assert_eq!(current_input["effective_root"], "/workspace");
+        assert_eq!(current_input["saved_workspace_revision"], 1);
+        assert_eq!(
+            current_input["repository_config_identity"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            current_input["session_options_identity"],
+            serde_json::Value::Null
+        );
+        assert_eq!(current_input["requested_base"], "origin/main");
+        assert_eq!(current_input["resolved_base"], serde_json::Value::Null);
+        assert_eq!(current_input["mode"], "draft");
+        assert_eq!(current_input["profile"], "actionable");
+        assert_eq!(
+            current_input["enabled_languages"],
+            serde_json::json!(["rust"])
+        );
+        assert_eq!(current_input["manifest_identity"], serde_json::Value::Null);
+        assert_eq!(current_input["lockfile_identity"], serde_json::Value::Null);
+        assert_eq!(current_input["analyzer_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(current_input["schema_version"], "lsp-analysis-input-v1");
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["last_success"]["input_identity"],
+            current_input["input_identity"]
+        );
         assert_eq!(status["refresh_command"], REFRESH_COMMAND);
         assert!(
             status["report_paths"]["gap_decision_ledger"]
@@ -5342,6 +6887,75 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
 }
 
 #[test]
+fn workspace_status_budget_identity_changes_with_diagnostic_snapshot() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+
+        let diagnostic = |id: &str| Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": id,
+            })),
+            ..Default::default()
+        };
+        let status = || async {
+            let params = ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            };
+            backend
+                .execute_command(params)
+                .await
+                .map_err(|err| format!("execute_command failed: {err}"))?
+                .ok_or_else(|| "expected workspace status after snapshot".to_string())
+        };
+
+        let first = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic("gap:first")],
+            vec![sample_finding()],
+        );
+        backend
+            .refresh_plan(first)
+            .ok_or_else(|| "expected first refresh plan".to_string())?;
+        let first_status = status().await?;
+        let first_identity = first_status["diagnostic_budget"]["complete_evidence_identity"]
+            .as_str()
+            .ok_or_else(|| "expected first complete evidence identity".to_string())?
+            .to_string();
+
+        let second = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic("gap:second")],
+            vec![sample_finding()],
+        );
+        backend
+            .refresh_plan(second)
+            .ok_or_else(|| "expected second refresh plan".to_string())?;
+        let second_status = status().await?;
+        let second_identity = second_status["diagnostic_budget"]["complete_evidence_identity"]
+            .as_str()
+            .ok_or_else(|| "expected second complete evidence identity".to_string())?;
+
+        if first_identity == second_identity {
+            return Err(format!(
+                "different diagnostic snapshots reused complete evidence identity: {first_status}"
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn execute_command_collect_workspace_status_with_actionable_gap_and_rejection_returns_packet_and_limitation()
 -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -5351,6 +6965,7 @@ fn execute_command_collect_workspace_status_with_actionable_gap_and_rejection_re
     runtime.block_on(async {
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
         let uri = test_uri("file:///workspace/src/pricing.rs")?;
         let mut diagnostics =
             sample_workspace_diagnostics(PathBuf::from("/workspace"), uri, Vec::new(), Vec::new());
@@ -5428,7 +7043,8 @@ fn execute_command_collect_workspace_status_with_actionable_gap_and_rejection_re
             &serde_json::Value::Null,
             "expected non-null top_limitation"
         );
-        assert_eq!(limitation["category"], "wrong_root");
+        assert_eq!(limitation["status"], "artifact_rejected");
+        assert_eq!(limitation["limitation_category"], "wrong_root");
         assert!(
             limitation["repair_route"]
                 .as_str()
@@ -5510,11 +7126,42 @@ fn write_actionable_gaps_report(
     Ok(())
 }
 
+fn seed_successful_snapshot(backend: &Backend) -> Result<(), String> {
+    backend.initialize_test_workspace_root();
+    let finding = sample_finding();
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    backend
+        .refresh_plan(sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        ))
+        .ok_or_else(|| "expected successful analysis snapshot".to_string())?;
+    let request = RefreshRequest {
+        generation: 1,
+        authority_epoch: 0,
+        input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+            PathBuf::from("/workspace"),
+            1,
+            &LspAnalysisConfig::default(),
+        ),
+        root: PathBuf::from("/workspace"),
+        config: LspAnalysisConfig::default(),
+        workspace_revision: 1,
+        scope: RefreshScope::Interactive,
+        reason: RefreshReason::DidSave,
+        cancellation: AnalysisCancellationToken::new(),
+    };
+    backend.record_health_outcome(&request, RefreshAttemptOutcome::Published);
+    Ok(())
+}
+
 #[test]
-fn execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_null() -> Result<(), String>
-{
-    // When neither actionable-gaps.json nor gap-decision-ledger.json exists on
-    // disk the command must return null (no partial packet).
+fn execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_sentinel()
+-> Result<(), String> {
+    // Without a successful snapshot, on-disk artifacts must never become a
+    // repair packet, even when the report files are absent.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -5524,18 +7171,18 @@ fn execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_null() 
         let (service, _socket) =
             LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
         let backend = service.inner();
-
         let params = ExecuteCommandParams {
             command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
             arguments: vec![],
             work_done_progress_params: Default::default(),
         };
         let result = backend.execute_command(params).await;
-        let value = result.map_err(|err| format!("execute_command failed: {err}"))?;
-        assert!(
-            value.is_none(),
-            "expected null when no actionable-gaps.json and no ledger, got {value:?}"
-        );
+        let value = result
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected stale-snapshot sentinel".to_string())?;
+        assert_eq!(value["kind"], "repair_packet");
+        assert_eq!(value["status"], "not_actionable_or_incomplete");
+        assert_eq!(value["reason"], "analysis_snapshot_stale");
         Ok(())
     })
 }
@@ -5579,6 +7226,7 @@ fn execute_command_collect_repair_packet_incomplete_gap_returns_sentinel() -> Re
         let (service, _socket) =
             LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
         let backend = service.inner();
+        seed_successful_snapshot(backend)?;
         let params = ExecuteCommandParams {
             command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
             arguments: vec![],
@@ -5626,6 +7274,7 @@ fn execute_command_collect_repair_packet_complete_gap_returns_full_packet() -> R
         let (service, _socket) =
             LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
         let backend = service.inner();
+        seed_successful_snapshot(backend)?;
         let params = ExecuteCommandParams {
             command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
             arguments: vec![serde_json::json!({
@@ -5722,6 +7371,33 @@ fn execute_command_collect_repair_packet_complete_gap_returns_full_packet() -> R
 }
 
 #[test]
+fn execute_command_collect_repair_packet_stale_snapshot_returns_sentinel() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        backend.set_snapshot_run_status_for_test("stale");
+
+        let result = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected stale-snapshot sentinel".to_string())?;
+        assert_eq!(result["status"], "not_actionable_or_incomplete");
+        assert_eq!(result["reason"], "analysis_snapshot_stale");
+        Ok(())
+    })
+}
+
+#[test]
 fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<(), String> {
     let Some(provider) = initialize_result().capabilities.execute_command_provider else {
         return Err("expected execute command provider".to_string());
@@ -5744,10 +7420,9 @@ fn execute_command_collect_repair_packet_registered_in_capabilities() -> Result<
 }
 
 #[test]
-fn execute_command_collect_top_limitation_no_snapshot_returns_no_limitation() -> Result<(), String>
-{
-    // When there is no snapshot yet the command must return Some(value) with
-    // status == "no_limitation" — not null, which is a meaningful "no blockers" answer.
+fn execute_command_collect_top_limitation_no_snapshot_returns_no_snapshot_status()
+-> Result<(), String> {
+    // No snapshot is an explicit incomplete state, never an all-clear sentinel.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -5755,6 +7430,7 @@ fn execute_command_collect_top_limitation_no_snapshot_returns_no_limitation() ->
     runtime.block_on(async {
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let params = ExecuteCommandParams {
             command: COLLECT_TOP_LIMITATION_COMMAND.to_string(),
@@ -5764,9 +7440,7 @@ fn execute_command_collect_top_limitation_no_snapshot_returns_no_limitation() ->
         let result = backend.execute_command(params).await;
         let value = result
             .map_err(|err| format!("execute_command failed: {err}"))?
-            .ok_or_else(|| {
-                "expected Some(value) with status no_limitation, got null".to_string()
-            })?;
+            .ok_or_else(|| "expected Some(value) with status no_snapshot, got null".to_string())?;
 
         assert_eq!(
             value["schema_version"], "0.1",
@@ -5778,9 +7452,13 @@ fn execute_command_collect_top_limitation_no_snapshot_returns_no_limitation() ->
             "sentinel must carry kind=top_limitation"
         );
         assert_eq!(
-            value["status"], "no_limitation",
-            "no snapshot must yield status=no_limitation, got {value}"
+            value["status"], "no_snapshot",
+            "no snapshot must yield status=no_snapshot, got {value}"
         );
+        assert_eq!(value["limitation_category"], "no_snapshot");
+        assert_eq!(value["recovery_route"], "refresh");
+        assert_eq!(value["completeness"], "none");
+        assert!(value["non_claims"].as_array().is_some());
         Ok(())
     })
 }
@@ -5905,6 +7583,7 @@ fn execute_command_collect_receipt_status_no_snapshot_returns_not_available_fiel
     runtime.block_on(async {
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let params = ExecuteCommandParams {
             command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
@@ -5955,6 +7634,7 @@ fn execute_command_collect_receipt_status_absent_artifacts_yield_not_available()
         // No attempt-ledger or route-quality files written — they are absent.
         let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let uri = test_uri("file:///workspace/src/lib.rs")?;
         let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
@@ -6009,6 +7689,7 @@ fn execute_command_collect_receipt_status_with_attempt_ledger_returns_real_outco
 
         let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let uri = test_uri("file:///workspace/src/lib.rs")?;
         let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
@@ -6055,6 +7736,7 @@ fn execute_command_collect_receipt_status_with_route_quality_returns_summary() -
 
         let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
         let backend = service.inner();
+        backend.initialize_test_workspace_root();
 
         let uri = test_uri("file:///workspace/src/lib.rs")?;
         let diagnostics = sample_workspace_diagnostics(root.clone(), uri, Vec::new(), Vec::new());
@@ -6537,4 +8219,626 @@ fn spec_0105_seams_deferred_run_status_value_is_not_full() -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Standard LSP work-done progress for analysis requests (#1971)
+// ────────────────────────────────────────────────────────────────────────────
+
+fn work_done_progress_runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))
+}
+
+fn work_done_progress_request(backend: &Backend, revision: u64) -> Result<RefreshDecision, String> {
+    Ok(backend.refresh_scheduler_for_test().request(
+        PathBuf::from("/workspace"),
+        LspAnalysisConfig::default(),
+        revision,
+        0,
+        RefreshScope::Interactive,
+        RefreshReason::DidSave,
+    ))
+}
+
+fn started_request(decision: &RefreshDecision) -> Result<RefreshRequest, String> {
+    let RefreshDecision::Start(request) = decision else {
+        return Err(format!("expected Start decision, got {decision:?}"));
+    };
+    Ok(request.as_ref().clone())
+}
+
+fn progress_end_events(events: &[ProgressEvent]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ProgressEvent::End { token, message } => Some((token.clone(), message.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn work_done_progress_capability_is_recorded_at_initialize() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = InitializeParams::default();
+        params.capabilities.window = Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        });
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        if !backend.progress.is_supported() {
+            return Err("capable client must enable work-done progress".to_string());
+        }
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(InitializeParams::default())
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        if backend.progress.is_supported() {
+            return Err("capability-absent client must not enable progress".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_success_run_ends_complete_exactly_once() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let decision = work_done_progress_request(backend, 1)?;
+        let request = started_request(&decision)?;
+        backend.emit_progress_for_decision(&decision).await;
+
+        // Simulate the successful publish: commit a full snapshot, then end
+        // the attempt with the same outcome mapping the refresh loop uses.
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        backend
+            .refresh_plan(sample_workspace_diagnostics(
+                PathBuf::from("/workspace"),
+                uri,
+                Vec::new(),
+                Vec::new(),
+            ))
+            .ok_or_else(|| "expected committed snapshot".to_string())?;
+        backend.record_health_outcome(&request, RefreshAttemptOutcome::Published);
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Published)
+            .await;
+        // A repeated terminal path must not emit a second end.
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Published)
+            .await;
+
+        let events = sink.events();
+        let token = "ripr-analysis-1".to_string();
+        let expected = vec![
+            ProgressEvent::Create {
+                token: token.clone(),
+            },
+            ProgressEvent::Begin {
+                token: token.clone(),
+                title: "ripr analysis".to_string(),
+                message: "analyzing workspace (did_save)".to_string(),
+            },
+            ProgressEvent::End {
+                token: token.clone(),
+                message: "analysis complete".to_string(),
+            },
+        ];
+        if events != expected {
+            return Err(format!("success lifecycle drifted: {events:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_queued_then_success_reuses_one_token() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let first = work_done_progress_request(backend, 1)?;
+        let first_request = started_request(&first)?;
+        backend.emit_progress_for_decision(&first).await;
+
+        let second = work_done_progress_request(backend, 2)?;
+        if !matches!(
+            second,
+            RefreshDecision::Queued {
+                superseded_pending: None,
+                ..
+            }
+        ) {
+            return Err(format!("expected first queued request, got {second:?}"));
+        }
+        backend.emit_progress_for_decision(&second).await;
+
+        let third = work_done_progress_request(backend, 3)?;
+        if !matches!(
+            third,
+            RefreshDecision::Queued {
+                superseded_pending: Some(2),
+                ..
+            }
+        ) {
+            return Err(format!(
+                "expected queued replacement superseding generation 2, got {third:?}"
+            ));
+        }
+        backend.emit_progress_for_decision(&third).await;
+
+        // The active attempt finishes and the newest queued request starts on
+        // the SAME token it began with.
+        let Some(next) = backend
+            .refresh_scheduler_for_test()
+            .finish(&first_request, true)
+        else {
+            return Err("queued request should become active".to_string());
+        };
+        backend
+            .progress
+            .transition_to_analyzing(next.generation)
+            .await;
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        backend
+            .refresh_plan(sample_workspace_diagnostics(
+                PathBuf::from("/workspace"),
+                uri,
+                Vec::new(),
+                Vec::new(),
+            ))
+            .ok_or_else(|| "expected committed snapshot".to_string())?;
+        backend.record_health_outcome(&next, RefreshAttemptOutcome::Published);
+        backend
+            .end_progress_for_attempt(&next, RefreshAttemptOutcome::Published)
+            .await;
+
+        let events = sink.events();
+        // Generation 2 was replaced while queued: ended superseded, and it
+        // never transitioned to analyzing.
+        let ends = progress_end_events(&events);
+        if ends
+            != vec![
+                (
+                    "ripr-analysis-2".to_string(),
+                    "analysis superseded by a newer request".to_string(),
+                ),
+                (
+                    "ripr-analysis-3".to_string(),
+                    "analysis complete".to_string(),
+                ),
+            ]
+        {
+            return Err(format!("unexpected terminal ends: {ends:?} in {events:?}"));
+        }
+        let generation3: Vec<&ProgressEvent> = events
+            .iter()
+            .filter(|event| match event {
+                ProgressEvent::Create { token }
+                | ProgressEvent::Begin { token, .. }
+                | ProgressEvent::Report { token, .. }
+                | ProgressEvent::End { token, .. } => token == "ripr-analysis-3",
+            })
+            .collect();
+        let expected_sequence = vec![
+            "Create", "Begin", "Report", "End",
+        ];
+        let actual_sequence: Vec<&str> = generation3
+            .iter()
+            .map(|event| match event {
+                ProgressEvent::Create { .. } => "Create",
+                ProgressEvent::Begin { .. } => "Begin",
+                ProgressEvent::Report { .. } => "Report",
+                ProgressEvent::End { .. } => "End",
+            })
+            .collect();
+        if actual_sequence != expected_sequence {
+            return Err(format!(
+                "queued request must begin queued, report analyzing on the same token, then end: {events:?}"
+            ));
+        }
+        if !matches!(
+            generation3.get(1),
+            Some(ProgressEvent::Begin { message, .. }) if message.starts_with("queued")
+        ) {
+            return Err(format!("generation 3 must begin as queued: {events:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_deduplicated_request_creates_no_token() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let first = work_done_progress_request(backend, 1)?;
+        let first_request = started_request(&first)?;
+        backend.emit_progress_for_decision(&first).await;
+        let accepted_events = sink.events().len();
+
+        // Same input while active: deduplicated, no progress.
+        let duplicate_active = work_done_progress_request(backend, 1)?;
+        if duplicate_active != RefreshDecision::Deduplicated {
+            return Err(format!("expected Deduplicated, got {duplicate_active:?}"));
+        }
+        backend.emit_progress_for_decision(&duplicate_active).await;
+        if sink.events().len() != accepted_events {
+            return Err(format!(
+                "deduplicated request created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+
+        // Same input after authoritative completion: still deduplicated.
+        if backend
+            .refresh_scheduler_for_test()
+            .finish(&first_request, true)
+            .is_some()
+        {
+            return Err("no request should remain after the active request".to_string());
+        }
+        let duplicate_completed = work_done_progress_request(backend, 1)?;
+        if duplicate_completed != RefreshDecision::Deduplicated {
+            return Err(format!(
+                "expected Deduplicated after completion, got {duplicate_completed:?}"
+            ));
+        }
+        backend
+            .emit_progress_for_decision(&duplicate_completed)
+            .await;
+        if sink.events().len() != accepted_events {
+            return Err(format!(
+                "completed-input dedup created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_cancelled_superseded_and_not_started_terminal_ends() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let mut expected_ends = Vec::new();
+        for (revision, outcome, message) in [
+            (
+                1_u64,
+                RefreshAttemptOutcome::Cancelled,
+                "analysis cancelled",
+            ),
+            (
+                2_u64,
+                RefreshAttemptOutcome::Superseded,
+                "analysis superseded by a newer request",
+            ),
+            (
+                3_u64,
+                RefreshAttemptOutcome::NotStarted,
+                "analysis did not start",
+            ),
+        ] {
+            let decision = work_done_progress_request(backend, revision)?;
+            let request = started_request(&decision)?;
+            backend.emit_progress_for_decision(&decision).await;
+            backend.end_progress_for_attempt(&request, outcome).await;
+            // Repeated terminal paths (guard + loop, invalidation + loop)
+            // must stay exactly-once.
+            backend.end_progress_for_attempt(&request, outcome).await;
+            if backend
+                .refresh_scheduler_for_test()
+                .finish(&request, false)
+                .is_some()
+            {
+                return Err("no pending request expected in this scenario".to_string());
+            }
+            expected_ends.push((format!("ripr-analysis-{revision}"), message.to_string()));
+        }
+
+        let ends = progress_end_events(&sink.events());
+        if ends != expected_ends {
+            return Err(format!("unexpected terminal ends: {ends:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_failed_end_carries_kind_not_paths() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let decision = work_done_progress_request(backend, 1)?;
+        let request = started_request(&decision)?;
+        backend.emit_progress_for_decision(&decision).await;
+        backend
+            .report_refresh_failure_after(
+                &request,
+                "analysis blew up at /workspace/src/pricing.rs".to_string(),
+                Duration::from_millis(3),
+                "analysis_error",
+            )
+            .await;
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Failed)
+            .await;
+
+        let ends = progress_end_events(&sink.events());
+        if ends
+            != vec![(
+                "ripr-analysis-1".to_string(),
+                "analysis failed (analysis_error)".to_string(),
+            )]
+        {
+            return Err(format!("unexpected failed end: {ends:?}"));
+        }
+        let message = &ends[0].1;
+        if message.contains("/workspace") || message.contains(".rs") {
+            return Err(format!("progress end leaked a path: {message}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_no_traffic_when_root_or_config_unavailable_before_start() -> Result<(), String>
+{
+    work_done_progress_runtime()?.block_on(async {
+        // Root authority unavailable: refresh returns before any request is
+        // accepted, so no token may be created.
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+        backend
+            .refresh_diagnostics(RefreshScope::Full, RefreshReason::ExplicitRefresh)
+            .await;
+        if !sink.events().is_empty() {
+            return Err(format!(
+                "root-unavailable refresh created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+
+        // Configuration failure: refresh returns before the scheduler
+        // accepts a request, so again no token.
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        backend.set_configuration_failure("bad config for test");
+        let sink = backend.install_progress_recorder();
+        backend
+            .refresh_diagnostics(RefreshScope::Full, RefreshReason::ExplicitRefresh)
+            .await;
+        if !sink.events().is_empty() {
+            return Err(format!(
+                "config-failed refresh created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// Drive a real `ripr lsp` server over duplex IO through one explicit
+/// refresh and collect the work-done-progress traffic on the wire (#1971).
+/// Returns (workDoneProgress/create requests, $/progress notifications).
+async fn run_wire_refresh_with_progress_capability(
+    root: &Path,
+    work_done_progress_capable: bool,
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+    let (mut client_read, mut client_write) = tokio::io::split(client_io);
+    let (server_read, server_write) = tokio::io::split(server_io);
+    let backend_root = root.to_path_buf();
+    let (service, socket) =
+        LspService::new(move |client| Backend::new(client, backend_root.clone()));
+    let server_task = tokio::spawn(async move {
+        Server::new(server_read, server_write, socket)
+            .serve(service)
+            .await;
+    });
+
+    let root_uri = file_uri_for_path(root)?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "processId": null,
+                "rootUri": root_uri.as_str(),
+                // A base ref that cannot resolve makes the real analysis
+                // fail fast, so the refresh ends as failed instead of
+                // scanning the enclosing repository.
+                "initializationOptions": {
+                    "baseRef": "ripr-lsp-progress-missing-base"
+                },
+                "capabilities": {
+                    "window": {"workDoneProgress": work_done_progress_capable}
+                }
+            }
+        }),
+    )
+    .await?;
+    read_lsp_response(&mut client_read, 1).await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+    )
+    .await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "workspace/executeCommand",
+            "params": {"command": REFRESH_COMMAND, "arguments": []}
+        }),
+    )
+    .await?;
+
+    let mut creates = Vec::new();
+    let mut progress = Vec::new();
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let message = read_lsp_message(&mut client_read).await?;
+            if message.get("id").and_then(serde_json::Value::as_u64) == Some(2)
+                && message.get("method").is_none()
+            {
+                return Ok::<(), String>(());
+            }
+            match message.get("method").and_then(serde_json::Value::as_str) {
+                Some("window/workDoneProgress/create") => {
+                    let id = message
+                        .get("id")
+                        .cloned()
+                        .ok_or_else(|| "create request carried no id".to_string())?;
+                    creates.push(message.clone());
+                    write_lsp_message(
+                        &mut client_write,
+                        serde_json::json!({"jsonrpc": "2.0", "id": id, "result": null}),
+                    )
+                    .await?;
+                }
+                Some("$/progress") => progress.push(message.clone()),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .map_err(|_elapsed| {
+        format!("refresh timed out; creates={creates:?} progress={progress:?}")
+    })??;
+
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null}),
+    )
+    .await?;
+    read_lsp_response(&mut client_read, 3).await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+    )
+    .await?;
+    tokio::time::timeout(Duration::from_secs(10), server_task)
+        .await
+        .map_err(|_elapsed| "server did not stop after exit".to_string())?
+        .map_err(|err| format!("server task failed: {err}"))?;
+    Ok((creates, progress))
+}
+
+#[test]
+fn work_done_progress_failed_end_through_real_refresh_on_broken_workspace() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let root = unique_lsp_test_root("progress-analysis-error")?;
+        let (creates, progress) =
+            run_wire_refresh_with_progress_capability(root.path(), true).await?;
+
+        if creates.len() != 1 {
+            return Err(format!(
+                "accepted refresh must create exactly one progress token: {creates:?}"
+            ));
+        }
+        let token = creates[0]["params"]["token"]
+            .as_str()
+            .ok_or_else(|| "create request carried no token".to_string())?
+            .to_string();
+        // The generation is not pinned to 1: root resolution at initialize
+        // advances the scheduler generation without creating progress.
+        if !token.starts_with("ripr-analysis-") {
+            return Err(format!("unexpected progress token: {token}"));
+        }
+
+        let kinds: Vec<&str> = progress
+            .iter()
+            .filter_map(|message| message["params"]["value"]["kind"].as_str())
+            .collect();
+        if kinds != vec!["begin", "end"] {
+            return Err(format!(
+                "failed refresh must begin then end exactly once: {progress:?}"
+            ));
+        }
+        let begin = &progress[0]["params"];
+        if begin["token"].as_str() != Some(token.as_str())
+            || begin["value"]["title"].as_str() != Some("ripr analysis")
+        {
+            return Err(format!(
+                "begin drifted from the created token: {progress:?}"
+            ));
+        }
+        let begin_message = begin["value"]["message"]
+            .as_str()
+            .ok_or_else(|| "begin carried no phase message".to_string())?;
+        if !begin_message.contains("analyzing") {
+            return Err(format!(
+                "begin must announce the analyzing phase: {begin_message}"
+            ));
+        }
+        if !begin["value"]["percentage"].is_null()
+            || !progress[1]["params"]["value"]["percentage"].is_null()
+        {
+            return Err(format!(
+                "no fabricated percentages may be emitted: {progress:?}"
+            ));
+        }
+        let end = &progress[1]["params"];
+        let end_message = end["value"]["message"]
+            .as_str()
+            .ok_or_else(|| "end carried no terminal message".to_string())?;
+        if end["token"].as_str() != Some(token.as_str())
+            || !end_message.starts_with("analysis failed")
+        {
+            return Err(format!(
+                "broken workspace must end as failed on the same token: {progress:?}"
+            ));
+        }
+        if end_message.contains(root.path().to_string_lossy().as_ref()) {
+            return Err(format!(
+                "progress end leaked the workspace path: {end_message}"
+            ));
+        }
+        drop(root);
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_capability_absent_refresh_emits_no_traffic() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let root = unique_lsp_test_root("progress-capability-absent")?;
+        let (creates, progress) =
+            run_wire_refresh_with_progress_capability(root.path(), false).await?;
+        if !creates.is_empty() || !progress.is_empty() {
+            return Err(format!(
+                "capability-absent client received progress traffic: creates={creates:?} progress={progress:?}"
+            ));
+        }
+        drop(root);
+        Ok(())
+    })
 }

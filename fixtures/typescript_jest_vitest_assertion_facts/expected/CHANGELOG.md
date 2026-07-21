@@ -227,3 +227,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0085 table-case unresolved limitation producer
+
+Command:
+`cargo xtask goldens bless typescript_jest_vitest_assertion_facts --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

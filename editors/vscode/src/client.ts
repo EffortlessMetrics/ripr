@@ -21,6 +21,8 @@ const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'python', scheme: 'file' }
 ];
 
+const SHOW_OUTPUT_ACTION = 'Show Output';
+
 const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
 const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
   ['.rs', 'rust'],
@@ -153,7 +155,7 @@ export interface RiprClientRuntime {
   writeClipboard(text: string): Promise<void>;
   isWorkspaceTrusted(): boolean;
   showInformationMessage(message: string): Thenable<string | undefined>;
-  showWarningMessage(message: string): Thenable<string | undefined>;
+  showWarningMessage(message: string, ...items: string[]): Thenable<string | undefined>;
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
 }
 
@@ -185,7 +187,7 @@ const defaultRuntime: RiprClientRuntime = {
   },
   isWorkspaceTrusted: () => vscode.workspace.isTrusted,
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
-  showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+  showWarningMessage: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
   showErrorMessage: (message, ...items) => vscode.window.showErrorMessage(message, ...items)
 };
 
@@ -193,6 +195,8 @@ export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
+  private receivedTypedAnalysisStatus = false;
+  private typedAnalysisStatusState: RiprAnalysisStatusPayload['state'] | undefined;
   private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
   private setupStatus: RiprSetupStatus = setupStatusWithoutWorkspace();
@@ -204,6 +208,30 @@ export class RiprClientController {
     nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
+  /**
+   * In-flight start() promise, used to deduplicate concurrent start attempts.
+   *
+   * start() is re-entrant from several listeners: the initial activate() call,
+   * onDidGrantWorkspaceTrust, onDidChangeWorkspaceFolders, and restart()
+   * (which calls stop() then start()). Without deduplication, two events
+   * firing in quick succession during the async setup window (before
+   * this.client is assigned) would both pass the `if (this.client) return`
+   * guard and both spawn a server. The promise is cleared on
+   * completion/failure so the next start() attempt can proceed. (#2060
+   * review feedback.)
+   */
+  private startingPromise: Promise<void> | undefined;
+  /**
+   * Monotonic generation counter bumped by every stop(). startOnce() captures
+   * the generation at entry and checks it again before assigning this.client.
+   * If stop() ran during the async setup window (e.g. the user hit Restart
+   * Server while a workspace-folder-event start() was mid-flight), the
+   * generation no longer matches and startOnce() aborts without assigning —
+   * preventing the late assignment from overwriting the fresh client that
+   * restart()'s subsequent start() already installed. This closes the
+   * server-leak race described in #2123.
+   */
+  private startGeneration = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -215,6 +243,31 @@ export class RiprClientController {
   }
 
   async start(): Promise<void> {
+    // Fast path: server is already up.
+    if (this.client) {
+      return;
+    }
+    // Deduplicate concurrent in-flight starts. Two listeners firing in quick
+    // succession (e.g. trust granted + workspace folder added) would otherwise
+    // both pass the `if (this.client) return` guard above during the async
+    // setup window and both spawn a server. The promise is cleared on
+    // completion/failure so the next start() attempt can proceed.
+    if (this.startingPromise) {
+      return this.startingPromise;
+    }
+    const generation = this.startGeneration;
+    const promise = this.startOnce(generation);
+    this.startingPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.startingPromise === promise) {
+        this.startingPromise = undefined;
+      }
+    }
+  }
+
+  private async startOnce(startGeneration: number): Promise<void> {
     if (this.client) {
       return;
     }
@@ -254,6 +307,17 @@ export class RiprClientController {
         nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
       });
       this.output.appendLine('ripr workspace was not detected; open a workspace folder.');
+      return;
+    }
+
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.updateStatus({
+        kind: 'workspaceUntrusted',
+        summary: 'ripr requires a trusted workspace to start the server.',
+        detail: 'The workspace is not trusted. ripr does not download, launch, or run repair actions in untrusted workspaces.',
+        nextStep: 'Trust the workspace (Manage > Trust Workspace), then run ripr: Restart Server.'
+      });
+      this.output.appendLine('ripr workspace is not trusted; refusing to start server or download.');
       return;
     }
 
@@ -301,20 +365,58 @@ export class RiprClientController {
       revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,
       synchronize: {
+        configurationSection: 'ripr',
         fileEvents: this.runtime.createFileSystemWatcher(
-          new vscode.RelativePattern(this.workspaceRoot, '**/Cargo.toml')
+          new vscode.RelativePattern(this.workspaceRoot, '**/{Cargo.toml,ripr.toml}')
         )
       }
     };
 
     this.output.appendLine(`Resolved ripr server from ${server.source}: ${server.detail}`);
     this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
-    this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
-    this.client.setTrace(traceFromConfig(config.traceServer));
+    // Guard against the restart race (#2123): if stop() ran during the async
+    // setup window (resolveServer / createLanguageClient), this start is stale.
+    // Assigning this.client now would overwrite the fresh client that the
+    // caller's subsequent start() (after stop()) already installed, leaking
+    // our process and listeners. Abort without assigning.
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start aborted: stop() ran during setup.');
+      return;
+    }
+    const client = this.runtime.createLanguageClient(serverOptions, clientOptions);
+    this.client = client;
+    client.setTrace(traceFromConfig(config.traceServer));
     this.notificationDisposables.push(
-      this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
+      client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
+      client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
     );
-    await this.client.start();
+    try {
+      await client.start();
+    } catch (error) {
+      // A rejected start must not strand a half-initialized client: clear the
+      // reference and detach listeners so a later start() re-initializes
+      // instead of returning early against stale state. Only clear this.client
+      // if it still points at OUR client — a replacement start() may have
+      // already installed a different one (the restart race, #2123).
+      if (this.client === client) {
+        this.client = undefined;
+      }
+      while (this.notificationDisposables.length > 0) {
+        this.notificationDisposables.pop()?.dispose();
+      }
+      await client.stop().catch(() => undefined);
+      throw error;
+    }
+    // If stop() ran during `await this.client.start()`, the generation no
+    // longer matches and a newer start() may have already installed a fresh
+    // client. Don't overwrite the fresh client's status or run setup-status
+    // refreshes against the stale session — just return. The client we
+    // started here was already stopped by stop() (which captures this.client
+    // at entry and calls client.stop()). (#2123 review feedback.)
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start completed but stop() ran during startup; aborting setup.');
+      return;
+    }
     await this.refreshSetupStatusFiles();
     this.updateStatus({
       kind: 'analysisQueued',
@@ -330,10 +432,34 @@ export class RiprClientController {
     await this.start();
   }
 
+  /**
+   * Whether the language client is currently bound and (nominally) running.
+   * Used by listeners (e.g. onDidChangeWorkspaceFolders) to decide whether a
+   * transition should trigger a fresh start, or whether the server is already
+   * up and a restart would just churn. This is a cheap nominal check; it does
+   * not probe the language-client's actual lifecycle state.
+   */
+  isRunning(): boolean {
+    return this.client !== undefined;
+  }
+
   async stop(): Promise<void> {
     const client = this.client;
     this.client = undefined;
+    // Clear any in-flight start dedup so the next start() can proceed fresh.
+    // If a start() is mid-flight when stop() is called, that start's finally
+    // block will see startingPromise !== its own promise and leave the field
+    // cleared.
+    this.startingPromise = undefined;
+    // Bump the generation so any in-flight startOnce() detects that stop()
+    // ran during its async setup window and aborts before assigning
+    // this.client. This prevents the late assignment from overwriting the
+    // fresh client that the caller's subsequent start() installed after
+    // stop(). (#2123)
+    this.startGeneration++;
     this.server = undefined;
+    this.receivedTypedAnalysisStatus = false;
+    this.typedAnalysisStatusState = undefined;
     this.firstUsefulAction = undefined;
     this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
@@ -413,7 +539,7 @@ export class RiprClientController {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the first repair packet. See ripr output for details.');
+        this.warnWithOutput('ripr could not copy the first repair packet.');
       }
       return;
     }
@@ -430,7 +556,7 @@ export class RiprClientController {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr copy static-limit note failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the static-limit note. See ripr output for details.');
+        this.warnWithOutput('ripr could not copy the static-limit note.');
       }
       return;
     }
@@ -507,7 +633,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr context failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
+      this.warnWithOutput(`ripr context failed for ${selector}.`);
     }
   }
 
@@ -549,7 +675,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr start current repair failed to collect code actions: ${message}`);
-      this.runtime.showWarningMessage('ripr could not collect current repair actions. See ripr output for details.');
+      this.warnWithOutput('ripr could not collect current repair actions.');
       return;
     }
 
@@ -583,7 +709,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the suggested assertion.');
     }
   }
 
@@ -599,7 +725,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the targeted test brief.');
     }
   }
 
@@ -621,7 +747,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy agent loop command failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the agent loop command.');
     }
   }
 
@@ -642,7 +768,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy current repair packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the current repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the current repair packet.');
     }
   }
 
@@ -659,7 +785,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy repo gap map failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repo gap map. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repo gap map.');
     }
   }
 
@@ -684,7 +810,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open first-pr packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the first-pr packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the first-pr packet.');
     }
   }
 
@@ -770,7 +896,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open related test failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the related test.');
     }
   }
 
@@ -852,12 +978,24 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy first-pr ${label} failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr could not copy the first-pr ${label}. See ripr output for details.`);
+      this.warnWithOutput(`ripr could not copy the first-pr ${label}.`);
     }
   }
 
   showOutput(): void {
     this.output.show();
+  }
+
+  private warnWithOutput(message: string): void {
+    void Promise.resolve(this.runtime.showWarningMessage(message, SHOW_OUTPUT_ACTION))
+      .then((choice) => {
+        if (choice === SHOW_OUTPUT_ACTION) {
+          this.showOutput();
+        }
+      })
+      .catch((error) => {
+        this.output.appendLine(`ripr warning notification failed: ${String(error)}`);
+      });
   }
 
   showStatus(): Promise<void> {
@@ -871,6 +1009,9 @@ export class RiprClientController {
   private handleServerLog(params: unknown): void {
     const message = serverLogMessage(params);
     if (!message) {
+      return;
+    }
+    if (this.shouldSuppressRefreshLifecycleLog(message)) {
       return;
     }
     if (message.startsWith('ripr analysis refresh queued')) {
@@ -906,6 +1047,106 @@ export class RiprClientController {
     }
   }
 
+  private handleAnalysisStatus(params: unknown): void {
+    const status = analysisStatusPayload(params);
+    if (!status) {
+      return;
+    }
+    this.receivedTypedAnalysisStatus = true;
+    this.typedAnalysisStatusState = status.state;
+    if (status.root_state && status.root_state !== 'selected_single_root') {
+      const rootDetail = analysisRootStatusDetail(status);
+      const rootKind: RiprStatusKind = status.root_state === 'workspace_ambiguous'
+        ? 'workspaceAmbiguous'
+        : status.root_state === 'root_changed'
+          ? 'stale'
+          : 'noWorkspace';
+      this.updateStatus({
+        kind: rootKind,
+        summary: status.root_state === 'workspace_ambiguous'
+          ? 'ripr workspace root is ambiguous.'
+          : status.root_state === 'root_changed'
+            ? 'ripr workspace root changed; retained evidence is unavailable.'
+            : 'ripr has no usable workspace root.',
+        detail: `${analysisStatusDetail(status)}\n${rootDetail}`,
+        nextStep: status.root_recovery_route === 'refresh'
+          ? 'Refresh the saved workspace to obtain current evidence for the new root.'
+          : 'Select one workspace folder, then restart the ripr server.'
+      });
+      return;
+    }
+    const failure = status.failure && typeof status.failure === 'object'
+      ? status.failure as Record<string, unknown>
+      : undefined;
+    const failureMessage = typeof failure?.message === 'string'
+      ? failure.message
+      : 'The last analysis attempt failed.';
+    const retry = typeof status.retry_command === 'string'
+      ? status.retry_command
+      // Fallback must reference a registered command. `ripr.refresh` is not
+      // registered in package.json/extension.ts, so instructing the user to
+      // run it produces a palette error. `ripr: Restart Server` IS registered
+      // (ripr.restartServer) and triggers a full re-analysis. The title form
+      // matches the next-step convention used elsewhere in this file (#2001).
+      : 'ripr: Restart Server';
+    const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
+    switch (status.state) {
+      case 'queued':
+        this.updateStatus({
+          kind: 'analysisQueued',
+          summary: 'ripr saved-workspace analysis is queued.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'running':
+        this.updateStatus({
+          kind: 'analysisRunning',
+          summary: 'ripr saved-workspace analysis is running.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'failed':
+        this.updateStatus({
+          kind: 'analysisFailed',
+          summary: 'ripr analysis failed; last-known-good evidence is retained.',
+          detail: `${analysisStatusDetail(status)}\n${failureMessage}${retained}`,
+          nextStep: `Run ${retry} to retry the saved-workspace analysis.`
+        });
+        return;
+      case 'cancelled':
+      case 'superseded':
+        this.updateStatus({
+          kind: 'stale',
+          summary: `ripr analysis ${status.state}; retained evidence is stale.`,
+          detail: analysisStatusDetail(status),
+          nextStep: `Run ${retry} to obtain a current saved-workspace snapshot.`
+        });
+        return;
+      case 'succeeded':
+        if (status.run_status === 'stale') {
+          this.updateStatus({
+            kind: 'stale',
+            summary: 'ripr analysis completed with stale or limited evidence.',
+            detail: analysisStatusDetail(status),
+            nextStep: `Run ${retry} after resolving the reported limitation.`
+          });
+        } else {
+          this.updateStatus({
+            kind: 'analysisReady',
+            summary: 'ripr saved-workspace analysis completed.',
+            detail: analysisStatusDetail(status),
+            nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.'
+          });
+        }
+        void this.refreshFirstUsefulActionStatus();
+        return;
+      default:
+        return;
+    }
+  }
+
   private statusAfterRefreshCompleted(message: string): RiprStatusState {
     if (this.dirtyRiprDocuments.size === 0) {
       return statusFromRefreshCompletedMessage(message);
@@ -921,6 +1162,12 @@ export class RiprClientController {
     };
   }
 
+  private shouldSuppressRefreshLifecycleLog(message: string): boolean {
+    return this.receivedTypedAnalysisStatus
+      && this.typedAnalysisStatusState !== 'succeeded'
+      && isRefreshLifecycleLog(message);
+  }
+
   private updateStatus(status: RiprStatusState): void {
     this.status = status;
     this.renderStatusBar();
@@ -933,6 +1180,15 @@ export class RiprClientController {
     this.statusBar.text = statusText(this.status.kind, this.firstUsefulAction);
     this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     this.statusBar.command = 'ripr.showStatus';
+    // Set background and foreground colors so error and warning states are
+    // visible at a glance — otherwise `ripr: failed` and `ripr: ready` differ
+    // only in codicon, which is hard to read in peripheral vision. VS Code's
+    // documented convention is red for errors, yellow for warnings. When no
+    // color applies (idle/OK/transient), both are cleared so the theme
+    // default re-applies.
+    const colors = statusBarColors(this.status.kind);
+    this.statusBar.backgroundColor = colors?.background;
+    this.statusBar.color = colors?.foreground;
     this.statusBar.show();
   }
 
@@ -1044,7 +1300,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopRepairPacket clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repair packet.');
     }
   }
 
@@ -1072,7 +1328,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopVerifyCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the verify command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the verify command.');
     }
   }
 
@@ -1100,7 +1356,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1133,14 +1389,14 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open report failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the report. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the report.');
     }
   }
 
   async showTopLimitation(): Promise<void> {
     const client = this.client;
     if (!client) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR has not completed an analysis snapshot yet.');
       return;
     }
     let response: Record<string, unknown> | null = null;
@@ -1157,12 +1413,14 @@ export class RiprClientController {
       this.output.appendLine(`ripr collectTopLimitation failed: ${message}`);
     }
     if (response === null) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR could not report workspace limitation status.');
       return;
     }
     const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'no_limitation') {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+    if (status === 'no_active_limitation_in_current_scope') {
+      this.runtime.showInformationMessage(
+        'No active limitation was reported in the current RIPR analysis scope; this is not an all-clear.'
+      );
       return;
     }
     const category = typeof response['limitation_category'] === 'string' ? response['limitation_category'] : '';
@@ -1183,7 +1441,7 @@ export class RiprClientController {
       this.output.appendLine(`  unlock_condition: ${unlock}`);
     }
     this.output.show();
-    const summary = category || repairRoute || 'See ripr output for limitation details.';
+    const summary = status || category || repairRoute || 'See ripr output for limitation details.';
     this.runtime.showInformationMessage(`ripr top limitation: ${summary}`);
   }
 
@@ -1267,7 +1525,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1292,7 +1550,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr openAttemptLedger failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the attempt ledger. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the attempt ledger.');
     }
   }
 
@@ -1302,9 +1560,7 @@ export class RiprClientController {
       this.runtime.showInformationMessage('No route quality available — server not responding.');
       return;
     }
-    const routeQualitySummary = typeof response['route_quality_summary'] === 'string'
-      ? response['route_quality_summary']
-      : 'not_available';
+    const routeQualitySummary = formatRouteQualitySummary(response['route_quality_summary']) ?? 'not_available';
 
     this.output.appendLine(`ripr route quality: ${routeQualitySummary}`);
     this.output.show();
@@ -1352,6 +1608,10 @@ export class RiprClientController {
   }
 
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.output.appendLine('ripr workspace is not trusted; refusing to resolve server for command.');
+      return undefined;
+    }
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if ('command' in server) {
       this.server = server;
@@ -1426,6 +1686,7 @@ interface RiprSetupArtifactDefinition {
 type RiprStatusKind =
   | 'disabled'
   | 'noWorkspace'
+  | 'workspaceUntrusted'
   | 'workspaceAmbiguous'
   | 'resolvingServer'
   | 'serverUnavailable'
@@ -1634,6 +1895,8 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(circle-slash) ripr: disabled';
     case 'noWorkspace':
       return '$(folder) ripr: open workspace';
+    case 'workspaceUntrusted':
+      return '$(shield) ripr: untrusted workspace';
     case 'workspaceAmbiguous':
       return '$(warning) ripr: select root';
     case 'resolvingServer':
@@ -1675,6 +1938,50 @@ function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionS
     return status.summary;
   }
   return `${status.summary} First useful action: ${firstAction.title}`;
+}
+
+/**
+ * Background + foreground `ThemeColor` pair for the status bar item, or
+ * `undefined` for the default idle/OK colour. The mapping follows VS Code's
+ * documented convention (`statusBarItem.errorBackground`,
+ * `statusBarItem.warningBackground` — note: `statusBar.*Background` does not
+ * exist; the correct key is `statusBarItem.*`):
+ *
+ * - error (red): the analysis run failed or the server is unavailable.
+ *   These need user attention.
+ * - warning (yellow): the run is stale, the workspace is untrusted or
+ *   ambiguous, or the gap-artifact validation flagged something. These are
+ *   degraded-but-not-failed states.
+ * - default: transient (analysisRunning/starting/analysisQueued), idle
+ *   (ready/analysisReady/gapActionable/...), and the initial `stopped`
+ *   state. Setting a colour here would cry wolf; the codicon + text already
+ *   convey the state. `stopped` is the extension's initial state and must
+ *   not turn the bar red on startup.
+ */
+interface StatusBarColors {
+  background: vscode.ThemeColor;
+  foreground: vscode.ThemeColor;
+}
+
+function statusBarColors(kind: RiprStatusKind): StatusBarColors | undefined {
+  switch (kind) {
+    case 'analysisFailed':
+    case 'serverUnavailable':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.errorBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.errorForeground'),
+      };
+    case 'stale':
+    case 'workspaceAmbiguous':
+    case 'workspaceUntrusted':
+    case 'gapArtifactWarning':
+      return {
+        background: new vscode.ThemeColor('statusBarItem.warningBackground'),
+        foreground: new vscode.ThemeColor('statusBarItem.warningForeground'),
+      };
+    default:
+      return undefined;
+  }
 }
 
 function statusTooltip(
@@ -3039,6 +3346,70 @@ function serverLogMessage(params: unknown): string | undefined {
   }
   const message = (params as { message?: unknown }).message;
   return typeof message === 'string' ? message : undefined;
+}
+
+interface RiprAnalysisStatusPayload {
+  schema_version: string;
+  kind: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'superseded' | 'stopped';
+  run_status?: string;
+  attempt_id?: string | null;
+  snapshot_id?: string | null;
+  retry_command?: string;
+  failure?: unknown;
+  pending?: boolean;
+  root_state?: string;
+  effective_root?: string | null;
+  candidate_roots?: string[];
+  root_input_identity?: string | null;
+  root_detail?: string | null;
+  root_recovery_route?: string;
+}
+
+function analysisStatusPayload(params: unknown): RiprAnalysisStatusPayload | undefined {
+  if (!params || typeof params !== 'object') {
+    return undefined;
+  }
+  const candidate = params as Partial<RiprAnalysisStatusPayload>;
+  if (candidate.schema_version !== '0.1' || candidate.kind !== 'analysis_status') {
+    return undefined;
+  }
+  const states = new Set<RiprAnalysisStatusPayload['state']>([
+    'queued', 'running', 'succeeded', 'failed', 'cancelled', 'superseded', 'stopped'
+  ]);
+  if (typeof candidate.state !== 'string' || !states.has(candidate.state as RiprAnalysisStatusPayload['state'])) {
+    return undefined;
+  }
+  return candidate as RiprAnalysisStatusPayload;
+}
+
+function analysisStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const fields = [
+    `state=${status.state}`,
+    status.attempt_id ? `attempt=${status.attempt_id}` : undefined,
+    status.run_status ? `run_status=${status.run_status}` : undefined,
+    status.snapshot_id ? `snapshot=${status.snapshot_id}` : undefined,
+    status.pending ? 'pending=latest' : undefined
+  ].filter((field): field is string => Boolean(field));
+  return `ripr typed analysis status: ${fields.join(', ')}`;
+}
+
+function analysisRootStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const candidates = status.candidate_roots?.filter((root) => root.length > 0) ?? [];
+  return [
+    `root_state=${status.root_state ?? 'unknown'}`,
+    status.effective_root ? `effective_root=${status.effective_root}` : undefined,
+    candidates.length > 0 ? `candidate_roots=${candidates.join('|')}` : undefined,
+    status.root_detail ?? undefined,
+    status.root_recovery_route ? `recovery=${status.root_recovery_route}` : undefined
+  ].filter((field): field is string => Boolean(field)).join(', ');
+}
+
+function isRefreshLifecycleLog(message: string): boolean {
+  return message.startsWith('ripr analysis refresh queued')
+    || message.startsWith('ripr analysis refresh started')
+    || message.startsWith('ripr analysis refresh completed')
+    || message.startsWith('ripr analysis refresh failed');
 }
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
@@ -4550,6 +4921,48 @@ function objectField(value: Record<string, unknown>, field: string): Record<stri
 function stringField(value: Record<string, unknown>, field: string): string | undefined {
   const child = value[field];
   return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+}
+
+function formatRouteQualitySummary(value: unknown): string | undefined {
+  if (value === 'not_available' || !value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const summary = value as Record<string, unknown>;
+  if (summary.report !== 'route-quality' || typeof summary.status !== 'string') {
+    return undefined;
+  }
+  const rows = summary.top_repair_kind_rows;
+  if (!Array.isArray(rows) || rows.length > 3) {
+    return undefined;
+  }
+
+  const formattedRows: string[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return undefined;
+    }
+    const rowObject = row as Record<string, unknown>;
+    const repairKind = stringField(rowObject, 'repair_kind');
+    const attempted = rowObject.attempted;
+    const successRate = rowObject.success_rate;
+    if (
+      !repairKind ||
+      typeof attempted !== 'number' ||
+      !Number.isInteger(attempted) ||
+      attempted < 0 ||
+      (successRate !== null &&
+        (typeof successRate !== 'number' || !Number.isFinite(successRate) || successRate < 0 || successRate > 1))
+    ) {
+      return undefined;
+    }
+    const renderedRate = successRate === null ? 'not_available' : String(successRate);
+    formattedRows.push(`${repairKind}: attempted=${attempted}, success_rate=${renderedRate}`);
+  }
+
+  return [
+    `status=${summary.status}`,
+    ...formattedRows
+  ].join('\n');
 }
 
 function stringArrayField(value: Record<string, unknown>, field: string): string[] {

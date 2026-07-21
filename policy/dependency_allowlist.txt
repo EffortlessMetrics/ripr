@@ -27,6 +27,7 @@ editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 editors/vscode/test-fixtures/**/Cargo.toml|fixture_input|lsp/editor|VS Code extension test fixture workspace Cargo manifest.
 fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may contain Cargo manifests as analyzed inputs.
+benchmarks/targeted_rerun_benchmark/**/Cargo.toml|fixture_input|targeted-rerun|Controlled SPEC-0123 benchmark workspace manifest.
 fixtures/**/package-lock.json|fixture_input|analysis-fixtures|TypeScript adapter runner-detection fixtures: npm lockfile is intentional discovery input.
 fixtures/**/package.json|fixture_input|analysis-fixtures|TypeScript adapter package-discovery fixtures: package.json is intentional discovery input.
 fixtures/**/pnpm-lock.yaml|fixture_input|analysis-fixtures|TypeScript adapter runner-detection fixtures: pnpm lockfile is intentional discovery input.

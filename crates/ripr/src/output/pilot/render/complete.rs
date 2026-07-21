@@ -258,7 +258,7 @@ pub(crate) fn render_pilot_terminal(
     out.push_str(&format!("  timeout: {} ms\n", context.timeout_ms));
     out.push('\n');
 
-    if let Some(entry) = top.first() {
+    let route_not_applicable = if let Some(entry) = top.first() {
         let outline = targeted_test_brief_outline_for_classified_seam(entry);
         out.push_str("Top recommendation:\n");
         out.push_str(&format!(
@@ -270,23 +270,33 @@ pub(crate) fn render_pilot_terminal(
             entry.class.as_str()
         ));
         out.push_str(&format!("  why it matters: {}\n", why_line(entry)));
-        out.push_str(&format!(
-            "  focused test: add {} in {}\n",
-            outline.suggested_name,
-            display_path_text(&outline.suggested_file)
-        ));
+        if outline.is_not_applicable() {
+            out.push_str(&format!(
+                "  focused test: not applicable (route limited: {})\n",
+                outline.suggested_reason
+            ));
+        } else {
+            out.push_str(&format!(
+                "  focused test: add {} in {}\n",
+                outline.suggested_name,
+                display_path_text(&outline.suggested_file)
+            ));
+        }
         if let Some(value) = outline.candidate_value.as_ref() {
             out.push_str(&format!("  candidate value: {value}\n"));
         }
         out.push_str(&format!("  assertion: {}\n\n", outline.assertion_shape));
+        outline.is_not_applicable()
     } else if let Some(card) = python_top_repair_card(context.python_first_use) {
         out.push_str("Top recommendation:\n");
         push_python_repair_card_terminal(&mut out, card);
         out.push('\n');
+        false
     } else {
         out.push_str("Top recommendation:\n");
         out.push_str("  none ranked by the default pilot policy\n\n");
-    }
+        false
+    };
 
     if let Some(first_use) = context.python_first_use {
         push_python_first_use_terminal(&mut out, first_use);
@@ -302,7 +312,11 @@ pub(crate) fn render_pilot_terminal(
         "  {}\n\n",
         display_path(&context.artifacts.agent_seam_packets_json)
     ));
-    out.push_str("Run after adding the focused test:\n");
+    if route_not_applicable {
+        out.push_str("Run after producer evidence makes a repair route actionable:\n");
+    } else {
+        out.push_str("Run after adding the focused test:\n");
+    }
     out.push_str(&format!("  {}\n", commands.after_snapshot));
     out.push_str(&format!("  {}\n", commands.outcome));
     out

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 pub(super) fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
     let marker = raw.strip_prefix("+++ ")?;
@@ -7,7 +7,56 @@ pub(super) fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
         return None;
     }
     let path = path.strip_prefix("b/").unwrap_or(&path);
-    Some(PathBuf::from(path))
+    confine_to_relative_path(path)
+}
+
+/// Whether `raw` is syntactically a `+++ <path>` new-path marker, regardless
+/// of whether the path survives confinement. Boundary detection must treat a
+/// confinement-rejected (or `/dev/null`) marker as a file-section boundary:
+/// otherwise, in a plain diff with no `diff --git` separators, the rejected
+/// marker line and its hunk are consumed as payload of the previous file,
+/// mis-attributing attacker-controlled lines to an in-workspace path
+/// (#2099 review).
+pub(super) fn is_new_path_marker(raw: &str) -> bool {
+    let Some(marker) = raw.strip_prefix("+++ ") else {
+        return false;
+    };
+    let trimmed = marker.trim_end_matches('\r');
+    let quoted = trimmed.starts_with('"');
+    match parse_diff_path_token(marker) {
+        // An unquoted path containing whitespace is implausible as a diff
+        // path (git C-quotes such paths): without this gate, hunk payload
+        // lines like `--- token` / `+++ token with spaces` could be misread
+        // as a file-section boundary. Mirrors the plausibility contract of
+        // parse_old_path_marker. Quoted paths may legitimately contain
+        // spaces.
+        Some(path) => quoted || is_plausible_unquoted_diff_path(&path),
+        None => false,
+    }
+}
+
+/// Lexically confine a parsed diff path to the workspace: keep only `Normal`
+/// components and reject the whole path when it contains a parent-directory,
+/// root, or prefix component. A crafted diff such as
+/// `+++ b/../../../etc/passwd` would otherwise reach `root.join(path)`
+/// unconfined and produce a `SourceLocation` that escapes the workspace
+/// (#2099). Rejection returns `None`, which the parser treats like
+/// `/dev/null`: the file is never registered, so no probe, output record, or
+/// snapshot lookup can reference the escaping path.
+fn confine_to_relative_path(path: &str) -> Option<PathBuf> {
+    let mut confined = PathBuf::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::Normal(part) => confined.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    if confined.as_os_str().is_empty() {
+        None
+    } else {
+        Some(confined)
+    }
 }
 
 pub(super) fn parse_old_path_marker(raw: &str) -> bool {

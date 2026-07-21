@@ -1298,9 +1298,7 @@ fn command_tokens(command: &str) -> Vec<String> {
 }
 
 fn is_inside_workspace(root: &Path, path: &Path) -> bool {
-    let root = normalize_path(root);
-    let path = normalize_path(path);
-    path == root || path.starts_with(&(root + "/"))
+    super::uri::path_is_within_root(root, path)
 }
 
 fn normalize_path(path: &Path) -> String {
@@ -1358,8 +1356,16 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::MissingImportGraph,
         StaticLimitKind::DecoratorIndirection,
         StaticLimitKind::MockedModule,
+        StaticLimitKind::OpaqueCustomAssertionHelper,
+        StaticLimitKind::PropertyBasedTest,
+        StaticLimitKind::UnresolvedPytestFixture,
         StaticLimitKind::UnsupportedSyntax,
         StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
+        StaticLimitKind::RustTransitiveReachUnresolved,
+        StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
+        StaticLimitKind::RustMacroReachUnresolved,
+        StaticLimitKind::RustMacroWrappedTestCallUnresolved,
+        StaticLimitKind::RustMacroWrappedAssertionUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)
@@ -2367,6 +2373,45 @@ mod tests {
                 "runtime_magic".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn validation_accepts_rust_integration_public_api_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_integration_public_api_path_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_macro_wrapped_test_call_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_macro_wrapped_test_call_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_macro_wrapped_assertion_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_macro_wrapped_assertion_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
     }
 
     #[test]

@@ -4,9 +4,9 @@ Some security and review controls live in GitHub settings instead of the git
 tree. This checklist records the expected settings so local automation, CI, and
 review policy do not drift apart.
 
-This checkout is `EffortlessMetrics/ripr-swarm`, the public development landing
-zone for trusted same-repo `ripr` PRs. The release-facing source repository
-remains `EffortlessMetrics/ripr`.
+This checkout is `EffortlessMetrics/ripr`, the release, publishing, signing,
+marketplace, badge, and distribution authority. Reviewed development lands in
+`EffortlessMetrics/ripr-swarm` and is promoted here with preserved history.
 
 ## Settings App Contract
 
@@ -17,11 +17,12 @@ Managed from git:
 - repository About metadata: name, description, homepage, and topics
 - repository feature toggles: issues on, projects off, wiki off, downloads on
 - default branch: `main`
-- merge policy: squash merge enabled, merge commits disabled, rebase merge
-  disabled, auto-merge enabled, update branch enabled, and delete branch on
-  merge enabled
-- branch protection for `main` requires only the routed `Ripr Rust Small
-  Result` check
+- merge policy: squash and merge commits enabled, rebase merge and auto-merge
+  disabled, update branch enabled, and delete branch on merge enabled
+- branch protection for `main` requires `rust`, `msrv`, `vscode`, `cargo-deny`,
+  and `dependency-review`
+- the classic protection setting does not require an approving review; the
+  active `main` ruleset separately requires conversation resolution
 - CI policy labels documented in `docs/CI.md`
 
 Not managed from `.github/settings.yml`:
@@ -39,15 +40,15 @@ Not managed from `.github/settings.yml`:
 Post-merge receipt:
 
 - Confirm the GitHub Repository Settings App is installed for
-  `EffortlessMetrics/ripr-swarm`.
+  `EffortlessMetrics/ripr`.
 - Let the app apply `.github/settings.yml`.
 - Inspect metadata and labels through the GitHub UI or API.
 - Update this document with the last verified date and any applied-state notes.
 
-## Swarm Development Boundary
+## Source / Swarm Boundary
 
-`ripr-swarm` is not the release authority for `ripr`. Keep these surfaces in
-`EffortlessMetrics/ripr` until a focused promotion changes that boundary:
+`ripr` is the release authority. Keep these surfaces here unless a focused,
+reviewed boundary change explicitly moves them:
 
 - crates.io publishing
 - VS Marketplace publishing
@@ -89,9 +90,9 @@ package, and GitHub Actions. Routine updates are grouped by ecosystem and
 limited to minor/patch changes. Major dependency updates are handled as scoped
 human-reviewed PRs because they may affect MSRV, release behavior, CI runtime
 policy, or extension compatibility. Dependabot PRs are not auto-merged; they
-must pass the protected routed result and any owner-required security review
-before merge. Security, coverage, and `xtask` lanes remain review signals unless
-promoted in a focused policy PR.
+must pass the protected source checks and any owner-required security review
+before merge. Additional security, coverage, and `xtask` lanes remain review
+signals unless promoted in a focused policy PR.
 
 ## Secret Scanning
 
@@ -140,43 +141,39 @@ automatically.
 
 ## Branch Protection And Rulesets
 
-Required checks should use the emitted check-run names, not display-style
-workflow prefixes. `ripr-swarm` does not require source-repo contexts such as
-`rust`, `msrv`, or `vscode`. Branch protection requires only the normalized
-routed CI result job.
+Required checks use emitted check-run names, not display-style workflow
+prefixes. Source `main` requires:
 
-Required checks:
+- `rust`
+- `msrv`
+- `vscode`
+- `cargo-deny`
+- `dependency-review`
 
-- `Ripr Rust Small Result`
-
-Do not require conditional implementation jobs such as `Ripr Rust Small on
-CX53`, `Ripr Rust Small on CX43`, or `Ripr Rust Small on GitHub Hosted`.
-Do not require advisory security jobs such as `cargo-deny` or
-`dependency-review` unless a focused policy PR promotes them after calibration.
-CX53 and CX43 remain tracked proof obligations, but the protected branch gate is
-the normalized result check.
+The routed `Ripr Rust Small Result` remains useful development-trunk evidence,
+but it does not replace the source repository's release-oriented protected
+checks.
 
 Settings App managed rules:
 
-- block force pushes to `main`
-- block branch deletion for `main`
-- leave conversation resolution disabled unless a focused policy PR promotes it
-- leave linear history disabled; merge policy is enforced by squash-only
-  repository settings
-- use squash merge for PRs
-- keep merge commits and rebase merges disabled unless an owner-approved
-  exception is documented before changing `.github/settings.yml`
-- require release workflow changes to pass security review
+- block force pushes to `main`;
+- block branch deletion for `main`;
+- leave conversation resolution disabled unless a focused policy change
+  promotes it;
+- leave linear history disabled so history-preserving source promotions are
+  possible;
+- permit squash merges for ordinary PRs and merge commits for audited source
+  promotions;
+- keep rebase merge and auto-merge disabled; and
+- require release workflow changes to pass security review.
 
-GitHub Rulesets should separately block direct pushes to `main` / require the
-PR merge path. Keep that rule enabled until Settings App support for the same
-invariant is verified and moved into `.github/settings.yml` in a focused PR.
+GitHub Rulesets should separately block direct pushes to `main` and require the
+PR merge path. A source promotion must use **Create a merge commit** so the
+reviewed two-parent join remains reachable; it must never be squashed or
+rebased. See [Source Promotion](SOURCE_PROMOTION.md).
 
-Advisory lanes should not be required by branch protection unless they are
-promoted in a focused policy PR after calibration. This includes Droid review,
-coverage, future Clippy candidates, RIPR self-dogfood, SARIF upload, Test
-Analytics, release packaging or publish dry-runs, PR planning, and CI budget
-forecasts.
+Advisory lanes should not become protected requirements without a focused
+policy change after calibration.
 
 ## Release Environments
 

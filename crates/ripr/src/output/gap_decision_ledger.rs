@@ -89,6 +89,11 @@ pub(crate) struct GapRecord {
     pub(crate) gap_id: String,
     #[serde(default)]
     pub(crate) canonical_gap_id: String,
+    /// Typed source-seam identity when the producer owns one. `evidence_ids`
+    /// are intentionally generic and cannot be used as a positional seam-ID
+    /// fallback by consumers such as targeted rerun.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seam_id: Option<String>,
     #[serde(default)]
     pub(crate) kind: String,
     #[serde(default)]
@@ -220,7 +225,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     };
 
     if input.source_kind == GapDecisionLedgerSourceKind::CheckOutput {
-        attach_check_output_python_receipt_routes(&mut records, &input.root);
+        attach_check_output_preview_receipt_routes(&mut records, &input.root);
     }
 
     for record in &records {
@@ -419,6 +424,7 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
     if let Some(findings) = findings {
         for (index, finding) in findings.iter().enumerate() {
             let Some(record) = gap_record_from_python_repair_finding(finding, index)
+                .or_else(|| gap_record_from_typescript_repair_finding(finding, index))
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_action_finding(finding, index))
                 .or_else(|| gap_record_from_perl_preview_finding(finding, index))
@@ -524,6 +530,7 @@ fn gap_record_from_repo_exposure_seam(seam: &Value) -> Option<GapRecord> {
     Some(GapRecord {
         gap_id,
         canonical_gap_id,
+        seam_id: Some(seam_id.to_string()),
         kind: gap_kind_from_evidence(gap_state, seam_kind).to_string(),
         language: "rust".to_string(),
         language_status: "stable".to_string(),
@@ -716,6 +723,7 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: gap_kind_from_evidence("actionable", behavior_kind).to_string(),
         language: "python".to_string(),
         language_status: string_at(card, &["language_status"])
@@ -750,6 +758,170 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
             .unwrap_or("preview_advisory_only")
             .to_string(),
     })
+}
+
+/// ADR-0019 §83-86 bespoke builder (Campaign 31 item 6 formal scope-down).
+///
+/// This is a parallel/bespoke GapRecord builder that bypasses the shared
+/// `validate_agent_gap_record_packet` authority — a structural violation of
+/// ADR-0019 §83-86. It remains because the shared path returns `None` for real
+/// Perl findings until perl-lsp-swarm Phase B. It is hard-pinned to
+/// advisory-only: every `projection_eligibility` authority surface is `false`
+/// (agent_packet, pr_comment, gate_candidate, ripr_zero_count, ripr_plus_count)
+/// and `receipt_command: None`; only `markdown_advisory` is eligible. It can
+/// never produce a `repair_packet_ready = true` gap record. The regression test
+/// `check_output_perl_preview_card_becomes_markdown_advisory_gap_record`
+/// (below) pins this. Full decommissioning is the post-Phase-B PR (route
+/// through `perl_gap_record_for` → shared validator).
+fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> Option<GapRecord> {
+    let packet = finding.get("typescript_repair_packet")?;
+    if string_at(packet, &["source"]) != Some("typescript_preview_projection") {
+        return None;
+    }
+    let language = string_at(packet, &["language"])?;
+    if language != "typescript" {
+        return None;
+    }
+
+    let canonical_gap_id = string_at(packet, &["canonical_gap_id"])
+        .or_else(|| string_at(finding, &["canonical_gap_id"]))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("gap:typescript:check-output:item_{index}"));
+    let behavior_kind = string_at(finding, &["canonical_gap", "behavior_kind"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .or_else(|| string_at(packet, &["repair_kind"]))
+        .unwrap_or("unknown");
+    let repair_kind = string_at(packet, &["repair_kind"]).unwrap_or("AddValueAssertion");
+    let source_file = string_at(packet, &["file"])
+        .or_else(|| string_at(finding, &["probe", "file"]))
+        .or_else(|| string_at(finding, &["canonical_gap", "file"]))
+        .map(ToString::to_string);
+    let source_line = u64_at(packet, &["line"]).or_else(|| u64_at(finding, &["probe", "line"]));
+    let changed_owner = string_at(packet, &["owner"])
+        .or_else(|| string_at(finding, &["canonical_gap", "owner"]))
+        .map(ToString::to_string);
+    let allowed_edit_surface = string_array_at(packet, &["allowed_edit_surface"]);
+    let target_file = allowed_edit_surface
+        .first()
+        .and_then(|file| non_empty(file))
+        .map(ToString::to_string)
+        .or_else(|| {
+            string_at(packet, &["target_test"])
+                .and_then(|target| {
+                    target
+                        .split_once("::")
+                        .map(|(file, _)| file)
+                        .or(Some(target))
+                })
+                .and_then(non_empty)
+                .map(ToString::to_string)
+        });
+    let target_test = string_at(packet, &["target_test"]).map(ToString::to_string);
+    let target_line = first_related_test_line(finding);
+    let verify_command = string_at(packet, &["verify_command"]).map(ToString::to_string);
+    let repairability = if target_file.is_some() && verify_command.is_some() {
+        "repairable"
+    } else {
+        "unknown"
+    };
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let missing_discriminator = string_at(packet, &["missing_discriminator"])
+        .or_else(|| first_missing_discriminator_value(finding))
+        .map(ToString::to_string);
+    let repair_route = if repairability == "repairable" {
+        Some(GapRepairRoute {
+            route_kind: typescript_route_kind(repair_kind, behavior_kind).to_string(),
+            target_file,
+            target_line,
+            related_test: target_test,
+            assertion_shape: string_at(packet, &["assertion_shape"]).map(ToString::to_string),
+            missing_discriminator,
+            changed_behavior: string_at(finding, &["typescript_preview_card", "changed_behavior"])
+                .map(ToString::to_string),
+            stop_conditions: vec![
+                "Stop if the TypeScript preview packet loses repair_packet_ready=true.".to_string(),
+                "Stop if the verification command cannot run from this workspace.".to_string(),
+                "Stop if the repair appears to require a production-code edit.".to_string(),
+            ],
+        })
+    } else {
+        None
+    };
+    let verification_commands = verify_command.into_iter().collect::<Vec<_>>();
+    let projection_eligibility = projection_eligibility_from_pr_evidence(
+        repairability,
+        repair_route.is_some(),
+        !verification_commands.is_empty(),
+        anchor.file.is_some() && anchor.line.is_some(),
+        "actionable",
+    );
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if let Some(id) = string_at(packet, &["gap_id"])
+        && !evidence_ids.iter().any(|existing| existing == id)
+    {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        kind: typescript_gap_kind(repair_kind, behavior_kind).to_string(),
+        language: "typescript".to_string(),
+        language_status: string_at(packet, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: typescript_evidence_class(repair_kind, behavior_kind).to_string(),
+        gap_state: "actionable".to_string(),
+        policy_state: "new".to_string(),
+        repairability: repairability.to_string(),
+        repair_route,
+        static_limit_kind: Some("typescript_preview".to_string()),
+        static_limit_detail: Some(
+            "TypeScript repair packets are preview advisory evidence.".to_string(),
+        ),
+        static_limits: string_array_at(packet, &["must_not_change"])
+            .into_iter()
+            .map(|limit| {
+                serde_json::json!({
+                    "kind": "typescript_preview_limit",
+                    "detail": limit,
+                })
+            })
+            .collect(),
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility,
+        verification_commands,
+        receipt_command: string_at(packet, &["receipt_command"]).map(ToString::to_string),
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: string_at(packet, &["authority_boundary"])
+            .unwrap_or("preview_advisory_only")
+            .to_string(),
+    })
+}
+
+fn first_missing_discriminator_value(finding: &Value) -> Option<&str> {
+    finding
+        .get("missing_discriminators")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(|missing| string_at(missing, &["value"]))
+        .find(|value| !value.trim().is_empty())
 }
 
 fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option<GapRecord> {
@@ -859,6 +1031,7 @@ fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: gap_kind_from_evidence("actionable", behavior_kind).to_string(),
         language: "perl".to_string(),
         language_status: string_at(card, &["language_status"])
@@ -950,6 +1123,7 @@ fn gap_record_from_python_static_limit_finding(finding: &Value, index: usize) ->
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: "StaticLimitation".to_string(),
         language: "python".to_string(),
         language_status: string_at(finding, &["language_status"])
@@ -1036,6 +1210,7 @@ fn gap_record_from_python_no_action_finding(finding: &Value, index: usize) -> Op
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id,
+        seam_id: None,
         kind: kind.to_string(),
         language: "python".to_string(),
         language_status: string_at(finding, &["language_status"])
@@ -1153,7 +1328,7 @@ fn perl_route_kind(value: &str) -> &'static str {
     }
 }
 
-fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &str) {
+fn attach_check_output_preview_receipt_routes(records: &mut [GapRecord], root: &str) {
     let after_check_command = format!(
         "ripr check --root {} --json > {}",
         shell_arg(root),
@@ -1161,7 +1336,7 @@ fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &s
     );
 
     for record in records {
-        if record.language != "python"
+        if !matches!(record.language.as_str(), "python" | "typescript")
             || record.language_status != "preview"
             || record.repairability != "repairable"
         {
@@ -1172,11 +1347,20 @@ fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &s
             .as_deref()
             .and_then(non_empty)
             .is_none()
+            || !record
+                .receipt_command
+                .as_deref()
+                .is_some_and(|command| command.starts_with("ripr receipt write --gap "))
         {
-            let receipt_path = default_python_receipt_path(record);
+            let fallback_slug = if record.language == "typescript" {
+                "typescript-gap"
+            } else {
+                "python-gap"
+            };
+            let receipt_path = default_preview_receipt_path(record, fallback_slug);
             let gap_id_for_receipt = non_empty(&record.canonical_gap_id)
                 .or_else(|| non_empty(&record.gap_id))
-                .unwrap_or("python-gap");
+                .unwrap_or(fallback_slug);
             let verify_cmd = record
                 .verification_commands
                 .first()
@@ -1200,18 +1384,18 @@ fn attach_check_output_python_receipt_routes(records: &mut [GapRecord], root: &s
     }
 }
 
-fn default_python_receipt_path(record: &GapRecord) -> String {
+fn default_preview_receipt_path(record: &GapRecord, fallback_slug: &str) -> String {
     let id = non_empty(&record.canonical_gap_id)
         .or_else(|| non_empty(&record.gap_id))
-        .unwrap_or("python-gap");
+        .unwrap_or(fallback_slug);
     format!(
         "{}/{}.json",
         DEFAULT_RECEIPTS_DIR,
-        receipt_slug_for_gap_id(id)
+        receipt_slug_for_gap_id(id, fallback_slug)
     )
 }
 
-fn receipt_slug_for_gap_id(id: &str) -> String {
+fn receipt_slug_for_gap_id(id: &str, fallback_slug: &str) -> String {
     let mut slug = String::new();
     let mut last_was_separator = false;
     for ch in id.chars() {
@@ -1233,9 +1417,52 @@ fn receipt_slug_for_gap_id(id: &str) -> String {
     }
     let slug = slug.trim_matches('-');
     if slug.is_empty() {
-        "python-gap".to_string()
+        fallback_slug.to_string()
     } else {
         slug.to_string()
+    }
+}
+
+fn typescript_gap_kind(repair_kind: &str, behavior_kind: &str) -> &'static str {
+    match typescript_evidence_class(repair_kind, behavior_kind) {
+        "predicate_boundary" | "match_arm" => "MissingBoundaryAssertion",
+        "error_variant" | "exception_path" | "error_path" => "MissingErrorDiscriminator",
+        "field_construction" | "field" | "return_value" => "MissingValueAssertion",
+        "call_presence" | "side_effect" | "output_log" => "MissingSideEffectObserver",
+        _ => "Unknown",
+    }
+}
+
+fn typescript_evidence_class<'a>(repair_kind: &str, behavior_kind: &'a str) -> &'a str {
+    match repair_kind {
+        "AddBoundaryAssertion" => "predicate_boundary",
+        "AddErrorDiscriminator" => "error_variant",
+        "AddValueAssertion" => {
+            if matches!(behavior_kind, "field_construction" | "field") {
+                behavior_kind
+            } else {
+                "return_value"
+            }
+        }
+        "AddSideEffectObserver" | "AddOutputObserver" => "side_effect",
+        _ => behavior_kind,
+    }
+}
+
+fn typescript_route_kind<'a>(repair_kind: &'a str, behavior_kind: &str) -> &'a str {
+    match repair_kind {
+        "AddBoundaryAssertion"
+        | "AddErrorDiscriminator"
+        | "AddValueAssertion"
+        | "AddSideEffectObserver"
+        | "AddOutputObserver"
+        | "StrengthenExistingTest" => repair_kind,
+        _ => match behavior_kind {
+            "predicate" | "predicate_boundary" | "match_arm" => "AddBoundaryAssertion",
+            "error_path" | "exception_path" | "error_variant" => "AddErrorDiscriminator",
+            "side_effect" | "call_presence" | "output_log" => "AddSideEffectObserver",
+            _ => "AddValueAssertion",
+        },
     }
 }
 
@@ -1310,6 +1537,7 @@ fn gap_record_from_finding_alignment_item(item: &Value, index: usize) -> Option<
     Some(GapRecord {
         gap_id: format!("gap:pr:{canonical_gap_id}"),
         canonical_gap_id: canonical_gap_id.clone(),
+        seam_id: string_at(item, &["seam_id"]).map(ToString::to_string),
         kind: gap_kind_from_evidence(gap_state, evidence_class).to_string(),
         language: "rust".to_string(),
         language_status: "stable".to_string(),
@@ -1943,6 +2171,13 @@ mod tests {
     fn python_dynamic_import_static_limit_check_output() -> String {
         include_str!("../../../../fixtures/python_dynamic_import_limit/expected/check.json")
             .to_string()
+    }
+
+    fn typescript_preview_gap_before_check_output() -> String {
+        include_str!(
+            "../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+        )
+        .to_string()
     }
 
     fn minimal_record() -> Value {
@@ -2816,6 +3051,198 @@ mod tests {
         assert!(
             packet.contains("\"receipt_status\": \"available\""),
             "expected packet receipt availability in {packet}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_typescript_repair_packet_becomes_agent_packet_gap_record() -> Result<(), String>
+    {
+        let payload = serde_json::json!({
+            "findings": [{
+                "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+                "classification": "weakly_exposed",
+                "probe": {
+                    "file": "src/discount.ts",
+                    "line": 2,
+                    "family": "predicate"
+                },
+                "related_tests": [{
+                    "name": "applyDiscount applies discount when amount meets threshold",
+                    "file": "tests/discount.test.ts",
+                    "line": 3
+                }],
+                "typescript_preview_card": {
+                    "changed_behavior": "predicate changed at src/discount.ts:2: `if (amount >= threshold) {`"
+                },
+                "typescript_repair_packet": {
+                    "schema_version": "0.3",
+                    "source": "typescript_preview_projection",
+                    "gap_id": "probe:src_discount.ts:typescript_preview:2396aec1",
+                    "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+                    "language": "typescript",
+                    "language_status": "preview",
+                    "authority_boundary": "preview_advisory_only",
+                    "file": "src/discount.ts",
+                    "line": 2,
+                    "owner": "applyDiscount",
+                    "verify_command": "jest tests/discount.test.ts",
+                    "receipt_command": "ripr outcome --before <baseline> --after <repair> --verify-cmd \"jest tests/discount.test.ts\" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json",
+                    "allowed_edit_surface": ["tests/discount.test.ts"],
+                    "forbidden_files": ["src/discount.ts"],
+                    "must_not_change": [
+                        "Do not edit production code unless the focused proof exposes a real product defect.",
+                        "Do not treat preview-language evidence as gate authority."
+                    ],
+                    "assertion_shape": "expect(result).toBe(50)",
+                    "repair_kind": "AddBoundaryAssertion",
+                    "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+                    "missing_discriminator": "amount == threshold"
+                }
+            }]
+        });
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "target/ripr/reports/check.json".to_string(),
+            records_json: Ok(payload.to_string()),
+        });
+        assert!(
+            report.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            report.warnings
+        );
+        let records = &report.records;
+
+        assert_eq!(records.len(), 1);
+        let record = &records[0];
+        assert_eq!(record.language, "typescript");
+        assert_eq!(record.language_status, "preview");
+        assert_eq!(record.kind, "MissingBoundaryAssertion");
+        assert_eq!(record.evidence_class, "predicate_boundary");
+        assert_eq!(record.scope, "pr_local");
+        assert_eq!(record.repairability, "repairable");
+        assert!(projection_eligible(record, "agent_packet"));
+        assert!(!projection_eligible(record, "gate_candidate"));
+        assert_eq!(
+            record.verification_commands,
+            vec!["jest tests/discount.test.ts".to_string()]
+        );
+        let route = record
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair route")?;
+        assert_eq!(route.route_kind, "AddBoundaryAssertion");
+        assert_eq!(route.target_file.as_deref(), Some("tests/discount.test.ts"));
+        assert_eq!(
+            route.missing_discriminator.as_deref(),
+            Some("amount == threshold")
+        );
+        assert_eq!(
+            route.related_test.as_deref(),
+            Some(
+                "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold"
+            )
+        );
+        assert_eq!(route.target_line, Some(3));
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("src/discount.ts")
+        );
+        assert_eq!(record.authority_boundary, "preview_advisory_only");
+        assert_eq!(
+            record.regeneration_commands,
+            vec!["ripr check --root . --json > target/ripr/reports/after-check.json".to_string()]
+        );
+        let receipt_cmd = record.receipt_command.as_deref().unwrap_or("");
+        assert!(
+            receipt_cmd.starts_with("ripr receipt write --gap "),
+            "receipt_command must join the canonical receipt loop, got: {receipt_cmd}"
+        );
+        assert!(
+            !receipt_cmd.contains("ripr outcome"),
+            "gap-ledger receipt command must not keep the check-output packet outcome command, got: {receipt_cmd}"
+        );
+        let packet = crate::output::agent_seam_packets::render_agent_gap_record_packet_json(
+            "target/ripr/reports/gap-decision-ledger.json",
+            record,
+        )?;
+        assert!(
+            packet.contains("\"receipt_status\": \"available\""),
+            "expected packet receipt availability in {packet}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_typescript_fixture_synthesizes_receipt_write_for_packet() -> Result<(), String>
+    {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path:
+                "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+                    .to_string(),
+            records_json: Ok(typescript_preview_gap_before_check_output()),
+        });
+        assert!(
+            report.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            report.warnings
+        );
+        assert_eq!(report.records.len(), 1);
+
+        let record = &report.records[0];
+        assert_eq!(
+            record.canonical_gap_id,
+            "gap:typescript:typescript_preview:2396aec1"
+        );
+        assert_eq!(record.language, "typescript");
+        assert_eq!(record.language_status, "preview");
+        assert_eq!(record.repairability, "repairable");
+        assert!(projection_eligible(record, "agent_packet"));
+        assert!(!projection_eligible(record, "gate_candidate"));
+        assert_eq!(
+            record.verification_commands,
+            vec!["jest tests/discount.test.ts".to_string()]
+        );
+        let route = record
+            .repair_route
+            .as_ref()
+            .ok_or("expected TypeScript fixture repair route")?;
+        assert_eq!(route.route_kind, "AddBoundaryAssertion");
+        assert_eq!(route.target_file.as_deref(), Some("tests/discount.test.ts"));
+        assert_eq!(
+            route.missing_discriminator.as_deref(),
+            Some("amount == threshold")
+        );
+        assert_eq!(
+            route.related_test.as_deref(),
+            Some(
+                "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold"
+            )
+        );
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("src/discount.ts")
+        );
+
+        let receipt_cmd = record.receipt_command.as_deref().unwrap_or("");
+        assert!(
+            receipt_cmd.starts_with("ripr receipt write --gap "),
+            "TypeScript fixture without packet receipt_command must synthesize canonical receipt write, got: {receipt_cmd}"
+        );
+        assert!(
+            !receipt_cmd.contains("ripr outcome"),
+            "gap-ledger receipt command must not reuse outcome receipt syntax, got: {receipt_cmd}"
         );
         Ok(())
     }

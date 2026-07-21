@@ -1590,7 +1590,10 @@ weakly_gripped = "note"
             summary: Summary::default(),
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         }
     }
 
@@ -1692,6 +1695,13 @@ weakly_gripped = "note"
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(
+                    crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                        "below_threshold_has_no_discount",
+                        std::path::Path::new("tests/pricing.rs"),
+                        12,
+                    ),
+                ),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),

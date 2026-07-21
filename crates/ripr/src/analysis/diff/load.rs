@@ -24,7 +24,28 @@ pub fn load_diff(
         &owned
     };
 
-    run_git_diff(root, &format!("{base}...HEAD"), &[])
+    run_git_diff(
+        root,
+        &format!("{base}...HEAD"),
+        &["--no-ext-diff", "--unified=0"],
+    )
+}
+
+/// Load the diff from `base` to the live working tree.
+///
+/// This is the explicit `ripr check --worktree` path: it includes committed
+/// changes since `base` plus staged and unstaged tracked edits. Untracked files
+/// are intentionally not included by plain `git diff <base>`.
+pub fn load_worktree_diff(root: &Path, base: Option<&str>) -> Result<String, String> {
+    let owned;
+    let base: &str = if let Some(explicit) = base {
+        explicit
+    } else {
+        owned = resolve_default_base(root)?;
+        &owned
+    };
+
+    run_git_diff(root, base, &[])
 }
 
 /// Resolve the best available base ref for `ripr check` when none was
@@ -91,12 +112,32 @@ fn git_symbolic_ref_quiet(root: &Path, refname: &str) -> Option<String> {
 /// Return `true` when `git rev-parse --verify --quiet <refname>` succeeds,
 /// meaning the ref genuinely exists in the repository.
 fn git_ref_exists(root: &Path, refname: &str) -> bool {
+    git_ref_output(root, refname).is_some_and(|out| out.status.success())
+}
+
+fn git_ref_output(root: &Path, refname: &str) -> Option<std::process::Output> {
     Command::new("git")
         .args(["rev-parse", "--verify", "--quiet", refname])
         .current_dir(root)
         .output()
-        .map(|out| out.status.success())
-        .unwrap_or(false)
+        .ok()
+}
+
+/// Resolve a requested base to the commit that the next analysis will use.
+///
+/// Tracking the commit rather than only the ref name keeps moving refs such as
+/// `origin/main` from being mistaken for the same analysis input after they
+/// advance. An unresolved ref remains `None`; the analysis path will report
+/// the named base failure instead of manufacturing a commit identity.
+pub fn resolve_base_commit(root: &Path, base: Option<&str>) -> Option<String> {
+    let base = base?;
+    let commit = format!("{base}^{{commit}}");
+    let output = git_ref_output(root, &commit)?;
+    if !output.status.success() {
+        return None;
+    }
+    let commit = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!commit.is_empty()).then_some(commit)
 }
 
 pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
@@ -105,6 +146,32 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
         &format!("{base}...{head}"),
         &["--unified=0", "--no-ext-diff"],
     )
+}
+
+/// Return `true` when the working tree at `root` has uncommitted changes to
+/// tracked source files (staged or unstaged).
+///
+/// Runs `git status --porcelain -- .` and treats any non-untracked output line
+/// as a change. The pathspec keeps parent-repo changes outside `root` from
+/// leaking into nested workspace checks. Untracked files are intentionally
+/// excluded because `git diff <base>` does not include them unless the user
+/// stages them.
+/// Fail-closed: if git cannot be run or the directory is not a git repo,
+/// returns `false` (does NOT fabricate a disclosure).
+///
+/// RIPR-SPEC-0112: used to disclose when `--base` analyzed committed history
+/// while uncommitted working-tree changes were silently excluded.
+pub fn working_tree_has_tracked_changes(root: &Path) -> bool {
+    let result = Command::new("git")
+        .args(["status", "--porcelain", "--", "."])
+        .current_dir(root)
+        .output();
+    match result {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .any(|line| !line.starts_with("??")),
+        _ => false,
+    }
 }
 
 fn run_git_diff(root: &Path, range: &str, extra_args: &[&str]) -> Result<String, String> {
@@ -199,6 +266,34 @@ mod tests {
             .args(["commit", "-m", "init"])
             .current_dir(dir)
             .output()?;
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_base_resolves_to_exact_commit_and_unknown_refs_fail_closed() -> std::io::Result<()>
+    {
+        let dir = std::env::temp_dir().join("ripr-resolve-exact-base");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let expected = String::from_utf8(
+            git_ref_output(&dir, "HEAD")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "git HEAD was not resolved")
+                })?
+                .stdout,
+        )
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+        .trim()
+        .to_string();
+
+        assert_eq!(
+            resolve_base_commit(&dir, Some("HEAD")).as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(resolve_base_commit(&dir, Some("missing-base")), None);
+
+        let _ = fs::remove_dir_all(&dir);
         Ok(())
     }
 
@@ -316,6 +411,59 @@ mod tests {
             err.contains("nonexistent-branch-xyz") || err.contains("git diff failed"),
             "expected git-diff error for explicit bad base, got: {err}"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn tracked_change_detector_ignores_untracked_only_files() -> std::io::Result<()> {
+        let dir = std::env::temp_dir().join("ripr-tracked-change-untracked-only");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+        fs::write(dir.join("scratch.rs"), "fn scratch() {}\n")?;
+
+        if working_tree_has_tracked_changes(&dir) {
+            return Err(std::io::Error::other(
+                "untracked-only files must not trigger tracked worktree disclosure",
+            ));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn tracked_change_detector_detects_tracked_edit() -> std::io::Result<()> {
+        let dir = std::env::temp_dir().join("ripr-tracked-change-edit");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+        fs::write(dir.join("README"), "changed\n")?;
+
+        if !working_tree_has_tracked_changes(&dir) {
+            return Err(std::io::Error::other(
+                "tracked edits must trigger tracked worktree disclosure",
+            ));
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn tracked_change_detector_ignores_parent_repo_changes_outside_root() -> std::io::Result<()> {
+        let dir = std::env::temp_dir().join("ripr-tracked-change-parent-dirty");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+        let nested = dir.join("nested-workspace");
+        fs::create_dir_all(&nested)?;
+        fs::write(dir.join("README"), "changed outside nested root\n")?;
+
+        if working_tree_has_tracked_changes(&nested) {
+            return Err(std::io::Error::other(
+                "tracked edits outside the requested root must not trigger tracked worktree disclosure",
+            ));
+        }
 
         let _ = fs::remove_dir_all(&dir);
         Ok(())

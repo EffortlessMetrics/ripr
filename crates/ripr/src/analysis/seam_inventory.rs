@@ -16,6 +16,7 @@
 //!
 //! Both contracts are pinned by tests in this file.
 
+use super::classify::exact_error_variant;
 use super::rust_index::{
     self, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
@@ -26,7 +27,7 @@ use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CacheLoad, CachedSeamLimitInfo, RepoSeamFactCache, WorkspaceState,
+    CacheLoad, CachedSeamLimitInfo, FileFactCacheStats, RepoSeamFactCache, WorkspaceState,
     classified_seam_cache_store_limit, compact_classified_seam_cache_store_limit,
 };
 #[cfg(test)]
@@ -35,6 +36,7 @@ use super::seam_classification::{self, ClassifiedSeam};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
+use crate::analysis::cancellation;
 use crate::config::RiprConfig;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -238,6 +240,18 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     trace_latency_phase("cache_store", &store_status, store_started.elapsed());
     trace_latency_phase("total", "computed", total_started.elapsed());
     Ok((classified, limit_info))
+}
+
+/// Return the workspace cache identity used by the full classified inventory.
+///
+/// Targeted rerun parity uses this explicit identity check so a narrow result
+/// cannot be accepted against a different manifest, policy, or toolchain
+/// state than the full pipeline invocation.
+pub(crate) fn workspace_cache_key_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<super::seam_cache::RepoSeamCacheKey, String> {
+    Ok(collect_workspace_state(root, config)?.cache_key())
 }
 
 fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
@@ -450,6 +464,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
     );
     let mut cached =
         rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    cancellation::checkpoint()?;
     trace_latency_phase(
         "file_fact_cache",
         &cached.file_fact_cache.status_label(),
@@ -460,6 +475,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
     let context = test_grip_evidence::CompactGripContext::new(&cached.index);
     let mut classified = Vec::with_capacity(seams.len());
     for seam in seams {
+        cancellation::checkpoint()?;
         let evidence = test_grip_evidence::compact_evidence_for_seam(&seam, &context);
         let class = seam_classification::classify_seam(&seam, &evidence);
         classified.push(ClassifiedSeam {
@@ -498,6 +514,7 @@ fn inventory_classified_seams_from_state_with_config(
     trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
     let seams_started = Instant::now();
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
+    cancellation::checkpoint()?;
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
     let limit_info = apply_repo_exposure_seam_limit(&mut seams);
     let evidence_started = Instant::now();
@@ -507,9 +524,11 @@ fn inventory_classified_seams_from_state_with_config(
         Duration::ZERO,
     );
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    cancellation::checkpoint()?;
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
     let classified = seam_classification::classify_seams_owned(seams, evidence);
+    cancellation::checkpoint()?;
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok((classified, limit_info))
 }
@@ -517,11 +536,125 @@ fn inventory_classified_seams_from_state_with_config(
 #[derive(Clone, Debug)]
 pub(crate) struct ScopedClassifiedSeamInventory {
     pub(crate) classified: Vec<ClassifiedSeam>,
+    pub(crate) file_fact_cache: FileFactCacheStats,
+    pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
     pub(crate) total_rust_files: usize,
     pub(crate) total_production_files: usize,
     pub(crate) scoped_production_files: Vec<PathBuf>,
     pub(crate) changed_production_files: Vec<PathBuf>,
     pub(crate) immediate_caller_files: Vec<PathBuf>,
+}
+
+/// Cache-backed inventory for one edited test file.
+///
+/// The whole workspace still contributes file facts and ownership context, but
+/// only seams owned by functions directly called from the selected test file
+/// receive fresh relation/evidence/classification work. This intentionally
+/// recomputes selected edges after a test edit rather than serving an invalid
+/// workspace-level classified-seam cache.
+#[derive(Clone, Debug)]
+pub(crate) struct TargetedTestClassifiedSeamInventory {
+    pub(crate) classified: Vec<ClassifiedSeam>,
+    pub(crate) selected_test_count: usize,
+    pub(crate) direct_call_names: Vec<String>,
+    pub(crate) file_fact_cache: FileFactCacheStats,
+    pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
+}
+
+pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
+    root: &Path,
+    config: &RiprConfig,
+    changed_test: &Path,
+    test_node: Option<&str>,
+) -> Result<TargetedTestClassifiedSeamInventory, String> {
+    let state = collect_workspace_state(root, config)?;
+    let workspace_cache_key = state.cache_key();
+    let changed_test = normalized_inventory_path(changed_test);
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+
+    let selected_tests = cached
+        .index
+        .tests
+        .iter()
+        .filter(|test| normalized_inventory_path(&test.file) == changed_test)
+        .filter(|test| test_node.is_none_or(|node| test.name == node))
+        .collect::<Vec<_>>();
+    if selected_tests.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{}`{} did not resolve to a parsed test",
+            changed_test,
+            test_node.map_or(String::new(), |node| format!("::{node}"))
+        ));
+    }
+
+    let direct_call_names = selected_tests
+        .iter()
+        .flat_map(|test| {
+            test.calls
+                .iter()
+                .filter(move |call| call.name != test.name)
+                .map(|call| call.name.trim())
+        })
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if direct_call_names.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{changed_test}` has no direct owner-call selector"
+        ));
+    }
+
+    let candidate_functions = cached
+        .index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && direct_call_names.contains(&function.name))
+        .collect::<Vec<_>>();
+    let matched_call_names = candidate_functions
+        .iter()
+        .map(|function| function.name.clone())
+        .collect::<BTreeSet<_>>();
+    if matched_call_names.is_empty() {
+        return Err(format!(
+            "targeted rerun changed test `{changed_test}` did not resolve a direct production owner"
+        ));
+    }
+    for call_name in &matched_call_names {
+        let matching_owners = candidate_functions
+            .iter()
+            .filter(|function| function.name == *call_name)
+            .count();
+        if matching_owners > 1 {
+            return Err(format!(
+                "targeted rerun changed test `{changed_test}` has ambiguous direct production owner `{call_name}`"
+            ));
+        }
+    }
+    let production_files = candidate_functions
+        .into_iter()
+        .map(|function| function.file.clone())
+        .collect::<Vec<_>>();
+    let seams = inventory_seams_from_index(&production_files, &cached.index)
+        .into_iter()
+        .filter(|seam| {
+            seam.owner()
+                .rsplit("::")
+                .next()
+                .is_some_and(|name| matched_call_names.contains(name))
+        })
+        .collect::<Vec<_>>();
+    let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
+
+    Ok(TargetedTestClassifiedSeamInventory {
+        classified,
+        selected_test_count: selected_tests.len(),
+        direct_call_names: matched_call_names.into_iter().collect(),
+        file_fact_cache: cached.file_fact_cache,
+        workspace_cache_key,
+    })
 }
 
 pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
@@ -531,6 +664,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     changed_owner_names: &[String],
 ) -> Result<ScopedClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
+    let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
     let production_files = production_files_from_state(&state);
     let total_production_files = production_files.len();
@@ -611,6 +745,8 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
 
     Ok(ScopedClassifiedSeamInventory {
         classified,
+        file_fact_cache: cached.file_fact_cache,
+        workspace_cache_key,
         total_rust_files,
         total_production_files,
         scoped_production_files,
@@ -830,6 +966,7 @@ fn collect_workspace_state(
     let rust_files = workspace::discover_rust_files(root)?;
     let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(rust_files.len());
     for path in rust_files {
+        cancellation::checkpoint()?;
         let bytes = std::fs::read(root.join(&path))
             .map_err(|err| format!("read {} failed: {err}", path.display()))?;
         files.push((path, bytes));
@@ -860,10 +997,11 @@ struct OwnedWorkspaceState {
 
 impl OwnedWorkspaceState {
     fn cache_key(&self) -> super::seam_cache::RepoSeamCacheKey {
+        let cfg_features = std::env::var("RIPR_CFG_FEATURES").ok();
         WorkspaceState {
             workspace_root: &self.workspace_root,
             files: &self.files,
-            cfg_features: None,
+            cfg_features: cfg_features.as_deref(),
             config_text: self.config_text.as_deref(),
             test_intent_text: self.test_intent_text.as_deref(),
             suppressions_text: self.suppressions_text.as_deref(),
@@ -977,7 +1115,11 @@ fn required_discriminator_for(kind: SeamKind, expression: &str) -> RequiredDiscr
             description: expression.to_string(),
         },
         SeamKind::ErrorVariant => RequiredDiscriminator::ErrorVariant {
-            variant: expression.to_string(),
+            // Store the producer-owned identity, not the surrounding return
+            // expression. Activation evidence and route compatibility both
+            // speak in terms of the exact error variant. Preserve an
+            // unparseable expression so downstream checks remain fail-closed.
+            variant: exact_error_variant(expression).unwrap_or_else(|| expression.to_string()),
         },
         SeamKind::ReturnValue => RequiredDiscriminator::ReturnValue {
             description: expression.to_string(),
@@ -1163,6 +1305,30 @@ pub fn parse(value: &str) -> Result<i32, String> {
             ));
         }
         Ok(())
+    }
+
+    #[test]
+    fn error_variant_discriminator_stores_exact_variant_identity() {
+        assert_eq!(
+            required_discriminator_for(
+                SeamKind::ErrorVariant,
+                "return Err(AuthError::RevokedToken);",
+            ),
+            RequiredDiscriminator::ErrorVariant {
+                variant: "AuthError::RevokedToken".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn unparseable_error_variant_discriminator_stays_fail_closed() {
+        let expression = "return Err(format!(\"failed: {reason}\"));";
+        assert_eq!(
+            required_discriminator_for(SeamKind::ErrorVariant, expression),
+            RequiredDiscriminator::ErrorVariant {
+                variant: expression.to_string(),
+            }
+        );
     }
 
     #[test]
@@ -2406,5 +2572,172 @@ pub fn check_b(x: i32) -> bool { x < 0 }
             "slice smaller than budget must return None, got {info:?}"
         );
         assert_eq!(classified.len(), 2, "slice should be unchanged");
+    }
+
+    #[test]
+    fn changed_test_inventory_recomputes_only_directly_called_owner_seams() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-owner-selection")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32) -> i32 { if amount >= 100 { amount - 10 } else { amount } }
+pub fn unrelated_total(amount: i32) -> i32 { if amount >= 50 { amount - 5 } else { amount } }
+"#,
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn discounted_total_case() {
+    assert_eq!(discounted_total(100), 90);
+}
+"#,
+        )?;
+
+        let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            None,
+        )?;
+        if inventory.selected_test_count != 1 {
+            return Err(format!(
+                "expected one selected test, got {}",
+                inventory.selected_test_count
+            ));
+        }
+        if inventory.direct_call_names != ["discounted_total".to_string()] {
+            return Err(format!(
+                "unexpected owner-call selection: {:?}",
+                inventory.direct_call_names
+            ));
+        }
+        if inventory.classified.is_empty() {
+            return Err("expected directly called owner seams".to_string());
+        }
+        if inventory
+            .classified
+            .iter()
+            .any(|entry| entry.seam.owner().ends_with("::unrelated_total"))
+        {
+            return Err("unrelated owner seams must not be recomputed".to_string());
+        }
+        if inventory.file_fact_cache.misses == 0 {
+            return Err("cold targeted run should record file-fact misses".to_string());
+        }
+
+        let warm = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            None,
+        )?;
+        if warm.file_fact_cache.hits == 0 || warm.file_fact_cache.misses != 0 {
+            return Err(format!(
+                "warm targeted run should reuse all file facts, got {:?}",
+                warm.file_fact_cache
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn changed_test_inventory_selects_one_test_node_within_a_file() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-node-selection")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32) -> i32 { if amount >= 100 { amount - 10 } else { amount } }
+pub fn surcharge_total(amount: i32) -> i32 { if amount >= 50 { amount + 5 } else { amount } }
+"#,
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn discounted_total_case() { assert_eq!(discounted_total(100), 90); }
+#[test]
+fn surcharge_total_case() { assert_eq!(surcharge_total(50), 55); }
+"#,
+        )?;
+
+        let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            Some("discounted_total_case"),
+        )?;
+        if inventory.selected_test_count != 1
+            || inventory.direct_call_names != ["discounted_total".to_string()]
+            || inventory
+                .classified
+                .iter()
+                .any(|entry| entry.seam.owner().ends_with("::surcharge_total"))
+        {
+            return Err(format!(
+                "test-node selector did not isolate the requested test: count={} calls={:?}",
+                inventory.selected_test_count, inventory.direct_call_names
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn changed_test_inventory_rejects_unknown_test_node() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-node-missing")?;
+        write_file(
+            &root.join("src/lib.rs"),
+            "pub fn discounted_total(amount: i32) -> i32 { amount }",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test] fn discounted_total_case() { assert_eq!(discounted_total(1), 1); }",
+        )?;
+        let result = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            Some("missing_case"),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        match result {
+            Err(message) if message.contains("::missing_case") => Ok(()),
+            Err(message) => Err(format!("unexpected missing-node diagnostic: {message}")),
+            Ok(_) => Err("unknown test node must fail closed".to_string()),
+        }
+    }
+
+    #[test]
+    fn changed_test_inventory_refuses_ambiguous_direct_production_owner() -> Result<(), String> {
+        let root = make_tempdir("targeted-test-ambiguous-owner")?;
+        write_file(
+            &root.join("src/first.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount > 0 { amount } else { 0 } }",
+        )?;
+        write_file(
+            &root.join("src/second.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount >= 0 { amount } else { 0 } }",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test] fn same_name_case() { assert_eq!(same_name(1), 1); }",
+        )?;
+
+        let result = inventory_changed_test_classified_seams_at_with_config_node(
+            &root,
+            &RiprConfig::default(),
+            Path::new("tests/pricing.rs"),
+            None,
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        match result {
+            Err(message) if message.contains("ambiguous direct production owner `same_name`") => {
+                Ok(())
+            }
+            Err(message) => Err(format!("unexpected ambiguity diagnostic: {message}")),
+            Ok(_) => Err("ambiguous direct owner must fail closed".to_string()),
+        }
     }
 }

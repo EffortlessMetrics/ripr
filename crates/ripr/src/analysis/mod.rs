@@ -1,3 +1,4 @@
+pub(crate) mod cancellation;
 pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
@@ -7,6 +8,7 @@ mod facts;
 mod language;
 mod pipeline;
 mod probes;
+pub(crate) mod repair_route;
 mod rust_index;
 pub(crate) mod seam_cache;
 mod seam_classification;
@@ -19,16 +21,23 @@ pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;
 
-pub(crate) use diff::{load_diff, load_diff_range, parse_unified_diff};
+pub(crate) use diff::{
+    load_diff, load_diff_range, parse_unified_diff, resolve_base_commit,
+    working_tree_has_tracked_changes,
+};
 pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
+#[cfg(test)]
+pub(crate) use seam_classification::classify_seam;
 pub(crate) use seam_inventory::{
     DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
-    SeamLimitSource, apply_pilot_seam_budget, inventory_classified_seams_at_with_config,
-    inventory_compact_classified_seams_at_with_config,
+    SeamLimitSource, apply_pilot_seam_budget,
+    inventory_changed_test_classified_seams_at_with_config_node,
+    inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config, inventory_seams_at,
+    workspace_cache_key_at_with_config,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
 
@@ -47,9 +56,273 @@ pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {
     workspace::discover_rust_files(root).unwrap_or_default()
 }
 
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn targeted_typescript_findings_for_scope(
+    root: &Path,
+    config: &crate::config::RiprConfig,
+    file: &Path,
+    line: Option<u64>,
+) -> Result<Vec<Finding>, String> {
+    use diff::{ChangedFile, ChangedLine};
+    use language::{LanguageAdapter, TypeScriptAdapter};
+
+    // Ledger-supplied anchors are untrusted input: reject absolute paths and
+    // parent traversal so a crafted rerun scope cannot read outside `root`.
+    if file.is_absolute()
+        || file
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "TypeScript rerun scope {} escapes the workspace root",
+            file.display()
+        ));
+    }
+    let absolute = root.join(file);
+    let source = std::fs::read_to_string(&absolute).map_err(|err| {
+        format!(
+            "read TypeScript rerun scope {} failed: {err}",
+            absolute.display()
+        )
+    })?;
+    let mut added_lines = Vec::new();
+    match line {
+        Some(line) if line > 0 => {
+            let line_usize = usize::try_from(line)
+                .map_err(|err| format!("TypeScript rerun scope line {line} is too large: {err}"))?;
+            let text = source
+                .lines()
+                .nth(line_usize.saturating_sub(1))
+                .ok_or_else(|| {
+                    format!(
+                        "TypeScript rerun scope {} no longer has line {line}",
+                        file.display()
+                    )
+                })?
+                .to_string();
+            added_lines.push(ChangedLine {
+                line: line_usize,
+                text,
+                new_side_line: line_usize,
+            });
+        }
+        Some(line) => {
+            return Err(format!(
+                "TypeScript rerun scope line must be 1-based; got {line}"
+            ));
+        }
+        None => {
+            for (index, text) in source.lines().enumerate() {
+                let line = index + 1;
+                added_lines.push(ChangedLine {
+                    line,
+                    text: text.to_string(),
+                    new_side_line: line,
+                });
+            }
+        }
+    }
+
+    let options = AnalysisOptions {
+        root: root.to_path_buf(),
+        base: None,
+        diff_file: None,
+        mode: AnalysisMode::Draft,
+        include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
+        resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
+        perl_facts_path: None,
+    };
+    let result = TypeScriptAdapter.analyze_diff(
+        &options,
+        config.oracles(),
+        &[ChangedFile {
+            path: file.to_path_buf(),
+            added_lines,
+            removed_lines: Vec::new(),
+        }],
+    )?;
+    Ok(result.findings)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptRepoReadiness {
+    pub(crate) source_file_count: usize,
+    pub(crate) test_file_count: usize,
+    pub(crate) package_root_count: usize,
+    pub(crate) package_confidence: String,
+    pub(crate) runner_status: String,
+    pub(crate) verify_command_count: usize,
+    pub(crate) top_blocker: Option<String>,
+}
+
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn workspace_typescript_repo_readiness(root: &Path) -> Option<TypeScriptRepoReadiness> {
+    use language::{
+        TsPackageConfidence, is_test_file, resolve_package_discovery, verify_command_for_discovery,
+    };
+
+    let files = workspace_preview_language_files(root)
+        .into_iter()
+        .filter_map(|(language, path)| {
+            matches!(
+                language,
+                language::LanguageId::TypeScript | language::LanguageId::JavaScript
+            )
+            .then_some(path)
+        })
+        .collect::<Vec<_>>();
+    if files.is_empty() {
+        return None;
+    }
+
+    let mut test_file_count = 0usize;
+    let mut source_file_count = 0usize;
+    let mut package_roots = BTreeSet::<String>::new();
+    let mut best_confidence = TsPackageConfidence::None;
+    let mut verify_command_count = 0usize;
+    let mut package_root_missing = 0usize;
+    let mut framework_missing = 0usize;
+    let mut runner_missing = 0usize;
+    let mut package_manager_missing = 0usize;
+    let mut discovery_cache = HashMap::new();
+
+    for file in &files {
+        let file_is_test = is_test_file(file);
+        if file_is_test {
+            test_file_count += 1;
+        } else {
+            source_file_count += 1;
+        }
+
+        let parent = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let discovery = discovery_cache
+            .entry(parent)
+            .or_insert_with(|| resolve_package_discovery(file, root));
+        if let Some(package_root) = discovery.package_root.as_ref() {
+            package_roots.insert(display_readiness_path(package_root));
+        }
+        best_confidence = max_ts_package_confidence(best_confidence, discovery.confidence);
+        if file_is_test && verify_command_for_discovery(discovery, file).is_some() {
+            verify_command_count += 1;
+        }
+        for limitation in &discovery.limitations {
+            match limitation.as_str() {
+                "typescript_package_root_unresolved" => package_root_missing += 1,
+                "typescript_framework_hint_unresolved" => framework_missing += 1,
+                "typescript_test_runner_unresolved" => runner_missing += 1,
+                "typescript_package_manager_unresolved" => package_manager_missing += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let runner_status = if test_file_count == 0 {
+        "no_tests_detected"
+    } else if verify_command_count == test_file_count {
+        "resolved"
+    } else if verify_command_count > 0 {
+        "partial"
+    } else {
+        "unresolved"
+    };
+    let top_blocker = top_typescript_readiness_blocker(
+        test_file_count,
+        package_root_missing,
+        framework_missing,
+        runner_missing,
+        package_manager_missing,
+    );
+
+    Some(TypeScriptRepoReadiness {
+        source_file_count,
+        test_file_count,
+        package_root_count: package_roots.len(),
+        package_confidence: best_confidence.as_str().to_string(),
+        runner_status: runner_status.to_string(),
+        verify_command_count,
+        top_blocker,
+    })
+}
+
+#[cfg(not(feature = "lang-typescript"))]
+pub(crate) fn workspace_typescript_repo_readiness(_root: &Path) -> Option<TypeScriptRepoReadiness> {
+    None
+}
+
+#[cfg(feature = "lang-typescript")]
+fn max_ts_package_confidence(
+    left: language::TsPackageConfidence,
+    right: language::TsPackageConfidence,
+) -> language::TsPackageConfidence {
+    if ts_package_confidence_rank(right) > ts_package_confidence_rank(left) {
+        right
+    } else {
+        left
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn ts_package_confidence_rank(confidence: language::TsPackageConfidence) -> usize {
+    use language::TsPackageConfidence;
+    match confidence {
+        TsPackageConfidence::None => 0,
+        TsPackageConfidence::Low => 1,
+        TsPackageConfidence::Medium => 2,
+        TsPackageConfidence::High => 3,
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn display_readiness_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(feature = "lang-typescript")]
+fn top_typescript_readiness_blocker(
+    test_file_count: usize,
+    package_root_missing: usize,
+    framework_missing: usize,
+    runner_missing: usize,
+    package_manager_missing: usize,
+) -> Option<String> {
+    if test_file_count == 0 {
+        return Some("typescript_tests_not_detected".to_string());
+    }
+
+    [
+        (
+            "typescript_package_root_unresolved",
+            package_root_missing,
+            "package roots",
+        ),
+        (
+            "typescript_framework_hint_unresolved",
+            framework_missing,
+            "framework hints",
+        ),
+        (
+            "typescript_test_runner_unresolved",
+            runner_missing,
+            "test runners",
+        ),
+        (
+            "typescript_package_manager_unresolved",
+            package_manager_missing,
+            "package managers",
+        ),
+    ]
+    .into_iter()
+    .max_by(|(name_a, count_a, _), (name_b, count_b, _)| {
+        count_a.cmp(count_b).then_with(|| name_b.cmp(name_a))
+    })
+    .and_then(|(name, count, label)| {
+        (count > 0).then(|| format!("{name} ({count} {label} unresolved)"))
+    })
+}
+
 use crate::config::OraclePolicy;
 use crate::domain::{Finding, Summary};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +347,11 @@ pub struct AnalysisOptions {
     ///
     /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
     pub resolve_tsconfig_paths: bool,
+    /// Path to a `ripr-perl-facts-v1` packet file for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
 }
 
 /// Advisory record for one compiled preview-language adapter whose files are
@@ -108,6 +386,59 @@ pub struct PreviewLanguageAdvisory {
     pub enabled: bool,
 }
 
+/// Per-language run status for one language adapter invocation.
+///
+/// A `LanguageRun` is recorded for every language that was *attempted* but
+/// did not complete successfully. Languages that ran to completion are
+/// omitted (their findings speak for themselves). This keeps the field
+/// conditional on non-success so the common single-language-success case
+/// stays silent and no golden re-bless is needed.
+///
+/// This is the non-abort contract (Campaign 31 PR 10, ripr-swarm#1403): a
+/// single language's failure (e.g. a Perl preview adapter that returns
+/// `Err`, or a packet-ingestion rejection) must not abort the whole report.
+/// Instead the failed language is recorded here and the other languages'
+/// findings still emit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LanguageRun {
+    /// Stable language wire string (e.g. `"rust"`, `"perl"`).
+    pub language: String,
+    /// Outcome of the run.
+    pub status: LanguageRunStatus,
+    /// Human-readable reason for a non-ok status (absent for `Ok`).
+    pub reason: Option<String>,
+}
+
+/// Outcome of one language adapter invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LanguageRunStatus {
+    /// The adapter completed (findings, if any, are in `result.findings`).
+    /// Recorded only when the caller explicitly asks for full accounting;
+    /// the pipeline omits `Ok` runs by default to keep the field conditional.
+    Ok,
+    /// The adapter was invoked but returned a named limitation (e.g. a Perl
+    /// preview adapter that is scaffold-only and returns `Err`).
+    Unavailable,
+    /// The adapter ran but produced a partial result (e.g. a packet was
+    /// rejected by ingestion checks; some findings may still be present).
+    Partial,
+    /// The adapter could not run at all (e.g. required Cargo feature is off,
+    /// or the producer binary is missing).
+    Invalid,
+}
+
+impl LanguageRunStatus {
+    /// Stable wire string for JSON / human output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Unavailable => "unavailable",
+            Self::Partial => "partial",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
     pub summary: Summary,
@@ -117,6 +448,11 @@ pub struct AnalysisResult {
     /// Empty when only Rust (stable) files are in scope. Non-empty only when
     /// at least one file routed to a preview adapter (TypeScript/JS or Python).
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion
+    /// (the common single-language-success case). Non-abort contract: a
+    /// failure here does not abort the report (Campaign 31 PR 10, #1403).
+    pub language_runs: Vec<LanguageRun>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.
@@ -135,6 +471,14 @@ pub(crate) fn run_analysis_with_oracle_policy(
     languages: &[language::LanguageId],
 ) -> Result<AnalysisResult, String> {
     pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
+}
+
+pub(crate) fn run_worktree_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_worktree_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
@@ -258,6 +602,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -275,6 +620,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Instant,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -323,6 +669,7 @@ fn premium_customer_gets_discount() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if out.findings.is_empty() {
@@ -335,6 +682,45 @@ fn premium_customer_gets_discount() {
         {
             return Err("expected at least one Predicate family finding".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_repo_readiness_uses_preview_file_scope() -> Result<(), String> {
+        let root = temp_dir("ts_readiness_scope");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::create_dir_all(root.join("fixtures/noise/src"))
+            .map_err(|e| format!("failed to create ignored fixture dir: {e}"))?;
+        fs::write(
+            root.join("package.json"),
+            r#"{"devDependencies":{"vitest":"^1.0.0"}}"#,
+        )
+        .map_err(|e| format!("failed to write package.json: {e}"))?;
+        fs::write(root.join("pnpm-lock.yaml"), "")
+            .map_err(|e| format!("failed to write pnpm-lock.yaml: {e}"))?;
+        fs::write(root.join("src/app.ts"), "export const value = 1;\n")
+            .map_err(|e| format!("failed to write source file: {e}"))?;
+        fs::write(
+            root.join("src/app.test.ts"),
+            "import { value } from './app';\n",
+        )
+        .map_err(|e| format!("failed to write test file: {e}"))?;
+        fs::write(
+            root.join("fixtures/noise/src/noise.test.ts"),
+            "test('noise', () => {});\n",
+        )
+        .map_err(|e| format!("failed to write ignored fixture test file: {e}"))?;
+
+        let readiness = workspace_typescript_repo_readiness(&root)
+            .ok_or_else(|| "expected TypeScript readiness card".to_string())?;
+
+        assert_eq!(readiness.source_file_count, 1);
+        assert_eq!(readiness.test_file_count, 1);
+        assert_eq!(readiness.verify_command_count, 1);
+        assert_eq!(readiness.runner_status, "resolved");
+
+        fs::remove_dir_all(&root).map_err(|e| format!("failed to remove temp dir: {e}"))?;
         Ok(())
     }
 
@@ -426,6 +812,7 @@ fn test_with_predicate() {
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         for finding in &out.findings {
@@ -489,6 +876,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -502,6 +890,7 @@ index 0000000..1111111 100644
             mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
         })?;
 
         if repo_out.findings.is_empty() {

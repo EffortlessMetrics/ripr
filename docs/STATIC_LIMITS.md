@@ -28,6 +28,12 @@ opaque_custom_assertion_helper
 property_based_test
 unresolved_pytest_fixture
 unsupported_syntax
+cross_language_oracle_visibility_unresolved
+rust_transitive_reach_unresolved
+rust_integration_public_api_path_unresolved
+rust_macro_reach_unresolved
+rust_macro_wrapped_test_call_unresolved
+rust_macro_wrapped_assertion_unresolved
 ```
 
 When `static_limit_kind` is absent but stable static-limit text is present,
@@ -47,6 +53,12 @@ action.
 | `property_based_test` | A related Python test uses generated inputs, such as Hypothesis `@given(...)`, and syntax alone cannot prove which concrete examples run. | Do not assume the generated cases include the missing discriminator. Keep repair routing blocked unless that same related test also contains concrete strong oracle evidence. |
 | `unresolved_pytest_fixture` | A related pytest test depends on fixture-sourced values that the preview adapter does not execute or resolve. | Do not assume the fixture supplies the missing discriminator or expected value. Keep repair routing blocked unless a separate concrete oracle path exists. |
 | `unsupported_syntax` | The parser or preview adapter saw syntax outside the current preview contract. | Do not upgrade the finding into a stronger claim. Use the packet as a pointer for manual inspection. |
+| `cross_language_oracle_visibility_unresolved` | The changed Rust seam is exposed across a language boundary, but RIPR cannot statically tell whether the external-language oracle discriminates the change. | Verify the external oracle directly. Do not convert the finding into a Rust repair packet from this label alone. |
+| `rust_transitive_reach_unresolved` | A Rust test appears to call an entry point that may lead toward the changed owner through a transitive helper path RIPR does not fully trace. | Treat this as a named `no_static_path` limitation. Inspect the candidate path before adding or delegating repair work. |
+| `rust_integration_public_api_path_unresolved` | An integration test appears to call crate public API, or a test helper that calls it, along a candidate path toward the changed owner. | Treat this as first-run evidence that RIPR saw the integration test but could not cross the public-API path. It is not a clean result or a reach claim. |
+| `rust_macro_reach_unresolved` | A Rust test appears to call an entry point whose path toward the changed owner stops at a same-repo macro invocation RIPR does not expand. | Inspect the macro path manually or improve macro-aware reach. Do not treat the macro mention as evidence that the test observes the change. |
+| `rust_macro_wrapped_test_call_unresolved` | A Rust test directly invokes a same-repo macro whose definition mentions the changed owner, but RIPR does not expand that macro. | Treat this as first-run evidence that RIPR saw the test-body macro call but could not cross it. It is not a clean result, reach claim, or repair packet. |
+| `rust_macro_wrapped_assertion_unresolved` | A Rust test reaches the changed owner, but the visible assertion-like custom macro is not classified as an oracle. | Treat this as first-run evidence that RIPR saw a candidate assertion macro but could not confirm its discriminator. It is not a clean result, oracle claim, or repair packet. |
 
 ## What Static Limits Do Not Mean
 

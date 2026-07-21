@@ -54,7 +54,7 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         }
         let calls_owner = !owner_name.is_empty()
             && (test.calls.iter().any(|call| call.name == owner_name)
-                || test.body.contains(owner_name));
+                || body_contains_owner_call(&test.body, owner_name));
 
         // Signal: a test's assertion observed_tokens intersect the probe's
         // long-enough identifier tokens. Only fires when the probe has no named
@@ -121,11 +121,18 @@ fn normalize_path(path: &Path) -> String {
 
 fn package_prefix(path: &Path) -> Option<String> {
     let normalized = normalize_path(path);
-    if let Some(rest) = normalized.strip_prefix("crates/")
-        && let Some((crate_name, crate_relative)) = rest.split_once('/')
-        && (crate_relative.starts_with("src/") || crate_relative.starts_with("tests/"))
+    let crate_relative = normalized
+        .strip_prefix("crates/")
+        .or_else(|| normalized.rsplit_once("/crates/").map(|(_, rest)| rest));
+    if let Some(crate_relative) = crate_relative
+        && let Some((crate_name, package_relative)) = crate_relative.split_once('/')
+        && (package_relative.starts_with("src/") || package_relative.starts_with("tests/"))
     {
         return Some(format!("crates/{crate_name}/"));
+    }
+    let has_drive_prefix = normalized.as_bytes().get(1).copied() == Some(b':');
+    if path.is_absolute() || normalized.starts_with('/') || has_drive_prefix {
+        return None;
     }
     for marker in ["/src/", "/tests/"] {
         if let Some(idx) = normalized.rfind(marker) {
@@ -137,6 +144,25 @@ fn package_prefix(path: &Path) -> Option<String> {
         }
     }
     None
+}
+
+fn body_contains_owner_call(body: &str, owner_name: &str) -> bool {
+    if owner_name.is_empty() {
+        return false;
+    }
+    body.match_indices(owner_name).any(|(start, _)| {
+        let end = start.saturating_add(owner_name.len());
+        let before_ok = start == 0
+            || !body
+                .as_bytes()
+                .get(start - 1)
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+        let after_call = body
+            .get(end..)
+            .map(|tail| tail.trim_start().starts_with('('))
+            .unwrap_or(false);
+        before_ok && after_call
+    })
 }
 
 #[cfg(test)]
@@ -210,6 +236,64 @@ mod tests {
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "vat_boundary_is_checked_by_macro");
+    }
+
+    #[test]
+    fn given_macro_name_contains_owner_when_no_owner_call_then_test_is_not_directly_related() {
+        let owner = function("src/internal.rs", "inner");
+        let macro_test = TestSummary {
+            name: "macro_wrapper_boundary".to_string(),
+            file: PathBuf::from("tests/macro_boundary.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "let result = call_inner!(10, 3); assert_eq!(result, 7);".to_string(),
+            calls: vec![CallFact {
+                line: 1,
+                name: "call_inner".to_string(),
+                text: "call_inner!(10, 3)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        };
+        let index = RustIndex {
+            tests: vec![macro_test],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/internal.rs", "if a >= b");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert!(
+            related.is_empty(),
+            "macro wrapper name containing the owner must not become a direct owner call"
+        );
+    }
+
+    #[test]
+    fn given_body_contains_qualified_owner_call_then_fallback_is_directly_related() {
+        let owner = function("src/internal.rs", "inner");
+        let call_test = TestSummary {
+            name: "public_api_calls_inner".to_string(),
+            file: PathBuf::from("tests/public_api.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "let result = crate_under_test::internal::inner(10, 3);".to_string(),
+            calls: Vec::new(),
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        };
+        let index = RustIndex {
+            tests: vec![call_test],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/internal.rs", "if a >= b");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
     }
 
     #[test]
@@ -496,5 +580,56 @@ mod tests {
             related.is_empty(),
             "assertions_reference_owner must not fire when owner_fn is Some"
         );
+    }
+
+    #[test]
+    fn absolute_root_probe_matches_relative_companion_test_file() -> Result<(), String> {
+        let index = RustIndex {
+            tests: vec![test(
+                "src/tests/gate_watchdog_tests.rs",
+                "terminal_states_are_exact",
+                "classify_gate_watchdog(&input);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = struct_field_probe(
+            "/repo/ub-review/src/gate_watchdog.rs",
+            "pub(crate) state: GateWatchdogState",
+        );
+
+        let related = find_related_tests(&probe, None, &index);
+        let Some((test, reason)) = related.first() else {
+            return Err(
+                "absolute root probe did not match its relative companion test".to_string(),
+            );
+        };
+        if test.file != Path::new("src/tests/gate_watchdog_tests.rs")
+            || *reason != RelationReason::SameTestFile
+        {
+            return Err(format!("unexpected companion-test relation: {related:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn absolute_workspace_probe_keeps_relative_cross_crate_guard() -> Result<(), String> {
+        let index = RustIndex {
+            tests: vec![test(
+                "crates/other/tests/state_tests.rs",
+                "state_is_exact",
+                "state();",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = struct_field_probe(
+            "/repo/ripr/crates/core/src/state.rs",
+            "pub(crate) state: State",
+        );
+
+        let related = find_related_tests(&probe, None, &index);
+        if !related.is_empty() {
+            return Err(format!("cross-crate test must stay unrelated: {related:?}"));
+        }
+        Ok(())
     }
 }

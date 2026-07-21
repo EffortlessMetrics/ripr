@@ -1,0 +1,144 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_error_path_untaken_branch/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_parseint.py:python_preview:0f645328",
+      "canonical_gap_id": "gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty",
+        "language": "python",
+        "file": "src/parseint.py",
+        "owner": "parse",
+        "behavior_kind": "exception_path",
+        "probe_kind": "error_path",
+        "normalized_discriminator": "keyerror_empty"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_parseint.py:python_preview:0f645328",
+        "family": "error_path",
+        "delta": "control",
+        "file": "src/parseint.py",
+        "line": 3,
+        "expression": "        raise KeyError(\"empty\")",
+        "owner": "python:src/parseint.py::parse"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `parse`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python error path can alter raised exception/control behavior: `raise KeyError(\"empty\")`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python error path propagates through the exception/control boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `parse`", "infection yes: Changed Python error path can alter raised exception/control behavior: `raise KeyError(\"empty\")`", "propagation yes: Changed Python error path propagates through the exception/control boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches error variant: raise KeyError(\"empty\") (line 3)", "related test tests/test_parseint.py:4 test_parse_ok uses strong exact value oracle: assert parse(\"42\") == 42", "missing discriminator raises KeyError matching \"empty\": changed Python exception at line 3 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"raise KeyError(\"empty\")","line":3}
+      ],
+      "evidence": ["owner: parse", "owner_kind: function", "missing_discriminator: raises KeyError matching \"empty\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_parseint.py", "suggested_test_name: test_parse_ok", "suggested_test_node_id: tests/test_parseint.py::test_parse_ok", "suggested_verify_command: pytest tests/test_parseint.py::test_parse_ok", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_parse_ok)", "test_verify_command: pytest tests/test_parseint.py::test_parse_ok (test_parse_ok)", "related_test_relation: syntactic_call (test_parse_ok)", "test_oracle: exact_value strong (test_parse_ok)"],
+      "missing": ["A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "raises KeyError matching \"empty\"",
+            "reason": "changed Python exception at line 3 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"error_variant","text":"raise KeyError(\"empty\")","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "raises KeyError matching \"empty\"",
+          "reason": "changed Python exception at line 3 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"error_variant","text":"raise KeyError(\"empty\")","line":3}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_parse_ok",
+          "file": "tests/test_parseint.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert parse(\"42\") == 42"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_parseint.py",
+        "suggested_test_name": "test_parse_ok",
+        "suggested_test_node_id": "tests/test_parseint.py::test_parse_ok",
+        "verify_command": "pytest tests/test_parseint.py::test_parse_ok",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "parse",
+        "changed_behavior": "exception_path changed at src/parseint.py:3: `raise KeyError(\"empty\")`",
+        "current_test_evidence": "tests/test_parseint.py:4 test_parse_ok currently has oracle_strength=strong, oracle_kind=exact_value: assert parse(\"42\") == 42",
+        "missing_discriminator": "raises KeyError matching \"empty\"",
+        "recommended_test_shape": "Strengthen the existing pytest exception assertion for `raises KeyError matching \"empty\"`.",
+        "suggested_assertion": "with pytest.raises(KeyError, match=\"empty\"): ...",
+        "suggested_location": {
+          "test_file": "tests/test_parseint.py",
+          "test_name": "test_parse_ok",
+          "pytest_node_id": "tests/test_parseint.py::test_parse_ok"
+         },
+        "verify": {
+          "command": "pytest tests/test_parseint.py::test_parse_ok",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching \"empty\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching \"empty\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "KeyError, empty",
+      "observed_sink": "assert parse(\"42\") == 42",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/parseint.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

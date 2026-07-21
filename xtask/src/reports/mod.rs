@@ -8,12 +8,14 @@ mod first_pr;
 mod fixtures;
 mod impacted_evidence;
 mod index;
+mod issue_intake;
 mod lsp;
 mod metrics;
 mod module_health;
 mod mutation;
 mod operator;
 mod pr;
+mod pr_causal_delta;
 mod pr_evidence;
 mod pr_evidence_summary;
 mod proof_preflight;
@@ -23,7 +25,9 @@ mod recommendation;
 mod release;
 mod repo;
 mod review_comments;
+mod rust_repair_trust;
 mod sarif;
+mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
 
@@ -40,6 +44,7 @@ pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
+pub(crate) use issue_intake::issue_intake;
 pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use metrics::metrics_report;
 pub(crate) use module_health::module_health;
@@ -59,7 +64,9 @@ pub(crate) use repo::{
     repo_seam_inventory,
 };
 pub(crate) use review_comments::ripr_review_comments;
+pub(crate) use rust_repair_trust::rust_repair_trust_report;
 pub(crate) use sarif::sarif_policy;
+pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
 

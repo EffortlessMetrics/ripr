@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_operator_delta_input_operand/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/counter.py:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/counter.py:next_value:return_value:return_value:count-1
+  Changed behavior: return count - 1
+  Missing discriminator: A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Ad…
+  Related test: tests/test_counter.py:4 test_next
+  Suggested test file: tests/test_counter.py
+  Suggested test: test_next
+  Test node: tests/test_counter.py::test_next
+  Verify command: pytest tests/test_counter.py::test_next (high)
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `next_value`
+    - infection yes: Changed Python return expression can alter the owner return value: `return count - 1`
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

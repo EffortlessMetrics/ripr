@@ -9,6 +9,7 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::repair_route::repair_projection_ready;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::domain::OracleStrength;
 use crate::output::agent_seam_packets::{
@@ -170,7 +171,9 @@ fn push_seam_actions(
     if cross_language_test_target_unresolved(context.seam) {
         return;
     }
-    if suggested_assertion.is_some() || related_test.is_some() {
+    if repair_projection_ready(context.seam)
+        && (suggested_assertion.is_some() || related_test.is_some())
+    {
         actions.push(copy_targeted_test_brief_action(
             context.seam,
             targeted_test_brief_for_classified_seam(context.seam),
@@ -355,7 +358,7 @@ fn push_gap_actions(
 fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: command_title.to_string(),
             command: COPY_CONTEXT_COMMAND.to_string(),
@@ -395,7 +398,7 @@ fn copy_agent_loop_command_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: title.to_string(),
             command: command.to_string(),
@@ -1383,7 +1386,7 @@ fn non_empty_string(value: &Value) -> Option<&str> {
 fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: TARGETED_TEST_BRIEF_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: TARGETED_TEST_BRIEF_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1399,7 +1402,7 @@ fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> Code
 fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1412,7 +1415,7 @@ fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
 fn copy_python_repair_card_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1428,7 +1431,7 @@ fn copy_suggested_assertion_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: SUGGESTED_ASSERTION_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
         command: Some(Command {
             title: SUGGESTED_ASSERTION_TITLE.to_string(),
             command: COPY_SUGGESTED_ASSERTION_COMMAND.to_string(),
@@ -1444,7 +1447,7 @@ fn copy_suggested_assertion_action(
 fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: OPEN_RELATED_TEST_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.navigate")),
         command: Some(Command {
             title: OPEN_RELATED_TEST_TITLE.to_string(),
             command: OPEN_RELATED_TEST_COMMAND.to_string(),
@@ -1524,6 +1527,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             "language_status",
             "owner_kind",
             "static_limit_kind",
+            "explain_command",
         ] {
             if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
                 target.insert(
@@ -1533,6 +1537,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             }
         }
         copy_optional_value(&mut target, data, "preview_actionability");
+        copy_optional_value(&mut target, data, "witness");
     }
     serde_json::Value::Object(target)
 }
@@ -1584,6 +1589,9 @@ fn relation_confidence_rank(confidence: RelationConfidence) -> u8 {
 
 fn related_test_target(snapshot: &AnalysisSnapshot, related: &RelatedTestGrip) -> Option<LSPAny> {
     let path = absolute_related_test_path(snapshot, related);
+    if !super::uri::path_is_within_root(snapshot.root.as_path(), &path) {
+        return None;
+    }
     let uri = file_uri_for_path(&path).ok()?;
     Some(serde_json::json!({
         "uri": uri.as_str(),
@@ -1752,14 +1760,17 @@ mod tests {
     fn python_snapshot() -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
+            delivery_selection: None,
             seams_deferred: false,
         }
     }

@@ -6,6 +6,7 @@ use self::evidence::ClassifiedProbeEvidence;
 use self::finding::build_finding;
 use self::owner::resolve_owner_function;
 use super::classify::{ProbeContext, find_related_tests};
+use super::probes::parser_expression_for_probe;
 use super::rust_index::RustIndex;
 use crate::domain::*;
 
@@ -13,7 +14,15 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     let owner_fn = resolve_owner_function(probe, index);
     let related_tests = find_related_tests(probe, owner_fn, index);
     let context = ProbeContext::new(probe, owner_fn, related_tests);
-    let evidence = ClassifiedProbeEvidence::gather(&context);
+    let reveal_expression = parser_expression_for_probe(
+        index,
+        &probe.location.file,
+        probe.location.line,
+        &probe.family,
+        &probe.expression,
+    )
+    .unwrap_or(&probe.expression);
+    let evidence = ClassifiedProbeEvidence::gather(&context, reveal_expression);
     let class = evidence.classify(context.probe);
 
     build_finding(&context, class, evidence)
@@ -24,9 +33,10 @@ mod tests {
     use super::*;
     use crate::analysis::classify::{recommended_next_step, stop_reasons};
     use crate::analysis::rust_index::{
-        CallFact, FunctionSummary, LiteralFact, OracleFact, ReturnFact, TestSummary,
-        extract_identifier_tokens,
+        CallFact, FileFacts, FunctionSummary, LiteralFact, OracleFact, PROBE_SHAPE_CALL_DELETION,
+        ProbeShapeFact, ReturnFact, TestSummary, extract_identifier_tokens,
     };
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     #[test]
@@ -1299,9 +1309,7 @@ mod tests {
         );
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
-            Some(
-                "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change."
-            )
+            Some(NO_STATIC_PATH_NEXT_STEP)
         );
         assert_eq!(
             recommended_next_step(&predicate_probe, &ExposureClass::InfectionUnknown).as_deref(),
@@ -1389,6 +1397,131 @@ mod tests {
             expected_sinks: vec![],
             required_oracles: vec![],
         }
+    }
+
+    #[test]
+    fn parser_expression_confirms_payload_without_rewriting_emitted_probe() -> Result<(), String> {
+        let owner = function("src/gate_watchdog.rs", "classify_gate_watchdog");
+        let owner_id = owner.id.clone();
+        let path = PathBuf::from("src/gate_watchdog.rs");
+        let assertion = r#"ensure!(reason.kind == "run-missing");"#;
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: vec![test_with_oracle(
+                "src/tests/gate_watchdog_tests.rs",
+                "classify_gate_watchdog_reports_run_missing",
+                "classify_gate_watchdog(&input)",
+                oracle_fact(assertion, OracleKind::ExactValue, OracleStrength::Strong),
+            )],
+            files: BTreeMap::from([(
+                path,
+                FileFacts {
+                    path: PathBuf::from("src/gate_watchdog.rs"),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 190,
+                        end_line: 194,
+                        start_byte: 1_024,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:watchdog-reason".to_string()),
+            location: SourceLocation::new(
+                PathBuf::from("/repo/ub-review/src/gate_watchdog.rs"),
+                190,
+                1,
+            ),
+            owner: Some(owner_id),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("watchdog_reason(".to_string()),
+            expression: "watchdog_reason(".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+        if finding.class != ExposureClass::Exposed {
+            return Err(format!("parser payload was not discriminated: {finding:?}"));
+        }
+        if finding.probe.expression != "watchdog_reason(" {
+            return Err(format!(
+                "emitted probe expression changed: {}",
+                finding.probe.expression
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parser_argument_identifier_does_not_confirm_call_effect() -> Result<(), String> {
+        let owner = function("src/gate_watchdog.rs", "classify_gate_watchdog");
+        let owner_id = owner.id.clone();
+        let path = PathBuf::from("src/gate_watchdog.rs");
+        let assertion = "ensure!(reason.receipt == receipt);";
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: vec![test_with_oracle(
+                "src/tests/gate_watchdog_tests.rs",
+                "classify_gate_watchdog_preserves_receipt",
+                "classify_gate_watchdog(&input)",
+                oracle_fact(assertion, OracleKind::ExactValue, OracleStrength::Strong),
+            )],
+            files: BTreeMap::from([(
+                path,
+                FileFacts {
+                    path: PathBuf::from("src/gate_watchdog.rs"),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 190,
+                        end_line: 194,
+                        start_byte: 1_024,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:watchdog-reason".to_string()),
+            location: SourceLocation::new(
+                PathBuf::from("/repo/ub-review/src/gate_watchdog.rs"),
+                190,
+                1,
+            ),
+            owner: Some(owner_id),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("watchdog_reason(".to_string()),
+            expression: "watchdog_reason(".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+        if finding.class != ExposureClass::WeaklyExposed {
+            return Err(format!(
+                "argument identifier falsely confirmed call effect: {finding:?}"
+            ));
+        }
+        if !finding
+            .ripr
+            .reveal
+            .discriminate
+            .summary
+            .contains("observation_unverified")
+        {
+            return Err(format!(
+                "missing observation boundary for argument-only oracle: {finding:?}"
+            ));
+        }
+        Ok(())
     }
 
     fn function(file: &str, name: &str) -> FunctionSummary {

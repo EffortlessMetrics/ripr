@@ -3,7 +3,10 @@ mod model;
 mod parse;
 mod path;
 
-pub use load::{load_diff, load_diff_range};
+pub use load::{
+    load_diff, load_diff_range, load_worktree_diff, resolve_base_commit,
+    working_tree_has_tracked_changes,
+};
 #[allow(
     unused_imports,
     reason = "ChangedLine is re-exported for use by probes.rs and other external modules; not used within diff module itself."

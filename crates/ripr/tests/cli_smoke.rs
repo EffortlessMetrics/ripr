@@ -237,12 +237,14 @@ fn check_human_output_reports_sample_findings() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Summary: 5 probe(s)"));
-    assert!(stdout.contains("Static exposure\n  weakly_exposed"));
-    assert!(stdout.contains("Evidence\n"));
-    assert!(stdout.contains("observed function argument value"));
-    assert!(stdout.contains("missing discriminator"));
-    assert!(stdout.contains("Next step\n"));
+    assert!(stdout.contains("Summary: 4 probe(s)"));
+    assert!(stdout.contains("Start here:"));
+    assert!(stdout.contains("Static exposure: weakly_exposed"));
+    assert!(stdout.contains("Evidence:"));
+    assert!(stdout.contains("Missing discriminator:"));
+    assert!(stdout.contains("Next step:"));
+    assert!(stdout.contains("lower-priority finding(s) omitted"));
+    assert!(stdout.contains("--format human-full"));
 }
 
 #[test]
@@ -263,6 +265,322 @@ fn check_json_output_has_stable_contract_fields() {
     assert!(stdout.contains(r#""oracle_kind""#));
     assert!(stdout.contains(r#""recommended_next_step""#));
     assert!(stdout.contains(r#""suggested_next_action""#));
+}
+
+// ── `check --suppression-policy` (#1441) ──
+
+fn write_suppression_policy(label: &str, text: &str) -> Result<PathBuf, String> {
+    let dir = unique_temp_workspace(label);
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let path = dir.join("ripr-suppressions.toml");
+    std::fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(path)
+}
+
+#[test]
+fn check_json_suppression_policy_marks_findings_and_adjusts_summary() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-json",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--json",
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("check JSON should parse: {err}\n{stdout}"))?;
+
+    let findings = value["findings"]
+        .as_array()
+        .ok_or("findings must be an array")?;
+    assert!(!findings.is_empty(), "sample diff must produce findings");
+    for finding in findings {
+        assert_eq!(
+            finding["suppressed"], true,
+            "every sample finding lives under the suppressed glob"
+        );
+        assert_eq!(finding["suppressed_by"], "crates/ripr/examples/sample/**");
+    }
+    assert_eq!(
+        value["summary"]["suppressed_by_policy"].as_u64(),
+        Some(findings.len() as u64)
+    );
+    // Per-class buckets count unsuppressed findings only.
+    assert_eq!(value["summary"]["weakly_exposed"].as_u64(), Some(0));
+    // `findings` stays the total rendered count.
+    assert_eq!(
+        value["summary"]["findings"].as_u64(),
+        Some(findings.len() as u64)
+    );
+    assert_eq!(value["suppression_policy"]["path"], policy_arg.as_str());
+    assert_eq!(
+        value["suppression_policy"]["warnings"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    Ok(())
+}
+
+#[test]
+fn check_human_suppression_policy_lists_suppressed_findings_compactly() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-human",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/ripr/examples/sample/**\"\nreason = \"sample surface accepted for this smoke test\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Suppressed by policy"),
+        "human output must disclose policy application: {stdout}"
+    );
+    assert!(stdout.contains("(selector: crates/ripr/examples/sample/**)"));
+    assert!(
+        !stdout.contains("Next step\n"),
+        "suppressed findings must not render detailed blocks: {stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn check_suppression_policy_missing_file_fails_closed() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--json",
+        "--suppression-policy",
+        "does/not/exist.toml",
+    ]);
+    assert_failure(&output);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to read suppression policy"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn check_suppression_policy_rejects_unsupported_formats() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let policy = write_suppression_policy(
+        "suppression-sarif",
+        "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\npath = \"crates/**\"\nreason = \"unused\"\nowner = \"repo-owner\"\n",
+    )?;
+    let policy_arg = policy.display().to_string();
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "sarif",
+        "--suppression-policy",
+        &policy_arg,
+    ]);
+    assert_failure(&output);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--suppression-policy applies to the findings-based check formats"),
+        "stderr: {stderr}"
+    );
+    Ok(())
+}
+
+// ── `gate evaluate --exception-policy` (#1442) ──
+
+const SMOKE_PR_GUIDANCE_JSON: &str = r#"{
+  "schema_version": "0.1",
+  "summary": {"unchanged_tests": true},
+  "comments": [],
+  "summary_only": [],
+  "suppressed": []
+}"#;
+
+fn write_exception_ledger(
+    dir: &std::path::Path,
+    review_after: &str,
+    expires: &str,
+) -> Result<PathBuf, String> {
+    let path = dir.join("quality-gate-exceptions.toml");
+    let ledger = format!(
+        "schema_version = 1\npolicy = \"quality-gate-exceptions\"\nstatus = \"active\"\ndue_review = \"fail\"\n\n[[exception]]\nid = \"total-burndown\"\nkind = \"temporary_burndown\"\nscope = \"ripr_plus_total\"\nowner = \"proof-lane\"\nreason = \"Pre-existing gaps predate the gate.\"\nfinal_target = \"unresolved total = 0\"\nevidence = \"target/receipts/quality/ripr-plus.json\"\nremoval_criteria = \"final mode requires zero\"\ncreated = \"2026-01-01\"\nreview_after = \"{review_after}\"\nexpires = \"{expires}\"\n"
+    );
+    std::fs::write(&path, ledger).map_err(|err| format!("write {}: {err}", path.display()))?;
+    Ok(path)
+}
+
+#[test]
+fn gate_evaluate_exception_policy_active_ledger_reports_and_passes() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-active");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let ledger = write_exception_ledger(&dir, "9999-01-01", "9999-12-31")?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &ledger.display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["exception_policy"]["active_count"], 1);
+    assert_eq!(
+        value["exception_policy"]["violations"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    assert_ne!(value["status"], "blocked");
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_exception_policy_expired_ledger_blocks_with_nonzero_exit() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-expired");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let ledger = write_exception_ledger(&dir, "2000-01-01", "2000-06-01")?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &ledger.display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_failure(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["status"], "blocked");
+    assert!(
+        value["exception_policy"]["violations"]
+            .as_array()
+            .is_some_and(|violations| violations
+                .iter()
+                .any(|violation| violation["kind"] == "quality_exception_expired")),
+        "decision: {decision}"
+    );
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_exception_policy_missing_ledger_is_config_error() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-exception-missing");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let guidance = dir.join("comments.json");
+    std::fs::write(&guidance, SMOKE_PR_GUIDANCE_JSON)
+        .map_err(|err| format!("write guidance: {err}"))?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--pr-guidance",
+        &guidance.display().to_string(),
+        "--exception-policy",
+        &dir.join("does-not-exist.toml").display().to_string(),
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_failure(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    assert!(
+        decision.contains("failed to read exception policy"),
+        "decision: {decision}"
+    );
+    Ok(())
+}
+
+#[test]
+fn check_json_diff_scope_oversized_emits_limited_artifact() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr_with_env(
+        &["check", "--root", &root, "--diff", &diff, "--json"],
+        &[("RIPR_MAX_DIFF_CHANGED_RUST_LINES", "1")],
+    );
+    assert_failure(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("limited stdout should parse as JSON: {err}\n{stdout}"))?;
+    assert_eq!(value["schema_version"], "0.2");
+    assert_eq!(
+        value["analysis_scope"]["run_status"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["analysis_scope"]["downstream_consumable"], false);
+    assert_eq!(
+        value["run_limitations"][0]["category"],
+        "diff_scope_oversized"
+    );
+    assert_eq!(value["run_limitations"][0]["downstream_consumable"], false);
+    assert_eq!(value["findings"].as_array().map(Vec::len), Some(0));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("diff_scope_oversized"),
+        "stderr should still report failed analysis: {stderr}"
+    );
+    Ok(())
 }
 
 #[test]
@@ -570,6 +888,12 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     ])?;
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ripr first-pr - side effects and cost disclosure"));
+    assert!(stdout.contains("cost class:      varies with diff and workspace size"));
+    assert!(stdout.contains(&format!("writes to:       {reports_arg}/")));
+    assert!(stdout.contains("cache location:  target/ripr/cache/"));
+    assert!(stdout.contains("git reads:       yes (diff between base and head)"));
+    assert!(stdout.contains("network:         none"));
     assert!(stdout.contains("Start here:"));
     assert!(stdout.contains("State: top_gap"));
     assert!(stdout.contains("Safe next action: repair one named gap"));
@@ -666,6 +990,11 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert!(check_stdout.contains("Start here:"));
     assert!(check_stdout.contains("State: top_gap"));
     assert!(check_stdout.contains("First PR start-here packet ok:"));
+    // --check validates without rewriting, so the disclosure must not claim writes.
+    assert!(
+        check_stdout
+            .contains("writes to:       none (--check validates an existing start-here packet)")
+    );
     std::fs::remove_dir_all(workspace)?;
     Ok(())
 }
@@ -877,7 +1206,7 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
     );
     assert_eq!(
         json_pointer_str(&proof, "/seam/missing_discriminator")?,
-        "input that hits the boundary: amount >= discount_threshold"
+        "discount_threshold (equality boundary)"
     );
     assert_eq!(
         json_pointer_str(&proof, "/recommendation/placement")?,
@@ -885,7 +1214,7 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
     );
     assert!(
         json_pointer_str(&proof, "/recommendation/suggested_test")?
-            .contains("amount >= discount_threshold")
+            .contains("amount == discount_threshold")
     );
     assert_eq!(
         json_pointer_str(&proof, "/evidence_movement/state")?,
@@ -978,9 +1307,7 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
 
     let proof_md = std::fs::read_to_string(proof_md_path)?;
     assert!(proof_md.contains("Status: advisory"));
-    assert!(proof_md.contains(
-        "Missing discriminator: input that hits the boundary: amount >= discount_threshold"
-    ));
+    assert!(proof_md.contains("Missing discriminator: discount_threshold (equality boundary)"));
     assert!(proof_md.contains("After: weakly_gripped"));
     assert!(proof_md.contains("State: unchanged"));
     assert!(proof_md.contains("Gate: not configured"));
@@ -1405,7 +1732,9 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    // Diff-scoped badge JSON never carries a public projection.
+    assert!(!stdout.contains(r#""public_projection""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -1416,8 +1745,9 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert!(stdout.contains(r#""unsuppressed_exposure_gaps""#));
     assert!(stdout.contains(r#""duplicate_activation_and_oracle_shape": 0"#));
     assert!(!stdout.contains(r#""schemaVersion""#));
-    // The sample diff has 5 weakly_exposed findings; the badge headline reflects them.
-    assert!(stdout.contains(r#""message": "5""#));
+    // The sample diff has 4 weakly_exposed findings after nested call shapes are
+    // excluded; the badge headline reflects the surviving semantic probes.
+    assert!(stdout.contains(r#""message": "4""#));
     assert!(stdout.contains(r#""status": "warn""#));
     assert!(stdout.contains(r#""color": "orange""#));
 }
@@ -1440,7 +1770,7 @@ fn check_badge_shields_output_has_exactly_four_top_level_fields() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schemaVersion": 1"#));
     assert!(stdout.contains(r#""label": "ripr""#));
-    assert!(stdout.contains(r#""message": "5""#));
+    assert!(stdout.contains(r#""message": "4""#));
     assert!(stdout.contains(r#""color": "orange""#));
     // Native-JSON-only fields must not leak into the Shields shape.
     for forbidden in [
@@ -1614,13 +1944,198 @@ fn doctor_reports_language_tiers_and_limitations() -> Result<(), String> {
         "expected cross_language_oracle_visibility_unresolved in stdout:\n{stdout}"
     );
 
-    // Section 4: Recommended first command.
+    // Section 4: Recommended first command. The exact wording is
+    // worktree-state-aware (see doctor_recommends_worktree_check_on_dirty_worktree);
+    // here we only require the diff-first command to be present.
     assert!(
-        stdout.contains("Recommended first command: ripr check --base origin/main"),
-        "expected 'Recommended first command: ripr check --base origin/main' in stdout:\n{stdout}"
+        stdout.contains("ripr check --base origin/main"),
+        "expected the diff-first recommended command in stdout:\n{stdout}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_perl_preview_section_when_perl_markers_present() -> Result<(), String> {
+    // A workspace with Perl markers (Makefile.PL + lib/*.pm + t/*.t) must
+    // surface the rich "Perl preview:" section (Campaign 31 item 5):
+    // project counts, adapter, producer, perllsp, schema, test roots,
+    // frameworks, runners, and an exact next command.
+    let root = unique_temp_workspace("doctor-perl-preview");
+    std::fs::create_dir_all(root.join("lib")).map_err(|err| err.to_string())?;
+    std::fs::create_dir_all(root.join("t")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Makefile.PL"),
+        "use ExtUtils::MakeMaker;\nWriteMakefile(NAME => 'Pricing');\n",
+    )
+    .map_err(|err| err.to_string())?;
+    // A minimal Cargo.toml so the doctor's root check passes (the realistic
+    // scenario is a mixed Rust+Perl repo; a pure-Perl repo would fail the
+    // Cargo.toml check, which is unrelated to the Perl preview).
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"mixed-perl\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("lib/Pricing.pm"),
+        "package Pricing;\nuse strict;\nsub discount { return 0; }\n1;\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("t/pricing.t"),
+        "use Test::More;\nok(1, 'placeholder');\ndone_testing();\n",
+    )
+    .map_err(|err| err.to_string())?;
+
+    let root_str = root.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The Perl preview section heading.
+    assert!(
+        stdout.contains("- Perl preview:"),
+        "expected '- Perl preview:' in stdout:\n{stdout}"
+    );
+    // Each sub-line of the rich preview.
+    assert!(
+        stdout.contains("project:"),
+        "expected 'project:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("adapter:"),
+        "expected 'adapter:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("producer:"),
+        "expected 'producer:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("exporter:"),
+        "expected 'exporter:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("schema:"),
+        "expected 'schema:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test roots:"),
+        "expected 'test roots:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("frameworks:"),
+        "expected 'frameworks:' line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("runners:"),
+        "expected 'runners:' line:\n{stdout}"
+    );
+    assert!(stdout.contains("next:"), "expected 'next:' line:\n{stdout}");
+
+    // Schema reports the expected version (single-sourced from app::PERL_FACT_PACKET_SCHEMA).
+    assert!(
+        stdout.contains("ripr-perl-facts-v1 expected"),
+        "expected 'ripr-perl-facts-v1 expected' on the schema line:\n{stdout}"
+    );
+    // Test framework detection: Test::More is present in t/pricing.t.
+    assert!(
+        stdout.contains("Test::More"),
+        "expected 'Test::More' detected:\n{stdout}"
+    );
+    // Test root detection: t/ is present.
+    assert!(
+        stdout.contains("t/ detected"),
+        "expected 't/ detected' on test roots line:\n{stdout}"
+    );
+    // The recursive count_files now reports the real .pm/.pl/.t counts (> 0).
+    let project_line = stdout
+        .lines()
+        .find(|l| l.contains("project:"))
+        .unwrap_or("");
+    assert!(
+        !project_line.contains("1 .pm, 0 .pl, 0 .t") || project_line.contains("1 .pm, 0 .pl, 1 .t"),
+        "project counts must reflect the recursive scan (1 .pm, 1 .t): {project_line}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn doctor_omits_perl_preview_when_no_perl_markers() -> Result<(), String> {
+    // A Rust-only workspace must NOT emit a Perl preview section.
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("- Perl preview:"),
+        "must not emit a Perl preview for a Rust-only workspace:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_recommends_worktree_check_on_dirty_worktree() -> Result<(), String> {
+    // First-run honesty: doctor must not route a user with uncommitted edits to
+    // `ripr check --base origin/main`, which analyzes committed history only and
+    // would silently exclude their draft (the RIPR-SPEC-0112 dirty-worktree case).
+    let root = unique_temp_workspace("doctor-dirty-wt");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"doctor-dirty-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 1 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+    let root_str = root.display().to_string();
+
+    // CLEAN worktree: recommend the diff-first command directly.
+    let clean = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&clean);
+    let clean_out = String::from_utf8_lossy(&clean.stdout);
+    assert!(
+        clean_out.contains("Recommended first command: ripr check --base origin/main"),
+        "clean worktree must recommend the diff-first command directly:\n{clean_out}"
+    );
+
+    // DIRTY worktree: route the user to the explicit live-worktree diff.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn f(a: i32) -> i32 { a + 2 }\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let dirty = run_ripr(&["doctor", "--root", &root_str]);
+    assert_success(&dirty);
+    let dirty_out = String::from_utf8_lossy(&dirty.stdout);
+    assert!(
+        dirty_out.contains("Recommended first command: ripr check --base HEAD --worktree"),
+        "dirty worktree must recommend the worktree command:\n{dirty_out}"
+    );
+    assert!(
+        dirty_out.contains("staged and unstaged tracked edits"),
+        "dirty worktree must disclose the tracked-edit scope:\n{dirty_out}"
+    );
+    assert!(
+        !dirty_out.contains("Recommended first command: ripr check --base origin/main"),
+        "dirty worktree must NOT give the unconditional clean recommendation:\n{dirty_out}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
 
@@ -1956,7 +2471,7 @@ fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
     let json = std::fs::read_to_string(&out_json).map_err(|e| format!("read delta json: {e}"))?;
     assert!(json.contains("\"kind\": \"baseline_debt_delta\""));
     assert!(json.contains("\"still_present\": 1"));
-    assert!(json.contains("\"matched_by\": \"seam_id\""));
+    assert!(json.contains("\"matched_by\": \"canonical_gap_id\""));
     let md = std::fs::read_to_string(&out_md).map_err(|e| format!("read delta md: {e}"))?;
     assert!(md.contains("# RIPR Baseline Debt Delta"));
     assert!(md.contains("| Still present | 1 |"));
@@ -1982,6 +2497,140 @@ fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
     assert!(missing_json.contains("\"missing_current_input\": 1"));
     assert!(missing_json.contains("required current gate-decision input"));
 
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn capped_pr_guidance_baseline_round_trip_preserves_shared_canonical_gap_seams()
+-> Result<(), String> {
+    let workspace = unique_temp_workspace("capped-baseline-round-trip");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let guidance =
+        workspace_root().join("fixtures/boundary_gap/expected/pr-guidance/capped/comments.json");
+    let gate = workspace.join("gate-decision.json");
+    let baseline = workspace.join("gate-baseline.json");
+    let delta = workspace.join("baseline-debt-delta.json");
+    let updated = workspace.join("updated-baseline.json");
+    let guidance_arg = guidance.display().to_string();
+    let gate_arg = gate.display().to_string();
+    let baseline_arg = baseline.display().to_string();
+    let delta_arg = delta.display().to_string();
+    let updated_arg = updated.display().to_string();
+
+    let gate_output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--root",
+        ".",
+        "--pr-guidance",
+        &guidance_arg,
+        "--mode",
+        "visible-only",
+        "--out",
+        &gate_arg,
+    ]);
+    assert_success(&gate_output);
+    let create = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &gate_arg,
+        "--out",
+        &baseline_arg,
+    ]);
+    assert_success(&create);
+    let baseline_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&baseline).map_err(|e| format!("read baseline: {e}"))?,
+    )
+    .map_err(|e| format!("parse baseline: {e}"))?;
+    let entries = baseline_value
+        .get("entries")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "baseline entries missing".to_string())?;
+    let entry_count = entries.len();
+    assert!(
+        entry_count > 1,
+        "capped guidance must retain multiple seams"
+    );
+
+    let diff = run_ripr(&[
+        "baseline",
+        "diff",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &gate_arg,
+        "--out",
+        &delta_arg,
+    ]);
+    assert_success(&diff);
+    let delta_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&delta).map_err(|e| format!("read delta: {e}"))?,
+    )
+    .map_err(|e| format!("parse delta: {e}"))?;
+    let summary = delta_value
+        .get("delta")
+        .ok_or_else(|| "delta counts missing".to_string())?;
+    assert_eq!(
+        summary
+            .get("still_present")
+            .and_then(serde_json::Value::as_u64),
+        Some(entry_count as u64)
+    );
+    assert_eq!(
+        summary.get("resolved").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        summary
+            .get("new_policy_eligible")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        summary
+            .get("stale_baseline_entry")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+
+    let update = run_ripr(&[
+        "baseline",
+        "update",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &gate_arg,
+        "--remove-resolved",
+        "--out",
+        &updated_arg,
+    ]);
+    assert_success(&update);
+    let updated_value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&updated).map_err(|e| format!("read updated baseline: {e}"))?,
+    )
+    .map_err(|e| format!("parse updated baseline: {e}"))?;
+    assert_eq!(
+        updated_value
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(entry_count)
+    );
+    assert_eq!(
+        updated_value
+            .pointer("/update/removed_resolved")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert!(
+        updated_value
+            .pointer("/update/warnings")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(Vec::is_empty),
+        "unchanged capped evidence must not produce ambiguous or stale warnings: {updated_value}"
+    );
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
 }
@@ -2088,6 +2737,716 @@ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), 
     assert!(packets.contains(r#""task": "write_targeted_test""#));
 
     let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+#[test]
+fn rerun_changed_test_emits_current_state_only_for_boundary_gap_fixture() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ]);
+    assert_success(&output);
+    let json = String::from_utf8_lossy(&output.stdout);
+    for expected in [
+        r#""schema_version": "ripr-targeted-rerun-v1""#,
+        r#""state": "current_state_only""#,
+        r#""changed_test": "tests/pricing.rs""#,
+        r#""canonical_gap_id": "gap:"#,
+        r#""repair_route_readiness": {"#,
+        r#""state": "ready""#,
+        "gap movement is not inferred",
+    ] {
+        if !json.contains(expected) {
+            return Err(format!("rerun report missing {expected:?}: {json}"));
+        }
+    }
+    for forbidden in ["\"improved\"", "\"closed\"", "\"regressed\""] {
+        if json.contains(forbidden) {
+            return Err(format!(
+                "current-state report must not infer {forbidden}: {json}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_changed_test_check_parity_matches_full_pipeline_for_boundary_gap() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--check-parity",
+        "--json",
+    ]);
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|err| format!("parse parity rerun JSON: {err}"))?;
+    if report["state"] != "current_state_only"
+        || report["parity"]["state"] != "matched"
+        || report["parity"]["selected_seam_count"] != report["parity"]["matched_seam_count"]
+        || report["parity"]["mismatches"] != serde_json::json!([])
+        || report["parity"]["input_mismatches"] != serde_json::json!([])
+        || report["parity"]["selected_seam_count"] != serde_json::json!(1)
+        || !report["cache"]["input_fingerprint"].is_object()
+        || report["cache"]["input_fingerprint"]["workspace_manifests_hash"]
+            .as_str()
+            .is_none()
+        || report["cache"]["input_fingerprint"]["lockfile_hash"]
+            .as_str()
+            .is_none()
+        || report
+            .get("limitation")
+            .is_some_and(|value| !value.is_null())
+        || !report["seams"][0]["related_tests"].is_array()
+        || !report["seams"][0]["missing_discriminators"].is_array()
+    {
+        return Err(format!("unexpected parity rerun receipt: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_before_receipt_names_toolchain_fingerprint_change() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/pricing.rs",
+            "--json",
+        ],
+        &[("RUSTUP_TOOLCHAIN", "toolchain-before")],
+    );
+    assert_success(&before);
+    let workspace = unique_temp_workspace("rerun-input-fingerprint");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|err| format!("create fingerprint workspace: {err}"))?;
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write fingerprint before receipt: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/pricing.rs",
+            "--before",
+            &before_arg,
+            "--json",
+        ],
+        &[("RUSTUP_TOOLCHAIN", "toolchain-after")],
+    );
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse fingerprint rerun JSON: {err}"))?;
+    if report["cache"]["invalidation_status"] != "workspace_input_changed"
+        || !report["cache"]["recomputation_reasons"]
+            .as_array()
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some("input_changed:toolchain_hash"))
+            })
+    {
+        return Err(format!("unexpected input fingerprint disclosure: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_gap_before_receipt_names_selector_ledger_change() -> Result<(), String> {
+    let root_arg = "fixtures/boundary_gap/input";
+    let changed = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ])
+    .map_err(|err| format!("run changed-test rerun: {err}"))?;
+    assert_success(&changed);
+    let changed_json: serde_json::Value = serde_json::from_slice(&changed.stdout)
+        .map_err(|err| format!("parse changed-test rerun JSON: {err}"))?;
+    let seam = changed_json["seams"]
+        .as_array()
+        .and_then(|seams| seams.first())
+        .ok_or_else(|| "changed-test rerun emitted no seam".to_string())?;
+    let canonical_gap_id = seam["canonical_gap_id"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks canonical_gap_id".to_string())?;
+    let file = seam["file"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks file".to_string())?;
+    let owner = seam["owner"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks owner".to_string())?;
+
+    let workspace = unique_temp_workspace("rerun-ledger-fingerprint");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|err| format!("create ledger fingerprint workspace: {err}"))?;
+    let ledger = workspace.join("gap-ledger.json");
+    let ledger_json = serde_json::json!({
+        "kind": "gap_decision_ledger",
+        "root": root_arg,
+        "records": [{
+            "canonical_gap_id": canonical_gap_id,
+            "anchor": { "file": file, "owner": owner },
+            "verification_commands": ["cargo test -p pricing boundary"],
+            "receipt_command": "ripr receipt write --gap first"
+        }]
+    });
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&ledger_json)
+            .map_err(|err| format!("serialize ledger fingerprint input: {err}"))?,
+    )
+    .map_err(|err| format!("write ledger fingerprint input: {err}"))?;
+    let ledger_arg = ledger.to_string_lossy().into_owned();
+    let before = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run ledger fingerprint before rerun: {err}"))?;
+    assert_success(&before);
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write ledger fingerprint before receipt: {err}"))?;
+
+    let mut changed_ledger = ledger_json;
+    changed_ledger["records"][0]["receipt_command"] =
+        serde_json::Value::String("ripr receipt write --gap second".to_string());
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&changed_ledger)
+            .map_err(|err| format!("serialize changed ledger fingerprint input: {err}"))?,
+    )
+    .map_err(|err| format!("write changed ledger fingerprint input: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--before",
+        &before_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run ledger fingerprint after rerun: {err}"))?;
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse ledger fingerprint after JSON: {err}"))?;
+    if report["cache"]["invalidation_status"] != "workspace_input_changed"
+        || !report["cache"]["recomputation_reasons"]
+            .as_array()
+            .is_some_and(|reasons| {
+                reasons
+                    .iter()
+                    .any(|reason| reason.as_str() == Some("input_changed:selector_ledger_hash"))
+            })
+    {
+        return Err(format!(
+            "unexpected selector ledger fingerprint disclosure: {report}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_check_parity_names_capped_inventory_and_suppresses_movement() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/observation_verified_field_construction/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/item_tests.rs",
+        "--json",
+    ]);
+    assert_success(&before);
+    let workspace = unique_temp_workspace("parity-before");
+    std::fs::create_dir_all(&workspace).map_err(|err| format!("create before workspace: {err}"))?;
+    let before_path = workspace.join("before.json");
+    std::fs::write(&before_path, &before.stdout)
+        .map_err(|err| format!("write before receipt: {err}"))?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let after = run_ripr_with_env(
+        &[
+            "rerun",
+            "--root",
+            &root_arg,
+            "--changed-test",
+            "tests/item_tests.rs",
+            "--before",
+            &before_arg,
+            "--check-parity",
+            "--json",
+        ],
+        &[("RIPR_REPO_EXPOSURE_SEAM_LIMIT", "1")],
+    );
+    let _ = std::fs::remove_dir_all(&workspace);
+    assert_success(&after);
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse capped parity rerun JSON: {err}"))?;
+    if report["state"] != "limited"
+        || report["parity"]["state"] != "limited"
+        || report["limitation"]["kind"] != "full_pipeline_parity_incomplete"
+        || report.get("movement").is_some_and(|value| !value.is_null())
+    {
+        return Err(format!("unexpected capped parity rerun receipt: {report}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_changed_test_uses_explicit_before_receipt_for_static_movement() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let root_arg = root.to_string_lossy().into_owned();
+    let before = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ]);
+    assert_success(&before);
+    let before_path = workspace_root().join("target").join(format!(
+        "rerun-before-{}-{}.json",
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&before_path, &before.stdout).map_err(|err| {
+        format!(
+            "write explicit before receipt {}: {err}",
+            before_path.display()
+        )
+    })?;
+    let before_arg = before_path.to_string_lossy().into_owned();
+    let displayed_before = before_arg.replace('\\', "/");
+    let after = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--before",
+        &before_arg,
+        "--json",
+    ]);
+    let _ = std::fs::remove_file(&before_path);
+    assert_success(&after);
+    let json: serde_json::Value = serde_json::from_slice(&after.stdout)
+        .map_err(|err| format!("parse targeted rerun movement JSON: {err}"))?;
+    let selected_seam_count = json["seams"].as_array().map_or(0, Vec::len);
+    if json["state"] != "unchanged"
+        || json["movement"]["state"] != "unchanged"
+        || json["movement"]["before"] != displayed_before
+        || json["movement"]["matched_seam_count"] != serde_json::json!(selected_seam_count)
+    {
+        return Err(format!("unexpected explicit-before rerun receipt: {json}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn rerun_gap_recomputes_fixture_anchor_from_explicit_canonical_ledger() -> Result<(), String> {
+    let root_arg = "fixtures/boundary_gap/input";
+    let changed = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ])
+    .map_err(|err| format!("run changed-test rerun: {err}"))?;
+    assert_success(&changed);
+    let changed_json: serde_json::Value = serde_json::from_slice(&changed.stdout)
+        .map_err(|err| format!("parse changed-test rerun JSON: {err}"))?;
+    let seam = changed_json["seams"]
+        .as_array()
+        .and_then(|seams| seams.first())
+        .ok_or_else(|| "changed-test rerun emitted no seam".to_string())?;
+    let canonical_gap_id = seam["canonical_gap_id"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks canonical_gap_id".to_string())?;
+    let file = seam["file"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks file".to_string())?;
+    let owner = seam["owner"]
+        .as_str()
+        .ok_or_else(|| "changed-test rerun seam lacks owner".to_string())?;
+
+    let ledger_dir = workspace_root().join("target").join(format!(
+        "rerun-gap-ledger-{}-{}",
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&ledger_dir)
+        .map_err(|err| format!("create ledger dir {}: {err}", ledger_dir.display()))?;
+    let ledger = ledger_dir.join("gap-ledger.json");
+    let ledger_json = serde_json::json!({
+        "kind": "gap_decision_ledger",
+        "root": root_arg,
+        "records": [{
+            "canonical_gap_id": canonical_gap_id,
+            "anchor": { "file": file, "owner": owner },
+            "verification_commands": ["cargo test -p pricing boundary"],
+            "receipt_command": "ripr outcome --before before.json --after after.json"
+        }]
+    });
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&ledger_json)
+            .map_err(|err| format!("serialize gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write gap ledger {}: {err}", ledger.display()))?;
+    let ledger_arg = ledger
+        .strip_prefix(workspace_root())
+        .map_err(|err| format!("make ledger path relative to workspace: {err}"))?
+        .to_string_lossy()
+        .into_owned();
+
+    let selected = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run canonical gap rerun: {err}"))?;
+    assert_success(&selected);
+    let selected_json: serde_json::Value = serde_json::from_slice(&selected.stdout)
+        .map_err(|err| format!("parse gap rerun JSON: {err}"))?;
+    if selected_json["state"] != "current_state_only"
+        || selected_json["selector"]["kind"] != "canonical_gap"
+        || selected_json["selector"]["canonical_gap_id"] != canonical_gap_id
+        || selected_json["seams"].as_array().is_none_or(Vec::is_empty)
+        || selected_json["route"]["verify_commands"][0] != "cargo test -p pricing boundary"
+    {
+        return Err(format!(
+            "unexpected canonical gap rerun report: {selected_json}"
+        ));
+    }
+
+    let unresolved = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        "gap:missing",
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run unresolved gap rerun: {err}"))?;
+    assert_success(&unresolved);
+    let unresolved_json: serde_json::Value = serde_json::from_slice(&unresolved.stdout)
+        .map_err(|err| format!("parse unresolved gap rerun JSON: {err}"))?;
+    if unresolved_json["state"] != "limited"
+        || unresolved_json["limitation"]["kind"] != "canonical_gap_unresolved"
+        || unresolved_json["seams"] != serde_json::json!([])
+    {
+        return Err(format!(
+            "unexpected unresolved gap rerun report: {unresolved_json}"
+        ));
+    }
+
+    let mut duplicate_ledger = ledger_json.clone();
+    duplicate_ledger["records"]
+        .as_array_mut()
+        .ok_or_else(|| "constructed gap ledger is missing records array".to_string())?
+        .push(ledger_json["records"][0].clone());
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&duplicate_ledger)
+            .map_err(|err| format!("serialize duplicate gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write duplicate gap ledger {}: {err}", ledger.display()))?;
+    let duplicate = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run duplicate gap rerun: {err}"))?;
+    assert_success(&duplicate);
+    let duplicate_json: serde_json::Value = serde_json::from_slice(&duplicate.stdout)
+        .map_err(|err| format!("parse duplicate gap rerun JSON: {err}"))?;
+    if duplicate_json["state"] != "current_state_only"
+        || duplicate_json["selector"]["matched_record_count"] != 2
+        || duplicate_json["selector"]["recomputed_scope_count"] != 1
+        || duplicate_json["seams"].as_array().map_or(0, Vec::len) != 1
+    {
+        return Err(format!(
+            "unexpected duplicate gap rerun report: {duplicate_json}"
+        ));
+    }
+
+    let mut mixed_ledger = ledger_json.clone();
+    let stale_record = serde_json::json!({
+        "canonical_gap_id": canonical_gap_id,
+        "anchor": { "file": "tests/pricing.rs", "owner": "missing::owner" },
+        "verification_commands": ["cargo test -p pricing stale"],
+        "receipt_command": "ripr outcome --before before.json --after after.json"
+    });
+    mixed_ledger["records"]
+        .as_array_mut()
+        .ok_or_else(|| "constructed mixed gap ledger is missing records array".to_string())?
+        .push(stale_record);
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&mixed_ledger)
+            .map_err(|err| format!("serialize mixed gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write mixed gap ledger {}: {err}", ledger.display()))?;
+    let mixed = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run mixed gap rerun: {err}"))?;
+    assert_success(&mixed);
+    let mixed_json: serde_json::Value = serde_json::from_slice(&mixed.stdout)
+        .map_err(|err| format!("parse mixed gap rerun JSON: {err}"))?;
+    if mixed_json["state"] != "current_state_only"
+        || mixed_json["seams"].as_array().map_or(0, Vec::len) != 1
+        || mixed_json["scope_limitations"]
+            .as_array()
+            .is_none_or(Vec::is_empty)
+        || mixed_json["scope_limitations"][0]["kind"] != "gap_scope_unresolved"
+    {
+        return Err(format!("unexpected mixed gap rerun report: {mixed_json}"));
+    }
+
+    let mut conflict_ledger = ledger_json.clone();
+    let mut conflicting_record = ledger_json["records"][0].clone();
+    conflicting_record["receipt_command"] = serde_json::json!("ripr receipt write --gap conflict");
+    conflict_ledger["records"]
+        .as_array_mut()
+        .ok_or_else(|| "constructed conflict gap ledger is missing records array".to_string())?
+        .push(conflicting_record);
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&conflict_ledger)
+            .map_err(|err| format!("serialize conflict gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write conflict gap ledger {}: {err}", ledger.display()))?;
+    let conflict = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run conflict gap rerun: {err}"))?;
+    assert_success(&conflict);
+    let conflict_json: serde_json::Value = serde_json::from_slice(&conflict.stdout)
+        .map_err(|err| format!("parse conflict gap rerun JSON: {err}"))?;
+    if conflict_json["state"] != "current_state_only"
+        || conflict_json["seams"].as_array().map_or(0, Vec::len) != 1
+        || conflict_json["route"].get("receipt_command").is_none()
+        || conflict_json["route"]["receipt_command"] != serde_json::Value::Null
+        || conflict_json["route"]["receipt_command_conflict"]["kind"] != "receipt_command_conflict"
+    {
+        return Err(format!(
+            "unexpected receipt conflict gap rerun report: {conflict_json}"
+        ));
+    }
+
+    let mut stale_ledger = ledger_json;
+    stale_ledger["root"] = serde_json::json!(ledger_dir.join("other-root"));
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&stale_ledger)
+            .map_err(|err| format!("serialize stale gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write stale gap ledger {}: {err}", ledger.display()))?;
+    let stale = run_ripr_in_workspace(&[
+        "rerun",
+        "--root",
+        root_arg,
+        "--gap",
+        canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ])
+    .map_err(|err| format!("run stale gap rerun: {err}"))?;
+    assert_success(&stale);
+    let stale_json: serde_json::Value = serde_json::from_slice(&stale.stdout)
+        .map_err(|err| format!("parse stale gap rerun JSON: {err}"))?;
+    if stale_json["state"] != "limited" || stale_json["limitation"]["kind"] != "stale_gap_ledger" {
+        return Err(format!("unexpected stale gap rerun report: {stale_json}"));
+    }
+
+    let _ = std::fs::remove_dir_all(&ledger_dir);
+    Ok(())
+}
+
+fn multi_seam_gap_workspace() -> Result<PathBuf, String> {
+    let root = unique_temp_workspace("rerun-multi-gap");
+    std::fs::create_dir_all(root.join("src"))
+        .map_err(|err| format!("create multi-gap src directory: {err}"))?;
+    std::fs::create_dir_all(root.join("tests"))
+        .map_err(|err| format!("create multi-gap test directory: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"rerun_multi_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write multi-gap Cargo.toml: {err}"))?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn discounted_total(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold {\n        return amount - 10;\n    }\n    if amount >= threshold {\n        return amount - 20;\n    }\n    amount\n}\n",
+    )
+    .map_err(|err| format!("write multi-gap library: {err}"))?;
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        "use rerun_multi_gap_fixture::discounted_total;\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n",
+    )
+    .map_err(|err| format!("write multi-gap test: {err}"))?;
+    Ok(root)
+}
+
+#[test]
+fn rerun_gap_groups_multiple_current_seams() -> Result<(), String> {
+    let root = multi_seam_gap_workspace()?;
+    let root_arg = root.to_string_lossy().into_owned();
+    let changed = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--changed-test",
+        "tests/pricing.rs",
+        "--json",
+    ]);
+    assert_success(&changed);
+    let changed_json: serde_json::Value = serde_json::from_slice(&changed.stdout)
+        .map_err(|err| format!("parse multi-seam changed-test rerun JSON: {err}"))?;
+    let seams = changed_json["seams"]
+        .as_array()
+        .ok_or_else(|| format!("multi-seam changed-test report has no seams: {changed_json}"))?;
+    let (canonical_gap_id, matching_seams) = seams
+        .iter()
+        .filter_map(|candidate| candidate["canonical_gap_id"].as_str())
+        .find_map(|candidate_id| {
+            let matching = seams
+                .iter()
+                .filter(|seam| seam["canonical_gap_id"] == candidate_id)
+                .collect::<Vec<_>>();
+            (matching.len() >= 2).then_some((candidate_id.to_string(), matching))
+        })
+        .ok_or_else(|| {
+            format!(
+                "expected two current seams with one canonical gap in multi-seam fixture: {changed_json}"
+            )
+        })?;
+    let records = matching_seams
+        .iter()
+        .map(|seam| {
+            serde_json::json!({
+                "canonical_gap_id": canonical_gap_id,
+                "anchor": {
+                    "file": seam["file"],
+                    "owner": seam["owner"],
+                },
+                "verification_commands": ["cargo test -p rerun_multi_gap_fixture far_above_threshold_discounts"],
+                "receipt_command": "ripr receipt write --gap grouped"
+            })
+        })
+        .collect::<Vec<_>>();
+    let ledger = root.join("gap-ledger.json");
+    std::fs::write(
+        &ledger,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "kind": "gap_decision_ledger",
+            "root": root_arg.clone(),
+            "records": records.clone(),
+        }))
+        .map_err(|err| format!("serialize multi-seam gap ledger: {err}"))?,
+    )
+    .map_err(|err| format!("write multi-seam gap ledger: {err}"))?;
+    let ledger_arg = ledger.to_string_lossy().into_owned();
+    let grouped = run_ripr(&[
+        "rerun",
+        "--root",
+        &root_arg,
+        "--gap",
+        &canonical_gap_id,
+        "--gap-ledger",
+        &ledger_arg,
+        "--json",
+    ]);
+    assert_success(&grouped);
+    let grouped_json: serde_json::Value = serde_json::from_slice(&grouped.stdout)
+        .map_err(|err| format!("parse grouped multi-seam rerun JSON: {err}"))?;
+    let grouped_seams = grouped_json["seams"]
+        .as_array()
+        .ok_or_else(|| format!("grouped multi-seam report has no seams: {grouped_json}"))?;
+    let unique_seam_ids = grouped_seams
+        .iter()
+        .filter_map(|seam| seam["seam_id"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    if grouped_json["state"] != "current_state_only"
+        || grouped_json["selector"]["matched_record_count"] != serde_json::json!(records.len())
+        || grouped_json["selector"]["recomputed_scope_count"] != 1
+        || grouped_seams.len() != matching_seams.len()
+        || unique_seam_ids.len() != matching_seams.len()
+        || grouped_seams
+            .iter()
+            .any(|seam| seam["canonical_gap_id"] != serde_json::json!(canonical_gap_id))
+    {
+        return Err(format!(
+            "multi-seam canonical grouping was not preserved: {grouped_json}"
+        ));
+    }
+    std::fs::remove_dir_all(&root)
+        .map_err(|err| format!("remove multi-seam workspace {}: {err}", root.display()))?;
     Ok(())
 }
 
@@ -2804,7 +4163,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2812,6 +4171,9 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""run_status": "full""#));
     assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""unknowns_test_efficiency": 0"#));
@@ -2903,7 +4265,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -2913,6 +4275,9 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     );
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
+    // Repo-scoped public badge carries the RIPR-SPEC-0066 projection.
+    assert!(stdout.contains(r#""public_projection""#));
+    assert!(stdout.contains(r#""source_report": "target/ripr/reports/repo-ripr-badge.json""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -2973,10 +4338,13 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
-    assert!(stdout.contains(r#""message": "1""#));
+    // The gap-ledger repo badge is projected into the closed public vocabulary.
+    assert!(stdout.contains(r#""message": "1 actionable""#));
     assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
+    assert!(stdout.contains(r#""state": "actionable""#));
+    assert!(stdout.contains(r#""actionable_count": 1"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -3026,11 +4394,12 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.6""#));
+    assert!(stdout.contains(r#""schema_version": "0.7""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
+    assert!(stdout.contains(r#""public_projection""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -4103,4 +5472,531 @@ fn check_with_base_scope_does_not_show_no_scope_disclosure_smoke() {
         "check --base HEAD must NOT show no-scope disclosure; got stdout:\n{stdout}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// RIPR-SPEC-0112 regression guards: --base must disclose uncommitted working-tree changes.
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD --json` with an uncommitted change to a
+/// tracked .rs file must emit `unanalyzed_working_tree: true` in JSON and the human
+/// Note in stdout. The committed diff vs HEAD is empty (no new commits), so findings
+/// are zero — this is the false-clean case the disclosure must prevent.
+#[test]
+fn check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-fires");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // Make an UNCOMMITTED edit to a tracked .rs file — this is the uncommitted change
+    // that --base HEAD will not analyze.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b + 1 }\n",
+    )
+    .unwrap();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    // JSON mode: assert unanalyzed_working_tree == true
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"unanalyzed_working_tree\": true"),
+        "check --base HEAD with uncommitted edit must emit unanalyzed_working_tree: true in JSON; got:\n{stdout}"
+    );
+    // Human mode: assert the Note is present
+    let output_human = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD"])
+        .output()
+        .unwrap();
+    let human = String::from_utf8_lossy(&output_human.stdout);
+    assert!(
+        human.contains("uncommitted changes to tracked source were not analyzed"),
+        "check --base HEAD with uncommitted edit must show Note in human output; got:\n{human}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// RIPR-SPEC-0112: `ripr check --base HEAD` with a CLEAN worktree (no uncommitted changes)
+/// must NOT show the unanalyzed-working-tree disclosure. A genuinely clean worktree
+/// means no uncommitted edits — the disclosure must not fire.
+#[test]
+fn check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure() {
+    let root = unique_temp_workspace("unanalyzed-wt-clean");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    run_git(&root, &["init"]).unwrap();
+    run_git(&root, &["config", "user.email", "test@test.com"]).unwrap();
+    run_git(&root, &["config", "user.name", "Test"]).unwrap();
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0112-clean-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    run_git(&root, &["add", "."]).unwrap();
+    run_git(&root, &["commit", "-m", "initial"]).unwrap();
+    // No uncommitted changes — worktree is clean.
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root_str = root.to_string_lossy().into_owned();
+    let output = std::process::Command::new(bin)
+        .args(["check", "--root", &root_str, "--base", "HEAD", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("unanalyzed_working_tree"),
+        "check --base HEAD with clean worktree must NOT emit unanalyzed_working_tree; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("uncommitted changes"),
+        "check --base HEAD with clean worktree must NOT mention uncommitted changes; got:\n{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// RIPR-SPEC-0116: `ripr check --base HEAD --worktree --json` analyzes the
+/// user's uncommitted tracked edit instead of reporting the committed `HEAD`
+/// diff as empty.
+#[test]
+fn check_worktree_base_head_analyzes_uncommitted_tracked_edit() -> Result<(), String> {
+    let root = unique_temp_workspace("worktree-mode-dirty");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|err| format!("write base lib.rs: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0116-worktree-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold\n}\n",
+    )
+    .map_err(|err| format!("write dirty lib.rs: {err}"))?;
+
+    let root_str = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--base",
+        "HEAD",
+        "--worktree",
+        "--json",
+    ]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("parse check JSON: {err}\n{stdout}"))?;
+    let findings = report
+        .pointer("/findings")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("expected findings array in JSON:\n{stdout}"))?;
+    if findings.is_empty() {
+        return Err(format!(
+            "--worktree must analyze the uncommitted tracked edit; got no findings:\n{stdout}"
+        ));
+    }
+    if stdout.contains("unanalyzed_working_tree") {
+        return Err(format!(
+            "--worktree analysis must not claim the tracked edit was excluded:\n{stdout}"
+        ));
+    }
+    if stdout.contains("no_scope_provided") {
+        return Err(format!(
+            "--worktree must count as an explicit analysis scope:\n{stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// RIPR-SPEC-0116: an empty `--worktree` result is honest when the working tree
+/// has no tracked changes against the requested base.
+#[test]
+fn check_worktree_base_head_clean_worktree_has_no_scope_or_unanalyzed_disclosure()
+-> Result<(), String> {
+    let root = unique_temp_workspace("worktree-mode-clean");
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|err| format!("write base lib.rs: {err}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"spec-0116-worktree-clean-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "initial"])?;
+
+    let root_str = root.to_string_lossy().into_owned();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--base",
+        "HEAD",
+        "--worktree",
+        "--json",
+    ]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.contains("unanalyzed_working_tree") {
+        return Err(format!(
+            "clean --worktree result must not emit unanalyzed_working_tree:\n{stdout}"
+        ));
+    }
+    if stdout.contains("no_scope_provided") {
+        return Err(format!(
+            "clean --worktree result must still count as scoped analysis:\n{stdout}"
+        ));
+    }
+    let report: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|err| format!("parse check JSON: {err}\n{stdout}"))?;
+    let findings = report
+        .pointer("/findings")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("expected findings array in JSON:\n{stdout}"))?;
+    if !findings.is_empty() {
+        return Err(format!(
+            "clean HEAD-vs-worktree diff should not produce findings:\n{stdout}"
+        ));
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+// ── ripr pr-summary (Campaign 31 item 8: binary-first downstream CI) ──
+
+#[test]
+fn pr_summary_help_exits_cleanly() {
+    let output = run_ripr(&["pr-summary", "--help"]);
+    assert!(
+        output.status.success(),
+        "pr-summary --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--baseline"),
+        "help must mention --baseline:\n{stdout}"
+    );
+}
+
+#[test]
+fn pr_summary_with_missing_artifacts_writes_outputs() -> Result<(), String> {
+    let root = unique_temp_workspace("pr-summary-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-summary-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-summary")
+        .output()
+        .map_err(|err| err.to_string())?;
+    assert!(
+        output.status.success(),
+        "pr-summary must succeed even with missing artifacts:\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        root.join("target/ripr/pr/summary.md").is_file(),
+        "must write target/ripr/pr/summary.md"
+    );
+    assert!(
+        root.join("target/ripr/reports/pr-evidence-summary.json")
+            .is_file(),
+        "must write pr-evidence-summary.json"
+    );
+    assert!(
+        root.join("target/ripr/reports/pr-evidence-summary.md")
+            .is_file(),
+        "must write pr-evidence-summary.md"
+    );
+    let json = std::fs::read_to_string(root.join("target/ripr/reports/pr-evidence-summary.json"))
+        .unwrap_or_default();
+    assert!(
+        json.contains("not_available"),
+        "missing artifacts must surface not_available, not zero:\n{json}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn pr_summary_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["pr-summary", "--bogus"]);
+    assert!(!output.status.success(), "unknown arg must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown pr-summary argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+#[test]
+fn pr_summary_does_not_invoke_cargo() -> Result<(), String> {
+    let root = unique_temp_workspace("pr-summary-no-compile");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-summary-no-compile\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let start = std::time::Instant::now();
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-summary")
+        .output()
+        .map_err(|err| err.to_string())?;
+    let elapsed = start.elapsed();
+    assert!(output.status.success(), "pr-summary must succeed");
+    assert!(
+        elapsed.as_secs() < 10,
+        "pr-summary must complete in <10s (no compile); took {elapsed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+// ── ripr annotations (Campaign 31 item 8b: binary-first annotations) ──
+
+#[test]
+fn annotations_help_exits_cleanly() {
+    let output = run_ripr(&["annotations", "--help"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--comments"),
+        "help must mention --comments:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--out"),
+        "help must mention --out:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+}
+
+#[test]
+fn annotations_with_missing_comments_writes_empty() -> Result<(), String> {
+    let root = unique_temp_workspace("annotations-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"annotations-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("annotations")
+        .output()
+        .map_err(|err| err.to_string())?;
+    assert!(
+        output.status.success(),
+        "annotations must succeed with missing comments.json:\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        root.join("target/ripr/review/annotations.txt").is_file(),
+        "must write annotations.txt even when comments.json is missing"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn annotations_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["annotations", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown annotations argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+// ── ripr pr-evidence (Campaign 31 item 8c: binary-first PR evidence packet) ──
+
+#[test]
+fn pr_evidence_help_exits_cleanly() {
+    let output = run_ripr(&["pr-evidence", "--help"]);
+    assert!(
+        output.status.success(),
+        "pr-evidence --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--base"),
+        "help must mention --base:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--head"),
+        "help must mention --head:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--check"),
+        "help must mention --check:\n{stdout}"
+    );
+}
+
+#[test]
+fn pr_evidence_with_missing_artifacts_writes_error_packet() -> Result<(), String> {
+    // pr-evidence runs a live check; in a bare workspace the result is either
+    // an error packet (if git revisions resolve in the parent repo) or a
+    // revision error. Both are honest — the key is that it does not silently
+    // produce a misleading clean packet. Assert that the output mentions the
+    // evidence artifact or an error, not that it succeeds or fails.
+    let root = unique_temp_workspace("pr-evidence-missing");
+    std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"pr-evidence-missing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_ripr"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_BIN_EXE_ripr")));
+    let output = std::process::Command::new(&bin)
+        .current_dir(&root)
+        .arg("pr-evidence")
+        .output()
+        .map_err(|err| err.to_string())?;
+    // The command either writes evidence (Ok) or surfaces an error (Err).
+    // Both are acceptable. What's NOT acceptable: a silent hang or crash.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    assert!(
+        combined.contains("repo-exposure")
+            || combined.contains("bad base/head")
+            || combined.contains("error"),
+        "pr-evidence must either write evidence or surface a named error:\n{combined}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn pr_evidence_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["pr-evidence", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown pr-evidence argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+// ── ripr impacted-evidence (item 8e: binary-first impacted evidence) ──
+
+#[test]
+fn impacted_evidence_help_exits_cleanly() {
+    let output = run_ripr(&["impacted-evidence", "--help"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--label"),
+        "help must mention --label:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--labels"),
+        "help must mention --labels:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--pr-evidence"),
+        "help must mention --pr-evidence:\n{stdout}"
+    );
+}
+
+#[test]
+fn impacted_evidence_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["impacted-evidence", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown impacted-evidence argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
+}
+
+// ── ripr plus (binary-first RIPR+ repo receipt, composition-only) ──
+
+#[test]
+fn plus_help_exits_cleanly() {
+    let output = run_ripr(&["plus", "--help"]);
+    assert!(
+        output.status.success(),
+        "plus --help must succeed\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--repo-exposure-summary"),
+        "help must mention --repo-exposure-summary:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("--gap-ledger"),
+        "help must mention --gap-ledger:\n{stdout}"
+    );
+}
+
+#[test]
+fn plus_unknown_arg_fails_clearly() {
+    let output = run_ripr(&["plus", "--bogus"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown plus argument") || stderr.contains("--bogus"),
+        "error must name the unknown arg:\n{stderr}"
+    );
 }

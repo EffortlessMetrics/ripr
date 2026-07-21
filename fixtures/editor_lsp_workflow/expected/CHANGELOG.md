@@ -113,3 +113,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless editor_lsp_workflow --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless editor_lsp_workflow --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

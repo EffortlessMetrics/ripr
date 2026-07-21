@@ -68,6 +68,18 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
         &packet.missing_discriminators,
     );
     out.push_str(",\n");
+    match &packet.witness {
+        Some(witness) => {
+            out.push_str("  \"witness\": ");
+            if let Ok(serialized) = serde_json::to_string(witness) {
+                out.push_str(&serialized);
+            } else {
+                out.push_str("null");
+            }
+            out.push_str(",\n");
+        }
+        None => out.push_str("  \"witness\": null,\n"),
+    }
     array_field(&mut out, 1, "missing", &packet.missing, true);
     array_field(&mut out, 1, "stop_reasons", &packet.stop_reasons, true);
     field(

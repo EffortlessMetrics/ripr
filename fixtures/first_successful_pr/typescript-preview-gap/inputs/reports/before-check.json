@@ -1,0 +1,74 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "weakly_exposed",
+      "probe": {
+        "family": "predicate",
+        "file": "src/discount.ts",
+        "line": 2
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "related test reaches owner"
+        },
+        "infect": {
+          "state": "unknown",
+          "confidence": "low",
+          "summary": "preview infection unknown"
+        },
+        "propagate": {
+          "state": "unknown",
+          "confidence": "low",
+          "summary": "preview propagation unknown"
+        },
+        "observe": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "related test uses only a relational check"
+        },
+        "discriminate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "No test observes the equality boundary."
+        }
+      },
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "equality boundary not observed"
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "applyDiscount applies discount when amount meets threshold",
+          "file": "tests/discount.test.ts",
+          "line": 3,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check"
+        }
+      ],
+      "typescript_preview_card": {
+        "changed_behavior": "amount >= threshold"
+      },
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}

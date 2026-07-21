@@ -7,17 +7,17 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_lib.rs:call_deletion:cdc2bbfa",
+      "id": "probe:src_lib.rs:call_deletion:f297c803",
       "classification": "propagation_unknown",
       "severity": "note",
       "confidence": 0.66,
       "probe": {
-        "id": "probe:src_lib.rs:call_deletion:cdc2bbfa",
+        "id": "probe:src_lib.rs:call_deletion:f297c803",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/propagate_swallowed_ok/input/src/lib.rs",
         "line": 11,
-        "expression": "self.persist(amount * 9).ok();"
+        "expression": "self.persist(amount * 9).ok()"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach apply: apply_changes_balance"},

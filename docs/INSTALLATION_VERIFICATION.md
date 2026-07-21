@@ -194,7 +194,7 @@ GitHub Release has:
 
 ```text
 ripr-server-manifest-v<VERSION>.json
-checksums.txt
+SHA256SUMS
 ripr-server-v<VERSION>-x86_64-pc-windows-msvc.zip
 ripr-server-v<VERSION>-x86_64-unknown-linux-gnu.tar.gz
 ripr-server-v<VERSION>-aarch64-unknown-linux-gnu.tar.gz

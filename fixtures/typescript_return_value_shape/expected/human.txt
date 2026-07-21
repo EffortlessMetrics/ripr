@@ -4,73 +4,24 @@ root: fixtures/typescript_return_value_shape/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/rounding.ts:2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/rounding.ts:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Changed behavior: return Math.round(amount * 100) / 100;
+  Missing discriminator: Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` …
+  Related test: tests/rounding.test.ts:6 rounds two decimals
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitte…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `roundCents`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more evidence line(s) hidden
 
-Changed
-  after:      return Math.round(amount * 100) / 100;
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  typescript:src/rounding.ts::roundCents
-
-Language
-  language: typescript
-  status: preview
-  owner kind: function
-
-Preview actionability
-  authority: preview_advisory_only
-  gap state: advisory
-  category: incomplete_repair_packet
-  repair packet ready: false
-  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
-  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
-  missing fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
-  evidence needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-  raw evidence: src/rounding.ts:2 (typescript_preview_probe) source=probe:src_rounding.ts:typescript_preview:271f21f8 owner=roundCents
-
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related test(s) found for owner `roundCents`
-  - infection unknown: TypeScript preview adapter does not yet model infection.
-  - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `return value == Math.round(amount * 100) / 100`.
-  - local flow reaches returned value: return Math.round(amount * 100) / 100; (line 2)
-  - related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle
-
-Weakness
-  - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
-  - missing discriminator return value == Math.round(amount * 100) / 100: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator
-
-TypeScript preview card (advisory)
-  card version: typescript_preview_card.v1
-  authority: preview_advisory_only (typescript/preview)
-  owner: roundCents
-  owner kind: function
-  changed behavior: return_value changed at src/rounding.ts:2: `return Math.round(amount * 100) / 100;`
-  related test: tests/rounding.test.ts:6 rounds two decimals
-  oracle: unknown (unknown)
-  missing discriminator: return value == Math.round(amount * 100) / 100
-  suggested assertion shape: Add an exact return-value assertion for the changed output.
-  repair packet ready: false
-  why not actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
-  repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available
-  limits:
-    - Syntax-first TypeScript/JavaScript preview evidence only.
-    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
-    - This card is advisory and is not a repair packet.
-
-TypeScript repair packet (advisory)
-  status: not actionable
-  limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
-  next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
-
-Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

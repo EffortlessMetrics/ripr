@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_error_path_untaken_branch/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/parseint.py:3
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty
+  Changed behavior: raise KeyError("empty")
+  Missing discriminator: A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an …
+  Related test: tests/test_parseint.py:4 test_parse_ok
+  Suggested test file: tests/test_parseint.py
+  Suggested test: test_parse_ok
+  Test node: tests/test_parseint.py::test_parse_ok
+  Verify command: pytest tests/test_parseint.py::test_parse_ok (high)
+  Next step: Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching "empty"`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `parse`
+    - infection yes: Changed Python error path can alter raised exception/control behavior: `raise KeyError("empty")`
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

@@ -1,0 +1,83 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_adversarial_changed_sink_non_delta_operand/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_account.py:python_preview:c7d70a2d",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_account.py:python_preview:c7d70a2d",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/account.py",
+        "line": 7,
+        "expression": "        return max(0, self._balance)",
+        "owner": "python:src/account.py::Account.balance"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 heuristic Python test link(s) found for owner `balance`; relation is uncertain"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `decorator_indirection` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `decorator_indirection` prevents a safe Python propagation claim."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `decorator_indirection` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `balance`; relation is uncertain", "infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.", "propagation unknown: Static limit `decorator_indirection` prevents a safe Python propagation claim.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator unknown: Static limit `decorator_indirection` prevents a safe Python discriminator claim.", "related test tests/test_account.py:4 test_account_init uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: Account.balance", "owner_kind: method", "owner_decorators: property", "static_limit decorator_indirection: `property`", "test_framework: pytest (test_account_init)", "test_verify_command: pytest tests/test_account.py::test_account_init (test_account_init)", "related_test_relation: same_stem (test_account_init)", "related_test_uncertain: same_stem (test_account_init)"],
+      "missing": ["Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_account_init",
+          "file": "tests/test_account.py",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "method",
+      "static_limit_kind": "decorator_indirection",
+      "changed_sink": "max, _balance",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/account.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

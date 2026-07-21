@@ -16,7 +16,7 @@ testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 pub(super) const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH] [--out PATH]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH] [--out PATH] [--timeout-ms MS]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
@@ -27,6 +27,9 @@ Options:
                  repair cards come only from `projection_eligibility.pr_comment`
                  GapRecord targets.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
+  --timeout-ms MS
+                 Configured operator bound recorded in the run receipt. The
+                 outer orchestration wrapper enforces the process bound.
 
 The review-comments command writes a bounded advisory PR guidance report as
 JSON plus a sibling Markdown file. It joins existing static seam evidence with
@@ -53,6 +56,14 @@ Options:
   --recommendation-calibration PATH   Optional recommendation calibration JSON input.
   --mutation-calibration PATH         Optional imported mutation calibration JSON input.
   --baseline PATH                     Explicit baseline for baseline-check or calibrated-gate.
+  --exception-policy PATH             Optional quality-gate-exceptions TOML ledger. Enforces
+                                      per-exception expiry (expired entries block), review-after
+                                      deadlines (block or warn per the ledger's due_review),
+                                      required_active entries (missing ones block), and
+                                      status = "final" ledgers (any active exception blocks).
+                                      Active exceptions and violations are reported in the
+                                      gate-decision JSON and Markdown. A missing or malformed
+                                      ledger is a config_error (fail-closed).
   --mode MODE                         visible-only, acknowledgeable, baseline-check, or calibrated-gate. Defaults to visible-only.
   --acknowledgement-label LABEL       Repeatable acknowledgement label. Defaults to ripr-waive.
   --out PATH                          JSON output path. Defaults to target/ripr/reports/gate-decision.json.

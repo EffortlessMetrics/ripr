@@ -9,6 +9,28 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- `cargo xtask module-health` now reports a **responsibility signal** alongside
+  its line count: a heuristic count of distinct top-level concerns (distinct
+  `impl` blocks plus distinct public-API identifier prefixes) per file, flagged
+  when it exceeds a fixed threshold. This surfaces the "structurally entangled
+  even if not huge" case that a pure line count misses (e.g. a small file
+  exposing many distinct concern families). Both signals appear in the JSON and
+  Markdown reports (`module-health.json` schema bumped to `0.2`, additive). The
+  responsibility signal is documented as a smell, not a measurement; the
+  advisory still always exits 0 and is never wired into CI gates.
+
+### Fixed
+
+- Rust equality-boundary analysis now credits exact, source-ordered direct
+  field assignments from same-file literal constants and bounded `+/-` integer
+  offsets. Other owners, fields, similarly named constants, helper-only writes,
+  control-flow-nested writes, values invalidated by an intervening mutable
+  borrow, and opaque expressions remain fail-closed; unsupported direct writes
+  report `field_assignment_value_unresolved` instead of an ineffective repair
+  route.
+
 ## 0.10.1 - Bounded subprocess adapter analysis
 
 Release date: staged (unreleased).
@@ -20,7 +42,7 @@ unbounded, or otherwise unsupported subprocess shapes.
 
 ### Fixed
 
-- **Bounded subprocess adapter classification** (RIPR-SPEC-0112, #1454):
+- **Bounded subprocess adapter classification** (RIPR-SPEC-0133, #1454):
   receipt-producing adapters with a literal allowlisted command, arguments,
   timeout, captured output, cleanup, and explicit error handling can use the
   existing `side_effect` probe family. Dynamic command names and shell-shaped
@@ -92,8 +114,8 @@ badge, and distribution authority.
 ### Release themes
 
 - TypeScript/Bun bounded preview adapter (opt-in, advisory).
-- Perl strict actionability enforcement.
-- Preview cards across every output surface.
+- Perl strict actionability **model** (fixture-only / test-scoped — the adapter is `#[cfg(test)] mod perl;` and not production-routable yet; see Campaign 31, #1379).
+- Preview cards across every output surface (renderers exist; Perl cards project only from synthetic test findings until the production exporter/consumer bridge lands).
 - Diff-first changed-surface review.
 - Cache sharding and explicit large-repo cache limits.
 - No new authority: preview evidence does not emit public repair packets.
@@ -123,6 +145,18 @@ badge, and distribution authority.
 - Added preview cards to check JSON, human output, SARIF, GitHub annotations,
   and gap ledger Markdown, so preview evidence renders consistently on every
   surface without becoming a public repair packet.
+
+**Scope caveat (recorded retroactively for honesty, Campaign 31 #1379):** the
+Perl work in 0.9.0 is fixture-only and test-scoped. The adapter module is
+`#[cfg(test)] mod perl;` (`crates/ripr/src/analysis/language/mod.rs:25-26`),
+`lang-perl` is an empty Cargo feature not in `default`, the production path
+router recognizes no `.pm`/`.pl`/`.t`/`.psgi` extension, and the pipeline
+returns a fail-closed stub even with the feature on. The preview-card
+renderers are real production code, but they project only from synthetic test
+findings — no production Perl source can feed them until the
+`perl-lsp ripr-facts` exporter and the production `PerlAdapter` bridge land.
+Perl's support tier is `scaffold`, not `preview`; see
+[Support Tiers](docs/status/SUPPORT_TIERS.md).
 
 #### Diff-first review
 

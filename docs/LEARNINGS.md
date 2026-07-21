@@ -1497,3 +1497,305 @@ non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
 --check` under the pinned toolchain. When a fix "doesn't work" but the builder
 insists it does, suspect your own harness before the builder — inject a unique
 string into the output to confirm your edits are even in the binary you're running.
+
+## 2026-06-15: Not every adversarial "false-`exposed`" is a bug — separate the runtime-equivalence floor from the static missing-discriminator
+
+A broad red-team round (40 traps) surfaced a large residue after the token-identity
+families were closed. Triaging by the **missing signal** — not the surface vector —
+split them three ways, and only some are `ripr`'s to fix:
+
+- **Tractable sink-precision (fix it).** The oracle observes the owner's *output* but
+  the wrong *part* of it: a sibling dict key (`{"port": 9090}` changed,
+  `cfg()["host"]` observed), a sibling list index, or an aggregate (`len(...)`). This
+  is syntactic and in-contract — credit only when a strong oracle observes the
+  *changed* element (changed key/index subscript, changed value, or whole-collection
+  comparison). Fixed via the dict/list element gate (`field_construction_credit_ok`).
+- **Runtime-equivalence floor (do NOT fix; document).** The oracle observes the
+  changed output, but only *evaluation* shows old ≡ new for the test's input
+  (operator identity at `0`/`1`, coincident slice/`len`, boolean short-circuit,
+  ASCII `lower`/`casefold`). Detecting these = running the mutant; `ripr` is static
+  and cannot, and cannot conservatively downgrade without also dropping the genuine
+  discriminators (it can't tell `compute(10,3)==7` from `apply_discount(5,100)==5`
+  without evaluation). This is the honest floor — see
+  `docs/STATIC_EXPOSURE_MODEL.md` § The static/runtime boundary.
+- **Static missing-discriminator (in scope, as a gap).** A boundary change
+  (`>= → >`) is discriminated only at `total == threshold`; a far-from-boundary test
+  is genuinely non-discriminating, but the gap is *nameable* and stays a valid
+  repair-routing candidate — not floor, not `exposed`.
+
+**The durable rule:** input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope. "Drive false-`exposed`
+to zero" is not achievable purely statically — the honest target is *zero confirmed
+in-contract false-`exposed`*, with the floor explicitly bounded. **A regression
+caught the same run:** a literal-element gate that locates the brace with `find('{')`
+mis-reads an f-string (`f"{value:.3f}"`) as a dict literal — require the expression
+to *start with* the literal opener, and re-run the full adversarial trap set after
+merge to catch downgraded positives (goldens won't cover a synthetic trap that has no
+fixture).
+
+## 2026-06-16: "Observed but not reached" is a distinct, tractable false-`exposed` family from "observed the wrong part"
+
+Trap 45 (changed default value not exercised) is a *third* tractable sink-precision
+shape, orthogonal to the dict/list/f-string "wrong part of the output" gates. Here the
+oracle observes the owner's output *correctly and exactly*, but the changed code path
+is **never reached**: `def render(name, verbose=True)` changes its default, yet the
+only strong test calls `render("Sam", verbose=False)` — binding the parameter
+explicitly, so the default is irrelevant and the assertion passes identically before
+and after. This is *static and in-contract* (no evaluation needed — argument binding is
+syntactic), so it is `ripr`'s to fix, unlike the runtime-equivalence floor. The
+mirror image of error-path Class C (`raise` change on an untaken branch): both are
+"strong oracle reaches the owner but the *specific changed behavior* is not exercised."
+
+**Implementation rule that keeps it honest (fail open, never false-clean):** block
+`exposed` only when you can *positively prove* every strong reaching call overrides the
+changed default. Concretely (`changed_default_overridden_params`): (a) restrict to a
+*pure* default-value change (added/removed default, rename, or method/classmethod owner
+→ fail open — a method's implicit `self`/`cls` shifts positional indexing); (b) require
+**each** strong related test to contain at least one *directly analyzable* `owner(...)`
+call — if a strong test reaches the owner via an alias/wrapper the scanner can't
+resolve, fail open (it might omit the parameter and be the real discriminator); (c)
+treat `*args`/`**kwargs` unpacking or any unparseable call as fail-open. A coarse
+"does any related test omit the param" gate is *not* safe — a sibling override test plus
+an aliased omitting test would wrongly block. Per-candidate "must have a direct call I
+can read" is what avoids the false-clean.
+
+## 2026-06-16: Annotation-only suppression is safe at module scope, not in class bodies
+
+The #1289 annotation-only no-probe family splits cleanly on owner scope. At **module
+scope**, Python annotations are never enforced at runtime, so an annotation-only change
+(identical target name and value, only the annotation text differs) has no behavior
+delta and can be safely suppressed — mirror the `def`-header skeleton pattern
+(`variable_annotation_skeleton` re-parses the line as an `AnnAssign` and compares the
+target+value, excluding the annotation). Inside a **class body**, the same change is
+behavioral: `@dataclass`, Pydantic `BaseModel`, and `attrs` drive runtime validation and
+coercion from field annotations, so suppressing there would be a false-clean. The guard
+is therefore `owner.is_module_owner()` first, and fails closed for every class body
+until base-class tracking exists. This is the recurring rule for the whole annotation
+family: the suppression's safety comes from *where* the annotation lives, not just from
+*what* changed. (See `docs/DEFERRED.md` § python-annotation-only-no-probe for the two
+remaining open sub-cases: class-body annotations and multiline-docstring interiors.)
+
+## 2026-06-26: Perl mapper honesty — owner-target is not sink observation; the producer gate is the wrong harness
+
+From the Campaign 31 Phase D mapper hotfix (PR H1, #1409). Two distinct lessons,
+both load-bearing for any preview-language adapter that consumes a producer's
+fact packet.
+
+### Owner-target identity is not changed-sink observation
+
+The Perl packet can prove `oracle.target_owner_id == changed_owner_id` — the
+oracle targets the same owner the change lives in. That is **not** the same as
+the oracle observing the **specific changed sink**. The production Finding
+leaves `observed_sink`, `oracle_alignment`, and `alignment_reason` all `None`
+because the packet carries no sink-level detail. Crediting reach-plus-a-strong
+-oracle as "already discriminated" on owner-target identity alone is exactly the
+recurring false-`exposed` family (cf. "Token coincidence" above): proximity
+dressed up as discrimination.
+
+The honest interim policy, until the producer contract adds
+`ChangeFact.changed_observable` and `OracleFact.observed_sink`, is to **fail
+closed**: a strong oracle aligned to the owner stays `WeaklyExposed` (or is
+downgraded to `ReachableUnrevealed` for advisory relations), never promoted to
+an "observed" claim. Do not encode the three-way matrix until sink alignment is
+real; split "mapping integrity" (H1) from "classification semantics" (H2) so the
+integrity fix can land without assuming the unprovable. This mirrors the
+"Real producers only" rule: do not flip a field to a fabricated taxonomy before
+a real production condition populates it.
+
+### The feature gate makes the default-feature gate a false-green oracle
+
+`lang-perl` is **not** a default feature (`crates/ripr/Cargo.toml`: `default =
+["lang-rust","lang-typescript","lang-python"]`). The Perl module is
+`#[cfg(feature = "lang-perl")]`. CI's `cargo clippy --workspace --all-targets`
+runs on default features, so it **never compiles the Perl module** — it reports
+green for code it did not see. Any validation command for a feature-gated module
+must pass `--features <feature>` explicitly, or it is the wrong harness
+manufacturing a false negative. (This is the "verify the artifact" rule cutting
+the other way: a gate that passes because it never ran is not evidence.) The
+signal that you have the right harness: the targeted test count is non-zero and
+the module's symbols resolve.
+
+### Concrete shape
+
+PR H1 rewrote `packet_to_findings` to route through the packet-owned helpers
+(`related_test_evidence_for_change`, `verify_command_for_test`,
+`has_blocking_dynamic_boundary`, `canonical_gap_identity_for_change`) instead
+of a parallel classifier. Before H1, every `related_test.file` was built from
+the **production** source path (`PathBuf::from(&file.path)`) — the edit surface
+could point at `lib/*.pm`. The cardinal regression was latent (the projection
+gate returns `None` at the `gap_state:` check before production findings reach
+it), not live — but it would have flipped `repair_packet_ready: true` against a
+production file the moment H2 wired the evidence. The 8 adversarial tests added
+were the **first** direct coverage of the mapper; it previously had zero, which
+is why the bug survived three merged PRs.
+
+Followups tracked separately: H2 classification semantics (after cross-repo
+contract freeze adds sink fields), and a `perl-lsp-swarm` CI scratch-GC fix
+(that repo's orphan reaper searches `/mnt/ci-scratch -maxdepth 1 -name 'ripr-*'`
+but the per-run dirs nest under `/mnt/ci-scratch/perl-lsp-swarm/ripr-*` and
+`/mnt/ci-scratch/tmp/ripr-*` — `ripr-swarm`'s own `scratch-gc.yml` does the
+sweep correctly and is the reference pattern).
+
+## 2026-07-12: A related test is not a repair route without producer facts
+
+The first authorized internal-repository pilot found a real false-actionable
+shape in `ub-review`: a field-construction seam was rendered `actionable` even
+though producer evidence supplied no concrete missing discriminator, and the
+suggested test selection resolved to a production source file. The targeted
+rerun correctly rejected that selector as ambiguous, but the earlier review
+projection had already made the route look safe.
+
+The shared Rust evidence-record decision now fails closed when either invariant
+is absent: no producer-owned discriminator means `static_limitation`, and a
+test target equal to the production seam means `static_limitation`. Review
+comments project the same decision: limitations have no repair target, verify
+command, or receipt command; they carry the named investigation route instead.
+Keep the real pilot row excluded until the corrected analyzer produces a
+complete before/after route. A plausible test name or weak related-test match
+is context, not permission to mutate.
+
+## 2026-07-19: The gate does not gate — hardcoded seam_id breaks the blocking path
+
+`gate/repair_route.rs:114` hardcodes `seam_id: None` for gap-ledger candidates.
+`missing_route_fields` always pushes `"seam_id"`, so `gate_repair_route_is_complete`
+is always false for them. Since `candidate_is_policy_eligible` requires a complete
+route, `eligible` is always false, so `would_block` is always false. The gate
+emits `advisory` and `gate_decision_should_fail` returns false — CI exits 0.
+
+The tests named `*_fails_closed_*` (`tests.rs:764`, `tests.rs:1761`) assert
+`advisory` status with `!gate_decision_should_fail` — they are **fail-open at
+the CI level** despite their names. This contradicts `CALIBRATED_GATE_POLICY.md:74-75`
+which says baseline-check/calibrated-gate "blocks for new baseline misses."
+
+The recurring lesson: a test named `fails_closed` that asserts exit-0 is not
+fail-closed. The exit code is the oracle, not the test name. When the product
+contract says "blocks," the test must assert a non-zero exit — otherwise the
+test encodes the bug as the expected behavior, and the bug survives indefinitely.
+This is the "verify the artifact, not the report" rule applied to the gate's
+own test suite.
+
+## 2026-07-19: Static receipts are advisory — fabrication is trivial
+
+The repair-receipt chain (`ripr agent verify`, `ripr agent receipt`,
+`ripr receipt write`) performs no test re-execution, no git head binding, and no
+signature verification. `ripr agent verify` reads two JSON files and computes
+static movement between them. `ripr receipt write --current-head` is optional
+and only format-validated (40 hex chars) — never compared to `git rev-parse HEAD`.
+
+This is honest about ripr being a static analyzer: the receipt is a static
+movement record, not a runtime proof. The output carries `status: "advisory"`,
+`safe_to_merge: false`, and `provenance.runtime_mutation_execution: false`.
+
+But downstream consumers (CI gates, dashboards, agents) who treat the receipt
+as proof of testing are deceived. The lesson: a static analyzer's receipt is
+only as trustworthy as the chain of custody from the analysis to the consumer.
+ripr should stamp the receipt with the analyzed head SHA (resolved via git,
+not caller-supplied) and the artifact content hashes, so a consumer can at least
+verify the receipt corresponds to a real analysis at a known commit — even if
+it cannot verify the analysis was correct.
+
+## 2026-07-19: Every save re-runs the full pipeline — the cache exists but isn't wired in
+
+`RustAdapter::analyze_diff` (`rust.rs:655`) calls `rust_index::build_index` →
+`build_index_with_adapters` (`build.rs:80`, **uncached**). The cached variant
+`build_index_from_loaded_files_with_cache` (`build.rs:19`) and `RepoFilesFactCache`
+(`seam_cache.rs:769`) exist and work — but are only wired into the repo-seam
+inventory path. Every `ripr check` and every LSP `did_save` re-reads and re-parses
+every indexed file with `ra_ap_syntax` from scratch.
+
+Additionally, `advance_workspace_revision` (`backend.rs:628`) bumps a counter on
+every `did_save`, and the counter is part of `LspAnalysisInputIdentity`
+(`input_identity.rs:17`). The dedup path at `refresh_scheduler.rs:204-221` compares
+identity — but since every save produces a different revision, dedup never fires
+for saves. The one cheap fast-path that exists is dead code in practice.
+
+The lesson: a cache that isn't wired into the hot path is documentation, not
+infrastructure. When you build a cache, wire it into the diff-scoped path (the
+path that runs on every save), not just the repo-scoped path (which runs rarely).
+And: a dedup identity that includes a monotonic counter will never dedup — use a
+content hash or omit the counter from the identity comparison.
+
+## 2026-07-19: `continue-on-error: true` on every step makes green meaningless
+
+The generated CI workflow (`init.rs`) uses `continue-on-error: true` on ~30 of
+~31 steps. Only the gate step and the diff-capture step lack it. A consumer
+sees a green job and missing artifacts (SARIF, badge, reports) with no signal
+that anything failed.
+
+The lesson: advisory CI steps are fine, but they must be clearly separated from
+load-bearing steps. A step that produces the gate input (`review-comments`) is
+load-bearing — if it fails, the gate has no input and the "green" is a
+false-clean. Reserve `continue-on-error` for genuinely advisory outputs (badge
+rendering, policy reports), never for the analysis pipeline itself. Add a final
+summary step that checks for expected artifacts and surfaces missing ones as
+a visible warning.
+
+## 2026-07-19: `Result<_, String>` everywhere is the single highest-leverage refactor target
+
+2,474 `Result<_, String>` signatures across 170 files, with 1,254
+`.map_err(|err| format!("...: {err}"))` call sites. Zero typed error enums in
+production (only 2 defined: `DiagnosticBudgetError`, `ArtifactReadError`).
+
+This blocks:
+- Programmatic error handling for library consumers (callers cannot match on
+  error variants)
+- Clean `# Errors` documentation on public API functions
+- The public library surface from being credible (`Ok::<(), String>(())` in
+  the quick-start example is a tell)
+
+The lesson: `String` errors are acceptable for a CLI binary but become
+technical debt the moment a library surface is exposed. The fix (introduce
+`thiserror`, migrate module by module) is mechanical and low-risk, but the
+payoff is structural: every downstream consumer (the LSP backend, the agent
+loop, external embedders) gains the ability to distinguish `Io` from `Git`
+from `Parse` from `Analysis` errors.
+
+## 2026-07-19: Cross-language consistency requires a shared vocabulary layer
+
+`SeamKind` (7 variants) is Rust-only. Preview adapters use `ProbeFamily` (8
+variants) — different variant names, different cardinality, no canonical
+crosswalk. Perl defines its own `OracleKind` (12 variants) and `OracleStrength`
+(5 variants) separate from the domain enum (9/6). Python and TypeScript never
+emit `ReachableUnrevealed`, `InfectionUnknown`, or `PropagationUnknown`.
+
+The lesson: a shared `LanguageAdapter` trait is necessary but not sufficient.
+The trait ensures structural consistency (same method signatures), but the
+*classification vocabulary* diverges because each adapter independently
+decides which domain values it can produce. A shared vocabulary layer — either
+a trait method that declares "this adapter can emit these ExposureClass values"
+or a canonical crosswalk from `ProbeFamily` to `SeamKind` — would prevent the
+silent gaps where a preview-language change whose probe is reached-but-unrevealed
+falls through to `StaticUnknown` instead of `ReachableUnrevealed`.
+
+## 2026-07-19: A file-policy gate that fails on main breaks every subsequent PR
+
+During this session, a merged PR (#1836, authority map) added
+`.allow/conformance/legacy-dialect.json` without adding a `non-rust-allowlist.toml`
+entry. `check-file-policy` — a required CI gate — broke on main. Every subsequent
+PR inherited the failure. The fix (#1848) was a one-line allowlist addition, but
+it blocked ~15 open PRs until it landed.
+
+The lesson: when a gate validates "every file must be in an allowlist," adding
+a new file type in one PR without the allowlist entry is a main-breaking change.
+The fix is either: (a) make the gate advisory with a warning instead of
+required, or (b) add a pre-commit hook / xtask check that proposes the
+allowlist entry when a new file type is detected. At minimum, the gate's error
+message should say "add an entry to `policy/non-rust-allowlist.toml`" — which
+it does, but the breakage was on main, not in the PR that added the file.
+
+## 2026-07-19: Duplicate run-status logic drifts — extract or unify
+
+`workspace_status_run_status` (`backend.rs:2518-2545`) and
+`snapshot_run_status` (`diagnostics.rs:821-843`) are near-identical
+implementations of the same five-state decision tree. The `diagnostics.rs`
+version's doc comment says "This replicates the logic of
+`backend::workspace_status_run_status`" — an acknowledged copy. They differ
+subtly: `backend.rs` checks `gap_artifacts.iter().any(|a| a.has_static_limit())`
+at line 2533, which `diagnostics.rs` omits.
+
+The recurring lesson (cf. "Reuse the shared enforcement layer" in AGENTS.md):
+when two functions implement the same decision, they will drift. The drift is
+not a question of *if* but *when*. Extract the logic into one function and call
+it from both sites. The cost of extraction is always lower than the cost of the
+bug that drift produces — especially when the drift is in a fail-closed
+posture (one copy discloses `seams_deferred`, the other doesn't).

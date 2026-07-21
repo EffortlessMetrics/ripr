@@ -1,0 +1,12 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index 0000000..1111111 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -1,6 +1,6 @@
+ pub(crate) fn matches_greater(value: u64, limit: u64) -> bool {
+     if value != limit {
+-        return value > limit;
++        return value >= limit;
+     }
+
+     false

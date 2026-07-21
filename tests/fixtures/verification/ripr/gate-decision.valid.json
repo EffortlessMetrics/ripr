@@ -1,0 +1,105 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "mode": "visible-only",
+  "root": ".",
+  "inputs": {
+    "repo_exposure": null,
+    "pr_guidance": "target/ripr/review/comments.json",
+    "sarif_policy": null,
+    "labels_json": null,
+    "labels": [],
+    "agent_verify": null,
+    "agent_receipt": null,
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "baseline": null
+  },
+  "policy": {
+    "mode": "visible-only",
+    "threshold": "high_confidence_new_gap",
+    "acknowledgement_labels": ["ripr-waive"],
+    "default_workflow_posture": "advisory"
+  },
+  "summary": {
+    "evaluated": 1,
+    "blocking": 0,
+    "acknowledged": 0,
+    "advisory": 1,
+    "suppressed": 0,
+    "not_applicable": 0,
+    "unknown_confidence": 1
+  },
+  "new_unsuppressed": {
+    "basis": "diff",
+    "count": 1,
+    "reason": null
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-gap-shared",
+      "source": "pr_guidance",
+      "decision": "advisory",
+      "gate_reason": "visible-only mode records evidence without blocking",
+      "canonical_gap_id": "gap:shared",
+      "seam_id": "seam-a",
+      "source_id": "ripr-review-seam-a",
+      "gap_state": "actionable",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "placement": {
+        "path": "crates/foo/src/lib.rs",
+        "line": 88
+      },
+      "policy": {
+        "mode": "visible-only",
+        "threshold": "high_confidence_new_gap",
+        "acknowledgement_label": null,
+        "baseline_identity": "gap:shared"
+      },
+      "repair_route": {
+        "canonical_gap_id": "gap:shared",
+        "seam_id": "seam-a",
+        "classification": "weakly_gripped",
+        "changed_owner": "foo::dispatch",
+        "changed_behavior": "dispatch emits Event::Ready",
+        "missing_discriminator": "call observation for Event::Ready",
+        "repair_target": {
+          "kind": "related_test",
+          "name": "dispatches_ready_event",
+          "file": "crates/foo/tests/dispatch.rs",
+          "line": 42
+        },
+        "test_intent": "Exercise foo::dispatch and assert Event::Ready",
+        "verify_command": "cargo test -p foo dispatches_ready_event",
+        "receipt_command": "ripr receipt write --gap gap:shared",
+        "inspection_command": "ripr agent brief --root . --seam-id seam-a --json",
+        "authority_boundary": "static_ripr_evidence_only",
+        "limitation": null
+      },
+      "evidence": {
+        "missing_discriminator": "call observation for Event::Ready",
+        "assertion_shape": "assert_eq!(event, Event::Ready)",
+        "candidate_values": [],
+        "recommended_test": "crates/foo/tests/dispatch.rs::dispatches_ready_event",
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false,
+        "recommendation_calibration": {
+          "available": false,
+          "outcome": null,
+          "confidence_effect": "not_used"
+        },
+        "mutation_calibration": {
+          "available": false,
+          "outcome": null,
+          "confidence_effect": "not_used"
+        }
+      }
+    }
+  ],
+  "warnings": [],
+  "config_errors": [],
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied."
+}

@@ -4,6 +4,45 @@
 complete evidence package, so reviewers can evaluate behavior, risk, and
 traceability without reconstructing intent from chat history.
 
+## Local Setup
+
+1. Install [`rustup`](https://rustup.rs/) if you don't already have it.
+   `rust-toolchain.toml` pins the exact toolchain version and its
+   `rustfmt` and `clippy` components; `rustup` picks it up automatically
+   the first time you run a `cargo` command in this repo.
+2. Clone the repo and build the workspace:
+
+   ```bash
+   git clone <repo-url>
+   cd ripr-swarm
+   cargo build --workspace
+   ```
+
+3. Run a cheap sanity check before paying for the full test suite:
+
+   ```bash
+   cargo check --workspace --all-targets
+   ```
+
+   Once that passes, run the full test suite — it is slower and compiles
+   more of the workspace, including test-only code:
+
+   ```bash
+   cargo test --workspace
+   ```
+
+4. Try the binary against the in-repo sample:
+
+   ```bash
+   cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
+   ```
+
+The first `cargo xtask ...` invocation compiles the `xtask` crate itself, so
+it is slower than later runs. Once the workspace builds, `cargo xtask
+worktree doctor` checks your working tree for common local hygiene issues
+(dirty `main`, stale branches, generated-artifact residue) before you start
+shaping a PR.
+
 ## Product Contract
 
 Before changing code, check the product question:

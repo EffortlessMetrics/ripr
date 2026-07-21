@@ -3,6 +3,31 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0067: refresh CLI-backed gate adoption receipts and pin a self-contained blocking repair route
+
+Command:
+`cargo test -p xtask tests::dogfood_blocking_gate_report_is_self_contained -- --exact --test-threads=1`
+
+Updated:
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.json`
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.md`
+- `expected/gate-adoption/README.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0067: project producer-owned gate repair routes into the human and generated-CI summary surface
+
+Command:
+`cargo test -p ripr output::gate --lib -- --test-threads=1`
+
+Updated:
+- `expected/calibrated-gate/*/gate-decision.md`
+- `expected/calibrated-gate/README.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0025: pin and exercise PR inline comment publish-plan cases against the read-only producer
 
 Command:
@@ -287,3 +312,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+add human-full golden for exhaustive evidence-promotion projection while default human stays bounded
+
+Command:
+cargo xtask goldens check
+
+Updated:
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

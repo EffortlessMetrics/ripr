@@ -21,6 +21,8 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
         "rs" => Some(LanguageId::Rust),
         "ts" | "tsx" | "js" | "jsx" => Some(LanguageId::TypeScript),
         "py" => Some(LanguageId::Python),
+        #[cfg(feature = "lang-perl")]
+        "pm" | "pl" | "t" | "psgi" => Some(LanguageId::Perl),
         _ => None,
     }
 }
@@ -43,6 +45,23 @@ mod tests {
         for (path, expected) in cases {
             assert_eq!(route(Path::new(path)), Some(expected));
         }
+    }
+
+    #[cfg(feature = "lang-perl")]
+    #[test]
+    fn route_perl_extensions_under_feature() {
+        assert_eq!(route(Path::new("lib/My/App.pm")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("script/run.pl")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("t/app.t")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("app.psgi")), Some(LanguageId::Perl));
+    }
+
+    #[cfg(not(feature = "lang-perl"))]
+    #[test]
+    fn route_perl_extensions_return_none_without_feature() {
+        assert_eq!(route(Path::new("lib/My/App.pm")), None);
+        assert_eq!(route(Path::new("script/run.pl")), None);
+        assert_eq!(route(Path::new("t/app.t")), None);
     }
 
     #[test]

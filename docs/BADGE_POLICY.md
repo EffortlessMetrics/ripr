@@ -26,7 +26,7 @@ repo-scoped artifact path, and the trunk-only public Shields endpoint
 have all landed under Campaign 4A. The current implementation status
 of each piece is tracked in the status table at the bottom of this
 doc and in
-[`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
+`.ripr/goals/active.toml` (deleted in #1701 PR 3).
 
 The public badge projection realignment has landed. This policy defines
 `canonical_actionable_gap` as the public basis, and generated endpoint snapshots
@@ -441,12 +441,12 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.6",
+  "schema_version": "0.7",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
   "label": "ripr",
-  "message": "0",
+  "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
   "counts": {
@@ -480,7 +480,17 @@ output boundary; it is never the source of truth.
     "suppressions_path": ".ripr/suppressions.toml"
   },
   "warnings": [],
-  "preview_skipped": []
+  "preview_skipped": [],
+  "public_projection": {
+    "state": "zero_actionable",
+    "message": "0 actionable",
+    "run_status": "full",
+    "generated_at": "2026-06-20T00:00:00Z",
+    "actionable_count": 0,
+    "limited_reason": null,
+    "stale_age_secs": 0,
+    "source_report": "target/ripr/reports/repo-ripr-badge.json"
+  }
 }
 ```
 
@@ -495,7 +505,27 @@ change and must be called out in the PR. `0.3` adds `basis` and
 `basis = "canonical_actionable_gap"` for public repair-item projection;
 `0.6` adds `preview_skipped` so consumers can detect when a
 preview-language diff was not analyzed and the badge is not a clean
-Rust-grade result (see Preview-language honesty below).
+Rust-grade result (see Preview-language honesty below); `0.7` adds the
+`public_projection` object on repo-scoped public badges (see Public badge
+projection below).
+
+### Public badge projection (RIPR-SPEC-0066)
+
+Repo-scoped public badges (`canonical_actionable_gap` or
+`gap_decision_ledger` basis) carry a `public_projection` object that renders
+the badge into one closed user-facing state and supplies the machine-readable
+sidecar fields. Diff-scoped and internal badges omit it. The closed states
+are `zero_actionable`, `actionable`, `limited`, `stale`, and `unknown`,
+selected with fail-closed precedence (`unknown > stale > limited > count`): a
+degraded input — raw-finding basis, diff scope, missing or unreadable source
+report, missing `generated_at`, a `limited_*` run, or an over-age artifact —
+never resolves toward the cleaner-looking state, and a count is never carried
+alongside a degraded state. The native `message` / `status` / `color` are
+projected from this object, so the public Shields message reads as
+`ripr: <n> actionable`, `ripr: limited`, `ripr: stale`, or `ripr: unknown`.
+The sidecar fields (`run_status`, `generated_at`, `actionable_count`,
+`limited_reason`, `stale_age_secs`, `source_report`) are documented in
+[docs/OUTPUT_SCHEMA.md](OUTPUT_SCHEMA.md).
 
 ### Preview-language honesty
 
@@ -899,7 +929,7 @@ self-hosting is the v1 path.
 ## Implementation status
 
 Tracked alongside Campaign 4A and Campaign 5B in
-[`.ripr/goals/active.toml`](../.ripr/goals/active.toml) and
+`.ripr/goals/active.toml` (deleted in #1701 PR 3) and
 [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md).
 
 | Component | Status | Source |

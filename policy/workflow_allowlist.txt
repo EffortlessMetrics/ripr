@@ -22,3 +22,4 @@
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
+.github/workflows/ub-review.yml|0|ub-review workflow delegates entirely to the EffortlessMetrics/ub-review action (no inline run blocks); see #1469.

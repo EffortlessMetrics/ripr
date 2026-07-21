@@ -62,6 +62,30 @@ const CONTRACTS: &[VerificationContract] = &[
             "limits_note",
         ],
     },
+    VerificationContract {
+        schema_path: "schemas/ripr/gate-decision.schema.json",
+        fixture_path: "tests/fixtures/verification/ripr/gate-decision.valid.json",
+        doc_path: "docs/OUTPUT_SCHEMA.md",
+        doc_markers: &[
+            "schema_version",
+            "tool",
+            "status",
+            "mode",
+            "root",
+            "decisions[]",
+            "repair_route",
+            "canonical_gap_id",
+            "seam_id",
+            "gap_state",
+            "changed_owner",
+            "repair_target",
+            "verify_command",
+            "receipt_command",
+            "inspection_command",
+            "authority_boundary",
+            "incomplete_repair_route",
+        ],
+    },
 ];
 
 pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String> {
@@ -81,6 +105,7 @@ pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String
         "schemas/badges/shields-endpoint.schema.json",
         "schemas/ripr/pr-evidence.schema.json",
         "schemas/ripr/review-comments.schema.json",
+        "schemas/ripr/gate-decision.schema.json",
     ] {
         if !readme.contains(required) {
             violations.push(format!("{VERIFICATION_README} does not link `{required}`"));
@@ -106,6 +131,47 @@ pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String
                 violations.push(format!(
                     "{} does not document schema field `{marker}`",
                     contract.doc_path
+                ));
+            }
+        }
+    }
+
+    // Reverse-direction check: every schemas/ripr/*.json must define a
+    // schema_version property with a const value. This is the first
+    // enforcement step toward #1720 (per-output version reconciliation).
+    let ripr_schema_dir = root.join("schemas/ripr");
+    if ripr_schema_dir.is_dir() {
+        let mut schema_files = fs::read_dir(&ripr_schema_dir)
+            .map_err(|error| format!("failed to read schemas/ripr: {error}"))?
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "json") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        schema_files.sort();
+        for schema_path in &schema_files {
+            let rel = schema_path.strip_prefix(&root).unwrap_or(schema_path);
+            let rel_str = rel.to_string_lossy();
+            let schema = read_json(schema_path.clone())?;
+            let props = schema.get("properties").and_then(Value::as_object);
+            let Some(props) = props else {
+                violations.push(format!("{rel_str} has no properties"));
+                continue;
+            };
+            let Some(sv_prop) = props.get("schema_version") else {
+                violations.push(format!(
+                    "{rel_str} is missing `schema_version` property — every ripr output schema must declare a version (#1720)"
+                ));
+                continue;
+            };
+            if sv_prop.get("const").is_none() {
+                violations.push(format!(
+                    "{rel_str} schema_version must use `const` for a pinned version (#1720)"
                 ));
             }
         }

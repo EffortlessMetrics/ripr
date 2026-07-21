@@ -4,6 +4,7 @@ Usage:
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
+  ripr rerun --changed-test PATH [--root PATH] [--json] [--out PATH]
   ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
@@ -41,8 +42,9 @@ Usage:
   ripr agent review-summary --root . [--json]
   ripr swarm queue [--root .] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--language python] [--top 10]
   ripr swarm ingest [--root .] --result target/ripr/workflow/agent-result.json
+  ripr plus (--repo-exposure-summary target/ripr/reports/repo-exposure-summary.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json) [--check]
   ripr diff [--root .] [--base origin/main] [--head HEAD] [--mode draft] [--json]
-  ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
+  ripr check [--base origin/main] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
   ripr lsp [--stdio]
@@ -57,6 +59,7 @@ Quick start:
   ripr doctor
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
+  ripr rerun --changed-test tests/pricing.rs --json
   ripr evidence-health --root .
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
   ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only
@@ -94,6 +97,7 @@ Quick start:
   ripr agent review-summary --root .
   ripr swarm queue --language python --top 10
   ripr swarm ingest --result target/ripr/workflow/agent-result.json
+  ripr plus --repo-exposure-summary target/ripr/reports/repo-exposure-summary.json
   ripr diff --base origin/main --head HEAD --json
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json

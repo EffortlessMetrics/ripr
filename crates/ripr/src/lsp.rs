@@ -1,11 +1,18 @@
 mod actions;
+mod agent_protocol;
 mod backend;
 mod capabilities;
 mod config;
+pub mod diagnostic_budget;
+mod diagnostic_catalog;
 mod diagnostics;
 mod gap_artifacts;
 mod hover;
+mod input_identity;
 mod lens;
+mod position;
+mod progress;
+mod refresh_scheduler;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -13,7 +20,15 @@ mod uri;
 
 use backend::Backend;
 pub use diagnostics::{DiagnosticBatch, workspace_diagnostic_batches};
+use tower_lsp_server::ls_types::{LSPAny, notification::Notification};
 use tower_lsp_server::{LspService, Server};
+
+pub(super) struct AnalysisStatusNotification;
+
+impl Notification for AnalysisStatusNotification {
+    type Params = LSPAny;
+    const METHOD: &'static str = "ripr/analysisStatus";
+}
 
 const COPY_CONTEXT_COMMAND: &str = "ripr.copyContext";
 const COPY_AGENT_PACKET_COMMAND: &str = "ripr.copyAgentPacketCommand";

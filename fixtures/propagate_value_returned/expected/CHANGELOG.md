@@ -23,3 +23,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+restrict CallDeletion probes to standalone call statements; refresh affected goldens and record intentional output changes
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

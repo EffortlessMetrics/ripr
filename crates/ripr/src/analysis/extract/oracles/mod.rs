@@ -3,6 +3,7 @@ mod classify;
 mod patterns;
 mod scan;
 
+pub(crate) use arguments::equality_assertion_arguments;
 pub(crate) use classify::classify_assertion;
 #[cfg(test)]
 pub(crate) use patterns::contains_macro_invocation;

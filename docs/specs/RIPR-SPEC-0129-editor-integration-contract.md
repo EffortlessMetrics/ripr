@@ -1,0 +1,166 @@
+# RIPR-SPEC-0129: Editor integration contract and support matrix
+
+Status: proposed
+
+This specification defines the three-layer editor integration contract and
+the support matrix that ratifies which client classes ripr supports and
+under what conditions. It is the contract authority for #1622 and the
+#1574 epic.
+
+## Problem
+
+The ripr LSP server advertises capabilities (diagnostics, hover, code
+actions, codeLens, pull diagnostics, the `experimental.riprAgent`
+protocol) that different editor clients consume differently. Without a
+ratified contract, each client integration is ad-hoc: a generic client
+may receive commands it cannot execute, a VS Code client may miss
+enhanced features, and the headless-agent protocol may be assumed before
+its handlers exist.
+
+This spec defines three client layers, the capabilities each layer
+consumes, and the conditions under which ripr advertises each.
+
+## Three-layer client contract
+
+### Layer 1 — Standard LSP baseline
+
+Any off-the-shelf LSP client (Neovim, Helix, Eglot, etc.) that implements
+the base LSP specification.
+
+Consumes:
+- `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
+- `textDocument/hover`
+- `textDocument/codeAction` (standard kinds only: `quickfix`, `source`)
+- `workspace/status` via custom notification
+
+Does NOT consume:
+- `experimental.riprAgent` requests (reserved, `supported_requests: []`)
+- `experimental.riprEditor` negotiated client commands
+- `ripr.copyContext` / `ripr.openRelatedTest` (client-command actions)
+
+Requirement: the server must NOT emit unknown command IDs to a Layer 1
+client. The `experimental.riprEditor` capability negotiation (#1628)
+filters client-command actions to clients that advertise support.
+
+### Layer 2 — Enhanced VS Code
+
+The ripr VS Code extension, which advertises `experimental.riprEditor`
+with its supported `client_commands[]` at `initialize`.
+
+Consumes everything in Layer 1, plus:
+- `experimental.riprEditor` client-command actions (`ripr.copyContext`,
+  `ripr.copyAgentPacket`, `ripr.openRelatedTest`, etc.)
+- `ripr.collectWorkspaceStatus` / `collectRepairPacket` (legacy execute-command surface)
+- `codeAction` kinds: `source.ripr.inspect`, `source.ripr.navigate`,
+  `source.ripr.verify`, `source.ripr.refresh`
+- Managed server provisioning (#1624)
+- Workspace Trust enforcement (#1623)
+
+### Layer 3 — Headless `riprAgent`
+
+A programmatic agent client (Codex, CI tooling) that drives the typed
+`experimental.riprAgent` protocol over saved-workspace snapshots.
+
+Consumes everything in Layer 1, plus:
+- `ripr/workspaceStatus`, `ripr/refreshAnalysis`
+- `ripr/listActionableItems`, `ripr/getRepairPacket`
+- `ripr/getEvidenceContext`, `ripr/getTopLimitation`, `ripr/getReceiptStatus`
+- Snapshot-bound continuations (#1698)
+
+Does NOT consume:
+- Client-command actions (no clipboard, no editor UI)
+- `experimental.riprEditor` negotiation
+
+Status: **reserved** — `supported_requests: []` until #1602/#1603 land
+real handlers. The capability is advertised as `capability_only`.
+
+## Support matrix
+
+| Dimension | Layer 1 (standard) | Layer 2 (VS Code) | Layer 3 (headless agent) |
+|---|---|---|---|
+| Transport | stdio | stdio | stdio |
+| Diagnostic mode | push or pull | push or pull | pull (preferred) |
+| Custom commands | none | `ripr.collect*` | `ripr/<request>` |
+| Source-edit capability | none | none (read-only) | none (reserved) |
+| Server provisioning | PATH / `cargo install` | managed download (#1624) | binary / Docker |
+| Trust enforcement | n/a | `untrustedWorkspaces: limited` (#1623) | n/a |
+| Reload | manual restart | `didChangeWatchedFiles` (#1577) | `ripr/refreshAnalysis` |
+| Real-repo proof | #1630 (pending) | #1579 (pending) | #1579 (pending) |
+| Tier | preview | preview | reserved |
+
+## Acceptance Examples
+
+- A standard LSP client (e.g. Neovim) that does NOT advertise
+  `experimental.riprEditor` receives zero `ripr.copyContext` or
+  `ripr.openRelatedTest` command IDs in code actions — only standard
+  `quickfix`/`source` kinds and diagnostics/hover.
+- A VS Code client that advertises `experimental.riprEditor` with
+  `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
+  code actions containing `ripr.copyContext` commands.
+- A headless agent client sees `experimental.riprAgent` advertised with
+  `supported_requests: []` and `implementation_state: "capability_only"`
+  until #1602/#1603 land real handlers.
+
+## Test Mapping
+
+- `capabilities.rs` tests verify the capability advertisement shape
+  (pull diagnostics, code action kinds, riprAgent capability).
+- `tests.rs` code-action tests verify action kinds are correct for the
+  negotiated client capability (after #1628 lands).
+- `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
+  invariant.
+
+## Implementation Mapping
+
+- `crates/ripr/src/lsp/capabilities.rs` — capability advertisement
+- `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
+- `crates/ripr/src/lsp/actions.rs` — code action kind classification
+- `editors/vscode/src/client.ts` — VS Code client capability advertisement
+- `editors/vscode/package.json` — `capabilities.untrustedWorkspaces`
+
+## Metrics
+
+- Layer coverage: count of support-matrix dimensions proven by a real
+  client test (target: all 10 per layer before tier promotion).
+- Capability drift: zero — `check-spec-format` validates the spec exists
+  and is current when capabilities change.
+
+## Behavior
+
+The server advertises capabilities at `initialize` based on what the
+client supports:
+- Pull diagnostics are advertised only if the client supports
+  `textDocument/diagnostic` (detected from `window.workDoneProgress` +
+  the pull capability in client capabilities).
+- `experimental.riprAgent` is always advertised (fail-closed,
+  `supported_requests: []`) so a Layer 3 client can detect the server.
+- `experimental.riprEditor` negotiation (#1628, pending) filters
+  client-command code actions to clients that advertise support.
+- Code action kinds are advertised as `quickfix.ripr` and
+  `source.ripr.*` (#1750, landed).
+
+The server does NOT:
+- Emit unknown command IDs to a client that has not negotiated them.
+- Advertise `source_edit_capability` as anything other than `"none"`.
+- Require any specific editor; the standard LSP baseline works with
+  any compliant client.
+
+## Required Evidence
+
+- `crates/ripr/src/lsp/capabilities.rs` — capability advertisement code.
+- `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
+  fail-closed capability.
+- `editors/vscode/package.json` — `capabilities.untrustedWorkspaces`.
+- This spec registered in `docs/specs/README.md`.
+
+## Non-Goals
+
+- This spec does not define the `riprAgent` protocol DTOs — that is #1599.
+- This spec does not define the diagnostic code catalog — that is #1662.
+- This spec does not gate on real-client proof — #1630/#1702 own the
+  off-the-shelf-client dogfood.
+
+## Versioning
+
+This spec is versioned as `editor-integration-contract-v1`. Changes to
+the layer definitions or support matrix require a spec amendment.

@@ -33,6 +33,7 @@ async function main() {
     process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;
 
     const launchArgs = [
+      '--disable-workspace-trust',
       workspacePath,
       '--disable-extensions',
       '--extensions-dir',
@@ -47,6 +48,7 @@ async function main() {
       fs.writeFileSync(
         path.join(userSettingsPath, 'settings.json'),
         `${JSON.stringify({
+          'security.workspace.trust.enabled': false,
           'ripr.server.path': testServerPath,
           'ripr.server.autoDownload': false,
           'ripr.baseRef': 'HEAD',

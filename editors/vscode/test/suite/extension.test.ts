@@ -1006,6 +1006,84 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('typed analysis status takes precedence over lifecycle log parsing', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'failed',
+        attempt_id: '9',
+        snapshot_id: 'snapshot:8',
+        run_status: 'stale',
+        failure: { kind: 'analysis_error', message: 'temporary timeout' },
+        retry_command: 'ripr.refresh'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+      assert.ok(String(context.status.tooltip).includes('last-known-good evidence is retained'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 1 ms: generation=9, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status surfaces server-owned ambiguous root state', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'no_snapshot',
+        root_state: 'workspace_ambiguous',
+        candidate_roots: ['<workspace-one>', '<workspace-two>'],
+        root_detail: 'select one workspace folder, then restart or refresh the session',
+        root_recovery_route: 'select_root_and_restart'
+      });
+
+      assert.ok(context.status.text.includes('ripr: select root'));
+      assert.ok(String(context.status.tooltip).includes('workspace_ambiguous'));
+      assert.ok(String(context.status.tooltip).includes('<workspace-one>'));
+      assert.ok(String(context.status.tooltip).includes('select_root_and_restart'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status surfaces a changed root as stale', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'stale',
+        root_state: 'root_changed',
+        root_detail: 'workspace root changed; refresh to obtain current evidence',
+        root_recovery_route: 'refresh'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('root_changed'));
+      assert.ok(String(context.status.tooltip).includes('new root'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar projects existing first useful action report', async () => {
     const context = createControllerTestContext({
       firstActionJson: JSON.stringify({
@@ -3322,7 +3400,13 @@ suite('Extension Smoke', () => {
     const context = createControllerTestContext({
       lspResult: {
         kind: 'receipt_status',
-        route_quality_summary: 'coverage: 3/5 routes; top gap: gap:rust:pricing:discount:threshold-boundary'
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [
+            { repair_kind: 'AddBoundaryAssertion', attempted: 2, success_rate: 0.5 }
+          ]
+        }
       }
     });
     try {
@@ -3332,7 +3416,11 @@ suite('Extension Smoke', () => {
       assert.strictEqual(context.client.requests.length, 1);
       assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('coverage: 3/5 routes'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('status=advisory'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('AddBoundaryAssertion'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('attempted=2'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('success_rate=0.5'), context.infoMessages.at(-1));
+      assert.ok(context.outputLines.join('\n').includes('status=advisory'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();
@@ -3352,6 +3440,29 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
       assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality fails closed for malformed structured summaries', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [{ repair_kind: 'AddBoundaryAssertion' }]
+        }
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showRouteQuality();
+
+      assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.ok(!context.infoMessages.at(-1)?.includes('attempted=0'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();
@@ -3896,13 +4007,13 @@ function assertCargoTomlWatcherScopedToWorkspace(
   watcherPatterns: vscode.GlobPattern[],
   workspaceRoot: string
 ): void {
-  assert.strictEqual(watcherPatterns.length, 1, 'expected one Cargo.toml watcher');
+  assert.strictEqual(watcherPatterns.length, 1, 'expected one repository manifest/config watcher');
   const pattern = watcherPatterns[0] as {
     base?: string;
     baseUri?: vscode.Uri;
     pattern?: string;
   };
-  assert.strictEqual(pattern.pattern, '**/Cargo.toml');
+  assert.strictEqual(pattern.pattern, '**/{Cargo.toml,ripr.toml}');
   const basePath = pattern.baseUri?.fsPath ?? pattern.base;
   assertWorkspacePathEqual(basePath ?? '', workspaceRoot);
 }

@@ -4,6 +4,7 @@ mod overview;
 mod policy;
 mod pr;
 mod reports;
+mod rerun;
 mod swarm;
 
 use agent::*;
@@ -12,6 +13,7 @@ use overview::*;
 use policy::*;
 use pr::*;
 use reports::*;
+use rerun::*;
 use swarm::*;
 
 pub(super) fn print_help() {
@@ -154,6 +156,10 @@ pub(super) fn print_lsp_help() {
     println!("{LSP_HELP}");
 }
 
+pub(super) fn print_rerun_help() {
+    println!("{RERUN_HELP}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -162,7 +168,7 @@ mod tests {
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DIFF_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
         FIRST_ACTION_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP,
+        POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, RERUN_HELP,
         REVIEW_COMMENTS_HELP, SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP,
         print_agent_brief_help, print_agent_help, print_agent_packet_help,
         print_agent_receipt_help, print_agent_review_summary_help, print_agent_start_help,
@@ -172,7 +178,7 @@ mod tests {
         print_explain_help, print_first_action_help, print_gate_help, print_help, print_init_help,
         print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
         print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
-        print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
+        print_rerun_help, print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
         print_swarm_queue_help, print_zero_help,
     };
 
@@ -181,6 +187,7 @@ mod tests {
         assert!(HELP.contains("ripr init"));
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
+        assert!(HELP.contains("ripr rerun --changed-test"));
         assert!(HELP.contains("ripr evidence-health"));
         assert!(HELP.contains("ripr review-comments"));
         assert!(HELP.contains("ripr gate evaluate"));
@@ -217,6 +224,7 @@ mod tests {
         assert!(HELP.contains("ripr agent review-summary"));
         assert!(HELP.contains("ripr swarm queue"));
         assert!(HELP.contains("ripr swarm ingest"));
+        assert!(HELP.contains("ripr plus"));
         assert!(HELP.contains("ripr diff"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
@@ -260,6 +268,10 @@ mod tests {
         assert!(OUTCOME_HELP.starts_with("Compare before/after static evidence"));
         assert!(OUTCOME_HELP.contains("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
+        assert!(RERUN_HELP.starts_with("Re-evaluate static evidence affected"));
+        assert!(RERUN_HELP.contains("Usage: ripr rerun --changed-test PATH"));
+        assert!(RERUN_HELP.contains("gap selector groups"));
+        assert!(RERUN_HELP.contains("current_state_only"));
         assert!(DIFF_HELP.starts_with("Analyze the changed surface first"));
         assert!(DIFF_HELP.contains("--head REV"));
         assert!(
@@ -383,6 +395,7 @@ mod tests {
         assert!(CONTEXT_HELP.contains("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Diagnose the local ripr setup"));
         assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
+        assert!(DOCTOR_HELP.contains("--json"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
         assert!(DOCTOR_HELP.contains("Start-here next step:"));
         assert!(DOCTOR_HELP.contains("ripr start-here --root . --base origin/main --head HEAD"));
@@ -404,6 +417,7 @@ mod tests {
         print_init_help();
         print_pilot_help();
         print_outcome_help();
+        print_rerun_help();
         print_evidence_health_help();
         print_review_comments_help();
         print_gate_help();

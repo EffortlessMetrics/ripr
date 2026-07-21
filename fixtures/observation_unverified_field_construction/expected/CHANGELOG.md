@@ -23,3 +23,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless observation_unverified_field_construction --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Parser-backed reveal analysis avoids confirming call effects from argument-only token matches (#1453)
+
+Command:
+`cargo xtask goldens bless observation_unverified_field_construction --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -107,3 +107,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Parser-backed reveal analysis avoids confirming call effects from argument-only token matches (#1453)
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+restrict CallDeletion probes to standalone call statements; refresh affected goldens and record intentional output changes
+
+Command:
+`cargo xtask goldens bless weak_error_oracle_assert_matches --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

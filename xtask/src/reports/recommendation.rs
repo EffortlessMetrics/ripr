@@ -691,6 +691,9 @@ fn find_guidance_item<'a>(
 }
 
 fn warning_matches(value: &Value, case: &ExpectedCase) -> bool {
+    // review-comments warnings are objects `{ kind, message }` (schema-conformant),
+    // so match against the `message` field rather than treating the entry as a
+    // bare string.
     value
         .get("warnings")
         .and_then(Value::as_array)

@@ -10,9 +10,9 @@ Start here:
 - Repair route: focused_test
 - Class: weakly_exposed
 - Current evidence strength: Static evidence found related test context, but the current check is weak because the discriminator is missing.
-- Missing discriminator: input that hits the boundary: amount >= discount_threshold
-- Focused proof intent: Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.
-- Suggested focused test: add amount >= discount_threshold boundary assertion
+- Missing discriminator: discount_threshold (equality boundary)
+- Focused proof intent: Assert the exact discounted_total output at amount == discount_threshold.
+- Suggested focused test: add a focused test where amount == discount_threshold and assert the exact discounted_total output.
 - Related test: tests/pricing.rs::below_threshold_has_no_discount
 - Verify command: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
 - Receipt command: `ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json`

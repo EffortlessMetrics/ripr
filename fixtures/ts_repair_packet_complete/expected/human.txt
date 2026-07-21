@@ -4,83 +4,24 @@ root: fixtures/ts_repair_packet_complete/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/discount.ts:2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/discount.ts:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Changed behavior: if (amount >= threshold) {
+  Missing discriminator: Related test reaches `applyDiscount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or …
+  Related test: tests/discount.test.ts:3 applyDiscount applies discount when amount meets threshold
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `applyDiscount`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
 
-Changed
-  after:      if (amount >= threshold) {
-
-Probe
-  family: predicate
-  delta:  control
-  owner:  typescript:src/discount.ts::applyDiscount
-
-Language
-  language: typescript
-  status: preview
-  owner kind: function
-
-Preview actionability
-  authority: preview_advisory_only
-  gap state: actionable
-  category: complete_repair_packet
-  repair packet ready: true
-  why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
-  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
-  raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
-
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related test(s) found for owner `applyDiscount`
-  - infection unknown: TypeScript preview adapter does not yet model infection.
-  - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation weak: Strongest extracted oracle kind: `relational_check` (rank 3)
-  - discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.
-  - related test tests/discount.test.ts:3 applyDiscount applies discount when amount meets threshold uses weak relational check oracle: expect(...).toBeGreaterThan(...)
-
-Weakness
-  - Related test reaches `applyDiscount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).
-  - missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator
-
-TypeScript preview card (advisory)
-  card version: typescript_preview_card.v1
-  authority: preview_advisory_only (typescript/preview)
-  owner: applyDiscount
-  owner kind: function
-  changed behavior: predicate changed at src/discount.ts:2: `if (amount >= threshold) {`
-  related test: tests/discount.test.ts:3 applyDiscount applies discount when amount meets threshold
-  oracle: relational_check (weak)
-  missing discriminator: amount == threshold
-  suggested assertion shape: Add an exact boundary assertion for `amount == threshold`.
-  verify: jest tests/discount.test.ts
-  repair packet ready: true
-  why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
-  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
-  limits:
-    - Syntax-first TypeScript/JavaScript preview evidence only.
-    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
-    - This card is advisory and is not a repair packet.
-
-TypeScript repair packet (advisory)
-  canonical gap: gap:typescript:typescript_preview:2396aec1
-  source: applyDiscount at src/discount.ts:2
-  related test: tests/discount.test.ts::applyDiscount applies discount when amount meets threshold
-  oracle: expect(result).toBe(50)
-  edit surface: tests/discount.test.ts
-  verify: jest tests/discount.test.ts
-  receipt: ripr outcome --before <baseline> --after <repair> --verify-cmd "jest tests/discount.test.ts" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json
-  must not change:
-    - Do not edit production code unless the focused proof exposes a real product defect.
-    - Do not broaden the change beyond this GapRecord and its repair route.
-    - Do not treat static evidence as runtime mutation, coverage, or correctness proof.
-    - Do not generate tests or call external providers from this packet.
-    - Do not treat preview-language evidence as gate authority.
-  why actionable: complete-contract TypeScript finding — package root, runner, owner, oracle all resolved; no blocking limitation
-  authority: preview_advisory_only
-
-Next step
-  TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

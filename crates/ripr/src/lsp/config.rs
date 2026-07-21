@@ -1,9 +1,11 @@
 use crate::app::{CheckInput, Mode, OutputFormat};
 use crate::config::{
-    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, apply_to_check_input,
+    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, LspDiagnosticProfile, RiprConfig,
+    apply_to_check_input,
 };
+use serde_json::Value;
 use std::path::Path;
-use tower_lsp_server::ls_types::InitializeParams;
+use tower_lsp_server::ls_types::{InitializeParams, PositionEncodingKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
@@ -11,10 +13,22 @@ pub(super) struct LspAnalysisConfig {
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
     pub(super) repo_config: RiprConfig,
+    /// Session overrides are retained so a repository configuration reload
+    /// preserves the initialization precedence contract. This is a bounded
+    /// projection of the four supported LSP options, not an authority for
+    /// arbitrary client settings.
+    pub(super) session_options: Option<Value>,
     /// Enable repo seam evidence diagnostics. The default is bounded to
     /// saved-workspace, draft-mode analysis so the installed editor surface is
     /// useful with no `ripr.toml` and without running `ripr init`.
     pub(super) enable_seam_diagnostics: bool,
+    /// Defaults to `actionable`; valid initialization options override the
+    /// repository setting, while unknown options retain that resolved value.
+    pub(super) diagnostic_profile: LspDiagnosticProfile,
+    /// The position encoding negotiated at `initialize` from the client's
+    /// `general.positionEncodings` (#1626 PR B / #1749). Defaults to UTF-16 and
+    /// is preserved across repository-config and session-option reloads.
+    pub(super) position_encoding: PositionEncodingKind,
 }
 
 impl Default for LspAnalysisConfig {
@@ -25,7 +39,10 @@ impl Default for LspAnalysisConfig {
             mode: defaults.mode,
             include_unchanged_tests: defaults.include_unchanged_tests,
             repo_config: RiprConfig::default(),
+            session_options: None,
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
+            diagnostic_profile: LspDiagnosticProfile::default(),
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 }
@@ -35,46 +52,72 @@ impl LspAnalysisConfig {
         params: &InitializeParams,
         repo_config: RiprConfig,
     ) -> Self {
+        let mut config =
+            Self::from_repo_config_and_options(repo_config, params.initialization_options.as_ref());
+        config.position_encoding = super::capabilities::negotiate_position_encoding(params);
+        config
+    }
+
+    pub(super) fn from_repo_config_and_options(
+        repo_config: RiprConfig,
+        options: Option<&Value>,
+    ) -> Self {
         let mut config = Self::from_repo_config(repo_config);
-        let Some(options) = params.initialization_options.as_ref() else {
+        let Some(options) = options.and_then(session_options_object) else {
             return config;
         };
-
-        if let Some(base_ref) = options
-            .get("baseRef")
+        let options = supported_session_options(options);
+        if options.is_empty() {
+            return config;
+        }
+        config.session_options = Some(Value::Object(options.clone()));
+        apply_session_options(&mut config, &options);
+        if let Some(profile) = options
+            .get("diagnosticProfile")
             .and_then(|value| value.as_str())
-            .map(str::trim)
+            .and_then(|value| LspDiagnosticProfile::parse(value).ok())
         {
-            config.base_ref = if base_ref.is_empty() {
-                None
-            } else {
-                Some(base_ref.to_string())
-            };
+            config.diagnostic_profile = profile;
         }
-
-        if let Some(mode) = options
-            .get("checkMode")
-            .and_then(|value| value.as_str())
-            .and_then(parse_mode)
-        {
-            config.mode = mode;
-        }
-
-        if let Some(include_unchanged_tests) = options
-            .get("includeUnchangedTests")
-            .and_then(|value| value.as_bool())
-        {
-            config.include_unchanged_tests = include_unchanged_tests;
-        }
-
-        if let Some(enable_seam_diagnostics) = options
-            .get("seamDiagnostics")
-            .and_then(|value| value.as_bool())
-        {
-            config.enable_seam_diagnostics = enable_seam_diagnostics;
-        }
-
         config
+    }
+
+    pub(super) fn with_changed_session_options(&self, settings: &Value) -> Option<Self> {
+        let changed = session_options_object(settings)?;
+        let mut merged = self
+            .session_options
+            .as_ref()
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for (key, value) in changed {
+            if !is_supported_session_option(key) {
+                continue;
+            }
+            if value.is_null() {
+                merged.remove(key);
+            } else {
+                merged.insert(key.clone(), value.clone());
+            }
+        }
+        let mut next = Self::from_repo_config_and_options(
+            self.repo_config.clone(),
+            Some(&Value::Object(merged)),
+        );
+        next.position_encoding = self.position_encoding.clone();
+        Some(next)
+    }
+
+    pub(super) fn reload_repo_config(&self, repo_config: RiprConfig) -> Self {
+        let mut next =
+            Self::from_repo_config_and_options(repo_config, self.session_options.as_ref());
+        next.position_encoding = self.position_encoding.clone();
+        next
+    }
+
+    pub(super) fn has_session_option_changes(settings: &Value) -> bool {
+        session_options_object(settings)
+            .is_some_and(|options| options.keys().any(|key| is_supported_session_option(key)))
     }
 
     fn from_repo_config(repo_config: RiprConfig) -> Self {
@@ -88,7 +131,10 @@ impl LspAnalysisConfig {
                 .lsp()
                 .seam_diagnostics()
                 .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+            diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
             repo_config,
+            session_options: None,
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 
@@ -106,6 +152,75 @@ impl LspAnalysisConfig {
     pub(super) fn repo_config(&self) -> &RiprConfig {
         &self.repo_config
     }
+}
+
+fn session_options_object(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+    let object = value.as_object()?;
+    object
+        .get("ripr")
+        .and_then(Value::as_object)
+        .or(Some(object))
+}
+
+fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::Map<String, Value>) {
+    if let Some(base_ref) = options
+        .get("baseRef")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+    {
+        config.base_ref = if base_ref.is_empty() {
+            None
+        } else {
+            Some(base_ref.to_string())
+        };
+    }
+
+    if let Some(mode) = options
+        .get("checkMode")
+        .and_then(|value| value.as_str())
+        .and_then(parse_mode)
+    {
+        config.mode = mode;
+    }
+
+    if let Some(include_unchanged_tests) = options
+        .get("includeUnchangedTests")
+        .and_then(|value| value.as_bool())
+    {
+        config.include_unchanged_tests = include_unchanged_tests;
+    }
+
+    if let Some(enable_seam_diagnostics) = options
+        .get("seamDiagnostics")
+        .and_then(|value| value.as_bool())
+    {
+        config.enable_seam_diagnostics = enable_seam_diagnostics;
+    }
+
+    if let Some(profile) = options
+        .get("diagnosticProfile")
+        .and_then(|value| value.as_str())
+        .and_then(|value| LspDiagnosticProfile::parse(value).ok())
+    {
+        config.diagnostic_profile = profile;
+    }
+}
+
+fn supported_session_options(
+    options: &serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
+    options
+        .iter()
+        .filter(|(key, _)| is_supported_session_option(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn is_supported_session_option(key: &str) -> bool {
+    matches!(
+        key,
+        "baseRef" | "checkMode" | "includeUnchangedTests" | "seamDiagnostics" | "diagnosticProfile"
+    )
 }
 
 fn parse_mode(value: &str) -> Option<Mode> {
@@ -138,6 +253,58 @@ mod tests {
         let params = params_with(json!({}));
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn diagnostic_profile_init_option_selects_full_visibility() {
+        let params = params_with(json!({"diagnosticProfile": "full"}));
+        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
+    }
+
+    #[test]
+    fn position_encoding_survives_repo_reload_and_session_option_changes() -> Result<(), String> {
+        let config = LspAnalysisConfig {
+            position_encoding: PositionEncodingKind::UTF8,
+            ..LspAnalysisConfig::default()
+        };
+
+        let reloaded = config.reload_repo_config(RiprConfig::default());
+        if reloaded.position_encoding != PositionEncodingKind::UTF8 {
+            return Err("reload_repo_config dropped the negotiated position encoding".to_string());
+        }
+
+        let with_options = config
+            .with_changed_session_options(&json!({ "diagnosticProfile": "full" }))
+            .ok_or_else(|| "session option change should rebuild the config".to_string())?;
+        if with_options.position_encoding != PositionEncodingKind::UTF8 {
+            return Err(
+                "with_changed_session_options dropped the negotiated position encoding".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_diagnostic_profile_init_option_keeps_the_default() {
+        let params = params_with(json!({"diagnosticProfile": "unknown"}));
+        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn invalid_repo_diagnostic_profile_is_rejected() {
+        let error = match crate::config::tests_only_parse(
+            r#"
+[lsp]
+diagnostic_profile = "quiet"
+"#,
+        ) {
+            Ok(_) => "invalid diagnostic profile was accepted".to_owned(),
+            Err(error) => error,
+        };
+        assert!(error.contains("diagnostic_profile"));
     }
 
     #[test]
@@ -221,6 +388,7 @@ include_unchanged_tests = false
 
 [lsp]
 seam_diagnostics = true
+diagnostic_profile = "full"
 "#,
         )?;
         let params = params_with(json!({}));
@@ -229,6 +397,7 @@ seam_diagnostics = true
         assert_eq!(config.mode, Mode::Deep);
         assert!(!config.include_unchanged_tests);
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
         Ok(())
     }
 
@@ -255,5 +424,62 @@ seam_diagnostics = true
         assert!(config.include_unchanged_tests);
         assert!(!config.enable_seam_diagnostics);
         Ok(())
+    }
+
+    #[test]
+    fn repository_reload_preserves_initialization_overrides() -> Result<(), String> {
+        let initial_repo = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "deep"
+include_unchanged_tests = false
+"#,
+        )?;
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            initial_repo,
+            Some(&json!({
+                "baseRef": "origin/release",
+                "checkMode": "fast",
+                "includeUnchangedTests": true,
+            })),
+        );
+
+        let reloaded_repo = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "ready"
+include_unchanged_tests = false
+"#,
+        )?;
+        let reloaded = config.reload_repo_config(reloaded_repo);
+
+        assert_eq!(reloaded.base_ref.as_deref(), Some("origin/release"));
+        assert_eq!(reloaded.mode, Mode::Fast);
+        assert!(reloaded.include_unchanged_tests);
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_settings_merge_with_existing_session_options() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"baseRef": "origin/main", "checkMode": "deep"})),
+        );
+        let Some(changed) =
+            config.with_changed_session_options(&json!({"ripr": {"checkMode": "fast"}}))
+        else {
+            return Err("object settings should produce a config".to_string());
+        };
+
+        assert_eq!(changed.base_ref.as_deref(), Some("origin/main"));
+        assert_eq!(changed.mode, Mode::Fast);
+        Ok(())
+    }
+
+    #[test]
+    fn unrelated_configuration_settings_do_not_trigger_session_reload() {
+        assert!(!LspAnalysisConfig::has_session_option_changes(
+            &json!({"editor": {"formatOnSave": true}})
+        ));
     }
 }

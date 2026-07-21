@@ -5,7 +5,8 @@
 //! and calling into the app layer.
 
 use crate::app::receipt::{
-    ReceiptCheckOptions, ReceiptWriteOptions, check_receipt, receipt_out_path, write_receipt,
+    ReceiptCheckOptions, ReceiptWriteOptions, check_receipt, receipt_out_path,
+    validate_current_head, write_receipt,
 };
 use crate::cli::parse::expect_value;
 use crate::output;
@@ -95,6 +96,7 @@ pub(in crate::cli) fn parse_receipt_write_options(
     let mut packet_id: Option<String> = None;
     let mut verify_command: Option<String> = None;
     let mut verify_status: Option<String> = None;
+    let mut current_head: Option<String> = None;
     let mut out: Option<PathBuf> = None;
     let mut json = false;
 
@@ -132,6 +134,12 @@ pub(in crate::cli) fn parse_receipt_write_options(
                 let value = expect_value(args, i, "--status")?;
                 verify_status = Some(value.to_string());
             }
+            "--current-head" => {
+                i += 1;
+                let value = expect_value(args, i, "--current-head")?;
+                validate_current_head(value)?;
+                current_head = Some(value.to_string());
+            }
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -158,6 +166,7 @@ pub(in crate::cli) fn parse_receipt_write_options(
         packet_id,
         verify_command,
         verify_status,
+        current_head,
         out,
         json,
     })
@@ -239,6 +248,8 @@ Usage: ripr receipt <subcommand>
 
 Subcommands:
   write    Author a receipt JSON for a completed repair attempt.
+             Options:
+               --current-head <SHA>  Optional exact head SHA for review receipts.
   check    Structurally validate a receipt JSON file.
 
 The `ripr receipt write` command is the canonical receipt command.
@@ -324,6 +335,8 @@ mod tests {
             "cargo test -p ripr",
             "--status",
             "passed",
+            "--current-head",
+            "0123456789abcdef0123456789abcdef01234567",
             "--out",
             "target/ripr/receipts/r.json",
             "--json",
@@ -332,6 +345,10 @@ mod tests {
         assert_eq!(result.packet_id, Some("packet-123".to_string()));
         assert_eq!(result.verify_command, "cargo test -p ripr");
         assert_eq!(result.verify_status, "passed");
+        assert_eq!(
+            result.current_head,
+            Some("0123456789abcdef0123456789abcdef01234567".to_string())
+        );
         assert_eq!(
             result.out,
             Some(PathBuf::from("target/ripr/receipts/r.json"))
@@ -458,7 +475,14 @@ mod tests {
 
     #[test]
     fn receipt_write_requires_values_for_value_flags() -> Result<(), String> {
-        for flag in &["--gap", "--packet", "--verify-command", "--status", "--out"] {
+        for flag in &[
+            "--gap",
+            "--packet",
+            "--verify-command",
+            "--status",
+            "--current-head",
+            "--out",
+        ] {
             match parse_receipt_write_options(&args(&[flag])) {
                 Ok(_) => {
                     return Err(format!("flag {flag} should require value"));
@@ -469,6 +493,35 @@ mod tests {
                             "flag {flag} should say 'missing value', got: {err}"
                         ));
                     }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_write_rejects_invalid_current_head() -> Result<(), String> {
+        for current_head in ["abc1234567890", "0123456789abcdef0123456789abcdef0123456g"] {
+            match parse_receipt_write_options(&args(&[
+                "--gap",
+                "gap:test:aabbccdd",
+                "--verify-command",
+                "cargo test",
+                "--status",
+                "passed",
+                "--current-head",
+                current_head,
+            ])) {
+                Ok(_) => {
+                    return Err(format!(
+                        "parser should reject invalid current head {current_head:?}"
+                    ));
+                }
+                Err(err) if err.contains("40-character hexadecimal SHA") => {}
+                Err(err) => {
+                    return Err(format!(
+                        "error should explain current-head format, got: {err}"
+                    ));
                 }
             }
         }

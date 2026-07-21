@@ -20,6 +20,7 @@ pub(crate) struct RiprConfig {
     pub(super) languages: LanguagesConfig,
     pub(super) profiles: ProfilesConfig,
     pub(super) typescript: TypescriptConfig,
+    pub(super) perl: PerlConfig,
     pub(super) source_path: Option<PathBuf>,
     pub(super) source_text: Option<String>,
 }
@@ -59,6 +60,11 @@ impl RiprConfig {
 
     pub(crate) fn typescript(&self) -> &TypescriptConfig {
         &self.typescript
+    }
+
+    /// Perl producer configuration (Campaign 31 Phase D, #1407).
+    pub(crate) fn perl(&self) -> &PerlConfig {
+        &self.perl
     }
 
     pub(crate) fn source_text(&self) -> Option<&str> {
@@ -136,12 +142,40 @@ impl OraclePolicy {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LspConfig {
     pub(super) seam_diagnostics: Option<bool>,
+    pub(super) diagnostic_profile: Option<LspDiagnosticProfile>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum LspDiagnosticProfile {
+    #[default]
+    Actionable,
+    Full,
+}
+
+impl LspDiagnosticProfile {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Actionable => "actionable",
+            Self::Full => "full",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "actionable" => Ok(Self::Actionable),
+            "full" => Ok(Self::Full),
+            other => Err(format!(
+                "invalid lsp.diagnostic_profile {other:?}; expected \"actionable\" or \"full\""
+            )),
+        }
+    }
 }
 
 impl Default for LspConfig {
     fn default() -> Self {
         Self {
             seam_diagnostics: Some(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+            diagnostic_profile: None,
         }
     }
 }
@@ -149,6 +183,10 @@ impl Default for LspConfig {
 impl LspConfig {
     pub(crate) fn seam_diagnostics(&self) -> Option<bool> {
         self.seam_diagnostics
+    }
+
+    pub(crate) fn diagnostic_profile(&self) -> Option<LspDiagnosticProfile> {
+        self.diagnostic_profile
     }
 }
 
@@ -240,6 +278,54 @@ impl LanguagesConfig {
     #[cfg(test)]
     pub(crate) fn enabled_owned(&self) -> Vec<LanguageId> {
         self.enabled.clone()
+    }
+}
+
+/// `[perl]` repository configuration (Campaign 31 Phase D, #1407).
+///
+/// When `producer` is set to `"perllsp"`, ripr invokes a Perl facts
+/// exporter to generate a fact packet, then consumes it through the
+/// production `PerlAdapter`. The canonical producer binary is
+/// `perl-ripr-facts`; `perllsp` and `perl-lsp` are compatibility wrappers
+/// for that same exporter. This is the managed producer mode — the user
+/// does not need to run the exporter manually.
+///
+/// When `producer` is `None` (default), the user must supply `--perl-facts
+/// PATH` explicitly. No silent invocation occurs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PerlConfig {
+    /// When `"perllsp"`, enables managed producer mode.
+    pub(super) producer: Option<String>,
+    /// Override path to the Perl facts exporter executable. The canonical
+    /// binary is `perl-ripr-facts`; `perllsp` and `perl-lsp` are
+    /// compatibility wrappers. When `None`, uses `perllsp` from PATH.
+    pub(super) executable: Option<PathBuf>,
+    /// Timeout in milliseconds for the producer invocation. Default: 30000.
+    pub(super) timeout_ms: u64,
+    /// Cache directory for produced fact packets. Default:
+    /// `target/ripr/perl-facts/`.
+    pub(super) cache_dir: Option<PathBuf>,
+}
+
+impl PerlConfig {
+    pub(crate) fn producer(&self) -> Option<&str> {
+        self.producer.as_deref()
+    }
+
+    pub(crate) fn executable(&self) -> Option<&Path> {
+        self.executable.as_deref()
+    }
+
+    pub(crate) fn timeout_ms(&self) -> u64 {
+        if self.timeout_ms == 0 {
+            30_000
+        } else {
+            self.timeout_ms
+        }
+    }
+
+    pub(crate) fn cache_dir(&self) -> Option<&Path> {
+        self.cache_dir.as_deref()
     }
 }
 

@@ -9,6 +9,7 @@ use crate::cli::agent::{
     parse_agent_args,
 };
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
+use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
@@ -18,7 +19,6 @@ use crate::config::{
 use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cli::commands_agent_support::{
     agent_brief_lines_from_diff, agent_brief_owners_for_lines, build_agent_receipt_provenance,
@@ -28,10 +28,14 @@ use crate::cli::commands_agent_support::{
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 
+const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
+
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
 #[path = "commands/agent_gap_packet.rs"]
 mod agent_gap_packet;
+#[path = "commands/cache.rs"]
+mod cache_command;
 #[path = "commands/policy.rs"]
 mod policy_commands;
 #[path = "commands/receipt.rs"]
@@ -84,6 +88,10 @@ pub(super) fn receipt(args: &[String]) -> Result<(), String> {
 
 pub(super) fn swarm(args: &[String]) -> Result<(), String> {
     swarm_command::run(args)
+}
+
+pub(super) fn cache(args: &[String]) -> Result<(), String> {
+    cache_command::run(args)
 }
 
 fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
@@ -172,7 +180,7 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
     ensure_command_root(&options.root, "agent packet")?;
 
     if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
-        let rendered = render_agent_packet_from_gap_ledger(gap_ledger, gap_id)?;
+        let rendered = render_agent_packet_from_gap_ledger(&options.root, gap_ledger, gap_id)?;
         print!("{rendered}");
         return Ok(());
     }
@@ -352,6 +360,15 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
         output::outcome::display_path(&options.before),
         output::outcome::display_path(&options.after),
     )?;
+    // The before/after artifacts do not carry a head SHA, so we cannot
+    // verify they came from the same repository or adjacent commits. The
+    // comparison matches seams/findings by id only. Disclose this on stderr
+    // (machine JSON output on stdout is unchanged) so a user who did not
+    // read the help knows the movement report assumes same-repo/same-base
+    // before/after. See #1942.
+    eprintln!(
+        "ripr outcome: comparison matches seams/findings by id only; the before/after artifacts do not carry a head SHA, so ensure both snapshots are from the same repository and adjacent commits."
+    );
     let rendered = match options.format {
         OutcomeFormat::Markdown => output::outcome::render_targeted_test_outcome_md(&report),
         OutcomeFormat::Json => output::outcome::render_targeted_test_outcome_json(&report)?,
@@ -435,8 +452,11 @@ pub(super) fn gate(args: &[String]) -> Result<(), String> {
         help::print_gate_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("gate requires subcommand `evaluate`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "evaluate"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("evaluate", &[][..]),
     };
     if subcommand != "evaluate" {
         return Err(format!(
@@ -486,8 +506,11 @@ pub(super) fn zero(args: &[String]) -> Result<(), String> {
         help::print_zero_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("zero requires subcommand `status`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "status"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("status", &[][..]),
     };
     if subcommand != "status" {
         return Err(format!(
@@ -527,8 +550,11 @@ pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
         help::print_pr_ledger_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-ledger requires subcommand `record`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "record"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("record", &[][..]),
     };
     if subcommand != "record" {
         return Err(format!(
@@ -543,8 +569,11 @@ pub(super) fn pr_comments(args: &[String]) -> Result<(), String> {
         help::print_pr_comments_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-comments requires subcommand `plan`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "plan"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("plan", &[][..]),
     };
     if subcommand != "plan" {
         return Err(format!(
@@ -559,8 +588,11 @@ pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
         help::print_pr_review_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("pr-review requires subcommand `front-panel`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "front-panel"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("front-panel", &[][..]),
     };
     if subcommand != "front-panel" {
         return Err(format!(
@@ -575,8 +607,11 @@ pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
         help::print_coverage_grip_help();
         return Ok(());
     }
-    let Some((subcommand, rest)) = args.split_first() else {
-        return Err("coverage-grip requires subcommand `frontier`".to_string());
+    // The sole subcommand is implied when the command runs bare:
+    // `ripr <cmd>` behaves like `ripr <cmd> "frontier"` (#2013).
+    let (subcommand, rest) = match args.split_first() {
+        Some((subcommand, rest)) => (subcommand.as_str(), rest),
+        None => ("frontier", &[][..]),
     };
     if subcommand != "frontier" {
         return Err(format!(
@@ -715,13 +750,18 @@ pub(super) fn reports(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("reports requires subcommand `index` or `gap-ledger`".to_string());
+        return Err(
+            "reports requires subcommand `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+                .to_string(),
+        );
     };
     match subcommand.as_str() {
         "index" => report_packet_index(rest),
         "gap-ledger" => gap_decision_ledger(rest),
+        "ts-limitations" => typescript_limitations(rest),
+        "ts-false-actionable" => typescript_false_actionable(rest),
         _ => Err(format!(
-            "unknown reports subcommand {subcommand:?}; expected `index` or `gap-ledger`"
+            "unknown reports subcommand {subcommand:?}; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
         )),
     }
 }
@@ -762,6 +802,55 @@ fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
     let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
     let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
     let rendered_md = output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn typescript_limitations(args: &[String]) -> Result<(), String> {
+    let options = parse_typescript_limitations_options(args)?;
+    let input = output::typescript_limitations::TypeScriptLimitationLeaderboardInput {
+        root: options.root,
+        generated_at: typescript_limitations_generated_at()?,
+        check_output_path: output::baseline_delta::display_path(&options.check_output),
+        check_output_json: read_optional_text_for_report("check output", &options.check_output),
+    };
+    let report =
+        output::typescript_limitations::build_typescript_limitation_leaderboard_report(input);
+    let rendered_json =
+        output::typescript_limitations::render_typescript_limitation_leaderboard_json(&report)?;
+    let rendered_md =
+        output::typescript_limitations::render_typescript_limitation_leaderboard_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn typescript_false_actionable(args: &[String]) -> Result<(), String> {
+    let options = parse_typescript_false_actionable_options(args)?;
+    let input = output::typescript_false_actionable::TypeScriptFalseActionableAuditInput {
+        root: options.root,
+        generated_at: typescript_false_actionable_generated_at()?,
+        corpus_path: output::baseline_delta::display_path(&options.corpus),
+        corpus_json: read_optional_text_for_report(
+            "TypeScript false-actionable audit corpus",
+            &options.corpus,
+        ),
+    };
+    let report =
+        output::typescript_false_actionable::build_typescript_false_actionable_audit_report(input);
+    let rendered_json =
+        output::typescript_false_actionable::render_typescript_false_actionable_audit_json(
+            &report,
+        )?;
+    let rendered_md =
+        output::typescript_false_actionable::render_typescript_false_actionable_audit_markdown(
+            &report,
+        );
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -1424,6 +1513,23 @@ fn review_comments_with_diff_loader(
         ..CheckInput::default()
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    let receipt_path =
+        output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(&options.out);
+    let markdown_path = review_comments_markdown_path(&options.out);
+    let artifacts = vec![
+        output::outcome::display_path(&options.out),
+        output::outcome::display_path(&markdown_path),
+    ];
+    let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
+        &input.root,
+        &options.base,
+        &options.head,
+        options.timeout_ms,
+        &artifacts,
+    );
+    receipt.write_atomic(&receipt_path)?;
+    receipt.phase("input_validation", "configuration");
+    receipt.write_atomic(&receipt_path)?;
 
     if let Some(gap_ledger) = &options.gap_ledger {
         let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
@@ -1456,17 +1562,40 @@ fn review_comments_with_diff_loader(
             &gap_ledger_path,
             &records,
         );
-        let markdown_path = review_comments_markdown_path(&options.out);
+        receipt.phase("configuration", "static_rendering");
+        receipt.write_atomic(&receipt_path)?;
+        receipt.phase("static_rendering", "artifact_io");
+        receipt.write_atomic(&receipt_path)?;
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
         write_text_file(&options.out, &rendered_json)?;
         write_text_file(&markdown_path, &rendered_md)?;
+        receipt.complete(&artifacts);
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        receipt.write_atomic(&receipt_path)?;
         println!("Wrote {}", options.out.display());
         println!("Wrote {}", markdown_path.display());
         return Ok(());
     }
 
+    receipt.phase("configuration", "diff_discovery");
+    receipt.write_atomic(&receipt_path)?;
     let diff_text = load_diff(&input.root, &options.base, &options.head)?;
+    if analysis::working_tree_has_tracked_changes(&input.root) {
+        eprintln!(
+            "ripr: warning: working tree has uncommitted tracked changes; \
+             the committed diff at {}...{} does not include them.",
+            options.base, options.head
+        );
+    }
+    receipt.phase("diff_discovery", "language_facts");
+    receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
+    receipt.phase("language_facts", "canonical_analysis");
+    receipt.write_atomic(&receipt_path)?;
     let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
         .with_changed_owners(changed_owners);
     let changed_owner_names = working_set
@@ -1480,12 +1609,16 @@ fn review_comments_with_diff_loader(
         &working_set.files,
         &changed_owner_names,
     )?;
+    receipt.phase("canonical_analysis", "route_construction");
+    receipt.write_atomic(&receipt_path)?;
     let selection = select_agent_brief_seams(
         &scoped_inventory.classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
+    receipt.phase("route_construction", "static_rendering");
+    receipt.write_atomic(&receipt_path)?;
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
         &scoped_inventory,
@@ -1509,9 +1642,15 @@ fn review_comments_with_diff_loader(
         &selection,
         &analysis_scope,
     );
-    let markdown_path = review_comments_markdown_path(&options.out);
+    receipt.phase("static_rendering", "artifact_io");
+    receipt.write_atomic(&receipt_path)?;
+    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&markdown_path, &rendered_md)?;
+    receipt.complete(&artifacts);
+    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+    write_text_file(&options.out, &rendered_json)?;
+    receipt.write_atomic(&receipt_path)?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", markdown_path.display());
     Ok(())
@@ -1767,6 +1906,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
     let mut head: Option<String> = None;
     let mut gap_ledger = None;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
+    let mut timeout_ms = DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -1809,6 +1949,11 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 out = PathBuf::from(value);
             }
+            "--timeout-ms" => {
+                i += 1;
+                timeout_ms =
+                    parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+            }
             other => return Err(format!("unknown review-comments argument {other:?}")),
         }
         i += 1;
@@ -1820,6 +1965,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         gap_ledger,
         out,
+        timeout_ms,
     })
 }
 
@@ -1836,6 +1982,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
     let mut recommendation_calibration = None;
     let mut mutation_calibration = None;
     let mut baseline = None;
+    let mut exception_policy = None;
     let mut mode = output::gate::GateMode::VisibleOnly;
     let mut acknowledgement_labels = Vec::new();
     let mut out = PathBuf::from(output::gate::DEFAULT_GATE_OUT);
@@ -1902,6 +2049,10 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
                 i += 1;
                 baseline = Some(non_empty_path_arg(args, i, "--baseline", "gate")?);
             }
+            "--exception-policy" => {
+                i += 1;
+                exception_policy = Some(non_empty_path_arg(args, i, "--exception-policy", "gate")?);
+            }
             "--mode" => {
                 i += 1;
                 mode = output::gate::GateMode::parse(expect_value(args, i, "--mode")?)?;
@@ -1945,6 +2096,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
             baseline,
             mode,
             acknowledgement_labels,
+            exception_policy,
         },
         out,
         out_md,
@@ -2814,6 +2966,112 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
     })
 }
 
+fn parse_typescript_limitations_options(
+    args: &[String],
+) -> Result<TypeScriptLimitationsOptions, String> {
+    let mut root = ".".to_string();
+    let mut check_output = None;
+    let mut out = PathBuf::from(output::typescript_limitations::DEFAULT_TYPESCRIPT_LIMITATIONS_OUT);
+    let mut out_md =
+        PathBuf::from(output::typescript_limitations::DEFAULT_TYPESCRIPT_LIMITATIONS_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "reports ts-limitations")?;
+            }
+            "--check-output" => {
+                i += 1;
+                check_output = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--check-output",
+                    "reports ts-limitations",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "reports ts-limitations")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "reports ts-limitations")?;
+            }
+            other => return Err(format!("unknown reports ts-limitations argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let Some(check_output) = check_output else {
+        return Err("reports ts-limitations requires --check-output PATH".to_string());
+    };
+
+    Ok(TypeScriptLimitationsOptions {
+        root,
+        check_output,
+        out,
+        out_md,
+    })
+}
+
+fn parse_typescript_false_actionable_options(
+    args: &[String],
+) -> Result<TypeScriptFalseActionableOptions, String> {
+    let mut root = ".".to_string();
+    let mut corpus = None;
+    let mut out =
+        PathBuf::from(output::typescript_false_actionable::DEFAULT_TYPESCRIPT_FALSE_ACTIONABLE_OUT);
+    let mut out_md = PathBuf::from(
+        output::typescript_false_actionable::DEFAULT_TYPESCRIPT_FALSE_ACTIONABLE_MD_OUT,
+    );
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "reports ts-false-actionable")?;
+            }
+            "--corpus" => {
+                i += 1;
+                corpus = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--corpus",
+                    "reports ts-false-actionable",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "reports ts-false-actionable")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "reports ts-false-actionable")?;
+            }
+            other => {
+                return Err(format!(
+                    "unknown reports ts-false-actionable argument {other:?}"
+                ));
+            }
+        }
+        i += 1;
+    }
+
+    let Some(corpus) = corpus else {
+        return Err("reports ts-false-actionable requires --corpus PATH".to_string());
+    };
+
+    Ok(TypeScriptFalseActionableOptions {
+        root,
+        corpus,
+        out,
+        out_md,
+    })
+}
+
 fn parse_coverage_grip_frontier_options(
     args: &[String],
 ) -> Result<CoverageGripFrontierOptions, String> {
@@ -3234,6 +3492,14 @@ fn gap_decision_ledger_generated_at() -> Result<String, String> {
     generated_at_unix_ms()
 }
 
+fn typescript_limitations_generated_at() -> Result<String, String> {
+    generated_at_unix_ms()
+}
+
+fn typescript_false_actionable_generated_at() -> Result<String, String> {
+    generated_at_unix_ms()
+}
+
 fn policy_readiness_generated_at() -> Result<String, String> {
     generated_at_unix_ms()
 }
@@ -3329,12 +3595,27 @@ fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
     path
 }
 
+fn repo_scope_diff_bound_warning(
+    format: OutputFormat,
+    base_explicitly_provided: bool,
+    diff_file: Option<&Path>,
+) -> Option<String> {
+    if !format.is_repo_scope() || (!base_explicitly_provided && diff_file.is_none()) {
+        return None;
+    }
+    Some(format!(
+        "ripr: format {} is repo-scoped; --base/--diff does not bound it.\n\
+Use --format json for diff-scoped findings, or --format repo-exposure-summary-json for a bounded repo summary.",
+        format.primary_cli_name()
+    ))
+}
+
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
     let mut gap_ledger: Option<PathBuf> = None;
     // RIPR-SPEC-0083: track whether the user provided any analysis scope.
-    // Starts false; set true when --diff or --base is parsed from argv.
+    // Starts false; set true when --diff, --base, or --worktree is parsed from argv.
     // --mode is a SPEED TIER on the diff path, NOT a scope provider — a bare
     // `ripr check --mode fast` analyzes nothing and must still show the no-scope
     // disclosure. When still false at analysis time, the output discloses that
@@ -3345,6 +3626,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     // running analysis. An explicit bad --base keeps its error; only the
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
+    let mut worktree_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -3362,6 +3644,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
                 scope_explicitly_provided = true;
+            }
+            "--worktree" => {
+                scope_explicitly_provided = true;
+                worktree_explicitly_provided = true;
             }
             "--mode" => {
                 i += 1;
@@ -3385,6 +3671,18 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
             }
+            "--perl-facts" => {
+                i += 1;
+                input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
+            }
+            "--suppression-policy" => {
+                i += 1;
+                input.suppression_policy = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--suppression-policy",
+                )?));
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -3404,9 +3702,37 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     if !base_explicitly_provided && input.diff_file.is_none() {
         input.base = None;
     }
+    if worktree_explicitly_provided && input.diff_file.is_some() {
+        return Err("check --worktree cannot be combined with --diff".to_string());
+    }
+    // #1441: --suppression-policy applies to the findings-based check
+    // surfaces only. SARIF keeps its existing `.ripr/suppressions.toml`
+    // finding_id channel, and badge/repo formats have their own suppression
+    // projections — silently ignoring the flag there would misreport policy
+    // application, so fail closed with a named limitation instead.
+    if input.suppression_policy.is_some()
+        && !matches!(
+            input.format,
+            OutputFormat::Human
+                | OutputFormat::HumanFull
+                | OutputFormat::Json
+                | OutputFormat::Github
+        )
+    {
+        return Err(
+            "--suppression-policy applies to the findings-based check formats (human, human-full, json, github); \
+             it is not yet supported for SARIF, badge, or repo formats"
+                .to_string(),
+        );
+    }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
+    if let Some(warning) =
+        repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
+    {
+        eprintln!("{warning}");
+    }
     if let Some(gap_ledger) = gap_ledger.as_ref() {
         write_stdout_chunked(&render_check_gap_ledger_badge(
             gap_ledger, &format, &config,
@@ -3429,22 +3755,57 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
         return Ok(());
     }
-    let mut output = if format.is_repo_seam_inventory() {
+    // Capture root and diff_file before input is moved into the analysis call.
+    // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
+    let input_root = input.root.clone();
+    let input_diff_file_is_some = input.diff_file.is_some();
+    let limited_check_input = input.clone();
+    let output_result = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
         // `CheckOutput` carries only the fields these renderers read.
-        app::repo_seam_inventory_input(input)
+        Ok(app::repo_seam_inventory_input(input))
     } else if format.is_repo_scope() {
-        app::check_workspace_repo_with_config(input, &config)?
+        app::check_workspace_repo_with_config(input, &config)
+    } else if worktree_explicitly_provided {
+        app::check_workspace_worktree_with_config(input, &config)
     } else {
-        app::check_workspace_with_config(input, &config)?
+        app::check_workspace_with_config(input, &config)
+    };
+    let mut output = match output_result {
+        Ok(output) => output,
+        Err(err) => {
+            if matches!(format, OutputFormat::Json)
+                && let Some(rendered) = output::limited_check::render_diff_scope_limited_check_json(
+                    &limited_check_input,
+                    &err,
+                )?
+            {
+                write_stdout_chunked(&rendered)?;
+            }
+            return Err(err);
+        }
     };
     // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
     // The guidance fires only when scope was NOT explicitly provided — it must
     // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
     if !scope_explicitly_provided && output.findings.is_empty() {
         output.no_scope_provided = true;
+    }
+    // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
+    // diff) AND the working tree has uncommitted changes to tracked source files.
+    // Those changes were NOT analyzed. A zero-finding result in this state must NOT
+    // be read as a clean pass — the user's uncommitted edits were excluded from the diff.
+    // Fires independent of findings.is_empty() (honest whether or not committed diff
+    // had findings), but the false-clean risk is highest when findings are empty.
+    // Does NOT fire when --diff was used (file-based diff; no live worktree scope).
+    if base_explicitly_provided
+        && !worktree_explicitly_provided
+        && !input_diff_file_is_some
+        && analysis::working_tree_has_tracked_changes(&input_root)
+    {
+        output.unanalyzed_working_tree = true;
     }
     write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
     Ok(())
@@ -3499,10 +3860,15 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&options.root)?;
     let diff_text = analysis::load_diff_range(&options.root, &options.base, &options.head)?;
     let changed_files = diff_changed_files_from_text(&diff_text);
-    let diff_file = write_temporary_diff_file(&diff_text)?;
+    let diff_file = crate::app::temp_diff::write_temporary_diff_file(&diff_text)?;
 
     let check_result = run_diff_check_from_file(&options, &config, &diff_file);
     let _ = std::fs::remove_file(&diff_file);
+    // The temporary diff lives in a per-invocation private directory
+    // (#2102); remove it too so runs do not accumulate empty dirs.
+    if let Some(parent) = diff_file.parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
     let output = check_result?;
 
     let report = output::diff_report::build_diff_report(
@@ -3598,6 +3964,8 @@ fn run_diff_check_from_file(
         mode: options.mode.clone(),
         format: OutputFormat::Json,
         include_unchanged_tests: options.include_unchanged_tests,
+        perl_facts_path: None,
+        suppression_policy: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)
@@ -3626,20 +3994,6 @@ fn diff_changed_files_from_text(diff_text: &str) -> Vec<output::diff_report::Dif
             }
         })
         .collect()
-}
-
-fn write_temporary_diff_file(diff_text: &str) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("ripr-diff");
-    std::fs::create_dir_all(&dir)
-        .map_err(|err| format!("create temporary diff dir {} failed: {err}", dir.display()))?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let path = dir.join(format!("diff-{}-{stamp}.patch", std::process::id()));
-    std::fs::write(&path, diff_text)
-        .map_err(|err| format!("write temporary diff file {} failed: {err}", path.display()))?;
-    Ok(path)
 }
 
 fn diff_receipt_path(base: &str, head: &str) -> String {
@@ -3692,7 +4046,8 @@ fn render_check_gap_ledger_badge(
         suppressions_path: config.suppressions().display_path(),
         ..output::badge::BadgePolicy::default()
     };
-    let summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    let mut summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     if shields {
         Ok(output::badge::render_shields_json(&summary))
     } else {
@@ -3798,59 +4153,48 @@ pub(super) fn context(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn doctor(args: &[String]) -> Result<(), String> {
-    let root = match args {
-        [] => PathBuf::from("."),
-        [flag] if flag == "--help" || flag == "-h" => {
-            help::print_doctor_help();
-            return Ok(());
+    let mut json_output = false;
+    let mut root_args: Vec<&str> = Vec::new();
+    for arg in args {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                help::print_doctor_help();
+                return Ok(());
+            }
+            "--json" => json_output = true,
+            _ => root_args.push(arg.as_str()),
         }
-        [flag] if flag == "--root" => return Err("missing value for --root".to_string()),
-        [flag, value] if flag == "--root" => PathBuf::from(value),
+    }
+    let root = match root_args.as_slice() {
+        [] => PathBuf::from("."),
+        ["--root"] => return Err("missing value for --root".to_string()),
+        ["--root", value] => PathBuf::from(value),
         [other, ..] => return Err(format!("unknown doctor argument {other:?}")),
     };
 
-    let mut ok = true;
+    if json_output {
+        return doctor_json(&root);
+    }
+
+    // Human-readable path (unchanged behavior).
+    let core_evaluation = output::doctor::evaluate_doctor_core_with_config(&root);
+    let core_report = &core_evaluation.report;
+    let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
     println!("ripr doctor");
     println!("- root: {}", root.display());
 
-    if root.is_dir() {
-        println!("✓ root directory exists");
-    } else {
-        println!("! root directory does not exist");
-        ok = false;
-    }
-
-    if root.join("Cargo.toml").exists() {
-        println!(
-            "✓ Cargo.toml found at {}",
-            root.join("Cargo.toml").display()
-        );
-    } else {
-        println!("! no Cargo.toml found at {}", root.display());
-        ok = false;
-    }
-
-    report_config_status(&root, &mut ok);
+    ok &= report_doctor_core_check(core_report, "root_directory");
+    ok &= report_doctor_core_check(core_report, "cargo_toml");
+    report_config_status(&root, core_evaluation.config, &mut ok);
     report_cache_status(&root);
     report_detected_languages(&root);
     suggest_preview_language_enablement(&root);
     report_detected_test_surfaces(&root);
+    report_perl_preview(&root);
     report_known_limitations();
 
-    for (tool, args) in [
-        ("git", vec!["--version"]),
-        ("cargo", vec!["--version"]),
-        ("rustc", vec!["--version"]),
-    ] {
-        match std::process::Command::new(tool).args(&args).output() {
-            Ok(output) if output.status.success() => {
-                println!("✓ {}", String::from_utf8_lossy(&output.stdout).trim())
-            }
-            _ => {
-                println!("! {tool} not available");
-                ok = false;
-            }
-        }
+    for tool in output::doctor::DOCTOR_TOOLS {
+        ok &= report_doctor_core_check(core_report, &format!("tool_{tool}"));
     }
 
     print_doctor_start_here_guidance(&root);
@@ -3862,6 +4206,32 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
     }
+}
+
+/// Typed JSON doctor output. Captures top-level checks as structured
+/// `DoctorCheck` values. Deeper sub-checks (languages, cache, perl, and test
+/// surfaces) remain on the human-oriented path for a follow-up
+/// PR to type individually. See #1771 / #1614.
+fn doctor_json(root: &Path) -> Result<(), String> {
+    let report = output::doctor::evaluate_doctor_core(root);
+    println!("{}", report.render_json()?);
+    output::doctor::doctor_report_result(&report)
+}
+
+fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -> bool {
+    let Some(check) = report.checks.iter().find(|check| check.name == name) else {
+        println!("! missing doctor core check: {name}");
+        return false;
+    };
+    let marker = match check.status {
+        output::doctor::DoctorStatus::Pass => "✓",
+        output::doctor::DoctorStatus::Fail => "!",
+    };
+    println!(
+        "{marker} {}",
+        check.evidence.as_deref().unwrap_or(check.name.as_str())
+    );
+    check.status == output::doctor::DoctorStatus::Pass
 }
 
 fn print_doctor_start_here_guidance(root: &Path) {
@@ -3876,7 +4246,20 @@ fn print_doctor_start_here_guidance(root: &Path) {
     println!(
         "- Proof rail: verify command, receipt command, and receipt path are advisory static movement evidence"
     );
-    println!("- Recommended first command: ripr check --base origin/main");
+    // First-run honesty: when the working tree has uncommitted changes,
+    // `ripr check --base origin/main` analyzes committed history only and would
+    // silently exclude the user's draft (the RIPR-SPEC-0112 dirty-worktree case).
+    // Route them to the command that actually covers their edits instead of the
+    // one that looks clean while ignoring them. Reuses the same helper as the
+    // check-time disclosure (reuse, don't fork).
+    if analysis::working_tree_has_tracked_changes(root) {
+        println!("- Recommended first command: ripr check --base HEAD --worktree");
+        println!(
+            "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
+        );
+    } else {
+        println!("- Recommended first command: ripr check --base origin/main");
+    }
 }
 
 /// Language-to-status mapping used by the doctor first-run diagnosis.
@@ -4046,6 +4429,22 @@ fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
     let mut suggestions = Vec::new();
     for id in &preview_detected {
         if id.is_available() && !enabled.contains(id) {
+            // Perl detects as a preview language (see language_status). In a
+            // default build, `LanguageId::Perl.is_available()` is
+            // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
+            // Perl anyway. This guard is defense-in-depth for the
+            // `--features lang-perl` build: even when the Cargo feature is ON,
+            // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
+            // production-routable, pipeline fail-closed stub). Suggesting
+            // `enabled = ["rust", "perl"]` in that build would mislead: the
+            // user would enable it and get zero analysis plus an explicit
+            // error. Detection at detect_languages() stays honest; only the
+            // enablement Tip is suppressed for Perl until Campaign 31 (#1379)
+            // lands the production bridge. TypeScript/Python are real preview
+            // adapters and remain Tip-eligible.
+            if matches!(id, LanguageId::Perl) {
+                continue;
+            }
             suggestions.push(format!(
                 "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
                 id.as_str(),
@@ -4107,7 +4506,38 @@ fn report_detected_test_surfaces(root: &Path) {
                 }
             }
             LanguageId::Perl => {
-                lines.push("perl: test framework not detected".to_string());
+                // Phase D PR 2 (#1408): upgraded Perl doctor diagnostics.
+                let pm_count = count_files(root, "pm");
+                let pl_count = count_files(root, "pl");
+                let t_count = count_files(root, "t");
+                if pm_count > 0 || pl_count > 0 || t_count > 0 {
+                    let framework = detect_perl_framework(root);
+                    lines.push(format!(
+                        "perl: {} .pm, {} .pl, {} .t; framework: {}",
+                        pm_count, pl_count, t_count, framework
+                    ));
+                    // Report adapter availability.
+                    if id.is_available() {
+                        lines.push("perl: adapter compiled (lang-perl feature ON)".to_string());
+                    } else {
+                        lines.push(
+                            "perl: adapter NOT compiled (build with --features lang-perl)"
+                                .to_string(),
+                        );
+                    }
+                    // Report runner availability.
+                    if which("prove") {
+                        lines.push("perl: prove available on PATH".to_string());
+                    } else {
+                        lines.push("perl: prove NOT found on PATH".to_string());
+                    }
+                    // Report exact first command.
+                    if id.is_available() {
+                        lines.push("perl: first command: ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string());
+                    }
+                } else {
+                    lines.push("perl: no Perl files detected".to_string());
+                }
             }
         }
     }
@@ -4125,6 +4555,338 @@ fn report_detected_test_surfaces(root: &Path) {
 ///   - `StaticLimitKind::CrossLanguageOracleVisibilityUnresolved` wire string
 ///     and its doc comment.
 ///   - 0.9.0 CHANGELOG non-claims.
+///
+/// Count files with a given extension under the root (recursive). Used by the
+/// Perl preview to report real .pm/.pl/.t counts. Campaign 31 item 5: the
+/// prior `shallow_has_extension as usize` returned only 0/1, not a real count.
+fn count_files(root: &Path, ext: &str) -> usize {
+    fn count_recursive(dir: &Path, ext: &str) -> usize {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut n = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // Skip hidden + build/dependency dirs that inflate counts.
+                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if name.starts_with('.') || matches!(name, "target" | "node_modules" | "blib") {
+                    continue;
+                }
+                n += count_recursive(&path, ext);
+            } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+                n += 1;
+            }
+        }
+        n
+    }
+    count_recursive(root, ext)
+}
+
+/// Detect the Perl test framework from .t files (shallow scan).
+fn detect_perl_framework(root: &Path) -> &'static str {
+    let t_dir = root.join("t");
+    let Ok(entries) = std::fs::read_dir(&t_dir) else {
+        return "not detected (no t/ directory)";
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "t")
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            if content.contains("use Test2::V0") {
+                return "Test2::V0";
+            }
+            if content.contains("use Test::More") {
+                return "Test::More";
+            }
+            if content.contains("use Test::Exception") {
+                return "Test::Exception";
+            }
+            if content.contains("use Test::Fatal") {
+                return "Test::Fatal";
+            }
+        }
+    }
+    "not detected"
+}
+
+/// Check if a binary is available on PATH.
+fn which(bin: &str) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("which")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+    #[cfg(not(unix))]
+    {
+        std::process::Command::new("where")
+            .arg(bin)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+}
+
+/// Rich Perl preview for the doctor (Campaign 31 item 5). Reports everything a
+/// maintainer needs to know whether Perl analysis is available and how to
+/// invoke it: project markers, lang-perl compiled, [perl] producer configured,
+/// perllsp/perl-lsp found + version, schema compatible, t/ and t2/ roots,
+/// detected test frameworks, runner availability, and an exact next command.
+///
+/// Conservative throughout: every line reports only what the static layer can
+/// determine. No claim is made that the producer works end-to-end (that is the
+/// two-binary proof, item 3). Prints only when Perl markers are detected.
+fn report_perl_preview(root: &Path) {
+    let pm_count = count_files(root, "pm");
+    let pl_count = count_files(root, "pl");
+    let t_count = count_files(root, "t");
+    let has_markers = pm_count > 0 || pl_count > 0 || t_count > 0 || has_perl_project_markers(root);
+    if !has_markers {
+        return;
+    }
+
+    println!("- Perl preview:");
+    println!("  project: {pm_count} .pm, {pl_count} .pl, {t_count} .t");
+
+    // lang-perl compiled? (cfg!(feature = "lang-perl") is build-time constant.)
+    if cfg!(feature = "lang-perl") {
+        println!("  adapter: compiled (lang-perl feature ON)");
+    } else {
+        println!("  adapter: NOT compiled (build with --features lang-perl)");
+    }
+
+    // [perl] producer configured? + Perl facts exporter found? + version?
+    let producer_configured = perl_producer_configured(root);
+    match producer_configured.as_deref() {
+        Some("perl-ripr-facts") => {
+            println!("  producer: configured as `perl-ripr-facts` (canonical)")
+        }
+        Some("perllsp") => println!("  producer: configured as `perllsp` (compatibility wrapper)"),
+        Some("perl-lsp") => {
+            println!("  producer: configured as `perl-lsp` (compatibility wrapper)")
+        }
+        Some(other) => println!("  producer: configured as `{other}`"),
+        None => println!("  producer: not configured (managed mode off)"),
+    }
+
+    // Find the producer binary and its version. Try canonical first, then wrappers.
+    let (found_bin, version) = producer_binary_and_version(root);
+    match (found_bin.as_deref(), version.as_deref()) {
+        (Some(bin), Some(ver)) => {
+            println!("  exporter: found at {bin} (version {ver})");
+            // If only a wrapper was found (not the canonical exporter), explain.
+            if bin.contains("perllsp") || bin.contains("perl-lsp") {
+                if which("perl-ripr-facts") {
+                    // Canonical also present — no warning needed.
+                } else {
+                    println!(
+                        "  note: `{bin}` must delegate to the batch perl-ripr-facts exporter; RIPR does not use LSP protocol"
+                    );
+                }
+            }
+        }
+        (Some(bin), None) => println!("  exporter: found at {bin} (version unknown)"),
+        _ => println!(
+            "  exporter: NOT found on PATH (expected: perl-ripr-facts, perllsp, or perl-lsp)"
+        ),
+    }
+
+    // schema compatible? (always reports the schema this ripr build consumes.)
+    println!("  schema: {} expected", crate::app::PERL_FACT_PACKET_SCHEMA);
+
+    // t/ and t2/ roots detected?
+    let roots = detect_perl_test_roots(root);
+    println!("  test roots: {roots}");
+
+    // Detected test frameworks.
+    let frameworks = detect_perl_frameworks(root);
+    println!("  frameworks: {frameworks}");
+
+    // Runner availability: prove/yath/carton/dzil.
+    let mut runners: Vec<&str> = Vec::new();
+    if which("prove") {
+        runners.push("prove");
+    }
+    if which("yath") {
+        runners.push("yath");
+    }
+    if which("carton") {
+        runners.push("carton");
+    }
+    if which("dzil") {
+        runners.push("dzil");
+    }
+    let runners_str = if runners.is_empty() {
+        "none found on PATH".to_string()
+    } else {
+        runners.join(", ")
+    };
+    println!("  runners: {runners_str}");
+
+    // Exact next command: branch on whether managed mode is configured and
+    // whether the producer is present.
+    let next = perl_next_command(producer_configured.as_deref(), found_bin.as_deref());
+    println!("  next: {next}");
+}
+
+/// Whether `[perl].producer` is configured in the root's ripr config. Returns
+/// the configured producer name, or None if not set / config unreadable.
+fn perl_producer_configured(root: &Path) -> Option<String> {
+    let config = crate::config::load_for_root(root).ok()?;
+    config.perl().producer().map(|s| s.to_string())
+}
+
+/// Resolve the producer binary path and version. Honors `[perl].executable`
+/// when set; otherwise probes PATH for `perl-ripr-facts` (canonical, post
+/// perl-lsp-swarm #3294), then `perllsp`/`perl-lsp` (compatibility wrappers).
+/// Returns (resolved_path, version_string) where version comes from
+/// `--version` stdout.
+fn producer_binary_and_version(root: &Path) -> (Option<String>, Option<String>) {
+    // Honor explicit [perl].executable first.
+    let explicit = crate::config::load_for_root(root)
+        .ok()
+        .and_then(|c| c.perl().executable().map(|p| p.display().to_string()));
+    let candidates: Vec<String> = match explicit {
+        Some(path) => vec![path],
+        None => vec![
+            "perl-ripr-facts".to_string(),
+            "perllsp".to_string(),
+            "perl-lsp".to_string(),
+        ],
+    };
+    for candidate in &candidates {
+        let probe = std::process::Command::new(candidate)
+            .arg("--version")
+            .output();
+        if let Ok(output) = probe
+            && output.status.success()
+        {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let resolved = which(candidate)
+                .then(|| resolve_binary_path(candidate))
+                .flatten();
+            return (resolved.or_else(|| Some(candidate.clone())), Some(version));
+        }
+    }
+    (None, None)
+}
+
+/// Best-effort resolution of a PATH binary to an absolute path for display.
+/// Falls back to the name itself if resolution is unavailable.
+fn resolve_binary_path(bin: &str) -> Option<String> {
+    // `which`/`where` already proved existence; re-run capturing stdout.
+    let lookup = if cfg!(unix) { "which" } else { "where" };
+    std::process::Command::new(lookup)
+        .arg(bin)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+        })
+}
+
+/// Detect CPAN-style project markers beyond .pm/.pl/.t files: Makefile.PL,
+/// Build.PL, cpanfile. These confirm a real CPAN-style project a producer can
+/// index.
+fn has_perl_project_markers(root: &Path) -> bool {
+    ["Makefile.PL", "Build.PL", "cpanfile"]
+        .iter()
+        .any(|marker| root.join(marker).is_file())
+}
+
+/// Detect Perl test directories: `t/` and `t2/`. Returns a human-readable
+/// summary.
+fn detect_perl_test_roots(root: &Path) -> String {
+    let has_t = root.join("t").is_dir();
+    let has_t2 = root.join("t2").is_dir();
+    match (has_t, has_t2) {
+        (true, true) => "t/ and t2/ detected".to_string(),
+        (true, false) => "t/ detected".to_string(),
+        (false, true) => "t2/ detected".to_string(),
+        (false, false) => "none detected".to_string(),
+    }
+}
+
+/// Detect Perl test frameworks from .t files in t/ and t2/. Returns a
+/// comma-separated list of detected frameworks (Test::More, Test2::V0/V1/Suite,
+/// Test::Exception, Test::Fatal), or "none detected".
+fn detect_perl_frameworks(root: &Path) -> String {
+    let mut found: Vec<&str> = Vec::new();
+    let mut contents: Vec<String> = Vec::new();
+    for dir in ["t", "t2"] {
+        let test_dir = root.join(dir);
+        let Ok(entries) = std::fs::read_dir(&test_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "t")
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                contents.push(content);
+            }
+        }
+    }
+    let blob = contents.join("\n");
+    if blob.contains("use Test2::V1") || blob.contains("use Test2::Bundle::More") {
+        found.push("Test2::V1");
+    }
+    if blob.contains("use Test2::V0") || blob.contains("use Test2::Tools::Basic") {
+        found.push("Test2::V0");
+    }
+    if blob.contains("use Test2::Suite") {
+        found.push("Test2::Suite");
+    }
+    if blob.contains("use Test::More") {
+        found.push("Test::More");
+    }
+    if blob.contains("use Test::Exception") {
+        found.push("Test::Exception");
+    }
+    if blob.contains("use Test::Fatal") {
+        found.push("Test::Fatal");
+    }
+    if found.is_empty() {
+        "none detected".to_string()
+    } else {
+        found.join(", ")
+    }
+}
+
+/// Choose the exact next command based on producer configuration + presence.
+fn perl_next_command(producer_configured: Option<&str>, found_bin: Option<&str>) -> String {
+    let managed = matches!(
+        producer_configured,
+        Some("perl-ripr-facts") | Some("perllsp") | Some("perl-lsp")
+    );
+    if managed && found_bin.is_some() {
+        // Managed mode + producer present: ripr invokes the exporter itself.
+        "ripr check --languages perl --base origin/main --head HEAD".to_string()
+    } else if managed {
+        // Managed mode configured but producer missing.
+        "install perllsp on PATH (or set [perl].executable), then: ripr check --languages perl"
+            .to_string()
+    } else {
+        // Explicit packet mode (or producer absent): supply --perl-facts.
+        "ripr check --perl-facts <packet.json> --diff <diff.patch> --json".to_string()
+    }
+}
+
 fn report_known_limitations() {
     println!("- Known limitations:");
     println!(
@@ -4199,8 +4961,8 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-fn report_config_status(root: &Path, ok: &mut bool) {
-    match load_for_root(root) {
+fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mut bool) {
+    match config {
         Ok(config) => {
             match config.source_path() {
                 Some(path) => {
@@ -4272,6 +5034,45 @@ pub(super) fn lsp(args: &[String]) -> Result<(), String> {
     crate::lsp::serve()
 }
 
+/// `ripr pr-summary` — binary-first PR readiness summary (Campaign 31 item 8).
+/// Composes existing RIPR artifacts into a PR evidence summary. Does NOT run
+/// analysis or invoke Cargo. The canonical downstream replacement for
+/// `cargo xtask ripr-pr-summary`.
+pub(super) fn pr_summary(args: &[String]) -> Result<(), String> {
+    crate::app::pr_summary::run_pr_summary(args)
+}
+
+/// `ripr annotations` — binary-first GitHub Actions annotations (item 8b).
+/// Reads comments.json and emits `::warning` annotation lines. The canonical
+/// downstream replacement for `cargo xtask ripr-annotations`.
+pub(super) fn annotations(args: &[String]) -> Result<(), String> {
+    crate::app::annotations::run_annotations(args)
+}
+
+/// `ripr pr-evidence` — binary-first PR evidence packet (Campaign 31 item 8c).
+/// Writes the PR diff, runs an in-process RIPR check, and composes the result
+/// into a PR evidence packet. The canonical downstream replacement for
+/// `cargo xtask ripr-pr`. Unlike the xtask, it calls `check_workspace`
+/// directly instead of shelling out to `cargo run -p ripr -- check`.
+pub(super) fn pr_evidence(args: &[String]) -> Result<(), String> {
+    crate::app::pr_evidence::run_pr_evidence(args)
+}
+
+/// `ripr impacted-evidence` — binary-first mutation-routing evidence (item 8e).
+/// Reads PR evidence + labels and emits routing decision JSON + Markdown.
+pub(super) fn impacted_evidence(args: &[String]) -> Result<(), String> {
+    crate::app::impacted_evidence::run_impacted_evidence(args)
+}
+
+/// `ripr plus` — binary-first RIPR+ repo receipt (composition-only).
+/// Composes the repo-wide RIPR+ quality-gate receipt from a pre-computed
+/// `repo-exposure-summary-json` or `--gap-ledger` artifact. The canonical
+/// downstream replacement for `cargo xtask ripr-plus`. Unlike the xtask, it
+/// is artifact-composition-only and does not run an in-process full-repo scan.
+pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
+    crate::app::ripr_plus::run_ripr_plus(args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4325,6 +5126,39 @@ mod tests {
                 .map_err(|err| format!("failed to copy sample file {relative}: {err}"))?;
         }
         Ok(dest)
+    }
+
+    #[test]
+    fn repo_scope_format_with_base_emits_scope_warning() -> Result<(), String> {
+        let warning = repo_scope_diff_bound_warning(OutputFormat::RepoExposureJson, true, None)
+            .ok_or_else(|| "repo-scoped format plus --base should warn".to_string())?;
+
+        assert!(warning.contains("format repo-exposure-json is repo-scoped"));
+        assert!(warning.contains("--base/--diff does not bound it"));
+        assert!(warning.contains("--format json"));
+        assert!(warning.contains("--format repo-exposure-summary-json"));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_scope_format_with_diff_emits_scope_warning() -> Result<(), String> {
+        let warning = repo_scope_diff_bound_warning(
+            OutputFormat::RepoSarif,
+            false,
+            Some(Path::new("changes.diff")),
+        )
+        .ok_or_else(|| "repo-scoped format plus --diff should warn".to_string())?;
+
+        assert!(warning.contains("format repo-sarif is repo-scoped"));
+        assert!(warning.contains("--base/--diff does not bound it"));
+        Ok(())
+    }
+
+    #[test]
+    fn diff_json_with_base_does_not_emit_repo_scope_warning() {
+        let warning = repo_scope_diff_bound_warning(OutputFormat::Json, true, None);
+
+        assert!(warning.is_none());
     }
 
     struct GeneratedWorkflowSmokeFixture<'a> {
@@ -4604,6 +5438,50 @@ mod tests {
     }
 
     #[test]
+    fn check_json_returns_limited_artifact_error_for_oversized_diff() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("oversized-diff");
+        let diff = root.join("oversized.diff");
+        std::fs::create_dir_all(&root)
+            .map_err(|err| format!("failed to create oversized diff root: {err}"))?;
+        std::fs::write(&diff, oversized_rust_diff(2001))
+            .map_err(|err| format!("failed to write oversized diff: {err}"))?;
+        let root_arg = root.to_string_lossy().into_owned();
+        let diff_arg = diff.to_string_lossy().into_owned();
+
+        let result = check(&[
+            "--root".to_string(),
+            root_arg,
+            "--diff".to_string(),
+            diff_arg,
+            "--json".to_string(),
+        ]);
+
+        let cleanup = std::fs::remove_dir_all(&root)
+            .map_err(|err| format!("failed to remove oversized diff root: {err}"));
+        assert!(
+            matches!(result, Err(ref message) if message.contains("diff_scope_oversized")),
+            "expected diff_scope_oversized error, got {result:?}"
+        );
+        cleanup
+    }
+
+    fn oversized_rust_diff(changed_lines: usize) -> String {
+        let mut diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             index 0000000..1111111 100644\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,{changed_lines} @@\n",
+        );
+        for index in 0..changed_lines {
+            diff.push_str(&format!(
+                "+pub fn generated_{index}() -> usize {{ {index} }}\n"
+            ));
+        }
+        diff
+    }
+
+    #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
@@ -4659,10 +5537,126 @@ mod tests {
         assert_eq!(
             reports(&args(&["unknown"])),
             Err(
-                "unknown reports subcommand \"unknown\"; expected `index` or `gap-ledger`"
+                "unknown reports subcommand \"unknown\"; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn reports_ts_limitations_requires_check_output_input() {
+        assert_eq!(
+            reports(&args(&["ts-limitations"])),
+            Err("reports ts-limitations requires --check-output PATH".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["ts-limitations", "--check-output"])),
+            Err("missing value for --check-output".to_string())
+        );
+    }
+
+    #[test]
+    fn reports_ts_limitations_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("ts-limitations");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create TypeScript limitations dir: {err}"))?;
+        let check_output =
+            repo_root().join("fixtures/typescript_static_limit_taxonomy/expected/check.json");
+        let out = dir.join("typescript-limitations.json");
+        let out_md = dir.join("typescript-limitations.md");
+
+        reports(&args(&[
+            "ts-limitations",
+            "--check-output",
+            &check_output.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read TypeScript limitations JSON: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&json_text)
+            .map_err(|err| format!("parse TypeScript limitations JSON: {err}"))?;
+        assert_eq!(value["kind"], "typescript_limitation_leaderboard");
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["summary"]["typescript_family_findings_total"], 4);
+        assert_eq!(
+            value["summary"]["top_limitation_kind"],
+            "typescript_package_root_unresolved"
+        );
+        assert!(json_text.contains("typescript_import_graph_unresolved"));
+        assert!(json_text.contains("static_limit_kind"));
+
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read TypeScript limitations Markdown: {err}"))?;
+        assert!(markdown.contains("# RIPR TypeScript Limitation Leaderboard"));
+        assert!(markdown.contains("typescript_package_root_unresolved"));
+        assert!(markdown.contains("badge artifacts keep their existing authority"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove TypeScript limitations dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reports_ts_false_actionable_requires_corpus_input() {
+        assert_eq!(
+            reports(&args(&["ts-false-actionable"])),
+            Err("reports ts-false-actionable requires --corpus PATH".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["ts-false-actionable", "--corpus"])),
+            Err("missing value for --corpus".to_string())
+        );
+    }
+
+    #[test]
+    fn reports_ts_false_actionable_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("ts-false-actionable");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create TypeScript false-actionable dir: {err}"))?;
+        let corpus =
+            repo_root().join("fixtures/typescript-preview-false-actionable-audit/corpus.json");
+        let out = dir.join("typescript-false-actionable-audit.json");
+        let out_md = dir.join("typescript-false-actionable-audit.md");
+
+        reports(&args(&[
+            "ts-false-actionable",
+            "--corpus",
+            &corpus.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read TypeScript false-actionable JSON: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&json_text)
+            .map_err(|err| format!("parse TypeScript false-actionable JSON: {err}"))?;
+        assert_eq!(value["kind"], "typescript_false_actionable_audit");
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["summary"]["cases_total"], 14);
+        assert_eq!(value["summary"]["false_actionable_total"], 0);
+        assert_eq!(value["summary"]["false_actionable_rate"], 0.0);
+        assert_eq!(value["summary"]["preview_boundary_violation_total"], 0);
+        assert!(
+            json_text.contains("This report does not edit source, generate tests, call providers")
+        );
+
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read TypeScript false-actionable Markdown: {err}"))?;
+        assert!(markdown.contains("# RIPR TypeScript False-Actionable Audit"));
+        assert!(markdown.contains("False actionable: `0` / `14` (`0.000`)"));
+        assert!(
+            markdown.contains("Gate-decision and badge artifacts keep their existing authority")
+        );
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove TypeScript false-actionable dir: {err}"))?;
+        Ok(())
     }
 
     #[test]
@@ -5045,6 +6039,7 @@ mod tests {
                 head: "HEAD".to_string(),
                 gap_ledger: None,
                 out: PathBuf::from("target/ripr/review/comments.json"),
+                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
         );
         assert_eq!(
@@ -5064,6 +6059,7 @@ mod tests {
                     "target/ripr/reports/gap-decision-ledger.json"
                 )),
                 out: PathBuf::from("target/ripr/review/comments.json"),
+                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
         );
     }
@@ -5184,6 +6180,7 @@ mod tests {
                     baseline: Some(PathBuf::from("target/ripr/reports/gate-baseline.json")),
                     mode: output::gate::GateMode::CalibratedGate,
                     acknowledgement_labels: vec!["custom-waive".to_string()],
+                    exception_policy: None,
                 },
                 out: PathBuf::from("target/ripr/reports/gate-decision.json"),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
@@ -5192,10 +6189,42 @@ mod tests {
     }
 
     #[test]
-    fn gate_rejects_bad_surface_and_unknown_args() {
+    fn pr_review_bare_dispatches_to_front_panel() {
+        // Bare `ripr pr-review` is the `front-panel` alias (#2013).
         assert_eq!(
-            gate(&args(&[])),
-            Err("gate requires subcommand `evaluate`".to_string())
+            pr_review(&args(&[])),
+            Err("pr-review front-panel requires at least one explicit artifact input".to_string())
+        );
+        assert_eq!(
+            pr_review(&args(&["bogus"])),
+            Err("unknown pr-review subcommand \"bogus\"; expected `front-panel`".to_string())
+        );
+    }
+
+    #[test]
+    fn gate_rejects_bad_surface_and_unknown_args() {
+        // Bare `ripr gate` is the `evaluate` alias (#2013): it dispatches
+        // instead of erroring on a missing subcommand. The full path writes
+        // the default report files, so they are cleaned on both sides.
+        for residue in [
+            "target/ripr/reports/gate-decision.json",
+            "target/ripr/reports/gate-decision.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        let bare_result = gate(&args(&[]));
+        for residue in [
+            "target/ripr/reports/gate-decision.json",
+            "target/ripr/reports/gate-decision.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        assert_eq!(
+            bare_result,
+            Err(
+                "ripr gate decision is config_error; see target/ripr/reports/gate-decision.json"
+                    .to_string()
+            )
         );
         assert_eq!(
             gate(&args(&["inspect"])),
@@ -5231,6 +6260,7 @@ mod tests {
                     baseline: None,
                     mode: output::gate::GateMode::VisibleOnly,
                     acknowledgement_labels: Vec::new(),
+                    exception_policy: None,
                 },
                 out: PathBuf::from(output::gate::DEFAULT_GATE_OUT),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
@@ -5504,9 +6534,10 @@ mod tests {
 
     #[test]
     fn ripr_zero_status_requires_inputs_and_rejects_unknown_args() {
+        // Bare `ripr zero` is the `status` alias (#2013).
         assert_eq!(
             zero(&args(&[])),
-            Err("zero requires subcommand `status`".to_string())
+            Err("zero status requires --delta <path>".to_string())
         );
         assert_eq!(
             zero(&args(&["unknown"])),
@@ -6490,9 +7521,13 @@ language = "rust"
 
     #[test]
     fn pr_evidence_ledger_requires_identity_and_evidence() {
+        // Bare `ripr pr-ledger` is the `record` alias (#2013).
         assert_eq!(
             pr_ledger(&args(&[])),
-            Err("pr-ledger requires subcommand `record`".to_string())
+            Err(
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
+                    .to_string()
+            )
         );
         assert_eq!(
             pr_ledger(&args(&["unknown"])),
@@ -6605,9 +7640,41 @@ language = "rust"
 
     #[test]
     fn pr_comments_plan_rejects_bad_subcommands_and_options() {
-        assert_eq!(
-            pr_comments(&args(&[])),
-            Err("pr-comments requires subcommand `plan`".to_string())
+        // Bare `ripr pr-comments` is the `plan` alias (#2013). The dispatch
+        // writes the default plan files, so they are cleaned on both sides.
+        for residue in [
+            "target/ripr/review/comment-publish-plan.json",
+            "target/ripr/review/comment-publish-plan.md",
+        ] {
+            let _ = std::fs::remove_file(residue);
+        }
+        let bare_result = pr_comments(&args(&[]));
+        let json_path = "target/ripr/review/comment-publish-plan.json";
+        let md_path = "target/ripr/review/comment-publish-plan.md";
+        let json_text = std::fs::read_to_string(json_path);
+        assert!(json_text.is_ok(), "bare dispatch must write {json_path}");
+        let json_text = json_text.unwrap_or_default();
+        let plan = serde_json::from_str::<serde_json::Value>(&json_text);
+        assert!(
+            plan.is_ok(),
+            "plan output must be valid JSON: {}",
+            plan.err().map(|err| err.to_string()).unwrap_or_default()
+        );
+        let plan = plan.unwrap_or_default();
+        assert!(
+            plan.get("schema_version").is_some() || plan.get("mode").is_some(),
+            "plan output lost its contract shape: {json_text}"
+        );
+        assert!(
+            std::path::Path::new(md_path).is_file(),
+            "bare dispatch must write the markdown plan"
+        );
+        for residue in [json_path, md_path] {
+            let _ = std::fs::remove_file(residue);
+        }
+        assert!(
+            bare_result.is_ok(),
+            "bare pr-comments must dispatch to plan with defaults"
         );
         assert_eq!(
             pr_comments(&args(&["publish"])),
@@ -6984,9 +8051,13 @@ language = "rust"
 
     #[test]
     fn coverage_grip_frontier_requires_movement_input() {
+        // Bare `ripr coverage-grip` is the `frontier` alias (#2013).
         assert_eq!(
             coverage_grip(&args(&[])),
-            Err("coverage-grip requires subcommand `frontier`".to_string())
+            Err(
+                "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                    .to_string()
+            )
         );
         assert_eq!(
             coverage_grip(&args(&["unknown"])),
@@ -7066,8 +8137,12 @@ language = "rust"
         let root = unique_command_test_dir("review-comments-diff-error");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
         let root_arg = root.display().to_string();
+        let out = root.join("comments.json");
+        let out_arg = out.display().to_string();
         let result = review_comments_with_diff_loader(
-            &args(&["--root", &root_arg, "--base", "main", "--head", "HEAD"]),
+            &args(&[
+                "--root", &root_arg, "--base", "main", "--head", "HEAD", "--out", &out_arg,
+            ]),
             |_root, _base, _head| Err("synthetic diff failure".to_string()),
         );
 
@@ -7246,7 +8321,20 @@ language = "rust"
             .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
         assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
         assert!(rendered_json.contains(r#""repair_card""#));
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse gap-ledger review comments JSON: {err}"))?;
+        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
+        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
+        assert_eq!(
+            value["analysis_scope"]["basis"],
+            "supplied_gap_decision_ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["changed_files"],
+            serde_json::json!(["src/pricing.rs"])
+        );
         assert!(rendered_md.contains("ripr first-action"));
+        assert!(rendered_md.contains("analysis scope: `gap_ledger_artifact`"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
@@ -9312,6 +10400,128 @@ language = "rust"
         assert_eq!(doctor(&args(&[])), Ok(()));
     }
 
+    #[test]
+    fn doctor_core_report_fails_closed_for_invalid_config() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-invalid-config");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
+            .map_err(|err| format!("write invalid config: {err}"))?;
+
+        let report = output::doctor::evaluate_doctor_core(&dir);
+        if report.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "invalid config should fail, got {:?}",
+                report.status
+            ));
+        }
+        let config_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "config")
+            .ok_or_else(|| "missing config check".to_string())?;
+        if config_check.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "invalid config check should fail, got {:?}",
+                config_check.status
+            ));
+        }
+        if !config_check
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("invalid ripr.toml"))
+        {
+            return Err(format!(
+                "invalid config evidence was not actionable: {:?}",
+                config_check.evidence
+            ));
+        }
+
+        let json = report.render_json()?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| format!("parse report JSON: {err}"))?;
+        if value["status"] != "fail"
+            || value["checks"][2]["name"] != "config"
+            || value["checks"][2]["status"] != "fail"
+        {
+            return Err(format!("unexpected invalid-config JSON report: {value}"));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_core_report_fails_closed_for_missing_root() -> Result<(), String> {
+        let root = unique_command_test_dir("doctor-missing-root");
+        if root.exists() {
+            return Err(format!("test root unexpectedly exists: {}", root.display()));
+        }
+
+        let report = output::doctor::evaluate_doctor_core(&root);
+        if report.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!("missing root should fail, got {:?}", report.status));
+        }
+        let root_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "root_directory")
+            .ok_or_else(|| "missing root-directory check".to_string())?;
+        if root_check.status != output::doctor::DoctorStatus::Fail {
+            return Err(format!(
+                "missing root check should fail, got {:?}",
+                root_check.status
+            ));
+        }
+        if !root_check
+            .evidence
+            .as_deref()
+            .is_some_and(|evidence| evidence.contains("does not exist"))
+        {
+            return Err(format!(
+                "missing root evidence was not actionable: {:?}",
+                root_check.evidence
+            ));
+        }
+        Ok(())
+    }
+
+    // Deterministic missing-tool and empty-report-passes assertions live with
+    // the moved model in `output::doctor::tests` now
+    // (`doctor_tool_check_fails_closed_for_guaranteed_missing_tool`,
+    // `empty_report_is_pass`). This test keeps the integration-level proof
+    // that the `--json` doctor path fails closed for a malformed config.
+    #[test]
+    fn doctor_json_and_tool_failures_return_errors() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-json-invalid-config");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
+            .map_err(|err| format!("write invalid config: {err}"))?;
+        if doctor_json(&dir).is_ok() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err("invalid JSON doctor report unexpectedly passed".to_string());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_human_projection_fails_for_missing_root() -> Result<(), String> {
+        let root = unique_command_test_dir("doctor-human-missing-root");
+        if root.exists() {
+            return Err(format!("test root unexpectedly exists: {}", root.display()));
+        }
+        let root_arg = root.to_string_lossy().into_owned();
+        if doctor(&args(&["--root", &root_arg])).is_ok() {
+            return Err("human doctor unexpectedly passed for missing root".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_json_flag_accepts_explicit_root() -> Result<(), String> {
+        doctor(&args(&["--json", "--root", "."]))
+    }
+
     // --- preview_language_enable_suggestions tests ---
 
     /// When TypeScript files are detected in a directory that has no ripr.toml
@@ -9429,6 +10639,17 @@ language = "rust"
             check(&args(&["--wat"])),
             Err("unknown check argument \"--wat\"".to_string())
         );
+    }
+
+    #[test]
+    fn check_rejects_diff_file_plus_worktree_mode() -> Result<(), String> {
+        let result = check(&args(&["--diff", "change.patch", "--worktree"]));
+        match result {
+            Err(message) if message == "check --worktree cannot be combined with --diff" => Ok(()),
+            other => Err(format!(
+                "expected --diff plus --worktree rejection, got {other:?}"
+            )),
+        }
     }
 
     #[test]

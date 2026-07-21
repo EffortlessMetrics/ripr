@@ -1,3 +1,4 @@
+use crate::analysis::cancellation;
 use crate::analysis::language::{LanguageAdapter, LanguageId, RustAdapter, route};
 use std::path::{Path, PathBuf};
 
@@ -66,6 +67,7 @@ fn visit(
     let entries =
         std::fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
     for entry in entries {
+        cancellation::checkpoint()?;
         let entry = entry.map_err(|err| format!("failed to read dir entry: {err}"))?;
         let path = entry.path();
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");

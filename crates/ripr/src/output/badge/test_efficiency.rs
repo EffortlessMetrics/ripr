@@ -476,6 +476,7 @@ fn ripr_plus_badge_summary_from_exposure(
         policy,
         warnings,
         preview_skipped,
+        projection: None,
     }
 }
 

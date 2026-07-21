@@ -18,7 +18,23 @@ pub fn render(output: &CheckOutput) -> String {
 
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
+    // Findings suppressed by an explicit `--suppression-policy` (#1441) are
+    // not annotated: filtering PR-annotation noise on accepted surfaces is
+    // the purpose of the policy. The JSON surface keeps them visible.
+    let suppressed_ids: std::collections::BTreeSet<&str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| entry.finding_id.as_str())
+        })
+        .collect();
     for finding in &output.findings {
+        if suppressed_ids.contains(finding.id.as_str()) {
+            continue;
+        }
         let Some(annotation_level) = config
             .severity()
             .for_exposure(&finding.class)
@@ -96,6 +112,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 }
             }
         }
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6 formal scope-down):
+        // this `perl_preview_card` call is a bespoke renderer that violates
+        // ADR-0019's "no bespoke packet renderer" rule. It remains because the
+        // shared path (`perl_gap_record_for` → `validate_agent_gap_record_packet`)
+        // returns `None` for real Perl findings until perl-lsp-swarm Phase B.
+        // It is hard-pinned to advisory-only (`advisory_only_readiness()`); the
+        // regression test `perl_preview_card_advisory_only_readiness_never_flips_authority`
+        // proves no authority flag can flip true. Full decommissioning is the
+        // post-Phase-B PR.
         if let Some(card) = perl_preview_card(finding) {
             message.push_str(" Perl preview card: missing discriminator `");
             message.push_str(&card.missing_discriminator);
@@ -238,7 +263,10 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -310,7 +338,10 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -372,7 +403,10 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);
@@ -539,6 +573,28 @@ mod tests {
         assert!(!rendered.contains("Python repair card"));
     }
 
+    #[test]
+    fn render_skips_policy_suppressed_findings() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = output_with_unknown_finding();
+        let finding_id = output.findings[0].id.clone();
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: vec![SuppressedCheckFinding {
+                finding_id,
+                selector: "src/**".to_string(),
+            }],
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.is_empty(),
+            "policy-suppressed findings must not be annotated: {rendered}"
+        );
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
@@ -592,7 +648,10 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         }
     }
 
@@ -867,7 +926,10 @@ mod tests {
                 alignment_reason: None,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
         };
 
         let rendered = render(&output);

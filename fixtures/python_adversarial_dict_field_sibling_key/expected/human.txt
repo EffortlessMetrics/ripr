@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_dict_field_sibling_key/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/conf.py:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/conf.py:build_config:field_value:field_construction:return_host_localhost_port_9090
+  Changed behavior: return {"host": "localhost", "port": 9090}
+  Missing discriminator: A strong Python oracle reaches `build_config`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. …
+  Related test: tests/test_conf.py:4 test_host
+  Suggested test file: tests/test_conf.py
+  Suggested test: test_host
+  Test node: tests/test_conf.py::test_host
+  Verify command: pytest tests/test_conf.py::test_host (high)
+  Next step: Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `host == "localhost"`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `build_config`
+    - infection yes: Changed Python field or attribute construction can alter object state: `return {"host": "localhost", "port": 9090}`
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

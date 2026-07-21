@@ -9,6 +9,7 @@ mod commands_timestamps;
 mod execute;
 mod help;
 mod parse;
+mod rerun;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
     execute::execute(parse::parse_args(args)?)

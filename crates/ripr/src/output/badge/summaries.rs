@@ -150,6 +150,7 @@ pub fn ripr_badge_summary_with_suppressions(
         policy,
         warnings: suppression_app.warnings,
         preview_skipped,
+        projection: None,
     }
 }
 
@@ -246,6 +247,7 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
     }
 }
 
@@ -321,6 +323,7 @@ pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
     }
 }
 
@@ -374,6 +377,7 @@ pub(crate) fn repo_gap_ledger_badge_summary_from_json(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
     })
 }
 
