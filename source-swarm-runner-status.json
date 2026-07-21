@@ -1,0 +1,53 @@
+{
+  "total_count": 4,
+  "workflow_runs": [
+    {
+      "id": 29865318710,
+      "name": "Source Swarm Promotion Runner",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "head_sha": "10e61d7ccacc50f5d17bad3919c37708206c5137",
+      "head_branch": "agent/source-swarm-sync-runner-2026-07-21",
+      "created_at": "2026-07-21T20:20:17Z",
+      "updated_at": "2026-07-21T20:24:45Z",
+      "html_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/29865318710"
+    },
+    {
+      "id": 29864442838,
+      "name": "Source Swarm Sync Runner",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "7b829225985c64050e670a5bffc09307e7ee5007",
+      "head_branch": "agent/source-swarm-sync-runner-2026-07-21",
+      "created_at": "2026-07-21T20:07:49Z",
+      "updated_at": "2026-07-21T20:11:05Z",
+      "html_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/29864442838"
+    },
+    {
+      "id": 29864057661,
+      "name": "Source Swarm Sync Runner",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "993954a0472b4b99daaead54f415645e7900c733",
+      "head_branch": "agent/source-swarm-sync-runner-2026-07-21",
+      "created_at": "2026-07-21T20:02:25Z",
+      "updated_at": "2026-07-21T20:02:46Z",
+      "html_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/29864057661"
+    },
+    {
+      "id": 29864001620,
+      "name": "Source Swarm Sync Runner",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "4a9552a8ac27fe1a63769628be9e2a28964a6d94",
+      "head_branch": "agent/source-swarm-sync-runner-2026-07-21",
+      "created_at": "2026-07-21T20:01:37Z",
+      "updated_at": "2026-07-21T20:01:55Z",
+      "html_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/29864001620"
+    }
+  ]
+}
