@@ -21,6 +21,8 @@ const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'python', scheme: 'file' }
 ];
 
+const SHOW_OUTPUT_ACTION = 'Show Output';
+
 const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
 const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
   ['.rs', 'rust'],
@@ -153,7 +155,7 @@ export interface RiprClientRuntime {
   writeClipboard(text: string): Promise<void>;
   isWorkspaceTrusted(): boolean;
   showInformationMessage(message: string): Thenable<string | undefined>;
-  showWarningMessage(message: string): Thenable<string | undefined>;
+  showWarningMessage(message: string, ...items: string[]): Thenable<string | undefined>;
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
 }
 
@@ -185,7 +187,7 @@ const defaultRuntime: RiprClientRuntime = {
   },
   isWorkspaceTrusted: () => vscode.workspace.isTrusted,
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
-  showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+  showWarningMessage: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
   showErrorMessage: (message, ...items) => vscode.window.showErrorMessage(message, ...items)
 };
 
@@ -445,7 +447,7 @@ export class RiprClientController {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the first repair packet. See ripr output for details.');
+        this.warnWithOutput('ripr could not copy the first repair packet.');
       }
       return;
     }
@@ -462,7 +464,7 @@ export class RiprClientController {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr copy static-limit note failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the static-limit note. See ripr output for details.');
+        this.warnWithOutput('ripr could not copy the static-limit note.');
       }
       return;
     }
@@ -539,7 +541,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr context failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
+      this.warnWithOutput(`ripr context failed for ${selector}.`);
     }
   }
 
@@ -581,7 +583,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr start current repair failed to collect code actions: ${message}`);
-      this.runtime.showWarningMessage('ripr could not collect current repair actions. See ripr output for details.');
+      this.warnWithOutput('ripr could not collect current repair actions.');
       return;
     }
 
@@ -615,7 +617,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the suggested assertion.');
     }
   }
 
@@ -631,7 +633,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the targeted test brief.');
     }
   }
 
@@ -653,7 +655,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy agent loop command failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the agent loop command.');
     }
   }
 
@@ -674,7 +676,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy current repair packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the current repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the current repair packet.');
     }
   }
 
@@ -691,7 +693,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy repo gap map failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repo gap map. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repo gap map.');
     }
   }
 
@@ -716,7 +718,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open first-pr packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the first-pr packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the first-pr packet.');
     }
   }
 
@@ -802,7 +804,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open related test failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the related test.');
     }
   }
 
@@ -884,12 +886,24 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy first-pr ${label} failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr could not copy the first-pr ${label}. See ripr output for details.`);
+      this.warnWithOutput(`ripr could not copy the first-pr ${label}.`);
     }
   }
 
   showOutput(): void {
     this.output.show();
+  }
+
+  private warnWithOutput(message: string): void {
+    void Promise.resolve(this.runtime.showWarningMessage(message, SHOW_OUTPUT_ACTION))
+      .then((choice) => {
+        if (choice === SHOW_OUTPUT_ACTION) {
+          this.showOutput();
+        }
+      })
+      .catch((error) => {
+        this.output.appendLine(`ripr warning notification failed: ${String(error)}`);
+      });
   }
 
   showStatus(): Promise<void> {
@@ -1194,7 +1208,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopRepairPacket clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repair packet.');
     }
   }
 
@@ -1222,7 +1236,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopVerifyCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the verify command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the verify command.');
     }
   }
 
@@ -1250,7 +1264,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1283,7 +1297,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open report failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the report. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the report.');
     }
   }
 
@@ -1419,7 +1433,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1444,7 +1458,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr openAttemptLedger failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the attempt ledger. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the attempt ledger.');
     }
   }
 
