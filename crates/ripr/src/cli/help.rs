@@ -224,6 +224,7 @@ mod tests {
         assert!(HELP.contains("ripr agent review-summary"));
         assert!(HELP.contains("ripr swarm queue"));
         assert!(HELP.contains("ripr swarm ingest"));
+        assert!(HELP.contains("ripr plus"));
         assert!(HELP.contains("ripr diff"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
