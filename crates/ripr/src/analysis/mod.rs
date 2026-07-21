@@ -56,6 +56,94 @@ pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {
     workspace::discover_rust_files(root).unwrap_or_default()
 }
 
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn targeted_typescript_findings_for_scope(
+    root: &Path,
+    config: &crate::config::RiprConfig,
+    file: &Path,
+    line: Option<u64>,
+) -> Result<Vec<Finding>, String> {
+    use diff::{ChangedFile, ChangedLine};
+    use language::{LanguageAdapter, TypeScriptAdapter};
+
+    // Ledger-supplied anchors are untrusted input: reject absolute paths and
+    // parent traversal so a crafted rerun scope cannot read outside `root`.
+    if file.is_absolute()
+        || file
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "TypeScript rerun scope {} escapes the workspace root",
+            file.display()
+        ));
+    }
+    let absolute = root.join(file);
+    let source = std::fs::read_to_string(&absolute).map_err(|err| {
+        format!(
+            "read TypeScript rerun scope {} failed: {err}",
+            absolute.display()
+        )
+    })?;
+    let mut added_lines = Vec::new();
+    match line {
+        Some(line) if line > 0 => {
+            let line_usize = usize::try_from(line)
+                .map_err(|err| format!("TypeScript rerun scope line {line} is too large: {err}"))?;
+            let text = source
+                .lines()
+                .nth(line_usize.saturating_sub(1))
+                .ok_or_else(|| {
+                    format!(
+                        "TypeScript rerun scope {} no longer has line {line}",
+                        file.display()
+                    )
+                })?
+                .to_string();
+            added_lines.push(ChangedLine {
+                line: line_usize,
+                text,
+                new_side_line: line_usize,
+            });
+        }
+        Some(line) => {
+            return Err(format!(
+                "TypeScript rerun scope line must be 1-based; got {line}"
+            ));
+        }
+        None => {
+            for (index, text) in source.lines().enumerate() {
+                let line = index + 1;
+                added_lines.push(ChangedLine {
+                    line,
+                    text: text.to_string(),
+                    new_side_line: line,
+                });
+            }
+        }
+    }
+
+    let options = AnalysisOptions {
+        root: root.to_path_buf(),
+        base: None,
+        diff_file: None,
+        mode: AnalysisMode::Draft,
+        include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
+        resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
+        perl_facts_path: None,
+    };
+    let result = TypeScriptAdapter.analyze_diff(
+        &options,
+        config.oracles(),
+        &[ChangedFile {
+            path: file.to_path_buf(),
+            added_lines,
+            removed_lines: Vec::new(),
+        }],
+    )?;
+    Ok(result.findings)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TypeScriptRepoReadiness {
     pub(crate) source_file_count: usize,

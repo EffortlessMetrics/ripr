@@ -1,3 +1,5 @@
+#[cfg(feature = "lang-typescript")]
+use crate::analysis::targeted_typescript_findings_for_scope;
 use crate::analysis::{
     canonical_gap::canonical_gap_identity,
     inventory_changed_test_classified_seams_at_with_config_node,
@@ -11,6 +13,8 @@ use crate::cli::help;
 use crate::cli::parse::expect_value;
 use crate::output::gap_decision_ledger::{GapRecord, parse_gap_record_source_json};
 use crate::output::outcome::{TargetedRerunStaticSeam, targeted_rerun_movement_from_json};
+#[cfg(feature = "lang-typescript")]
+use crate::output::typescript_packet_projection::typescript_canonical_gap_id;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -529,6 +533,32 @@ fn rerun_gap(
     let mut input_fingerprint = None;
     let mut seams = BTreeMap::<String, TargetedRerunSeam>::new();
     for scope in scopes {
+        #[cfg(feature = "lang-typescript")]
+        if is_typescript_scope(&scope) {
+            let current = targeted_typescript_findings_for_scope(
+                root,
+                config,
+                &scope.file,
+                anchor_line_for_scope(&records, &scope),
+            )?;
+            let scope_seams = current
+                .iter()
+                .filter(|finding| {
+                    typescript_canonical_gap_id(&finding.id) == canonical_gap_id
+                        || record_evidence_ids_for_scope(&records, &scope).contains(&finding.id)
+                })
+                .collect::<Vec<_>>();
+            if scope_seams.is_empty() {
+                push_scope_unresolved(&mut scope_limitations, &records, &scope, canonical_gap_id);
+                continue;
+            }
+            for finding in scope_seams {
+                let seam = typescript_seam_from_finding(finding, canonical_gap_id);
+                seams.entry(seam.seam_id.clone()).or_insert(seam);
+            }
+            continue;
+        }
+
         let changed_files = vec![scope.file.clone()];
         let changed_owner_names = scope.owner.iter().cloned().collect::<Vec<_>>();
         let inventory = inventory_diff_scoped_classified_seams_at_with_config(
@@ -554,16 +584,7 @@ fn rerun_gap(
             })
             .collect::<Vec<_>>();
         if scope_seams.is_empty() {
-            for record_index in record_indexes_for_scope(&records, &scope) {
-                scope_limitations.push(TargetedRerunScopeLimitation {
-                    kind: "gap_scope_unresolved",
-                    record_index,
-                    message: format!(
-                        "anchored scope {} no longer contains canonical gap `{canonical_gap_id}`",
-                        display_scope(&scope)
-                    ),
-                });
-            }
+            push_scope_unresolved(&mut scope_limitations, &records, &scope, canonical_gap_id);
             continue;
         }
         for entry in scope_seams {
@@ -612,6 +633,132 @@ fn rerun_gap(
         ..ResolvedRerunScope::default()
     });
     Ok(report)
+}
+
+fn push_scope_unresolved(
+    scope_limitations: &mut Vec<TargetedRerunScopeLimitation>,
+    records: &[(usize, GapRecord)],
+    scope: &GapRerunScope,
+    canonical_gap_id: &str,
+) {
+    for record_index in record_indexes_for_scope(records, scope) {
+        scope_limitations.push(TargetedRerunScopeLimitation {
+            kind: "gap_scope_unresolved",
+            record_index,
+            message: format!(
+                "anchored scope {} no longer contains canonical gap `{canonical_gap_id}`",
+                display_scope(scope)
+            ),
+        });
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn is_typescript_scope(scope: &GapRerunScope) -> bool {
+    matches!(
+        scope.file.extension().and_then(|ext| ext.to_str()),
+        Some("ts" | "tsx" | "js" | "jsx")
+    )
+}
+
+#[cfg(feature = "lang-typescript")]
+fn anchor_line_for_scope(records: &[(usize, GapRecord)], scope: &GapRerunScope) -> Option<u64> {
+    records.iter().find_map(|(_, record)| {
+        let anchor = record.anchor.as_ref()?;
+        let file = anchor.file.as_deref()?.trim();
+        if Path::new(file) == scope.file {
+            anchor.line
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(feature = "lang-typescript")]
+fn record_evidence_ids_for_scope(
+    records: &[(usize, GapRecord)],
+    scope: &GapRerunScope,
+) -> BTreeSet<String> {
+    records
+        .iter()
+        .filter(|(_, record)| {
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref())
+                .is_some_and(|file| Path::new(file.trim()) == scope.file)
+        })
+        .flat_map(|(_, record)| record.evidence_ids.iter().cloned())
+        .collect()
+}
+
+#[cfg(feature = "lang-typescript")]
+fn typescript_seam_from_finding(
+    finding: &crate::domain::Finding,
+    canonical_gap_id: &str,
+) -> TargetedRerunSeam {
+    TargetedRerunSeam {
+        canonical_gap_id: Some(canonical_gap_id.to_string()),
+        seam_id: finding.id.clone(),
+        file: display_path(&finding.probe.location.file),
+        line: finding.probe.location.line,
+        owner: finding
+            .probe
+            .owner
+            .as_ref()
+            .map(|owner| owner.0.clone())
+            .unwrap_or_else(|| "typescript:<unknown>".to_string()),
+        static_class: finding.class.as_str().to_string(),
+        // Preview-language reruns are advisory before/after comparisons, never
+        // repair-ready: fail closed into StaticLimitation with the adapter's
+        // own evidence split rather than fabricating readiness.
+        repair_route_readiness: crate::analysis::repair_route::RepairRouteReadiness {
+            state: crate::analysis::repair_route::RepairRouteState::StaticLimitation,
+            seam_id: finding.id.clone(),
+            canonical_gap_id: Some(canonical_gap_id.to_string()),
+            required_evidence: finding
+                .evidence
+                .iter()
+                .chain(finding.missing.iter())
+                .cloned()
+                .collect(),
+            present_evidence: finding.evidence.clone(),
+            missing_evidence: finding.missing.clone(),
+            target_selection: crate::analysis::repair_route::RepairTargetSelection::Missing,
+            test_target: None,
+            proposed_oracle: None,
+            current_oracle: None,
+            authority_boundary: crate::analysis::repair_route::REPAIR_ROUTE_AUTHORITY_BOUNDARY,
+        },
+        related_tests: finding
+            .related_tests
+            .iter()
+            .map(|test| TargetedRerunRelatedTest {
+                test_name: test.name.clone(),
+                file: display_path(&test.file),
+                line: test.line,
+                oracle_kind: test.oracle_kind.as_str().to_string(),
+                oracle_strength: test.oracle_strength.as_str().to_string(),
+                evidence_summary: test.oracle.clone().unwrap_or_default(),
+                relation_reason: test
+                    .relation_reason
+                    .map(|reason| reason.as_str().to_string())
+                    .unwrap_or_default(),
+                relation_confidence: test
+                    .relation_confidence
+                    .map(|confidence| confidence.as_str().to_string())
+                    .unwrap_or_default(),
+            })
+            .collect(),
+        missing_discriminators: finding
+            .missing
+            .iter()
+            .map(|value| TargetedRerunMissingDiscriminator {
+                value: value.clone(),
+                reason: value.clone(),
+            })
+            .collect(),
+    }
 }
 
 fn entry_matches_selected_gap(
@@ -1501,8 +1648,8 @@ mod tests {
         TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
         cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
         graph_provenance_unavailable_fields, input_fingerprint_changes, parity_mismatch_fields,
-        parse_options, render_human, resolve_gap_records, route_from_gap_records, same_root,
-        scopes_from_gap_records, seam_from, seam_matches_resolved_scope,
+        parse_options, render_human, rerun_gap, resolve_gap_records, route_from_gap_records,
+        same_root, scopes_from_gap_records, seam_from, seam_matches_resolved_scope,
     };
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::classify_seam;
@@ -1513,13 +1660,18 @@ mod tests {
     };
     use crate::analysis::seam_cache::FileFactCacheStats;
     use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
+    #[cfg(feature = "lang-typescript")]
+    use crate::analysis::targeted_typescript_findings_for_scope;
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
     };
+    use crate::config::RiprConfig;
     use crate::domain::{
         Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     };
     use crate::output::gap_decision_ledger::{GapAnchor, GapRecord};
+    #[cfg(feature = "lang-typescript")]
+    use crate::output::typescript_packet_projection::typescript_canonical_gap_id;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
@@ -1548,6 +1700,195 @@ mod tests {
             receipt_command: receipt_command.map(str::to_string),
             ..GapRecord::default()
         }
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn canonical_gap_rerun_recomputes_typescript_scope() -> Result<(), String> {
+        let root = unique_temp_root("ts-rerun")?;
+        write_file(
+            &root.join("src/discount.ts"),
+            "export function applyDiscount(amount: number, discount: number) {\n  return amount - discount;\n}\n",
+        )?;
+        write_file(
+            &root.join("tests/discount.test.ts"),
+            "import { applyDiscount } from '../src/discount';\n\ntest('applies discount', () => {\n  expect(applyDiscount(10000, 100)).toBe(9900);\n});\n",
+        )?;
+
+        let config = RiprConfig::default();
+        let findings = targeted_typescript_findings_for_scope(
+            &root,
+            &config,
+            Path::new("src/discount.ts"),
+            Some(2),
+        )?;
+        let finding = findings
+            .first()
+            .ok_or_else(|| "expected TypeScript finding from rerun scope".to_string())?;
+        let canonical_gap_id = typescript_canonical_gap_id(&finding.id);
+        let ledger_path = root.join("target/ripr/gaps.json");
+        write_file(
+            &ledger_path,
+            &format!(
+                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"src/discount.ts","line":2,"owner":"applyDiscount"}},"evidence_ids":["{}"],"verification_commands":["npm test -- tests/discount.test.ts"],"receipt_command":"ripr outcome --before before.json --after after.json --format json"}}]}}"#,
+                root.display(),
+                canonical_gap_id,
+                finding.id
+            ),
+        )?;
+
+        let report = rerun_gap(&root, &config, &canonical_gap_id, &ledger_path)?;
+        let _ = std::fs::remove_dir_all(&root);
+        if report.state != "current_state_only"
+            || report.seams.len() != 1
+            || report.seams[0].canonical_gap_id.as_deref() != Some(canonical_gap_id.as_str())
+            || report.seams[0].file != "src/discount.ts"
+        {
+            return Err(format!(
+                "TypeScript rerun did not select the anchored current seam: state={} seams={}",
+                report.state,
+                report.seams.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn typescript_rerun_covers_every_accepted_extension() -> Result<(), String> {
+        for extension in ["ts", "tsx", "js", "jsx"] {
+            let root = unique_temp_root(&format!("ts-rerun-ext-{extension}"))?;
+            let source = format!("src/discount.{extension}");
+            // Type annotations only in TypeScript-family fixtures; .js/.jsx
+            // fixtures must be plain ECMAScript or the control is unfaithful.
+            let body = if extension.starts_with("ts") {
+                "export function applyDiscount(amount: number, discount: number) {\n  return amount - discount;\n}\n"
+            } else {
+                "export function applyDiscount(amount, discount) {\n  return amount - discount;\n}\n"
+            };
+            write_file(&root.join(&source), body)?;
+            let config = RiprConfig::default();
+            let findings = crate::analysis::targeted_typescript_findings_for_scope(
+                &root,
+                &config,
+                Path::new(&source),
+                Some(2),
+            )?;
+            let finding = findings
+                .first()
+                .ok_or_else(|| format!("expected TypeScript finding for .{extension} scope"))?;
+            let canonical_gap_id = typescript_canonical_gap_id(&finding.id);
+            let ledger_path = root.join("target/ripr/gaps.json");
+            write_file(
+                &ledger_path,
+                &format!(
+                    r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"{}","line":2,"owner":"applyDiscount"}},"evidence_ids":["{}"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
+                    root.display(),
+                    canonical_gap_id,
+                    source,
+                    finding.id
+                ),
+            )?;
+            let report = rerun_gap(&root, &config, &canonical_gap_id, &ledger_path)?;
+            let _ = std::fs::remove_dir_all(&root);
+            if report.seams.len() != 1
+                || report.seams[0].canonical_gap_id.as_deref() != Some(canonical_gap_id.as_str())
+            {
+                return Err(format!(
+                    "TypeScript rerun did not select the anchored seam for .{extension}: state={} seams={}",
+                    report.state,
+                    report.seams.len()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn typescript_rerun_scope_rejects_root_escaping_anchors() -> Result<(), String> {
+        let root = unique_temp_root("ts-rerun-escape")?;
+        let config = RiprConfig::default();
+        for escaping in [
+            Path::new("../outside.ts"),
+            Path::new("src/../../outside.ts"),
+            Path::new("/etc/hostname"),
+        ] {
+            match crate::analysis::targeted_typescript_findings_for_scope(
+                &root,
+                &config,
+                escaping,
+                Some(1),
+            ) {
+                Err(message) if message.contains("escapes the workspace root") => {}
+                other => {
+                    let _ = std::fs::remove_dir_all(&root);
+                    return Err(format!(
+                        "escaping anchor {} was not rejected: {other:?}",
+                        escaping.display()
+                    ));
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn typescript_rerun_without_current_seam_fails_closed() -> Result<(), String> {
+        let root = unique_temp_root("ts-rerun-no-match")?;
+        write_file(
+            &root.join("src/other.ts"),
+            "export function other(amount: number) {\n  return amount + 1;\n}\n",
+        )?;
+        let config = RiprConfig::default();
+        let ledger_path = root.join("target/ripr/gaps.json");
+        write_file(
+            &ledger_path,
+            &format!(
+                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"gap:typescript:missing","language":"typescript","anchor":{{"file":"src/other.ts","line":1,"owner":"other"}},"evidence_ids":["missing"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
+                root.display()
+            ),
+        )?;
+        let report = rerun_gap(&root, &config, "gap:typescript:missing", &ledger_path)?;
+        let _ = std::fs::remove_dir_all(&root);
+        if !report
+            .scope_limitations
+            .iter()
+            .any(|limitation| limitation.kind == "gap_scope_unresolved")
+        {
+            return Err(format!(
+                "unmatched TypeScript rerun fabricated a current seam: state={} seams={}",
+                report.state,
+                report.seams.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    fn unique_temp_root(name: &str) -> Result<PathBuf, String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| err.to_string())?
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+        Ok(root)
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    fn write_file(path: &Path, contents: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        std::fs::write(path, contents)
+            .map_err(|err| format!("write {} failed: {err}", path.display()))
     }
 
     #[test]
