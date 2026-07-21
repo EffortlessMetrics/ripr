@@ -5078,7 +5078,9 @@ mod tests {
     use super::*;
     use crate::app::agent_brief::AgentBriefLine;
     use crate::cli::agent::AgentBriefWorkingSet;
-    use crate::cli::commands_agent_support::normalize_agent_brief_path;
+    use crate::cli::commands_agent_support::{
+        normalize_agent_brief_path, resolve_agent_brief_working_set,
+    };
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -8815,6 +8817,77 @@ language = "rust"
             PathBuf::from("src/lib.rs")
         );
 
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_files_reject_parent_dir_escape() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-brief-files-escape");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let result = resolve_agent_brief_working_set(
+            &root,
+            &AgentBriefWorkingSet::Files(vec![PathBuf::from("../../secret")]),
+        );
+
+        let Err(message) = result else {
+            return Err("expected a confinement error, got Ok".to_string());
+        };
+        assert!(
+            message.contains("must stay under root"),
+            "unexpected error: {message}"
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_files_reject_absolute_path_outside_root() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-brief-files-abs");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let outside = unique_command_test_dir("agent-brief-files-outside");
+
+        let result = resolve_agent_brief_working_set(
+            &root,
+            &AgentBriefWorkingSet::Files(vec![outside.join("secret.rs")]),
+        );
+
+        let Err(message) = result else {
+            return Err("expected a confinement error, got Ok".to_string());
+        };
+        assert!(
+            message.contains("must stay under root"),
+            "unexpected error: {message}"
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_files_accept_relative_and_absolute_under_root() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("agent-brief-files-ok");
+        let src = root.join("src");
+        std::fs::create_dir_all(&src).map_err(|err| format!("create src dir: {err}"))?;
+        let absolute_under_root = std::env::current_dir()
+            .map_err(|err| format!("read current dir: {err}"))?
+            .join(&root)
+            .join("src/lib.rs");
+
+        let resolved = resolve_agent_brief_working_set(
+            &root,
+            &AgentBriefWorkingSet::Files(vec![PathBuf::from("src/lib.rs"), absolute_under_root]),
+        );
+
+        let Ok(resolved) = resolved else {
+            return Err(format!("expected confinement to accept, got {resolved:?}"));
+        };
+        // Output contract: both spellings resolve to the same confined
+        // repo-relative path — not merely any non-empty path (#2100 review).
+        assert_eq!(
+            resolved.files,
+            vec![PathBuf::from("src/lib.rs"), PathBuf::from("src/lib.rs")]
+        );
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
     }
