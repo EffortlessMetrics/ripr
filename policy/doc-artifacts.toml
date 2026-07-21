@@ -602,3 +602,11 @@ path = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Accepted contract for #1565: canonical per-URI diagnostic ordering, root-independent diagnostic identities, unchanged publication suppression, removed-URI clearing, normalized equivalent-root digest comparison, and server-side publication telemetry. No editor prompt-cache, latency, runtime mutation, or test-adequacy claim."
+
+[[artifact]]
+id = "RIPR-SPEC-0131"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Issue #1599 protocol contract slice: ratifies capability-only riprAgent v0.1 request, success, and error envelopes with independent protocol/schema identities, repository-owned JSON schemas, closed vocabularies, and recovery routes; supported_requests and supported_profiles remain empty, with no handlers, source edits, provider integration, lifecycle, or repair-usefulness claim."

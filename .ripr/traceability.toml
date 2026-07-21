@@ -6982,3 +6982,42 @@ metrics = [
   "authority_map_coverage",
   "legacy_dialect_conformance",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0131"
+name = "versioned capability-only riprAgent protocol contract"
+spec = "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md"
+tests = [
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::reserved_protocol_vocabularies_are_closed_and_unique",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::capability_is_fail_closed_until_handlers_land",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::version_identities_are_explicit_and_independent",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::unsupported_protocol_major_is_rejected",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::request_envelope_keeps_mode_and_profile_typed",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::success_and_error_envelopes_are_typed_and_bounded",
+  "crates/ripr/src/lsp/agent_protocol.rs::tests::source_edit_boundary_is_explicitly_read_only",
+]
+fixtures = [
+  "fixtures/lsp_agent_protocol",
+  "fixtures/lsp_agent_protocol/capability.json",
+  "fixtures/lsp_agent_protocol/requests",
+  "fixtures/lsp_agent_protocol/errors",
+  "fixtures/lsp_agent_protocol/negative",
+]
+code = [
+  "crates/ripr/src/lsp/agent_protocol.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md",
+  "docs/specs/README.md",
+  "policy/doc-artifacts.toml",
+  "schemas/ripr/ripr-agent-capability.schema.json",
+  "schemas/ripr/ripr-agent-request.schema.json",
+  "schemas/ripr/ripr-agent-success.schema.json",
+  "schemas/ripr/ripr-agent-error.schema.json",
+]
+metrics = [
+  "ripr_agent_protocol_version_discoverable",
+  "ripr_agent_reserved_vocabulary_closed",
+  "ripr_agent_capability_fail_closed",
+]

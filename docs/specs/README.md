@@ -141,3 +141,4 @@ observable behavior.
 | [RIPR-SPEC-0128](RIPR-SPEC-0128-active-goal-authority-audit.md) | proposed | Deterministic audit-only inventory of singleton active-goal consumers, migration blockers, proof, and rollback |
 | [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | proposed | Three-layer editor integration contract (standard LSP, enhanced VS Code, headless riprAgent) and support matrix |
 | [RIPR-SPEC-0130](RIPR-SPEC-0130-ripr-authority-map.md) | proposed | RIPR source-of-truth authority map: canonical paths for every artifact category, plus a legacy-dialect conformance fixture |
+| [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | proposed | Versioned, capability-only riprAgent protocol, DTO envelopes, closed vocabularies, schemas, and recovery rules |
