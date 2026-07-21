@@ -47,3 +47,12 @@ status = "proposed"
 owner = "product-swarm"
 created = "2026-07-15"
 standalone_reason = "The first RIPR-SPEC v2 control-plane requirement is the bounded walking-skeleton source for issues #1667, #1672, and #1676; no separate product proposal is required."
+
+[[artifact]]
+id = "RIPR-PROP-0019"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0019-partial-diff-scope-contract.md"
+status = "proposed"
+owner = "product-swarm"
+created = "2026-07-21"
+standalone_reason = "Partial diff-scope contract for #1918/#1999: deterministic whole-file partition selection, separate partial budget beside the hard analysis-cost guards, lower-bound uninspected accounting, gate/baseline/badge/Zero ineligibility, and partition identity for comparable runs."

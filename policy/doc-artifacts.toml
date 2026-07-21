@@ -618,3 +618,11 @@ path = "docs/specs/RIPR-SPEC-0132-spec-v2-runtime-promotion.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "First RIPR-SPEC v2 requirement: a spec/governance slice may define or amend a runtime requirement but cannot mark runtime behavior implemented, claim current runtime proof, or promote runtime support without compatible implementation and evidence dispositions. Walking skeleton for #1667/#1672/#1676."
+
+[[artifact]]
+id = "RIPR-PROP-0019"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0019-partial-diff-scope-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Partial diff-scope contract for #1918/#1999: deterministic whole-file partition selection, separate partial budget beside the hard analysis-cost guards, lower-bound uninspected accounting, gate/baseline/badge/Zero ineligibility, and partition identity for comparable runs."
