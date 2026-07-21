@@ -20,8 +20,9 @@ use super::gap_artifacts::{
 use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
 use super::input_identity::LspAnalysisInputIdentity;
 use super::lens::{code_lens_response, lens_title_is_static_language_clean};
+use super::progress::ProgressEvent;
 use super::refresh_scheduler::{
-    RefreshAttemptOutcome, RefreshReason, RefreshRequest, RefreshScope,
+    RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
 };
 use super::state::{
     AnalysisAttemptState, AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration,
@@ -58,7 +59,7 @@ use tower_lsp_server::ls_types::{
     Position, PositionEncodingKind, PreviousResultId, Range, TextDocumentContentChangeEvent,
     TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
     TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
-    WorkspaceDiagnosticParams, WorkspaceFolder,
+    WindowClientCapabilities, WorkspaceDiagnosticParams, WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -8009,4 +8010,626 @@ fn spec_0105_seams_deferred_run_status_value_is_not_full() -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Standard LSP work-done progress for analysis requests (#1971)
+// ────────────────────────────────────────────────────────────────────────────
+
+fn work_done_progress_runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))
+}
+
+fn work_done_progress_request(backend: &Backend, revision: u64) -> Result<RefreshDecision, String> {
+    Ok(backend.refresh_scheduler_for_test().request(
+        PathBuf::from("/workspace"),
+        LspAnalysisConfig::default(),
+        revision,
+        0,
+        RefreshScope::Interactive,
+        RefreshReason::DidSave,
+    ))
+}
+
+fn started_request(decision: &RefreshDecision) -> Result<RefreshRequest, String> {
+    let RefreshDecision::Start(request) = decision else {
+        return Err(format!("expected Start decision, got {decision:?}"));
+    };
+    Ok(request.as_ref().clone())
+}
+
+fn progress_end_events(events: &[ProgressEvent]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ProgressEvent::End { token, message } => Some((token.clone(), message.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn work_done_progress_capability_is_recorded_at_initialize() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = InitializeParams::default();
+        params.capabilities.window = Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        });
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        if !backend.progress.is_supported() {
+            return Err("capable client must enable work-done progress".to_string());
+        }
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(InitializeParams::default())
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        if backend.progress.is_supported() {
+            return Err("capability-absent client must not enable progress".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_success_run_ends_complete_exactly_once() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let decision = work_done_progress_request(backend, 1)?;
+        let request = started_request(&decision)?;
+        backend.emit_progress_for_decision(&decision).await;
+
+        // Simulate the successful publish: commit a full snapshot, then end
+        // the attempt with the same outcome mapping the refresh loop uses.
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        backend
+            .refresh_plan(sample_workspace_diagnostics(
+                PathBuf::from("/workspace"),
+                uri,
+                Vec::new(),
+                Vec::new(),
+            ))
+            .ok_or_else(|| "expected committed snapshot".to_string())?;
+        backend.record_health_outcome(&request, RefreshAttemptOutcome::Published);
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Published)
+            .await;
+        // A repeated terminal path must not emit a second end.
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Published)
+            .await;
+
+        let events = sink.events();
+        let token = "ripr-analysis-1".to_string();
+        let expected = vec![
+            ProgressEvent::Create {
+                token: token.clone(),
+            },
+            ProgressEvent::Begin {
+                token: token.clone(),
+                title: "ripr analysis".to_string(),
+                message: "analyzing workspace (did_save)".to_string(),
+            },
+            ProgressEvent::End {
+                token: token.clone(),
+                message: "analysis complete".to_string(),
+            },
+        ];
+        if events != expected {
+            return Err(format!("success lifecycle drifted: {events:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_queued_then_success_reuses_one_token() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let first = work_done_progress_request(backend, 1)?;
+        let first_request = started_request(&first)?;
+        backend.emit_progress_for_decision(&first).await;
+
+        let second = work_done_progress_request(backend, 2)?;
+        if !matches!(
+            second,
+            RefreshDecision::Queued {
+                superseded_pending: None,
+                ..
+            }
+        ) {
+            return Err(format!("expected first queued request, got {second:?}"));
+        }
+        backend.emit_progress_for_decision(&second).await;
+
+        let third = work_done_progress_request(backend, 3)?;
+        if !matches!(
+            third,
+            RefreshDecision::Queued {
+                superseded_pending: Some(2),
+                ..
+            }
+        ) {
+            return Err(format!(
+                "expected queued replacement superseding generation 2, got {third:?}"
+            ));
+        }
+        backend.emit_progress_for_decision(&third).await;
+
+        // The active attempt finishes and the newest queued request starts on
+        // the SAME token it began with.
+        let Some(next) = backend
+            .refresh_scheduler_for_test()
+            .finish(&first_request, true)
+        else {
+            return Err("queued request should become active".to_string());
+        };
+        backend
+            .progress
+            .transition_to_analyzing(next.generation)
+            .await;
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        backend
+            .refresh_plan(sample_workspace_diagnostics(
+                PathBuf::from("/workspace"),
+                uri,
+                Vec::new(),
+                Vec::new(),
+            ))
+            .ok_or_else(|| "expected committed snapshot".to_string())?;
+        backend.record_health_outcome(&next, RefreshAttemptOutcome::Published);
+        backend
+            .end_progress_for_attempt(&next, RefreshAttemptOutcome::Published)
+            .await;
+
+        let events = sink.events();
+        // Generation 2 was replaced while queued: ended superseded, and it
+        // never transitioned to analyzing.
+        let ends = progress_end_events(&events);
+        if ends
+            != vec![
+                (
+                    "ripr-analysis-2".to_string(),
+                    "analysis superseded by a newer request".to_string(),
+                ),
+                (
+                    "ripr-analysis-3".to_string(),
+                    "analysis complete".to_string(),
+                ),
+            ]
+        {
+            return Err(format!("unexpected terminal ends: {ends:?} in {events:?}"));
+        }
+        let generation3: Vec<&ProgressEvent> = events
+            .iter()
+            .filter(|event| match event {
+                ProgressEvent::Create { token }
+                | ProgressEvent::Begin { token, .. }
+                | ProgressEvent::Report { token, .. }
+                | ProgressEvent::End { token, .. } => token == "ripr-analysis-3",
+            })
+            .collect();
+        let expected_sequence = vec![
+            "Create", "Begin", "Report", "End",
+        ];
+        let actual_sequence: Vec<&str> = generation3
+            .iter()
+            .map(|event| match event {
+                ProgressEvent::Create { .. } => "Create",
+                ProgressEvent::Begin { .. } => "Begin",
+                ProgressEvent::Report { .. } => "Report",
+                ProgressEvent::End { .. } => "End",
+            })
+            .collect();
+        if actual_sequence != expected_sequence {
+            return Err(format!(
+                "queued request must begin queued, report analyzing on the same token, then end: {events:?}"
+            ));
+        }
+        if !matches!(
+            generation3.get(1),
+            Some(ProgressEvent::Begin { message, .. }) if message.starts_with("queued")
+        ) {
+            return Err(format!("generation 3 must begin as queued: {events:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_deduplicated_request_creates_no_token() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let first = work_done_progress_request(backend, 1)?;
+        let first_request = started_request(&first)?;
+        backend.emit_progress_for_decision(&first).await;
+        let accepted_events = sink.events().len();
+
+        // Same input while active: deduplicated, no progress.
+        let duplicate_active = work_done_progress_request(backend, 1)?;
+        if duplicate_active != RefreshDecision::Deduplicated {
+            return Err(format!("expected Deduplicated, got {duplicate_active:?}"));
+        }
+        backend.emit_progress_for_decision(&duplicate_active).await;
+        if sink.events().len() != accepted_events {
+            return Err(format!(
+                "deduplicated request created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+
+        // Same input after authoritative completion: still deduplicated.
+        if backend
+            .refresh_scheduler_for_test()
+            .finish(&first_request, true)
+            .is_some()
+        {
+            return Err("no request should remain after the active request".to_string());
+        }
+        let duplicate_completed = work_done_progress_request(backend, 1)?;
+        if duplicate_completed != RefreshDecision::Deduplicated {
+            return Err(format!(
+                "expected Deduplicated after completion, got {duplicate_completed:?}"
+            ));
+        }
+        backend
+            .emit_progress_for_decision(&duplicate_completed)
+            .await;
+        if sink.events().len() != accepted_events {
+            return Err(format!(
+                "completed-input dedup created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_cancelled_superseded_and_not_started_terminal_ends() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let mut expected_ends = Vec::new();
+        for (revision, outcome, message) in [
+            (
+                1_u64,
+                RefreshAttemptOutcome::Cancelled,
+                "analysis cancelled",
+            ),
+            (
+                2_u64,
+                RefreshAttemptOutcome::Superseded,
+                "analysis superseded by a newer request",
+            ),
+            (
+                3_u64,
+                RefreshAttemptOutcome::NotStarted,
+                "analysis did not start",
+            ),
+        ] {
+            let decision = work_done_progress_request(backend, revision)?;
+            let request = started_request(&decision)?;
+            backend.emit_progress_for_decision(&decision).await;
+            backend.end_progress_for_attempt(&request, outcome).await;
+            // Repeated terminal paths (guard + loop, invalidation + loop)
+            // must stay exactly-once.
+            backend.end_progress_for_attempt(&request, outcome).await;
+            if backend
+                .refresh_scheduler_for_test()
+                .finish(&request, false)
+                .is_some()
+            {
+                return Err("no pending request expected in this scenario".to_string());
+            }
+            expected_ends.push((format!("ripr-analysis-{revision}"), message.to_string()));
+        }
+
+        let ends = progress_end_events(&sink.events());
+        if ends != expected_ends {
+            return Err(format!("unexpected terminal ends: {ends:?}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_failed_end_carries_kind_not_paths() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+
+        let decision = work_done_progress_request(backend, 1)?;
+        let request = started_request(&decision)?;
+        backend.emit_progress_for_decision(&decision).await;
+        backend
+            .report_refresh_failure_after(
+                &request,
+                "analysis blew up at /workspace/src/pricing.rs".to_string(),
+                Duration::from_millis(3),
+                "analysis_error",
+            )
+            .await;
+        backend
+            .end_progress_for_attempt(&request, RefreshAttemptOutcome::Failed)
+            .await;
+
+        let ends = progress_end_events(&sink.events());
+        if ends
+            != vec![(
+                "ripr-analysis-1".to_string(),
+                "analysis failed (analysis_error)".to_string(),
+            )]
+        {
+            return Err(format!("unexpected failed end: {ends:?}"));
+        }
+        let message = &ends[0].1;
+        if message.contains("/workspace") || message.contains(".rs") {
+            return Err(format!("progress end leaked a path: {message}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_no_traffic_when_root_or_config_unavailable_before_start() -> Result<(), String>
+{
+    work_done_progress_runtime()?.block_on(async {
+        // Root authority unavailable: refresh returns before any request is
+        // accepted, so no token may be created.
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let sink = backend.install_progress_recorder();
+        backend
+            .refresh_diagnostics(RefreshScope::Full, RefreshReason::ExplicitRefresh)
+            .await;
+        if !sink.events().is_empty() {
+            return Err(format!(
+                "root-unavailable refresh created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+
+        // Configuration failure: refresh returns before the scheduler
+        // accepts a request, so again no token.
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        backend.set_configuration_failure("bad config for test");
+        let sink = backend.install_progress_recorder();
+        backend
+            .refresh_diagnostics(RefreshScope::Full, RefreshReason::ExplicitRefresh)
+            .await;
+        if !sink.events().is_empty() {
+            return Err(format!(
+                "config-failed refresh created progress traffic: {:?}",
+                sink.events()
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// Drive a real `ripr lsp` server over duplex IO through one explicit
+/// refresh and collect the work-done-progress traffic on the wire (#1971).
+/// Returns (workDoneProgress/create requests, $/progress notifications).
+async fn run_wire_refresh_with_progress_capability(
+    root: &Path,
+    work_done_progress_capable: bool,
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+    let (mut client_read, mut client_write) = tokio::io::split(client_io);
+    let (server_read, server_write) = tokio::io::split(server_io);
+    let backend_root = root.to_path_buf();
+    let (service, socket) =
+        LspService::new(move |client| Backend::new(client, backend_root.clone()));
+    let server_task = tokio::spawn(async move {
+        Server::new(server_read, server_write, socket)
+            .serve(service)
+            .await;
+    });
+
+    let root_uri = file_uri_for_path(root)?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "processId": null,
+                "rootUri": root_uri.as_str(),
+                // A base ref that cannot resolve makes the real analysis
+                // fail fast, so the refresh ends as failed instead of
+                // scanning the enclosing repository.
+                "initializationOptions": {
+                    "baseRef": "ripr-lsp-progress-missing-base"
+                },
+                "capabilities": {
+                    "window": {"workDoneProgress": work_done_progress_capable}
+                }
+            }
+        }),
+    )
+    .await?;
+    read_lsp_response(&mut client_read, 1).await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+    )
+    .await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "workspace/executeCommand",
+            "params": {"command": REFRESH_COMMAND, "arguments": []}
+        }),
+    )
+    .await?;
+
+    let mut creates = Vec::new();
+    let mut progress = Vec::new();
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let message = read_lsp_message(&mut client_read).await?;
+            if message.get("id").and_then(serde_json::Value::as_u64) == Some(2)
+                && message.get("method").is_none()
+            {
+                return Ok::<(), String>(());
+            }
+            match message.get("method").and_then(serde_json::Value::as_str) {
+                Some("window/workDoneProgress/create") => {
+                    let id = message
+                        .get("id")
+                        .cloned()
+                        .ok_or_else(|| "create request carried no id".to_string())?;
+                    creates.push(message.clone());
+                    write_lsp_message(
+                        &mut client_write,
+                        serde_json::json!({"jsonrpc": "2.0", "id": id, "result": null}),
+                    )
+                    .await?;
+                }
+                Some("$/progress") => progress.push(message.clone()),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .map_err(|_elapsed| {
+        format!("refresh timed out; creates={creates:?} progress={progress:?}")
+    })??;
+
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null}),
+    )
+    .await?;
+    read_lsp_response(&mut client_read, 3).await?;
+    write_lsp_message(
+        &mut client_write,
+        serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+    )
+    .await?;
+    tokio::time::timeout(Duration::from_secs(10), server_task)
+        .await
+        .map_err(|_elapsed| "server did not stop after exit".to_string())?
+        .map_err(|err| format!("server task failed: {err}"))?;
+    Ok((creates, progress))
+}
+
+#[test]
+fn work_done_progress_failed_end_through_real_refresh_on_broken_workspace() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let root = unique_lsp_test_root("progress-analysis-error")?;
+        let (creates, progress) =
+            run_wire_refresh_with_progress_capability(root.path(), true).await?;
+
+        if creates.len() != 1 {
+            return Err(format!(
+                "accepted refresh must create exactly one progress token: {creates:?}"
+            ));
+        }
+        let token = creates[0]["params"]["token"]
+            .as_str()
+            .ok_or_else(|| "create request carried no token".to_string())?
+            .to_string();
+        // The generation is not pinned to 1: root resolution at initialize
+        // advances the scheduler generation without creating progress.
+        if !token.starts_with("ripr-analysis-") {
+            return Err(format!("unexpected progress token: {token}"));
+        }
+
+        let kinds: Vec<&str> = progress
+            .iter()
+            .filter_map(|message| message["params"]["value"]["kind"].as_str())
+            .collect();
+        if kinds != vec!["begin", "end"] {
+            return Err(format!(
+                "failed refresh must begin then end exactly once: {progress:?}"
+            ));
+        }
+        let begin = &progress[0]["params"];
+        if begin["token"].as_str() != Some(token.as_str())
+            || begin["value"]["title"].as_str() != Some("ripr analysis")
+        {
+            return Err(format!(
+                "begin drifted from the created token: {progress:?}"
+            ));
+        }
+        let begin_message = begin["value"]["message"]
+            .as_str()
+            .ok_or_else(|| "begin carried no phase message".to_string())?;
+        if !begin_message.contains("analyzing") {
+            return Err(format!(
+                "begin must announce the analyzing phase: {begin_message}"
+            ));
+        }
+        if !begin["value"]["percentage"].is_null()
+            || !progress[1]["params"]["value"]["percentage"].is_null()
+        {
+            return Err(format!(
+                "no fabricated percentages may be emitted: {progress:?}"
+            ));
+        }
+        let end = &progress[1]["params"];
+        let end_message = end["value"]["message"]
+            .as_str()
+            .ok_or_else(|| "end carried no terminal message".to_string())?;
+        if end["token"].as_str() != Some(token.as_str())
+            || !end_message.starts_with("analysis failed")
+        {
+            return Err(format!(
+                "broken workspace must end as failed on the same token: {progress:?}"
+            ));
+        }
+        if end_message.contains(root.path().to_string_lossy().as_ref()) {
+            return Err(format!(
+                "progress end leaked the workspace path: {end_message}"
+            ));
+        }
+        drop(root);
+        Ok(())
+    })
+}
+
+#[test]
+fn work_done_progress_capability_absent_refresh_emits_no_traffic() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        let root = unique_lsp_test_root("progress-capability-absent")?;
+        let (creates, progress) =
+            run_wire_refresh_with_progress_capability(root.path(), false).await?;
+        if !creates.is_empty() || !progress.is_empty() {
+            return Err(format!(
+                "capability-absent client received progress traffic: creates={creates:?} progress={progress:?}"
+            ));
+        }
+        drop(root);
+        Ok(())
+    })
 }

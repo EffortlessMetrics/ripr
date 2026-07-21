@@ -2,7 +2,7 @@ use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
 use super::capabilities::{
     WorkspaceRootResolution, client_supports_diagnostic_refresh, client_supports_pull_diagnostics,
-    initialize_result_for_client, root_from_initialize_params,
+    client_supports_work_done_progress, initialize_result_for_client, root_from_initialize_params,
 };
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
@@ -14,6 +14,7 @@ use super::hover::{
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
 use super::lens::code_lens_response;
+use super::progress::{AnalysisProgressEnd, AnalysisProgressPhase, AnalysisProgressTracker};
 use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler,
     RefreshScope,
@@ -93,6 +94,7 @@ pub(super) struct Backend {
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
+    pub(super) progress: Arc<AnalysisProgressTracker>,
 }
 
 pub(super) struct RefreshTransaction {
@@ -104,7 +106,6 @@ pub(super) struct RefreshTransaction {
 impl Backend {
     pub(super) fn new(client: Client, root: PathBuf) -> Self {
         Self {
-            client,
             root: Mutex::new(root.clone()),
             workspace_root: Mutex::new(WorkspaceRootAuthority::unavailable(
                 "workspace root authority is awaiting initialization",
@@ -125,6 +126,8 @@ impl Backend {
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
             refresh_idle: Notify::new(),
+            progress: Arc::new(AnalysisProgressTracker::new(client.clone())),
+            client,
         }
     }
 
@@ -211,6 +214,7 @@ impl Backend {
             scope,
             reason,
         );
+        self.emit_progress_for_decision(&decision).await;
         let mut request = match decision {
             RefreshDecision::Start(request) => {
                 let request = *request;
@@ -218,7 +222,7 @@ impl Backend {
                 self.publish_analysis_status().await;
                 request
             }
-            RefreshDecision::Queued { generation } => {
+            RefreshDecision::Queued { generation, .. } => {
                 if let Some(request) = self.refresh_scheduler.pending_request(generation) {
                     self.mark_pending_attempt(&request);
                     self.publish_analysis_status().await;
@@ -255,6 +259,7 @@ impl Backend {
                 .record_attempt_outcome(outcome, attempt_duration);
             self.record_health_outcome(&request, outcome);
             self.publish_analysis_status().await;
+            self.end_progress_for_attempt(&request, outcome).await;
             self.log_refresh_attempt_outcome(outcome, attempt_duration)
                 .await;
             let Some(next) = self
@@ -267,6 +272,9 @@ impl Backend {
             };
             request = next;
             cancellation_guard.update(request.clone());
+            self.progress
+                .transition_to_analyzing(request.generation)
+                .await;
             self.mark_attempt_running(&request);
             self.publish_analysis_status().await;
         }
@@ -389,6 +397,9 @@ impl Backend {
             snapshot,
             previous_diagnostics,
         } = transaction;
+        // Bounded report at a real phase boundary: analysis produced a
+        // consistent snapshot and diagnostic publication is next.
+        self.progress.report_publishing(request.generation).await;
         let push_delivery = !self.pull_diagnostics_enabled();
         let published_uri_count = if push_delivery {
             plan.publish_batches.len()
@@ -736,6 +747,18 @@ impl Backend {
     }
 
     #[cfg(test)]
+    pub(super) fn install_progress_recorder(&self) -> Arc<super::progress::RecordingSink> {
+        let sink = Arc::new(super::progress::RecordingSink::default());
+        self.progress.install_recorder(Arc::clone(&sink));
+        sink
+    }
+
+    #[cfg(test)]
+    pub(super) fn refresh_scheduler_for_test(&self) -> &RefreshScheduler {
+        &self.refresh_scheduler
+    }
+
+    #[cfg(test)]
     pub(super) fn is_current_refresh_generation(&self, generation: u64) -> bool {
         self.refresh_scheduler.is_current_generation(generation)
     }
@@ -886,6 +909,82 @@ impl Backend {
             health.last_success_input_identity = snapshot.input_identity_id();
         }
         health
+    }
+
+    /// Emit work-done progress lifecycle events for a scheduler decision
+    /// (#1971). Only accepted requests create progress: `Start` begins as
+    /// `analyzing`, `Queued` begins as `queued` (and first terminates the
+    /// token of the pending generation it replaced, which will never run).
+    /// `Deduplicated` and `Stopped` are not accepted work and emit nothing.
+    pub(super) async fn emit_progress_for_decision(&self, decision: &RefreshDecision) {
+        match decision {
+            RefreshDecision::Start(request) => {
+                self.progress
+                    .begin(request, AnalysisProgressPhase::Analyzing)
+                    .await;
+            }
+            RefreshDecision::Queued {
+                generation,
+                superseded_pending,
+            } => {
+                if let Some(superseded) = superseded_pending {
+                    self.progress
+                        .end(*superseded, AnalysisProgressEnd::Superseded)
+                        .await;
+                }
+                if let Some(request) = self.refresh_scheduler.pending_request(*generation) {
+                    self.progress
+                        .begin(&request, AnalysisProgressPhase::Queued)
+                        .await;
+                }
+            }
+            RefreshDecision::Deduplicated | RefreshDecision::Stopped => {}
+        }
+    }
+
+    /// Terminal end for one attempt, derived from the same outcome and
+    /// recorded health as `ripr/analysisStatus`, so the progress end message
+    /// agrees with the analysis status surface. The tracker guarantees the
+    /// end is emitted exactly once per generation.
+    pub(super) async fn end_progress_for_attempt(
+        &self,
+        request: &RefreshRequest,
+        outcome: RefreshAttemptOutcome,
+    ) {
+        let end = self.progress_end_for(request, outcome);
+        self.progress.end(request.generation, end).await;
+    }
+
+    pub(super) fn progress_end_for(
+        &self,
+        request: &RefreshRequest,
+        outcome: RefreshAttemptOutcome,
+    ) -> AnalysisProgressEnd {
+        let health = self.analysis_health_snapshot();
+        let health_is_for_request = health.attempt_id == Some(request.generation);
+        match outcome {
+            RefreshAttemptOutcome::Published => {
+                // Agrees with the snapshot run status: `full` completes;
+                // every disclosed limited state (`seams_deferred`,
+                // `limited`, `cache_limited`, `stale`) ends as limited.
+                if health_is_for_request && health.run_status() == "full" {
+                    AnalysisProgressEnd::Complete
+                } else {
+                    AnalysisProgressEnd::Limited(health.run_status().to_string())
+                }
+            }
+            RefreshAttemptOutcome::Failed => {
+                let kind = if health_is_for_request {
+                    health.failure.map(|failure| failure.kind)
+                } else {
+                    None
+                };
+                AnalysisProgressEnd::Failed(kind)
+            }
+            RefreshAttemptOutcome::Cancelled => AnalysisProgressEnd::Cancelled,
+            RefreshAttemptOutcome::Superseded => AnalysisProgressEnd::Superseded,
+            RefreshAttemptOutcome::NotStarted => AnalysisProgressEnd::NotStarted,
+        }
     }
 
     fn mark_attempt_queued(&self, request: &RefreshRequest) {
@@ -1172,6 +1271,9 @@ impl Backend {
             || previous.candidate_roots != authority.candidate_roots;
         if changed {
             self.refresh_scheduler.invalidate_input();
+            self.progress
+                .end_queued(AnalysisProgressEnd::Superseded)
+                .await;
             let uris = self.clear_all_diagnostic_uris();
             if !self.pull_diagnostics_enabled() {
                 for uri in uris {
@@ -1246,7 +1348,18 @@ impl Backend {
         }
     }
 
-    fn set_configuration_failure(&self, message: impl Into<String>) {
+    /// Invalidate analysis input and terminate the progress token of any
+    /// queued request the invalidation dropped before it could start (#1971).
+    /// The active (analyzing) token is left for the refresh loop's
+    /// outcome-based end.
+    async fn invalidate_analysis_input_and_end_queued_progress(&self, reason: &str) {
+        self.invalidate_analysis_input(reason);
+        self.progress
+            .end_queued(AnalysisProgressEnd::Superseded)
+            .await;
+    }
+
+    pub(super) fn set_configuration_failure(&self, message: impl Into<String>) {
         let failure = AnalysisFailure {
             kind: "config_invalid".to_string(),
             message: bounded_failure_message(&message.into()),
@@ -1297,7 +1410,10 @@ impl Backend {
                 self.clear_configuration_failure();
                 if next != current || had_configuration_failure {
                     self.set_analysis_config(next);
-                    self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+                    self.invalidate_analysis_input_and_end_queued_progress(
+                        RefreshReason::ConfigReload.as_str(),
+                    )
+                    .await;
                     self.publish_analysis_status().await;
                     self.refresh_diagnostics(
                         RefreshScope::Interactive,
@@ -1309,7 +1425,10 @@ impl Backend {
                 }
             }
             Err(error) => {
-                self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+                self.invalidate_analysis_input_and_end_queued_progress(
+                    RefreshReason::ConfigReload.as_str(),
+                )
+                .await;
                 self.set_configuration_failure(error);
                 self.publish_analysis_status().await;
             }
@@ -1338,7 +1457,10 @@ impl Backend {
             self.publish_analysis_status().await;
             return;
         }
-        self.invalidate_analysis_input(RefreshReason::ConfigReload.as_str());
+        self.invalidate_analysis_input_and_end_queued_progress(
+            RefreshReason::ConfigReload.as_str(),
+        )
+        .await;
         self.publish_analysis_status().await;
         self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
             .await;
@@ -1498,6 +1620,27 @@ impl Drop for RefreshCancellationGuard<'_> {
     fn drop(&mut self) {
         if self.armed && self.scheduler.cancel(&self.request) {
             self.backend.mark_attempt_cancelled(&self.request);
+            // The refresh loop is being dropped mid-flight (e.g. the
+            // dispatcher cancelled the future), so its outcome-based end
+            // never runs. Terminate this generation's token plus any queued
+            // token the scheduler just cancelled. Best-effort: the send is
+            // spawned because Drop is synchronous; the tracker's registry
+            // keeps the end exactly-once.
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                let progress = Arc::clone(&self.backend.progress);
+                let generation = self.request.generation;
+                runtime.spawn(async move {
+                    progress
+                        .end(generation, AnalysisProgressEnd::Cancelled)
+                        .await;
+                    progress.end_queued(AnalysisProgressEnd::Cancelled).await;
+                });
+            }
+            // Invariant: guard drops outside a current tokio runtime (sync
+            // teardown) skip the best-effort end entirely. That is accepted
+            // rather than hidden: the tracker's registry never emits a second
+            // end, and a skipped end only leaves the client without a terminal
+            // for a generation that never produced diagnostics.
             self.idle.notify_waiters();
         }
     }
@@ -1876,6 +2019,8 @@ impl LanguageServer for Backend {
         if let Ok(mut supported) = self.diagnostic_refresh_support.lock() {
             *supported = supports_diagnostic_refresh;
         }
+        self.progress
+            .set_supported(client_supports_work_done_progress(&params));
         let supports_dynamic_registration = params
             .capabilities
             .workspace
@@ -1934,7 +2079,10 @@ impl LanguageServer for Backend {
             self.reload_repository_config().await;
         }
         if workspace_graph_changed {
-            self.invalidate_analysis_input("workspace_manifest_or_lockfile_changed");
+            self.invalidate_analysis_input_and_end_queued_progress(
+                "workspace_manifest_or_lockfile_changed",
+            )
+            .await;
             self.publish_analysis_status().await;
             self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
                 .await;
@@ -1970,6 +2118,7 @@ impl LanguageServer for Backend {
 
     async fn shutdown(&self) -> LspResult<()> {
         self.refresh_scheduler.stop();
+        self.progress.end_all(AnalysisProgressEnd::Cancelled).await;
         self.clear_all_diagnostic_uris();
         self.reset_health_for_input_change();
         self.publish_analysis_status().await;
@@ -4886,5 +5035,116 @@ mod push_budget_disclosure_tests {
             "fallback disclosure must name the partial state explicitly: {message}"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod work_done_progress_guard_tests {
+    use super::*;
+    use crate::lsp::progress::ProgressEvent;
+    use tower_lsp_server::LspService;
+
+    #[test]
+    fn dropped_refresh_guard_ends_active_and_queued_progress_exactly_once() -> Result<(), String> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to start test runtime: {err}"))?;
+        runtime.block_on(async {
+            let (service, _socket) =
+                LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+            let backend = service.inner();
+            let sink = backend.install_progress_recorder();
+
+            let first = backend.refresh_scheduler.request(
+                PathBuf::from("/workspace"),
+                LspAnalysisConfig::default(),
+                1,
+                0,
+                RefreshScope::Interactive,
+                RefreshReason::DidSave,
+            );
+            let RefreshDecision::Start(first) = &first else {
+                return Err(format!("expected Start decision, got {first:?}"));
+            };
+            let first = first.as_ref().clone();
+            backend
+                .emit_progress_for_decision(&RefreshDecision::Start(Box::new(first.clone())))
+                .await;
+            let second = backend.refresh_scheduler.request(
+                PathBuf::from("/workspace"),
+                LspAnalysisConfig::default(),
+                2,
+                0,
+                RefreshScope::Interactive,
+                RefreshReason::DidSave,
+            );
+            if !matches!(second, RefreshDecision::Queued { .. }) {
+                return Err(format!("expected Queued decision, got {second:?}"));
+            }
+            backend.emit_progress_for_decision(&second).await;
+
+            // Dropping the armed guard simulates the refresh future being
+            // cancelled mid-flight: it cancels the active and queued work and
+            // must terminate both progress tokens.
+            {
+                let _guard = RefreshCancellationGuard::new(
+                    backend,
+                    &backend.refresh_scheduler,
+                    &backend.refresh_idle,
+                    first.clone(),
+                );
+            }
+            // The end sends are spawned from Drop; let them run.
+            for _ in 0..20 {
+                tokio::task::yield_now().await;
+                let ends = sink
+                    .events()
+                    .iter()
+                    .filter(|event| matches!(event, ProgressEvent::End { .. }))
+                    .count();
+                if ends == 2 {
+                    break;
+                }
+            }
+
+            let events = sink.events();
+            let ends: Vec<(String, String)> = events
+                .iter()
+                .filter_map(|event| match event {
+                    ProgressEvent::End { token, message } => Some((token.clone(), message.clone())),
+                    _ => None,
+                })
+                .collect();
+            let expected = vec![
+                (
+                    "ripr-analysis-1".to_string(),
+                    "analysis cancelled".to_string(),
+                ),
+                (
+                    "ripr-analysis-2".to_string(),
+                    "analysis cancelled".to_string(),
+                ),
+            ];
+            if ends != expected {
+                return Err(format!(
+                    "guard drop must cancel both tokens exactly once: {ends:?} in {events:?}"
+                ));
+            }
+            // The guard cancellation path is terminal: a later loop-style end
+            // for the same generations must be a no-op.
+            backend
+                .end_progress_for_attempt(&first, RefreshAttemptOutcome::Cancelled)
+                .await;
+            let ends_after: usize = sink
+                .events()
+                .iter()
+                .filter(|event| matches!(event, ProgressEvent::End { .. }))
+                .count();
+            if ends_after != 2 {
+                return Err("terminal end must stay exactly-once after guard drop".to_string());
+            }
+            Ok(())
+        })
     }
 }

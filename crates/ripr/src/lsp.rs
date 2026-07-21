@@ -11,6 +11,7 @@ mod hover;
 mod input_identity;
 mod lens;
 mod position;
+mod progress;
 mod refresh_scheduler;
 mod state;
 #[cfg(test)]

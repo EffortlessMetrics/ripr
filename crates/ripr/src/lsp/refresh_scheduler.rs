@@ -127,7 +127,14 @@ impl RefreshRequest {
 #[derive(Debug, Eq, PartialEq)]
 pub(super) enum RefreshDecision {
     Start(Box<RefreshRequest>),
-    Queued { generation: u64 },
+    Queued {
+        generation: u64,
+        /// The previously queued generation this request replaced, when one
+        /// existed. The replaced request is cancelled and will never run, so
+        /// the caller must terminate any per-generation resources (work-done
+        /// progress token) it owns.
+        superseded_pending: Option<u64>,
+    },
     Deduplicated,
     Stopped,
 }
@@ -243,6 +250,10 @@ impl RefreshScheduler {
             {
                 active.cancellation.cancel(AnalysisAbortKind::Superseded);
             }
+            let superseded_pending = state
+                .pending_latest
+                .as_ref()
+                .map(|pending| pending.generation);
             if let Some(pending) = state.pending_latest.as_ref() {
                 pending.cancellation.cancel(AnalysisAbortKind::Superseded);
             }
@@ -251,7 +262,10 @@ impl RefreshScheduler {
             state.pending_latest = Some(request);
             state.telemetry.pending_queue_high_water =
                 state.telemetry.pending_queue_high_water.max(1);
-            RefreshDecision::Queued { generation }
+            RefreshDecision::Queued {
+                generation,
+                superseded_pending,
+            }
         }
     }
 

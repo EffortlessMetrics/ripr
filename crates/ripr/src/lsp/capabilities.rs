@@ -144,6 +144,18 @@ pub(super) fn client_supports_diagnostic_refresh(params: &InitializeParams) -> b
         .unwrap_or(false)
 }
 
+/// Whether the client accepts server-initiated work-done progress
+/// (`window/workDoneProgress/create` + `$/progress`) for analysis requests
+/// (#1971). Clients without this capability see no progress traffic at all.
+pub(super) fn client_supports_work_done_progress(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .window
+        .as_ref()
+        .and_then(|window| window.work_done_progress)
+        .unwrap_or(false)
+}
+
 #[expect(
     deprecated,
     reason = "rootUri remains the LSP compatibility fallback when workspaceFolders is absent"
@@ -209,7 +221,8 @@ mod tests {
     use super::*;
     use tower_lsp_server::ls_types::{
         DiagnosticClientCapabilities, DiagnosticWorkspaceClientCapabilities,
-        GeneralClientCapabilities, TextDocumentClientCapabilities, WorkspaceClientCapabilities,
+        GeneralClientCapabilities, TextDocumentClientCapabilities, WindowClientCapabilities,
+        WorkspaceClientCapabilities,
     };
 
     fn params_with_position_encodings(
@@ -312,6 +325,30 @@ mod tests {
             .is_none()
         {
             return Err("pull-capable client lost pull provider".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn work_done_progress_requires_window_capability() -> Result<(), String> {
+        let mut capable = InitializeParams::default();
+        capable.capabilities.window = Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        });
+        if !client_supports_work_done_progress(&capable) {
+            return Err("window.workDoneProgress=true must enable progress".to_string());
+        }
+
+        let mut declined = InitializeParams::default();
+        declined.capabilities.window = Some(WindowClientCapabilities {
+            work_done_progress: Some(false),
+            ..WindowClientCapabilities::default()
+        });
+        if client_supports_work_done_progress(&declined)
+            || client_supports_work_done_progress(&InitializeParams::default())
+        {
+            return Err("missing or declined window.workDoneProgress must disable progress".into());
         }
         Ok(())
     }
