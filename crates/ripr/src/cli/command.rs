@@ -42,6 +42,24 @@ impl CliCommand {
     pub(super) fn from_parts(arg: Option<&str>, command_args: Vec<String>) -> Result<Self, String> {
         match arg {
             None | Some("--help" | "-h") => Ok(Self::Help),
+            // `ripr help` (no subcommand) prints the top-level help, identical
+            // to `ripr --help`. `ripr help <command> [args...]` is the standard
+            // CLI convention (git, cargo, kubectl) and is dispatched as
+            // `ripr <command> --help [args...]` — i.e. the rest of the args are
+            // preserved with `--help` prepended, so each command's existing
+            // `--help` branch prints its own help. `help` followed by an
+            // unknown command still returns the unknown-command error so a
+            // typo is not silently swallowed.
+            Some("help") => {
+                let (target, rest) = match command_args.split_first() {
+                    Some((target, rest)) => (target.clone(), rest.to_vec()),
+                    None => return Ok(Self::Help),
+                };
+                let mut injected = Vec::with_capacity(rest.len() + 1);
+                injected.push("--help".to_string());
+                injected.extend(rest);
+                Self::from_parts(Some(&target), injected)
+            }
             Some("--version" | "-V") => Ok(Self::Version),
             Some("init") => Ok(Self::Init(command_args)),
             Some("pilot") => Ok(Self::Pilot(command_args)),
@@ -84,6 +102,7 @@ impl CliCommand {
 
 const KNOWN_COMMANDS: &[&str] = &[
     "init",
+    "help",
     "pilot",
     "outcome",
     "evidence-health",
@@ -286,5 +305,62 @@ mod tests {
                 "KNOWN_COMMANDS entry {known:?} is not accepted by from_parts"
             );
         }
+    }
+
+    #[test]
+    fn help_with_no_subcommand_returns_top_level_help() {
+        // `ripr help` is identical to `ripr --help`.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), Vec::new()),
+            Ok(CliCommand::Help)
+        );
+    }
+
+    #[test]
+    fn help_with_known_subcommand_dispatches_to_that_command_help() {
+        // `ripr help check` should dispatch the same way as `ripr check --help`,
+        // i.e. parse to CliCommand::Check carrying `["--help"]`. We pick a few
+        // representative commands to cover the surface.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check"])),
+            Ok(CliCommand::Check(args(&["--help"])))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["outcome"])),
+            Ok(CliCommand::Outcome(args(&["--help"])))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["gate"])),
+            Ok(CliCommand::Gate(args(&["--help"])))
+        );
+        // start-here alias should also work via help.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["start-here"])),
+            Ok(CliCommand::FirstPr(args(&["--help"])))
+        );
+    }
+
+    #[test]
+    fn help_preserves_extra_args_after_the_subcommand() {
+        // `ripr help check --root .` keeps --root . so the command's --help
+        // branch fires (each command checks args.iter().any(... == "--help")).
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--root", "."])),
+            Ok(CliCommand::Check(args(&["--help", "--root", "."])))
+        );
+    }
+
+    #[test]
+    fn help_with_unknown_subcommand_returns_unknown_command_error() {
+        // A typo after `help` should produce the same unknown-command error as
+        // the typo would without `help`, including a typo suggestion.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["nonexistent"])),
+            Err("unknown command \"nonexistent\". Run `ripr --help`.".to_string())
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["chekc"])),
+            Err("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`.".to_string())
+        );
     }
 }
