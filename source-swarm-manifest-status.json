@@ -1,6 +1,18 @@
 {
-  "total_count": 1,
+  "total_count": 2,
   "workflow_runs": [
+    {
+      "id": 29866837487,
+      "name": "Source Swarm Join Tree Manifest",
+      "event": "push",
+      "status": "in_progress",
+      "conclusion": null,
+      "head_sha": "18b9ec0d956a439b474d0329108e1773e91bf120",
+      "head_branch": "agent/source-swarm-tree-manifest-2026-07-21",
+      "created_at": "2026-07-21T20:41:30Z",
+      "updated_at": "2026-07-21T20:41:33Z",
+      "html_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/29866837487"
+    },
     {
       "id": 29866607046,
       "name": "Source Swarm Join Tree Manifest",
