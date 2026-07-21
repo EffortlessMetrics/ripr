@@ -75,6 +75,12 @@ proof signals moved, what remains weak or unknown, and what reviewers should
 inspect or avoid inferring. It does not run analysis, edit source, generate
 tests, run mutation testing, claim runtime correctness or coverage adequacy,
 approve merges, or decide CI policy.
+
+Limitation: the comparison matches seams/findings by id only. The before/after
+artifacts do not carry a head SHA, so ripr cannot verify they came from the
+same repository or adjacent commits. Ensure the before snapshot is from the
+same repo's base and the after snapshot is from the same repo's head before
+trusting the movement report.
 "#;
 pub(super) const CHECK_HELP: &str = r#"Analyze a diff or workspace and emit findings in human, JSON, SARIF, or badge form.
 

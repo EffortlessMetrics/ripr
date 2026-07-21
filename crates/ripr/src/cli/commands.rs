@@ -361,6 +361,15 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
         output::outcome::display_path(&options.before),
         output::outcome::display_path(&options.after),
     )?;
+    // The before/after artifacts do not carry a head SHA, so we cannot
+    // verify they came from the same repository or adjacent commits. The
+    // comparison matches seams/findings by id only. Disclose this on stderr
+    // (machine JSON output on stdout is unchanged) so a user who did not
+    // read the help knows the movement report assumes same-repo/same-base
+    // before/after. See #1942.
+    eprintln!(
+        "ripr outcome: comparison matches seams/findings by id only; the before/after artifacts do not carry a head SHA, so ensure both snapshots are from the same repository and adjacent commits."
+    );
     let rendered = match options.format {
         OutcomeFormat::Markdown => output::outcome::render_targeted_test_outcome_md(&report),
         OutcomeFormat::Json => output::outcome::render_targeted_test_outcome_json(&report)?,
