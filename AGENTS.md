@@ -114,6 +114,8 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
+cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
@@ -121,6 +123,7 @@ cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
+cargo xtask check-evidence-promotion-honesty
 cargo xtask check-traceability
 cargo xtask check-capabilities
 cargo xtask check-workspace-shape
@@ -136,6 +139,7 @@ cargo xtask check-proof-packs
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+cargo xtask check-command-catalog
 ```
 
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
