@@ -1,0 +1,16 @@
+823:2026-07-21T20:52:37.1776612Z [5631:0721/205237.176651:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+824:2026-07-21T20:52:37.1942374Z [5631:0721/205237.192867:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+825:2026-07-21T20:52:37.1951932Z [5631:0721/205237.194359:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+826:2026-07-21T20:52:37.1974204Z [5631:0721/205237.196302:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+828:2026-07-21T20:52:37.4390757Z [5631:0721/205237.436419:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+834:2026-07-21T20:52:37.5281806Z [5631:0721/205237.527310:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+948:2026-07-21T20:54:45.4663027Z   [32m  ✔[0m[90m startServerOnce coalesces concurrent starts and retries after failure[0m
+956:2026-07-21T20:54:45.4703700Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+969:2026-07-21T20:54:45.4727834Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+983:2026-07-21T20:54:45.4741661Z       [31mAssertionError [ERR_ASSERTION]: expected setup report to include ripr server state: ripr_version_ok (ripr 0.8.0-test)
+1020:2026-07-21T20:54:45.4769574Z       [32m+ expected[0m [31m- actual[0m
+1032:2026-07-21T20:54:45.4775412Z [0m[31m     Error: ENOENT: no such file or directory, open '/home/runner/work/ripr/ripr/editors/vscode/out/package.json'[0m[90m
+1043:2026-07-21T20:54:45.4780420Z       [32m+ expected[0m [31m- actual[0m
+1051:2026-07-21T20:54:45.4782563Z Error: 5 tests failed.
+1054:2026-07-21T20:54:45.4784107Z Extension host test runner error Error: 5 tests failed.
+1060:2026-07-21T20:54:45.6013442Z Failed to run tests: TestRunFailedError: Test run failed with code 1
