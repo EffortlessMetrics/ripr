@@ -267,6 +267,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -342,6 +343,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -407,6 +409,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -652,6 +655,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         }
     }
 
@@ -930,6 +934,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);

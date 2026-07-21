@@ -19,5 +19,6 @@ pub(super) fn check_output_from_analysis(
         no_scope_provided: false,
         unanalyzed_working_tree: false,
         suppression: None,
+        partial_scope: analysis.partial_scope,
     }
 }

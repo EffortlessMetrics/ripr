@@ -640,6 +640,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: false,
+        partial_scope: None,
     };
 
     // Call the pure code_lens_response directly to verify the handler→helper path.
@@ -4931,6 +4932,7 @@ fn sample_analysis_snapshot(
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: false,
+        partial_scope: None,
     }
 }
 

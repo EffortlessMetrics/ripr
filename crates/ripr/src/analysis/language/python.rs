@@ -6360,6 +6360,7 @@ impl LanguageAdapter for PythonAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            partial_scope: None,
         })
     }
 

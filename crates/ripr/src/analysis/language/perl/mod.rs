@@ -199,6 +199,7 @@ impl LanguageAdapter for PerlAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files,
+            partial_scope: None,
         })
     }
 

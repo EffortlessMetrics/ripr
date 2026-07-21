@@ -52,6 +52,14 @@ pub(crate) fn build_gate_decision_report(
                             display_path(path)
                         ));
                         Value::Null
+                    } else if let Some(partial_error) = partial_scope_input_error(&value, path) {
+                        // The document is structurally valid but discloses a
+                        // `limited_partial_scope` producer run (RIPR-PROP-0019
+                        // decision 5): a partial denominator must never pass
+                        // as a complete gate input. Fail closed exactly like
+                        // a malformed or incomplete producer document.
+                        config_errors.push(partial_error);
+                        Value::Null
                     } else if let Some(producer_error) = pr_guidance_producer_error(&value, path) {
                         // The document is structurally valid but the producer
                         // disclosed it did not complete (status=error/incomplete/
@@ -1070,6 +1078,59 @@ fn pr_guidance_producer_error(value: &Value, path: &Path) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Returns `Some(error_message)` when a structurally-valid gate input
+/// document discloses a `limited_partial_scope` analysis run
+/// (RIPR-PROP-0019 decision 5). A partial result marks
+/// `gate_eligibility: ineligible`; the gate must fail closed on it rather
+/// than treating a partial denominator as complete and deriving `pass` from
+/// the selected partition's findings.
+///
+/// Detection covers the run-state vocabulary partial results carry:
+/// - top-level `run_status` == `limited_partial_scope`
+/// - `analysis_scope.run_status` == `limited_partial_scope`
+/// - any `run_limitations[]` entry whose `run_status` or `category` is
+///   `limited_partial_scope`
+fn partial_scope_input_error(value: &Value, path: &Path) -> Option<String> {
+    if discloses_limited_partial_scope(value) {
+        Some(format!(
+            "gate input {} discloses a {} analysis run (gate_eligibility: {}); \
+             a partial denominator is never a gate, baseline, badge, or RIPR Zero input — \
+             re-run with a wider partial budget (RIPR_PARTIAL_DIFF_FILE_BUDGET / \
+             RIPR_PARTIAL_DIFF_LINE_BUDGET) or a narrower diff before gating",
+            display_path(path),
+            crate::analysis::PartialDiffScope::RUN_STATUS,
+            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+        ))
+    } else {
+        None
+    }
+}
+
+/// Whether a JSON document discloses the `limited_partial_scope` run state in
+/// any of the positions the run-state vocabulary uses.
+pub(crate) fn discloses_limited_partial_scope(value: &Value) -> bool {
+    let run_status = crate::analysis::PartialDiffScope::RUN_STATUS;
+    if value.get("run_status").and_then(Value::as_str) == Some(run_status) {
+        return true;
+    }
+    if value
+        .pointer("/analysis_scope/run_status")
+        .and_then(Value::as_str)
+        == Some(run_status)
+    {
+        return true;
+    }
+    value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|limitations| {
+            limitations.iter().any(|entry| {
+                entry.get("run_status").and_then(Value::as_str) == Some(run_status)
+                    || entry.get("category").and_then(Value::as_str) == Some(run_status)
+            })
+        })
 }
 
 fn resolve_root_path(root: &Path, path: &Path) -> PathBuf {

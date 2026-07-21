@@ -194,6 +194,12 @@ impl AnalysisHealth {
             Some("seams_deferred") => "seams_deferred",
             Some("cache_limited") => "cache_limited",
             Some("limited") => "limited",
+            // RIPR-PROP-0019 (#1999): a partial partition is a limited run
+            // state, never "full" — falling through here would present a
+            // partial denominator as complete (#2142 review).
+            Some(crate::analysis::PartialDiffScope::RUN_STATUS) => {
+                crate::analysis::PartialDiffScope::RUN_STATUS
+            }
             Some("stale") => "stale",
             _ => "full",
         }
@@ -271,6 +277,13 @@ pub(super) struct AnalysisSnapshot {
     /// Invoking `ripr.refreshDiagnostics` produces a new snapshot with
     /// `seams_deferred = false` and the full seam inventory.
     pub(super) seams_deferred: bool,
+    /// Partial diff-scope run state (RIPR-PROP-0019, #1999). `Some` only when
+    /// the diff exceeded the partial-selection budget and the run analyzed a
+    /// deterministic bounded partition (`limited_partial_scope`). The run
+    /// status surfaces in workspace status and downgrades/suppresses
+    /// diagnostics like the other limited-family states; the result is never
+    /// a gate, baseline, badge, or RIPR Zero input.
+    pub(super) partial_scope: Option<crate::analysis::PartialDiffScope>,
 }
 
 impl AnalysisSnapshot {
@@ -520,6 +533,19 @@ mod tests {
     use tower_lsp_server::ls_types::{Position, Range};
 
     #[test]
+    fn analysis_health_run_status_preserves_limited_partial_scope() {
+        // RIPR-PROP-0019 (#1999): a partial partition is a limited run
+        // state; the DTO must not fall through to "full" (#2142 review).
+        let health = AnalysisHealth {
+            snapshot_id: Some("snap-1".to_string()),
+            state: AnalysisAttemptState::Succeeded,
+            snapshot_run_status: Some(crate::analysis::PartialDiffScope::RUN_STATUS.to_string()),
+            ..AnalysisHealth::default()
+        };
+        assert_eq!(health.run_status(), "limited_partial_scope");
+    }
+
+    #[test]
     fn snapshot_consistency_counts_gap_record_diagnostics() -> Result<(), String> {
         let uri = test_uri("file:///workspace/src/pricing.rs")?;
         let mut diagnostics_by_uri = BTreeMap::new();
@@ -538,6 +564,7 @@ mod tests {
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
         };
 
         if !snapshot.is_consistent() {
@@ -565,6 +592,7 @@ mod tests {
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
         };
 
         if snapshot.is_consistent() {

@@ -25,6 +25,10 @@ pub(crate) use diff::{
     load_diff, load_diff_range, parse_unified_diff, resolve_base_commit,
     working_tree_has_tracked_changes,
 };
+pub use language::{
+    PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
+    PartialDiffStopReason,
+};
 pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
@@ -453,6 +457,13 @@ pub struct AnalysisResult {
     /// (the common single-language-success case). Non-abort contract: a
     /// failure here does not abort the report (Campaign 31 PR 10, #1403).
     pub language_runs: Vec<LanguageRun>,
+    /// Partial diff-scope run state (RIPR-PROP-0019, #1999). `Some` only when
+    /// the diff exceeded the partial-selection budget and the run analyzed a
+    /// deterministic bounded partition instead of the full diff
+    /// (`limited_partial_scope`). A partial result is advisory only — never a
+    /// gate, baseline, badge, or RIPR Zero input — and the uninspected
+    /// accounting on the record is a lower bound, not an estimate.
+    pub partial_scope: Option<PartialDiffScope>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.

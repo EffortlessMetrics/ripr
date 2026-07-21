@@ -66,6 +66,21 @@ pub(super) fn read_gap_ledger_impl(
             return Some(Vec::new());
         }
     };
+    // RIPR-PROP-0019 decision 5: a ledger disclosing a `limited_partial_scope`
+    // producer run is not a valid gate input — fail closed rather than gating
+    // on a partial denominator.
+    if let Ok(value) = serde_json::from_str::<Value>(&text)
+        && super::discloses_limited_partial_scope(&value)
+    {
+        config_errors.push(format!(
+            "required gap decision ledger input {} discloses a {} analysis run \
+             (gate_eligibility: {}); a partial denominator is never a gate input",
+            display_path(path),
+            crate::analysis::PartialDiffScope::RUN_STATUS,
+            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+        ));
+        return Some(Vec::new());
+    }
     match gap_decision_ledger::parse_gap_records_json(&text) {
         Ok(records) => Some(records),
         Err(error) => {
@@ -211,7 +226,22 @@ pub(super) fn read_baseline_impl(
     };
     let resolved = resolve_root_path(&input.root, path);
     match read_json_value_with_display(&resolved, path) {
-        Ok(value) => baseline_index_from_value(&value),
+        Ok(value) => {
+            // RIPR-PROP-0019 decision 5: a baseline built from a
+            // `limited_partial_scope` run is a partial denominator, never a
+            // valid gate baseline — fail closed instead of diffing against it.
+            if super::discloses_limited_partial_scope(&value) {
+                config_errors.push(format!(
+                    "baseline {} discloses a {} analysis run (gate_eligibility: {}); \
+                     a partial denominator is never a baseline input",
+                    display_path(path),
+                    crate::analysis::PartialDiffScope::RUN_STATUS,
+                    crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+                ));
+                return BaselineIndex::default();
+            }
+            baseline_index_from_value(&value)
+        }
         Err(error) if input.mode.requires_baseline() => {
             config_errors.push(format!(
                 "required baseline {} is invalid: {error}",

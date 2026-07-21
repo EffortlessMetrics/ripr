@@ -5,7 +5,8 @@ use super::language::PythonAdapter;
 #[cfg(feature = "lang-typescript")]
 use super::language::TypeScriptAdapter;
 use super::language::{
-    LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, RustAdapter,
+    LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, PartialDiffScope,
+    RustAdapter,
 };
 use super::{
     AnalysisOptions, AnalysisResult, LanguageRun, LanguageRunStatus, PreviewLanguageAdvisory, diff,
@@ -64,28 +65,61 @@ fn run_pipeline_for_diff_text(
     let mut findings: Vec<Finding> = Vec::new();
     let mut total_changed_files: usize = 0;
     let mut language_runs: Vec<LanguageRun> = Vec::new();
+    let mut partial_scope: Option<PartialDiffScope> = None;
+
+    // Rust (the stable reference adapter) runs first, ahead of the preview
+    // loop, so its partial-diff partition (RIPR-PROP-0019, #1999) governs the
+    // changed-file set handed to every preview adapter below: a
+    // `limited_partial_scope` run analyzes exactly the selected partition in
+    // every language, never a per-language mix. Rust failures still propagate
+    // via `?`: a Rust failure is infra-class (e.g. diff_scope_oversized,
+    // partial_budget_invalid), not a per-language advisory gap.
+    if languages.contains(&LanguageId::Rust) {
+        cancellation::checkpoint()?;
+        let result = RustAdapter.analyze_diff_for_languages(
+            options,
+            oracle_policy,
+            &changed_files,
+            languages,
+        )?;
+        cancellation::checkpoint()?;
+        partial_scope = result.partial_scope.clone();
+        findings.extend(result.findings);
+        total_changed_files += result.changed_files;
+    }
+    // When the Rust adapter returned a partial partition, preview adapters
+    // analyze only the selected files; uninspected accounting lives on the
+    // scope record. Otherwise the full diff is dispatched as before.
+    let restricted_changed_files;
+    let preview_changed_files: &[diff::ChangedFile] = match &partial_scope {
+        Some(scope) => {
+            restricted_changed_files = changed_files
+                .iter()
+                .filter(|file| scope.selects(&file.path))
+                .cloned()
+                .collect::<Vec<_>>();
+            &restricted_changed_files
+        }
+        None => &changed_files,
+    };
+
     for language in languages {
         cancellation::checkpoint()?;
         // Non-abort contract (Campaign 31 PR 10, #1403): a preview-language
         // adapter failure must not abort the report — the failed language is
         // recorded in `language_runs` and the other languages' findings still
-        // emit. Rust (the stable reference adapter) still propagates via `?`:
-        // a Rust failure is infra-class (e.g. diff_scope_oversized), not a
-        // per-language advisory gap.
-        if !is_preview_language(*language) {
-            // Rust (stable) failures propagate via `?`.
-            let result = RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?;
-            cancellation::checkpoint()?;
-            findings.extend(result.findings);
-            total_changed_files += result.changed_files;
+        // emit. Rust ran above and already propagated any failure.
+        if matches!(language, LanguageId::Rust) {
             continue;
         }
         let attempted = match language {
             LanguageId::TypeScript | LanguageId::JavaScript => {
-                analyze_typescript_diff(options, oracle_policy, &changed_files)
+                analyze_typescript_diff(options, oracle_policy, preview_changed_files)
             }
-            LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files),
-            LanguageId::Perl => analyze_perl_diff(options, oracle_policy, &changed_files),
+            LanguageId::Python => {
+                analyze_python_diff(options, oracle_policy, preview_changed_files)
+            }
+            LanguageId::Perl => analyze_perl_diff(options, oracle_policy, preview_changed_files),
             LanguageId::Rust => {
                 continue;
             }
@@ -121,6 +155,7 @@ fn run_pipeline_for_diff_text(
         findings,
         preview_language_advisories: preview_advisories,
         language_runs,
+        partial_scope,
     })
 }
 
@@ -183,6 +218,9 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         findings,
         preview_language_advisories: preview_advisories,
         language_runs,
+        // Repo-scope analysis indexes the whole workspace; the partial
+        // diff-selection budget (RIPR-PROP-0019) does not apply here.
+        partial_scope: None,
     })
 }
 

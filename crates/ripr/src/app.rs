@@ -179,6 +179,14 @@ pub struct CheckOutput {
     /// `findings` (visible, marked suppressed by renderers) while the
     /// per-class `summary` buckets count unsuppressed findings only.
     pub suppression: Option<crate::output::suppressions::CheckSuppressionOutcome>,
+    /// Partial diff-scope run state (RIPR-PROP-0019, #1999). `Some` only when
+    /// the diff exceeded the partial-selection budget and the run analyzed a
+    /// deterministic bounded partition instead of the full diff
+    /// (`limited_partial_scope`). In that state `summary`/`findings` cover the
+    /// selected partition only, the uninspected accounting on the record is a
+    /// lower bound, and the result is never a gate, baseline, badge, or RIPR
+    /// Zero input (`gate_eligibility: ineligible`).
+    pub partial_scope: Option<crate::analysis::PartialDiffScope>,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

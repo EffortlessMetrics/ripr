@@ -82,6 +82,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
             findings: Vec::new(),
             preview_language_advisories: Vec::new(),
             language_runs: Vec::new(),
+            partial_scope: None,
         },
     )
 }

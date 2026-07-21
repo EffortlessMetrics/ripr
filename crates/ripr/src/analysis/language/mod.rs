@@ -39,6 +39,10 @@ pub(crate) use perl::PerlAdapter;
 pub(crate) use python::PythonAdapter;
 pub(crate) use router::route;
 pub(crate) use rust::RustAdapter;
+pub use rust::{
+    PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
+    PartialDiffStopReason,
+};
 #[cfg(feature = "lang-typescript")]
 pub(crate) use typescript::TypeScriptAdapter;
 #[cfg(feature = "lang-typescript")]

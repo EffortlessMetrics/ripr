@@ -125,6 +125,126 @@ mod tests {
         assert!(rendered.contains("\"base\": \"origin/main\""));
     }
 
+    fn partial_scope_fixture() -> crate::analysis::PartialDiffScope {
+        crate::analysis::PartialDiffScope {
+            run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+            diff_identity: "sha256:abc".to_string(),
+            file_budget: 2,
+            line_budget: 100,
+            budget_disclosures: vec![
+                "RIPR_PARTIAL_DIFF_LINE_BUDGET=2001 exceeds the hard analysis-cost guard (2000); clamped to 2000".to_string(),
+            ],
+            selected_files: vec!["src/a.rs".to_string()],
+            selected_changed_lines: 60,
+            uninspected_files_lower_bound: 2,
+            uninspected_changed_lines_lower_bound: 120,
+            stop_reason: crate::analysis::PartialDiffStopReason::LineBudget,
+            partition_identity: "b".repeat(64),
+        }
+    }
+
+    #[test]
+    fn render_emits_analysis_scope_block_for_partial_scope_run() -> Result<(), String> {
+        let output = CheckOutput {
+            partial_scope: Some(partial_scope_fixture()),
+            ..sample_output(None)
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let scope = &value["analysis_scope"];
+
+        let cases = [
+            (&scope["scope"], serde_json::json!("diff"), "scope"),
+            (
+                &scope["run_status"],
+                serde_json::json!("limited_partial_scope"),
+                "run_status",
+            ),
+            (
+                &scope["downstream_consumable"],
+                serde_json::json!(false),
+                "downstream_consumable",
+            ),
+            (
+                &scope["gate_eligibility"],
+                serde_json::json!("ineligible"),
+                "gate_eligibility",
+            ),
+            (
+                &scope["selection_version"],
+                serde_json::json!(crate::analysis::PARTIAL_DIFF_SELECTION_VERSION),
+                "selection_version",
+            ),
+            (
+                &scope["language_tier_version"],
+                serde_json::json!(crate::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION),
+                "language_tier_version",
+            ),
+            (
+                &scope["diff_identity"],
+                serde_json::json!("sha256:abc"),
+                "diff_identity",
+            ),
+            (
+                &scope["partition_identity"],
+                serde_json::json!("b".repeat(64)),
+                "partition_identity",
+            ),
+            (&scope["file_budget"], serde_json::json!(2), "file_budget"),
+            (&scope["line_budget"], serde_json::json!(100), "line_budget"),
+            (
+                &scope["stop_reason"],
+                serde_json::json!("line_budget"),
+                "stop_reason",
+            ),
+            (
+                &scope["selected_files"],
+                serde_json::json!(["src/a.rs"]),
+                "selected_files",
+            ),
+            (
+                &scope["selected_changed_lines"],
+                serde_json::json!(60),
+                "selected_changed_lines",
+            ),
+            (
+                &scope["uninspected_files_lower_bound"],
+                serde_json::json!(2),
+                "uninspected_files_lower_bound",
+            ),
+            (
+                &scope["uninspected_changed_lines_lower_bound"],
+                serde_json::json!(120),
+                "uninspected_changed_lines_lower_bound",
+            ),
+        ];
+        for (actual, expected, label) in cases {
+            assert_eq!(actual, &expected, "unexpected analysis_scope.{label}");
+        }
+        assert_eq!(
+            scope["budget_disclosures"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert!(
+            scope["continuation"]
+                .as_str()
+                .unwrap_or("")
+                .contains("RIPR_PARTIAL_DIFF_FILE_BUDGET"),
+            "continuation must name the budget-override route: {scope}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_omits_analysis_scope_block_for_full_scope_run() {
+        let rendered = render(&sample_output(None));
+
+        assert!(!rendered.contains("\"analysis_scope\""));
+        assert!(!rendered.contains("\"gate_eligibility\""));
+    }
+
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
@@ -155,6 +275,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -277,6 +398,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -445,6 +567,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1115,6 +1238,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         }
     }
 
@@ -1247,6 +1371,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1294,6 +1419,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1349,6 +1475,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1383,6 +1510,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);

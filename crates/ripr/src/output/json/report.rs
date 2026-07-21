@@ -123,6 +123,106 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str("  ]");
     }
+    // Additive run-state block — emitted only when the diff exceeded the
+    // partial-selection budget and the run analyzed a deterministic bounded
+    // partition (RIPR-PROP-0019, #1999). Absent for full-scope runs, so
+    // existing goldens and consumers see identical output. Uses the same
+    // limitation/run-status vocabulary as the limited-check artifact
+    // (`run_status`, `downstream_consumable`, `repair_route`); the partial
+    // result is never downstream-consumable and marks
+    // `gate_eligibility: ineligible` so a gate, baseline, badge, or RIPR Zero
+    // consumer fails closed instead of treating a partial denominator as
+    // complete.
+    if let Some(scope) = &output.partial_scope {
+        out.push_str(",\n  \"analysis_scope\": {\n");
+        field(&mut out, 2, "scope", "diff", true);
+        field(&mut out, 2, "run_status", &scope.run_status, true);
+        field(&mut out, 2, "basis", "rust_partial_diff_budget", true);
+        out.push_str("    \"downstream_consumable\": false,\n");
+        field(
+            &mut out,
+            2,
+            "gate_eligibility",
+            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "limitation",
+            crate::analysis::PartialDiffScope::RUN_STATUS,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "repair_route",
+            "analysis/diff-scope-budget",
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "selection_version",
+            crate::analysis::PARTIAL_DIFF_SELECTION_VERSION,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "language_tier_version",
+            crate::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
+            true,
+        );
+        field(&mut out, 2, "diff_identity", &scope.diff_identity, true);
+        field(
+            &mut out,
+            2,
+            "partition_identity",
+            &scope.partition_identity,
+            true,
+        );
+        number_field(&mut out, 2, "file_budget", scope.file_budget, true);
+        number_field(&mut out, 2, "line_budget", scope.line_budget, true);
+        array_field(
+            &mut out,
+            2,
+            "budget_disclosures",
+            &scope.budget_disclosures,
+            true,
+        );
+        array_field(&mut out, 2, "selected_files", &scope.selected_files, true);
+        number_field(
+            &mut out,
+            2,
+            "selected_changed_lines",
+            scope.selected_changed_lines,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_files_lower_bound",
+            scope.uninspected_files_lower_bound,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_changed_lines_lower_bound",
+            scope.uninspected_changed_lines_lower_bound,
+            true,
+        );
+        field(&mut out, 2, "stop_reason", scope.stop_reason.as_str(), true);
+        field(
+            &mut out,
+            2,
+            "continuation",
+            crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+            false,
+        );
+        out.push_str("  }");
+    }
     // Additive advisory field — emitted only when no analysis scope was
     // provided and the result is empty. Absent when scope was given (real
     // analyzed-empty is honest) or when findings are non-empty.

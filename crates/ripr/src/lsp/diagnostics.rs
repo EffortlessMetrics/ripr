@@ -471,6 +471,7 @@ pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &U
                 &snapshot.gap_artifact_rejections,
                 &snapshot.gap_artifacts,
                 snapshot.seams_deferred,
+                snapshot.partial_scope.is_some(),
             ),
             snapshot.base.as_deref().unwrap_or("no-base"),
             relative_uri.as_str(),
@@ -512,6 +513,7 @@ pub(super) fn complete_diagnostic_evidence_identity(snapshot: &AnalysisSnapshot)
             &snapshot.gap_artifact_rejections,
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
+            snapshot.partial_scope.is_some(),
         )
         .to_string(),
         snapshot
@@ -544,6 +546,7 @@ pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> Str
             &snapshot.gap_artifact_rejections,
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
+            snapshot.partial_scope.is_some(),
         )
         .to_string(),
         snapshot
@@ -697,6 +700,7 @@ pub(super) fn workspace_diagnostics_with_config(
     let root = output.root;
     let base = output.base;
     let mode = output.mode;
+    let partial_scope = output.partial_scope;
     let findings = output.findings;
 
     // Validate gap artifacts first so we can determine run status before
@@ -712,6 +716,7 @@ pub(super) fn workspace_diagnostics_with_config(
         &gap_artifact_report.rejections,
         &gap_artifact_report.artifacts,
         defer_seam_inventory,
+        partial_scope.is_some(),
     );
     let is_full_run = run_status == "full";
     let (causal_projection, causal_projection_warning) = CausalDeltaArtifact::load_optional(&root);
@@ -847,6 +852,7 @@ pub(super) fn workspace_diagnostics_with_config(
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
+        partial_scope,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
 }
@@ -871,15 +877,19 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
 /// `diagnostics::snapshot_run_status` (for diagnostic severity) call
 /// this to avoid drift between the two surfaces (#1939).
 ///
-/// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`, or
-/// `"seams_deferred"`. `"seams_deferred"` is returned when
-/// `defer_seam_inventory` is `true` and no other limitation applies; it is
-/// a member of the `limited` family for severity-downgrade policy purposes.
+/// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`,
+/// `"limited_partial_scope"`, or `"seams_deferred"`. `"seams_deferred"` is
+/// returned when `defer_seam_inventory` is `true` and no other limitation
+/// applies; it is a member of the `limited` family for severity-downgrade
+/// policy purposes. `"limited_partial_scope"` (RIPR-PROP-0019) is returned
+/// when the run analyzed a bounded partition of an over-budget diff; the
+/// run-level scope limitation dominates per-finding static limitations.
 pub(super) fn derive_run_status(
     findings: &[Finding],
     rejections: &[GapArtifactRejection],
     gap_artifacts: &[super::gap_artifacts::ValidatedGapArtifact],
     defer_seam_inventory: bool,
+    has_partial_scope: bool,
 ) -> &'static str {
     if rejections
         .iter()
@@ -889,6 +899,9 @@ pub(super) fn derive_run_status(
     }
     if !rejections.is_empty() {
         return "cache_limited";
+    }
+    if has_partial_scope {
+        return crate::analysis::PartialDiffScope::RUN_STATUS;
     }
     let has_static_limit = findings.iter().any(|f| f.static_limit_kind.is_some())
         || gap_artifacts.iter().any(|a| a.has_static_limit());
@@ -910,7 +923,7 @@ pub(super) fn snapshot_run_status_for_test(
     rejections: &[GapArtifactRejection],
     defer_seam_inventory: bool,
 ) -> &'static str {
-    derive_run_status(findings, rejections, &[], defer_seam_inventory)
+    derive_run_status(findings, rejections, &[], defer_seam_inventory, false)
 }
 
 #[cfg(test)]
@@ -2556,7 +2569,7 @@ mod diagnostic_policy_tests {
         finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
 
         // Confirm run status is "limited" when finding has a static limit.
-        let run_status = derive_run_status(&[finding.clone()], &[], &[], false);
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false);
         if run_status != "limited" {
             return Err(format!(
                 "expected run_status=limited for finding with static_limit_kind, got {run_status}"
@@ -2600,7 +2613,7 @@ mod diagnostic_policy_tests {
     fn stale_run_suppresses_gap_record_diagnostics() -> Result<(), String> {
         // StaleArtifact rejection → run_status "stale" → not full → suppress gap records.
         let stale_rejections = vec![GapArtifactRejection::StaleArtifact];
-        let run_status = derive_run_status(&[], &stale_rejections, &[], false);
+        let run_status = derive_run_status(&[], &stale_rejections, &[], false, false);
         if run_status != "stale" {
             return Err(format!(
                 "expected run_status=stale for StaleArtifact rejection, got {run_status}"
@@ -2612,7 +2625,7 @@ mod diagnostic_policy_tests {
 
         // cache_limited rejection → also not full → suppress gap records.
         let cache_rejections = vec![GapArtifactRejection::WrongRoot("other-root".to_string())];
-        let run_status = derive_run_status(&[], &cache_rejections, &[], false);
+        let run_status = derive_run_status(&[], &cache_rejections, &[], false, false);
         if run_status != "cache_limited" {
             return Err(format!(
                 "expected run_status=cache_limited for non-stale rejection, got {run_status}"
@@ -2627,6 +2640,66 @@ mod diagnostic_policy_tests {
         let would_emit = run_status == "full";
         if would_emit {
             return Err("gap records must not be emitted for non-full run".to_string());
+        }
+        Ok(())
+    }
+
+    // Test 8 (RIPR-PROP-0019, #1999): a `limited_partial_scope` snapshot is a
+    // limited-family run status, never "full" — finding WARNINGs downgrade and
+    // gap-record diagnostics suppress exactly like the other limited states.
+    // Stale/cache_limited rejections still dominate the partial state.
+    #[test]
+    fn partial_scope_run_status_is_limited_family_and_never_full() -> Result<(), String> {
+        let run_status = derive_run_status(&[], &[], &[], false, true);
+        if run_status != "limited_partial_scope" {
+            return Err(format!(
+                "expected run_status=limited_partial_scope for a partial partition, got {run_status}"
+            ));
+        }
+        if run_status == "full" {
+            return Err("partial run must not be treated as full".to_string());
+        }
+
+        // A partial scope also dominates per-finding static limitations in the
+        // derivation, matching workspace-status precedence.
+        let mut finding = policy_finding();
+        finding.static_limit_kind =
+            Some(crate::domain::StaticLimitKind::RustTransitiveReachUnresolved);
+        let run_status = derive_run_status(&[finding], &[], &[], false, true);
+        if run_status != "limited_partial_scope" {
+            return Err(format!(
+                "partial scope must dominate per-finding static limitations, got {run_status}"
+            ));
+        }
+
+        // Stale and cache_limited rejections still outrank the partial state.
+        let stale = derive_run_status(
+            &[],
+            &[GapArtifactRejection::StaleArtifact],
+            &[],
+            false,
+            true,
+        );
+        if stale != "stale" {
+            return Err(format!("stale must dominate partial scope, got {stale}"));
+        }
+        let cache_limited = derive_run_status(
+            &[],
+            &[GapArtifactRejection::WrongRoot("other-root".to_string())],
+            &[],
+            false,
+            true,
+        );
+        if cache_limited != "cache_limited" {
+            return Err(format!(
+                "cache_limited must dominate partial scope, got {cache_limited}"
+            ));
+        }
+
+        // The suppression decision treats the partial run like the limited family.
+        let would_emit_gap_records = run_status == "full";
+        if would_emit_gap_records {
+            return Err("gap records must not be emitted for a partial run".to_string());
         }
         Ok(())
     }
@@ -2867,6 +2940,7 @@ mod delivery_tests {
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
         })
     }
 

@@ -16,6 +16,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 pub(crate) fn render_bounded_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = render_header_summary(output);
     render_suppression_policy_block(&mut out, output);
+    render_partial_scope_disclosure(&mut out, output);
 
     if output.findings.is_empty() {
         out.push_str("No diff-derived static exposure probes found.\n");
@@ -62,6 +63,7 @@ pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig)
     let mut out = render_header_summary(output);
 
     render_suppression_policy_block(&mut out, output);
+    render_partial_scope_disclosure(&mut out, output);
 
     if output.findings.is_empty() {
         out.push_str("No diff-derived static exposure probes found.\n");
@@ -177,6 +179,67 @@ fn render_suppression_policy_block(out: &mut String, output: &CheckOutput) {
         out.push_str(&format!("  policy warning: {warning}\n"));
     }
     out.push('\n');
+}
+
+/// Emit the `limited_partial_scope` run-state disclosure (RIPR-PROP-0019,
+/// #1999). The partial result must never be presented as complete: the block
+/// names the exact selected partition, the lower-bound uninspected scope, the
+/// stop reason, gate ineligibility, and the only continuation route (raising
+/// the explicit budget overrides).
+fn render_partial_scope_disclosure(out: &mut String, output: &CheckOutput) {
+    let Some(scope) = &output.partial_scope else {
+        return;
+    };
+    out.push_str(&format!(
+        "Partial scope: run state {} — analyzed {} changed file(s) ({} changed line(s)) of the diff; \
+         stop reason: {}.\n",
+        scope.run_status,
+        scope.selected_files.len(),
+        scope.selected_changed_lines,
+        scope.stop_reason.as_str(),
+    ));
+    out.push_str(&format!(
+        "  NOT inspected: at least {} changed file(s) and at least {} changed line(s); \
+         the uninspected scope may contain additional findings.\n",
+        scope.uninspected_files_lower_bound, scope.uninspected_changed_lines_lower_bound,
+    ));
+    for file in &scope.selected_files {
+        // Paths come from the diff text: a crafted filename with control
+        // bytes could forge report lines or emit terminal escape sequences.
+        // The raw path stays on the scope record for identities/JSON; only
+        // the terminal-facing display is escaped (#2142 review).
+        out.push_str(&format!("  selected: {}\n", escape_terminal_display(file)));
+    }
+    for disclosure in &scope.budget_disclosures {
+        out.push_str(&format!("  budget: {disclosure}\n"));
+    }
+    out.push_str(&format!(
+        "  This partial result is not eligible as a gate, baseline, badge, or RIPR Zero input \
+         (gate_eligibility: {}).\n",
+        crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+    ));
+    out.push_str(&format!(
+        "  {}\n  partition_identity: {}\n\n",
+        crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+        scope.partition_identity,
+    ));
+}
+
+/// Escape a diff-supplied string for terminal display: control bytes
+/// (including ESC, which opens terminal escape sequences) render as
+/// `\u{XX}` so a crafted diff path cannot forge report lines or inject
+/// terminal control. The raw value is unchanged for identities and JSON
+/// (#2142 review).
+fn escape_terminal_display(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_control() {
+            out.push_str(&format!("\\u{{{:02x}}}", ch as u32));
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Emit an advisory note when every finding is no-path or unknown (zero
@@ -359,6 +422,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -398,6 +462,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -445,6 +510,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -470,6 +536,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -507,6 +574,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -550,6 +618,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -585,6 +654,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered =
@@ -628,6 +698,7 @@ mod tests {
                         .to_string(),
                 ],
             }),
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -671,6 +742,7 @@ mod tests {
                 }],
                 warnings: Vec::new(),
             }),
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -678,6 +750,114 @@ mod tests {
         assert!(rendered.contains("State: no_actionable_gap"));
         assert!(rendered.contains("all findings are suppressed by policy"));
         assert!(!rendered.contains("inspect the named static limitation"));
+    }
+
+    #[test]
+    fn human_output_discloses_limited_partial_scope_run_state() -> Result<(), String> {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: Some(crate::analysis::PartialDiffScope {
+                run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+                diff_identity: "sha256:abc".to_string(),
+                file_budget: 2,
+                line_budget: 100,
+                budget_disclosures: vec!["clamped budget disclosure".to_string()],
+                selected_files: vec!["src/a.rs".to_string()],
+                selected_changed_lines: 60,
+                uninspected_files_lower_bound: 3,
+                uninspected_changed_lines_lower_bound: 180,
+                stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                partition_identity: "c".repeat(64),
+            }),
+        };
+
+        for rendered in [
+            super::render_bounded_with_config(&output, &crate::config::RiprConfig::default()),
+            super::render_full_with_config(&output, &crate::config::RiprConfig::default()),
+        ] {
+            for needle in [
+                "run state limited_partial_scope",
+                "stop reason: file_budget",
+                "selected: src/a.rs",
+                "NOT inspected: at least 3 changed file(s) and at least 180 changed line(s)",
+                "not eligible as a gate, baseline, badge, or RIPR Zero input",
+                "RIPR_PARTIAL_DIFF_FILE_BUDGET",
+                "clamped budget disclosure",
+                &format!("partition_identity: {}", "c".repeat(64)),
+            ] {
+                if !rendered.contains(needle) {
+                    return Err(format!(
+                        "partial disclosure missing `{needle}` in:\n{rendered}"
+                    ));
+                }
+            }
+        }
+
+        // Full-scope runs carry no partial disclosure.
+        let full = CheckOutput {
+            partial_scope: None,
+            ..output
+        };
+        assert!(
+            !super::render_bounded_with_config(&full, &crate::config::RiprConfig::default())
+                .contains("limited_partial_scope")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn human_output_escapes_control_bytes_in_selected_paths() -> Result<(), String> {
+        // A crafted diff filename with control bytes must not reach the
+        // terminal verbatim (#2142 review): the display is escaped while the
+        // raw path stays on the scope record.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: Some(crate::analysis::PartialDiffScope {
+                run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+                diff_identity: "sha256:abc".to_string(),
+                file_budget: 2,
+                line_budget: 100,
+                budget_disclosures: Vec::new(),
+                selected_files: vec!["src/evil\u{1b}[2K.rs".to_string()],
+                selected_changed_lines: 1,
+                uninspected_files_lower_bound: 1,
+                uninspected_changed_lines_lower_bound: 1,
+                stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                partition_identity: "c".repeat(64),
+            }),
+        };
+
+        let rendered =
+            super::render_bounded_with_config(&output, &crate::config::RiprConfig::default());
+        if rendered.contains('\u{1b}') {
+            return Err("raw ESC byte reached the terminal display".to_string());
+        }
+        if !rendered.contains("selected: src/evil\\u{1b}[2K.rs") {
+            return Err(format!("escaped path missing in:\n{rendered}"));
+        }
+        Ok(())
     }
 
     #[test]
@@ -1283,6 +1463,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1321,6 +1502,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1350,6 +1532,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1385,6 +1568,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1418,6 +1602,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1473,6 +1658,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1544,6 +1730,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1590,6 +1777,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1623,6 +1811,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1657,6 +1846,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1695,6 +1885,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1741,6 +1932,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1786,6 +1978,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1824,6 +2017,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1857,6 +2051,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1887,6 +2082,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1914,6 +2110,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1946,6 +2143,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1977,6 +2175,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);

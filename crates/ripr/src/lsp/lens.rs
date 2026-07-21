@@ -295,6 +295,7 @@ mod tests {
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
         }
     }
 

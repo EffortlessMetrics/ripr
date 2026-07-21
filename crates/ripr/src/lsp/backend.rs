@@ -3005,6 +3005,7 @@ fn workspace_status_run_status(snapshot: &AnalysisSnapshot) -> &'static str {
         &snapshot.gap_artifact_rejections,
         &snapshot.gap_artifacts,
         snapshot.seams_deferred,
+        snapshot.partial_scope.is_some(),
     )
 }
 
@@ -3320,6 +3321,43 @@ fn top_limitation_dto(
             1,
             snapshot.gap_artifact_rejections.len(),
             limitation_non_claims(category),
+        );
+    }
+
+    // RIPR-PROP-0019 (#1999): a `limited_partial_scope` run analyzed a
+    // deterministic bounded partition of an over-budget diff. Surface the
+    // exact selected/uninspected accounting and the only continuation route
+    // (raising the explicit budget overrides) — the partial denominator is
+    // never presented as complete scope. Ranked above per-finding static
+    // limitations, matching `derive_run_status` precedence.
+    if let Some(scope) = snapshot.partial_scope.as_ref() {
+        return common(
+            "limited_partial_scope",
+            "limited_partial_scope",
+            "limited",
+            format!(
+                "analysis inspected {} changed file(s) ({} changed line(s)) of the diff; \
+                 at least {} changed file(s) and {} changed line(s) were not inspected \
+                 (stop reason: {}); raise RIPR_PARTIAL_DIFF_FILE_BUDGET and/or \
+                 RIPR_PARTIAL_DIFF_LINE_BUDGET to widen the analyzed partition",
+                scope.selected_files.len(),
+                scope.selected_changed_lines,
+                scope.uninspected_files_lower_bound,
+                scope.uninspected_changed_lines_lower_bound,
+                scope.stop_reason.as_str(),
+            ),
+            "analysis/diff-scope-budget",
+            scope.selected_files.iter().take(3).cloned().collect(),
+            scope.selected_files.len(),
+            scope
+                .selected_files
+                .len()
+                .saturating_add(scope.uninspected_files_lower_bound),
+            vec![
+                "not a gate, baseline, badge, or RIPR Zero input",
+                "not test adequacy",
+                "not runtime evidence",
+            ],
         );
     }
 
@@ -5142,6 +5180,7 @@ mod delivery_selection_parity_tests {
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
         };
         WorkspaceDiagnostics { snapshot, batches }
     }

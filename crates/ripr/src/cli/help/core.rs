@@ -144,6 +144,22 @@ Environment variables:
                                     diff_scope_oversized. With --json, stdout
                                     carries a non-consumable limited artifact.
                                     Default: 800.
+  RIPR_PARTIAL_DIFF_FILE_BUDGET     Changed-line files analyzed before check
+                                    returns a bounded limited_partial_scope
+                                    partition with exact selected paths,
+                                    lower-bound uninspected counts, and a named
+                                    stop reason; gate/baseline/badge/Zero
+                                    ineligible. Overrides above the hard guard
+                                    are clamped with disclosure. Invalid values
+                                    fail closed as partial_budget_invalid.
+                                    Default: 200.
+  RIPR_PARTIAL_DIFF_LINE_BUDGET     Changed lines analyzed before check returns
+                                    limited_partial_scope. The first selected
+                                    file is always analyzed, even when it alone
+                                    exceeds the budget. Overrides above the
+                                    hard guard are clamped with disclosure.
+                                    Invalid values fail closed as
+                                    partial_budget_invalid. Default: 1000.
 
 Examples:
   ripr check

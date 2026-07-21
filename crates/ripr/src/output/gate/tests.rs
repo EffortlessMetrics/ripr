@@ -69,6 +69,138 @@ fn gate_calibrated_mode_requires_explicit_baseline() -> Result<(), String> {
 }
 
 #[test]
+fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String> {
+    // RIPR-PROP-0019 decision 5: a structurally valid guidance document that
+    // discloses a `limited_partial_scope` producer run is a partial
+    // denominator, never a gate input — fail closed like a malformed document.
+    let dir = temp_dir("gate-partial-pr-guidance")?;
+    let guidance = write_temp_json(
+        &dir,
+        "comments.json",
+        r#"{
+          "schema_version": "0.1",
+          "status": "advisory",
+          "comments": [],
+          "analysis_scope": {
+            "run_status": "limited_partial_scope",
+            "gate_eligibility": "ineligible"
+          }
+        }"#,
+    )?;
+    let mut input = fixture_input(GateMode::VisibleOnly);
+    input.pr_guidance = Some(guidance);
+
+    let report = build_gate_decision_report(&input)?;
+
+    assert_eq!(report.status, "config_error");
+    assert!(gate_decision_should_fail(&report));
+    assert_eq!(
+        report.summary.evaluated, 0,
+        "a partial denominator must not be evaluated as a complete input"
+    );
+    assert!(
+        report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("limited_partial_scope")),
+        "config error must name the partial run state: {:?}",
+        report.config_errors
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_fails_closed_on_limited_partial_scope_gap_ledger() -> Result<(), String> {
+    let dir = temp_dir("gate-partial-gap-ledger")?;
+    let ledger = write_temp_json(
+        &dir,
+        "ledger.json",
+        r#"{
+          "schema_version": "0.1",
+          "records": [],
+          "run_limitations": [
+            {"category": "limited_partial_scope", "run_status": "limited_partial_scope"}
+          ]
+        }"#,
+    )?;
+    let mut input = fixture_input(GateMode::VisibleOnly);
+    input.pr_guidance = None;
+    input.gap_ledger = Some(ledger);
+
+    let report = build_gate_decision_report(&input)?;
+
+    assert_eq!(report.status, "config_error");
+    assert!(gate_decision_should_fail(&report));
+    assert!(
+        report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("limited_partial_scope")),
+        "config error must name the partial run state: {:?}",
+        report.config_errors
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_fails_closed_on_limited_partial_scope_baseline() -> Result<(), String> {
+    let dir = temp_dir("gate-partial-baseline")?;
+    let baseline = write_temp_json(
+        &dir,
+        "baseline.json",
+        r#"{
+          "schema_version": "0.1",
+          "decisions": [],
+          "analysis_scope": {"run_status": "limited_partial_scope"}
+        }"#,
+    )?;
+    let mut input = fixture_input(GateMode::CalibratedGate);
+    input.baseline = Some(baseline);
+
+    let report = build_gate_decision_report(&input)?;
+
+    assert_eq!(report.status, "config_error");
+    assert!(gate_decision_should_fail(&report));
+    assert!(
+        report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("limited_partial_scope")),
+        "config error must name the partial run state: {:?}",
+        report.config_errors
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn limited_partial_scope_detection_covers_run_state_vocabulary() {
+    let run_status = crate::analysis::PartialDiffScope::RUN_STATUS;
+    assert!(discloses_limited_partial_scope(&json!({
+        "run_status": run_status
+    })));
+    assert!(discloses_limited_partial_scope(&json!({
+        "analysis_scope": {"run_status": run_status}
+    })));
+    assert!(discloses_limited_partial_scope(&json!({
+        "run_limitations": [{"category": run_status}]
+    })));
+    assert!(discloses_limited_partial_scope(&json!({
+        "run_limitations": [{"run_status": run_status}]
+    })));
+    assert!(!discloses_limited_partial_scope(&json!({
+        "schema_version": "0.1",
+        "status": "advisory",
+        "comments": []
+    })));
+    assert!(!discloses_limited_partial_scope(&json!({
+        "analysis_scope": {"run_status": "diff_scope_oversized"}
+    })));
+}
+
+#[test]
 fn gate_calibrated_mode_blocks_new_supported_candidate() -> Result<(), String> {
     let dir = temp_dir("gate-calibrated")?;
     let baseline = dir.join("baseline.json");
