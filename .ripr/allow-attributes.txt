@@ -16,3 +16,4 @@ xtask/src/main.rs|expect(clippy::expect_used)|1|xtask test module: production pa
 xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 crates/ripr/src/app/check.rs|allow(dead_code)|2|item 4b: PERL_FACTS_MAX_AGE_SECS + cached_packet_is_fresh retained for future content-keyed cache reuse; intentionally bypassed until content-hash key is implemented
 crates/ripr/src/analysis/repair_route.rs|allow(dead_code)|3|Typed new-test target selection is an explicit producer contract reserved until RustIndex supplies proposal facts; no renderer infers a target.
+crates/ripr/src/analysis/language/perl/mod.rs|allow(dead_code)|1|Perl strict-actionability scaffold is feature-gated and exercised by tests before public projection is enabled; reviewed suppression in place of a cfg_attr wrapper the allow-attribute gate could not inventory.

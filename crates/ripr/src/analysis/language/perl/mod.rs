@@ -5,6 +5,10 @@
 //! exporter, a Perl runtime, or an LSP protocol session. Production routing
 //! lands only after the fact packet and strict actionability slices are
 //! fixture-backed.
+#![allow(
+    dead_code,
+    reason = "Perl strict-actionability scaffold is feature-gated and currently exercised by tests before public projection is enabled"
+)]
 
 use crate::analysis::AnalysisOptions;
 use crate::analysis::diff::ChangedFile;
@@ -522,8 +526,8 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             id: ProbeId(probe_id.clone()),
             location: SourceLocation::new(
                 std::path::PathBuf::from(&file.path),
-                owner.range.start_line as usize,
-                owner.range.start_column as usize,
+                owner.range.start_line,
+                owner.range.start_column,
             ),
             owner: owner
                 .name
@@ -878,7 +882,7 @@ impl PerlFactPacket {
         //     before it is used as a canonical gap or receipt key.
         for (field, ids) in &id_checks {
             for id in ids {
-                if let Err(reason) = validate_stable_id(*id) {
+                if let Err(reason) = validate_stable_id(id) {
                     return Err(format!("ingestion: malformed {field} ID `{id}` — {reason}"));
                 }
             }
@@ -980,19 +984,18 @@ impl PerlFactPacket {
         //    that did not advertise `test_facts` is untrustworthy. Only
         //    `test_facts` is enforced — SPEC-0064 defines no capability name
         //    for changes/relations/files, so this check does not fabricate one.
-        if !self.tests.is_empty() || !self.oracles.is_empty() {
-            if !self
+        if (!self.tests.is_empty() || !self.oracles.is_empty())
+            && !self
                 .producer
                 .capabilities
                 .iter()
                 .any(|capability| capability == "test_facts")
-            {
-                return Err(
-                    "ingestion: packet carries tests/oracles but producer did not \
-                     advertise the `test_facts` capability"
-                        .to_string(),
-                );
-            }
+        {
+            return Err(
+                "ingestion: packet carries tests/oracles but producer did not \
+                 advertise the `test_facts` capability"
+                    .to_string(),
+            );
         }
 
         // 8. Fingerprint recomputation (Campaign 31 item 2): the declared

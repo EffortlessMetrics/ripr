@@ -1918,7 +1918,6 @@ fn perl_lsp_exporter_unavailable_stays_non_actionable() {
 fn relation_gate_accepts_direct_owner_call() {
     // Build a packet where the related test evidence has a DirectOwnerCall
     // relation kind — this must pass the strict-actionability gate.
-    let adapter = PerlAdapter;
     let packet_text = EXACT_RETURN_PACKET.replace(
         "\"relation_kind\": \"file_proximity\"",
         "\"relation_kind\": \"direct_owner_call\"",
@@ -1948,7 +1947,6 @@ fn relation_gate_rejects_file_proximity_only() {
     // The reference packet uses DirectOwnerCall relations. To test the gate,
     // modify the relation_kind to file_proximity — this must fail strict
     // actionability with MissingStrongRelatedEvidence.
-    let adapter = PerlAdapter;
     let packet_text = EXACT_RETURN_PACKET.replace(
         "\"relation_kind\": \"direct_owner_call\"",
         "\"relation_kind\": \"file_proximity\"",
@@ -2097,7 +2095,6 @@ fn ingestion_rejects_unavailable_packet_status() {
         "\"packet_status\": \"complete\"",
         "\"packet_status\": \"unavailable\"",
     );
-    let adapter = PerlAdapter;
     let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(
@@ -2114,7 +2111,6 @@ fn ingestion_rejects_unavailable_packet_status() {
 fn ingestion_rejects_wrong_producer_name() {
     let packet =
         EXACT_RETURN_PACKET.replace("\"name\": \"perl-lsp\"", "\"name\": \"bogus-producer\"");
-    let adapter = PerlAdapter;
     let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(result.is_err(), "wrong producer name must be rejected");
@@ -2134,7 +2130,6 @@ fn ingestion_rejects_dangling_relation_owner_id() {
     let packet = EXACT_RETURN_PACKET.replacen(needle, "perl:NONEXISTENT::Owner", count);
     // Restore the earlier occurrences (owners array + change's owner_id) back.
     let packet = packet.replacen("perl:NONEXISTENT::Owner", needle, count - 1);
-    let adapter = PerlAdapter;
     let result = consume(&packet);
     assert!(
         result.is_err(),
@@ -2153,7 +2148,6 @@ fn ingestion_rejects_dangling_relation_change_id() {
         EXACT_RETURN_PACKET.replacen(needle, "\"change_id\": \"change:NONEXISTENT\"", count);
     // Restore the earlier occurrences (changes array) back to original.
     let packet = packet.replacen("\"change_id\": \"change:NONEXISTENT\"", needle, count - 1);
-    let adapter = PerlAdapter;
     let result = consume(&packet);
     let err = result.as_ref().err().map(String::as_str).unwrap_or("");
     assert!(
@@ -2186,7 +2180,6 @@ fn ingestion_accepts_unresolved_relation_change_id_sentinel() {
 
 #[test]
 fn ingestion_accepts_well_formed_reference_packet() {
-    let adapter = PerlAdapter;
     let result = consume(EXACT_RETURN_PACKET);
     assert!(
         result.is_ok(),

@@ -79,15 +79,15 @@ fn ripr_bin() -> PathBuf {
 /// produced the packet, only that a valid `ripr-perl-facts-v1` JSON was emitted.
 fn producer_on_path() -> Option<String> {
     // 1. Env override (highest priority).
-    if let Ok(path) = std::env::var("PERL_RIPR_FACTS") {
-        if !path.is_empty() {
-            return Some(path);
-        }
+    if let Ok(path) = std::env::var("PERL_RIPR_FACTS")
+        && !path.is_empty()
+    {
+        return Some(path);
     }
-    if let Ok(path) = std::env::var("RIPR_PERL_FACTS_EXPORTER") {
-        if !path.is_empty() {
-            return Some(path);
-        }
+    if let Ok(path) = std::env::var("RIPR_PERL_FACTS_EXPORTER")
+        && !path.is_empty()
+    {
+        return Some(path);
     }
     // 2. Canonical exporter.
     if which("perl-ripr-facts") {
