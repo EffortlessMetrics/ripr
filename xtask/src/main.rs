@@ -19,7 +19,6 @@ use ripr::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED,
 };
 
-mod active_goal_authority;
 mod cache;
 mod command;
 mod dispatch;
@@ -254,42 +253,6 @@ struct Capability {
 struct MarkdownLink {
     line: usize,
     target: String,
-}
-
-const GOAL_FILES_HISTORICAL_BANNER: &str = "Historical record: `.ripr/goals/` files grant no selection, mutation, proof, or support authority. Live work state is GitHub issues, PRs, checks, reviews, and the local worktree; one PR's scope is its PR-local implementation slice.";
-
-#[derive(Debug, Default)]
-struct CampaignManifest {
-    id: Option<String>,
-    title: Option<String>,
-    status: Option<String>,
-    issue: Option<String>,
-    lane: Option<String>,
-    successor: Option<String>,
-    no_current_goal: Option<bool>,
-    authority: Option<String>,
-    end_state: Vec<String>,
-    hard_rules: Vec<String>,
-    non_goals: Vec<String>,
-    work_items: Vec<CampaignWorkItem>,
-}
-
-#[derive(Debug, Default)]
-struct CampaignWorkItem {
-    id: Option<String>,
-    status: Option<String>,
-    branch: Option<String>,
-    stackable: Option<bool>,
-    proposal: Option<String>,
-    plan: Option<String>,
-    spec: Option<String>,
-    specs: Vec<String>,
-    receipt: Option<String>,
-    closeout: Option<String>,
-    acceptance: Option<String>,
-    commands: Vec<String>,
-    blocked_by: Vec<String>,
-    blocked_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1861,15 +1824,6 @@ struct CriticFinding {
     recommended_action: &'static str,
 }
 
-#[derive(Debug, Default)]
-struct ReportIndexCampaign {
-    id: String,
-    title: String,
-    status: String,
-    ready_work_items: Vec<String>,
-    issues: Vec<String>,
-}
-
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -1977,7 +1931,6 @@ fn precommit() -> Result<(), String> {
     check_doc_index()?;
     check_readme_state()?;
     markdown_links()?;
-    check_campaign()?;
     check_pr_shape()?;
     check_command_catalog()?;
     check_generated()?;
@@ -2093,7 +2046,6 @@ fn run_policy_checks() -> Result<(), String> {
     check_doc_index()?;
     check_readme_state()?;
     markdown_links()?;
-    check_campaign()?;
     check_pr_shape()?;
     check_command_catalog()?;
     check_generated()?;
@@ -2835,13 +2787,6 @@ fn cockpit() -> Result<(), String> {
             "target/ripr/reports/spec-numbering.md",
             true,
             check_spec_numbering,
-        ),
-        run_readiness_step(
-            "campaign_status",
-            "cargo xtask check-campaign",
-            "target/ripr/reports/campaign.md",
-            false,
-            check_campaign,
         ),
         run_readiness_step(
             "pr_triage",
@@ -4968,30 +4913,15 @@ pub(crate) fn receipts_impl(args: &[String]) -> Result<(), String> {
 
 pub(crate) fn reports_index_impl() -> Result<(), String> {
     let changes = collect_pr_changes()?;
-    let campaign = report_index_campaign();
     let reports = report_index_entries()?;
     let receipts = receipt_index_entries()?;
     let missing = report_index_missing_expected(&reports, &changes);
     let lane1_packets = report_index_lane1_readiness_packets(&reports);
-    let status = report_index_status(&reports, &missing, &campaign.issues);
+    let status = report_index_status(&reports, &missing, &[]);
     let next_commands = report_index_next_commands(&missing, &lane1_packets);
 
-    let markdown = report_index_markdown(
-        status,
-        &campaign,
-        &reports,
-        &receipts,
-        &missing,
-        &next_commands,
-    );
-    let json = report_index_json(
-        status,
-        &campaign,
-        &reports,
-        &receipts,
-        &missing,
-        &next_commands,
-    );
+    let markdown = report_index_markdown(status, &reports, &receipts, &missing, &next_commands);
+    let json = report_index_json(status, &reports, &receipts, &missing, &next_commands);
     write_report("index.md", &markdown)?;
     write_report("index.json", &json)
 }
@@ -5315,7 +5245,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -64974,25 +64904,8 @@ struct RepoContractArtifact {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct RepoContractWorkItem {
-    id: String,
-    status: String,
-    branch: String,
-    commands: Vec<String>,
-    acceptance: Option<String>,
-    blocked_by: Vec<String>,
-    blocked_reason: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 struct RepoContractSummary {
-    active_goal_id: Option<String>,
-    active_goal_title: Option<String>,
-    active_goal_status: Option<String>,
     artifacts: Vec<RepoContractArtifact>,
-    ready_work_items: Vec<RepoContractWorkItem>,
-    blocked_work_items: Vec<RepoContractWorkItem>,
-    done_work_items: Vec<RepoContractWorkItem>,
     support_rows: Vec<SupportTierRow>,
     policy_ledgers: Vec<String>,
     missing_links: Vec<String>,
@@ -65032,34 +64945,6 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
     let mut missing_links = Vec::new();
     missing_links.extend(doc_artifact_violations(root, &ledger_path)?);
 
-    let active_path = root.join(".ripr/goals/active.toml");
-    let mut active_goal_id = None;
-    let mut active_goal_title = None;
-    let mut active_goal_status = None;
-    let mut ready_work_items = Vec::new();
-    let mut blocked_work_items = Vec::new();
-    let mut done_work_items = Vec::new();
-    if active_path.exists() {
-        // Historical record only: goal files grant no live authority, so a
-        // missing manifest is not a violation and scheduler-era sync rules no
-        // longer apply.
-        let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-        missing_links.extend(parse_violations);
-        active_goal_id = manifest.id.clone();
-        active_goal_title = manifest.title.clone();
-        active_goal_status = manifest.status.clone();
-        for item in &manifest.work_items {
-            match item.status.as_deref() {
-                Some("ready") => ready_work_items.push(repo_contract_work_item_from_campaign(item)),
-                Some("blocked") => {
-                    blocked_work_items.push(repo_contract_work_item_from_campaign(item))
-                }
-                Some("done") => done_work_items.push(repo_contract_work_item_from_campaign(item)),
-                _ => {}
-            }
-        }
-    }
-
     let support_path = root.join(SUPPORT_TIERS_PATH);
     let support_rows = if support_path.exists() {
         let support_text = read_text_lossy(&support_path)?;
@@ -65072,13 +64957,7 @@ fn repo_contract_summary(root: &Path) -> Result<RepoContractSummary, String> {
     missing_links.dedup();
 
     Ok(RepoContractSummary {
-        active_goal_id,
-        active_goal_title,
-        active_goal_status,
         artifacts,
-        ready_work_items,
-        blocked_work_items,
-        done_work_items,
         support_rows,
         policy_ledgers: repo_contract_policy_ledgers(root)?,
         missing_links,
@@ -65115,24 +64994,6 @@ fn repo_contract_artifact_from_entry(entry: &DocArtifactEntry) -> RepoContractAr
     }
 }
 
-fn repo_contract_work_item_from_campaign(item: &CampaignWorkItem) -> RepoContractWorkItem {
-    RepoContractWorkItem {
-        id: item.id.clone().unwrap_or_else(|| "<missing>".to_string()),
-        status: item
-            .status
-            .clone()
-            .unwrap_or_else(|| "<missing>".to_string()),
-        branch: item
-            .branch
-            .clone()
-            .unwrap_or_else(|| "<missing>".to_string()),
-        commands: item.commands.clone(),
-        acceptance: item.acceptance.clone(),
-        blocked_by: item.blocked_by.clone(),
-        blocked_reason: item.blocked_reason.clone(),
-    }
-}
-
 fn repo_contract_policy_ledgers(root: &Path) -> Result<Vec<String>, String> {
     let mut ledgers = Vec::new();
     for path in collect_files(&root.join("policy"))? {
@@ -65153,26 +65014,6 @@ fn repo_contract_report_markdown(summary: &RepoContractSummary) -> String {
         repo_contract_report_status(summary)
     ));
     body.push_str("Mode: advisory\n\n");
-    body.push_str("## Active Goal\n\n");
-    body.push_str(&format!(
-        "- id: `{}`\n",
-        summary.active_goal_id.as_deref().unwrap_or("<missing>")
-    ));
-    body.push_str(&format!(
-        "- title: {}\n",
-        summary.active_goal_title.as_deref().unwrap_or("<missing>")
-    ));
-    body.push_str(&format!(
-        "- status: `{}`\n\n",
-        summary.active_goal_status.as_deref().unwrap_or("<missing>")
-    ));
-
-    body.push_str("## Ready Work Items\n\n");
-    write_repo_contract_work_items(&mut body, &summary.ready_work_items);
-
-    body.push_str("## Blocked Work Items\n\n");
-    write_repo_contract_work_items(&mut body, &summary.blocked_work_items);
-
     body.push_str("## Accepted Proposals\n\n");
     write_repo_contract_artifact_list(&mut body, &summary.artifacts, "proposal", "accepted");
 
@@ -65258,34 +65099,7 @@ fn repo_contract_report_markdown(summary: &RepoContractSummary) -> String {
         body.push('\n');
     }
 
-    body.push_str("## Recently Completed Work\n\n");
-    write_repo_contract_work_items(&mut body, &summary.done_work_items);
     body
-}
-
-fn write_repo_contract_work_items(body: &mut String, items: &[RepoContractWorkItem]) {
-    if items.is_empty() {
-        body.push_str("None registered.\n\n");
-        return;
-    }
-    for item in items {
-        body.push_str(&format!(
-            "- `{}` on branch `{}` with {} command(s)\n",
-            item.id,
-            item.branch,
-            item.commands.len()
-        ));
-        if let Some(acceptance) = item.acceptance.as_ref() {
-            body.push_str(&format!("  acceptance: {acceptance}\n"));
-        }
-        if let Some(reason) = item.blocked_reason.as_ref() {
-            body.push_str(&format!("  blocked reason: {reason}\n"));
-        }
-        if !item.blocked_by.is_empty() {
-            body.push_str(&format!("  blocked by: {}\n", item.blocked_by.join(", ")));
-        }
-    }
-    body.push('\n');
 }
 
 fn write_repo_contract_artifact_list(
@@ -65347,12 +65161,6 @@ fn repo_contract_report_json(summary: &RepoContractSummary) -> String {
     body.push_str("  \"report_id\": \"source_of_truth_graph\",\n");
     body.push_str("  \"mode\": \"advisory\",\n");
     body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
-    body.push_str(&format!(
-        "  \"active_goal\": {{ \"id\": {}, \"title\": {}, \"status\": {} }},\n",
-        json_optional_string(summary.active_goal_id.as_deref()),
-        json_optional_string(summary.active_goal_title.as_deref()),
-        json_optional_string(summary.active_goal_status.as_deref())
-    ));
     body.push_str("  \"artifacts\": [");
     write_repo_contract_artifact_json_array(&mut body, &artifacts);
     body.push_str("],\n");
@@ -65364,15 +65172,6 @@ fn repo_contract_report_json(summary: &RepoContractSummary) -> String {
     body.push_str("],\n");
     body.push_str("  \"open_adrs\": [");
     write_repo_contract_artifact_json_array(&mut body, &open_adrs);
-    body.push_str("],\n");
-    body.push_str("  \"ready_work_items\": [");
-    write_repo_contract_work_item_json_array(&mut body, &summary.ready_work_items);
-    body.push_str("],\n");
-    body.push_str("  \"blocked_work_items\": [");
-    write_repo_contract_work_item_json_array(&mut body, &summary.blocked_work_items);
-    body.push_str("],\n");
-    body.push_str("  \"recently_completed_work\": [");
-    write_repo_contract_work_item_json_array(&mut body, &summary.done_work_items);
     body.push_str("],\n");
     body.push_str("  \"superseded_artifacts\": [");
     write_repo_contract_artifact_json_array(&mut body, &superseded_artifacts);
@@ -65427,694 +65226,6 @@ fn write_repo_contract_artifact_json_array(body: &mut String, artifacts: &[&Repo
             json_optional_string(artifact.superseded_by.as_deref())
         ));
     }
-}
-
-fn write_repo_contract_work_item_json_array(body: &mut String, items: &[RepoContractWorkItem]) {
-    for (index, item) in items.iter().enumerate() {
-        if index > 0 {
-            body.push_str(", ");
-        }
-        body.push_str(&format!(
-            "{{ \"id\": \"{}\", \"status\": \"{}\", \"branch\": \"{}\", \"commands\": [",
-            json_escape(&item.id),
-            json_escape(&item.status),
-            json_escape(&item.branch)
-        ));
-        write_json_string_array(body, &item.commands);
-        body.push_str(&format!(
-            "], \"acceptance\": {}, \"blocked_by\": [",
-            json_optional_string(item.acceptance.as_deref())
-        ));
-        write_json_string_array(body, &item.blocked_by);
-        body.push_str(&format!(
-            "], \"blocked_reason\": {} }}",
-            json_optional_string(item.blocked_reason.as_deref())
-        ));
-    }
-}
-
-fn pr_body(args: &[String]) -> Result<(), String> {
-    let work_item_id = parse_pr_body_args(args)?;
-    let body = pr_body_from_root(Path::new("."), &work_item_id)?;
-    ensure_reports_dir()?;
-    let path = reports_dir().join("source-of-truth-pr-body.md");
-    fs::write(&path, body)
-        .map_err(|err| format!("failed to write {}: {err}", normalize_path(&path)))?;
-    println!("wrote {}", normalize_path(&path));
-    Ok(())
-}
-
-fn parse_pr_body_args(args: &[String]) -> Result<String, String> {
-    match args {
-        [flag, value] if flag == "--work-item" && !value.trim().is_empty() => Ok(value.clone()),
-        _ => Err("usage: cargo xtask pr-body --work-item <id>".to_string()),
-    }
-}
-
-fn pr_body_from_root(root: &Path, work_item_id: &str) -> Result<String, String> {
-    let active_path = root.join(".ripr/goals/active.toml");
-    let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-    if !parse_violations.is_empty() {
-        return Err(format!(
-            "{} has parse violations:\n- {}",
-            display_repo_path(root, &active_path),
-            parse_violations.join("\n- ")
-        ));
-    }
-    let item = manifest
-        .work_items
-        .iter()
-        .find(|item| item.id.as_deref() == Some(work_item_id))
-        .ok_or_else(|| {
-            format!(
-                "{} does not contain work item `{work_item_id}`",
-                display_repo_path(root, &active_path)
-            )
-        })?;
-    let status = item.status.as_deref().unwrap_or("<missing>");
-    if !matches!(status, "ready" | "active") {
-        return Err(format!(
-            "{0} work item `{work_item_id}` has status `{status}`; `pr-body` only generates PR bodies for ready or active work items. Run `cargo xtask goals next` before selecting work.",
-            display_repo_path(root, &active_path)
-        ));
-    }
-
-    let ledger_path = root.join(DOC_ARTIFACT_LEDGER);
-    let artifacts = if ledger_path.exists() {
-        parse_doc_artifact_ledger(&ledger_path)?.artifacts
-    } else {
-        Vec::new()
-    };
-
-    let proposal = pr_body_artifact_reference(root, &artifacts, item.proposal.as_deref())?;
-    let spec_id = item
-        .spec
-        .as_deref()
-        .or_else(|| item.specs.first().map(String::as_str));
-    let spec = pr_body_artifact_reference(root, &artifacts, spec_id)?;
-    let plan = pr_body_artifact_reference(root, &artifacts, item.plan.as_deref())?;
-    let issue = manifest.issue.as_deref().unwrap_or("none");
-    let branch = item.branch.as_deref().unwrap_or("<missing>");
-    let acceptance = item
-        .acceptance
-        .as_deref()
-        .unwrap_or("No acceptance text is recorded for this work item.");
-    let proof = pr_body_proof_block(&item.commands);
-    let non_goals =
-        pr_body_manifest_list(&manifest.non_goals, "No explicit non-goals are recorded.");
-
-    Ok(format!(
-        r#"## Summary
-
-{acceptance}
-
-## Links
-
-Proposal: {proposal}
-Spec: {spec}
-ADR: none
-Plan item: {plan}
-Issue: {issue}
-Active goal: `{goal_id}`
-Work item: `{work_item_id}`
-
-## Scope
-
-- Work item status: `{status}`
-- Branch: `{branch}`
-- Acceptance: {acceptance}
-
-## Non-goals
-
-{non_goals}
-
-## Support-tier impact
-
-- [ ] none
-- [ ] updates `docs/status/SUPPORT_TIERS.md`
-
-Review before checking a box; `pr-body` does not infer support-tier impact.
-
-## Policy impact
-
-- [ ] none
-- [ ] doc artifacts
-- [ ] CI lane
-- [ ] package boundary
-- [ ] lint / Clippy
-- [ ] no-panic
-- [ ] file policy
-
-Review before checking a box; `pr-body` does not infer policy impact.
-
-## Proof
-
-```bash
-{proof}
-```
-
-## Claim boundary
-
-This PR body uses `.ripr/goals/active.toml` as historical context where present; live scope comes from the controlling GitHub issue and this PR's implementation slice. It does not claim the work is complete until the proof commands above are run and their results are reported.
-
-## Rollback
-
-Revert the PR commit or commits for `{work_item_id}` and rerun the proof commands that still apply.
-"#,
-        goal_id = manifest.active_id()
-    ))
-}
-
-fn pr_body_artifact_reference(
-    root: &Path,
-    artifacts: &[DocArtifactEntry],
-    id: Option<&str>,
-) -> Result<String, String> {
-    let Some(id) = id else {
-        return Ok("none".to_string());
-    };
-    if id.ends_with(".md") || id.contains('/') || id.contains('\\') {
-        let path = root.join(id);
-        let title = pr_body_artifact_title(&path)?;
-        return Ok(format!(
-            "`{}` - {} (`{}`)",
-            id,
-            markdown_inline(&title),
-            id.replace('\\', "/")
-        ));
-    }
-    if let Some(artifact) = artifacts
-        .iter()
-        .find(|artifact| artifact.id.as_deref() == Some(id))
-    {
-        let Some(path) = artifact.path.as_deref() else {
-            return Err(format!(
-                "artifact `{id}` is registered in `{DOC_ARTIFACT_LEDGER}` without a path; `pr-body` requires linked artifacts to resolve before generating review text"
-            ));
-        };
-        let title = pr_body_artifact_title(&root.join(path))?;
-        return Ok(format!("`{id}` - {} (`{path}`)", markdown_inline(&title)));
-    }
-    Err(format!(
-        "artifact `{id}` is not registered in `{DOC_ARTIFACT_LEDGER}`; run `cargo xtask check-doc-artifacts` before generating PR body text"
-    ))
-}
-
-fn pr_body_artifact_title(path: &Path) -> Result<String, String> {
-    let text = read_text_lossy(path)?;
-    Ok(text
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("# "))
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("artifact")
-        })
-        .to_string())
-}
-
-fn pr_body_proof_block(commands: &[String]) -> String {
-    if commands.is_empty() {
-        "# No proof commands are recorded for this work item.".to_string()
-    } else {
-        commands.join("\n")
-    }
-}
-
-fn pr_body_manifest_list(items: &[String], fallback: &str) -> String {
-    if items.is_empty() {
-        fallback.to_string()
-    } else {
-        items
-            .iter()
-            .map(|item| format!("- {item}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-fn markdown_inline(value: &str) -> String {
-    value.replace('\n', " ").replace('|', "\\|")
-}
-
-trait CampaignManifestPrBodyExt {
-    fn active_id(&self) -> &str;
-}
-
-impl CampaignManifestPrBodyExt for CampaignManifest {
-    fn active_id(&self) -> &str {
-        self.id.as_deref().unwrap_or("<missing>")
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct CloseoutWriteResult {
-    handoff_path: PathBuf,
-    archive_path: PathBuf,
-}
-
-fn closeout(args: &[String]) -> Result<(), String> {
-    let goal_id = parse_closeout_args(args)?;
-    let date = current_utc_date()?;
-    let result = closeout_from_root(Path::new("."), &goal_id, &date)?;
-    println!("wrote {}", normalize_path(&result.handoff_path));
-    println!("wrote {}", normalize_path(&result.archive_path));
-    Ok(())
-}
-
-fn parse_closeout_args(args: &[String]) -> Result<String, String> {
-    match args {
-        [flag, value] if flag == "--goal" && !value.trim().is_empty() => Ok(value.clone()),
-        _ => Err("usage: cargo xtask closeout --goal <goal-id>".to_string()),
-    }
-}
-
-fn closeout_from_root(
-    root: &Path,
-    goal_id: &str,
-    date: &str,
-) -> Result<CloseoutWriteResult, String> {
-    validate_closeout_date(date)?;
-    let active_path = root.join(".ripr/goals/active.toml");
-    let active_text = read_text_lossy(&active_path)?;
-    let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
-    if !parse_violations.is_empty() {
-        return Err(format!(
-            "{} has parse violations:\n- {}",
-            display_repo_path(root, &active_path),
-            parse_violations.join("\n- ")
-        ));
-    }
-    let active_goal_id = manifest.active_id();
-    if active_goal_id != goal_id {
-        return Err(format!(
-            "{} records active goal `{active_goal_id}`, not `{goal_id}`",
-            display_repo_path(root, &active_path)
-        ));
-    }
-    validate_closeout_archivable_manifest(&manifest)?;
-
-    let slug = closeout_slug(goal_id)?;
-    let handoff_path = root.join(format!("docs/handoffs/{date}-{slug}-closeout.md"));
-    let archive_path = root.join(format!(".ripr/goals/archive/{date}-{slug}.toml"));
-    let handoff = closeout_markdown(&manifest, goal_id, date, &handoff_path, &archive_path);
-    let archive = closeout_archive_text(&active_text, goal_id, date);
-
-    ensure_new_text_file(&handoff_path)?;
-    ensure_new_text_file(&archive_path)?;
-    write_text_file(&handoff_path, &handoff)?;
-    write_text_file(&archive_path, &archive)?;
-
-    Ok(CloseoutWriteResult {
-        handoff_path,
-        archive_path,
-    })
-}
-
-fn validate_closeout_archivable_manifest(manifest: &CampaignManifest) -> Result<(), String> {
-    let id = manifest.active_id();
-    if manifest.status.as_deref() != Some("closed") {
-        return Err(format!(
-            "closeout requires active goal `{id}` to have status `closed` before archiving"
-        ));
-    }
-
-    let unfinished = manifest
-        .work_items
-        .iter()
-        .filter_map(|item| {
-            let item_id = item.id.as_deref().unwrap_or("<missing>");
-            (item.status.as_deref() != Some("done")).then_some(item_id)
-        })
-        .collect::<Vec<_>>();
-    if !unfinished.is_empty() {
-        return Err(format!(
-            "closeout requires all work items to be done before archiving; unfinished: {}",
-            unfinished.join(", ")
-        ));
-    }
-
-    let successor = manifest
-        .successor
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if successor.is_none() && manifest.no_current_goal != Some(true) {
-        return Err(
-            "closeout requires closed active goal to declare `successor = \"<campaign-id>\"` or `no_current_goal = true` before archiving"
-                .to_string(),
-        );
-    }
-
-    Ok(())
-}
-
-fn closeout_markdown(
-    manifest: &CampaignManifest,
-    goal_id: &str,
-    date: &str,
-    handoff_path: &Path,
-    archive_path: &Path,
-) -> String {
-    let title = manifest.title.as_deref().unwrap_or(goal_id);
-    let status = manifest.status.as_deref().unwrap_or("<missing>");
-    let proposals = closeout_collect_values(&manifest.work_items, |item| item.proposal.as_deref());
-    let specs = closeout_collect_specs(&manifest.work_items);
-    let plans = closeout_collect_values(&manifest.work_items, |item| item.plan.as_deref());
-    let receipts = closeout_collect_values(&manifest.work_items, |item| item.receipt.as_deref());
-    let closeouts = closeout_collect_values(&manifest.work_items, |item| item.closeout.as_deref());
-    let proof_commands = closeout_collect_commands(&manifest.work_items);
-    let done_items = manifest
-        .work_items
-        .iter()
-        .filter(|item| item.status.as_deref() == Some("done"))
-        .collect::<Vec<_>>();
-    let remaining_items = manifest
-        .work_items
-        .iter()
-        .filter(|item| item.status.as_deref() != Some("done"))
-        .collect::<Vec<_>>();
-    let non_goals =
-        pr_body_manifest_list(&manifest.non_goals, "No explicit non-goals are recorded.");
-    let next_recommended = closeout_next_recommendation(manifest, &remaining_items);
-
-    let mut body = String::new();
-    body.push_str(&format!("# Closeout: {}\n\n", markdown_inline(title)));
-    body.push_str("Status: generated\n\n");
-    body.push_str("Owner: repo-infra\n\n");
-    body.push_str(&format!("Created: {date}\n\n"));
-    body.push_str(&format!("Active goal: `{}`\n\n", markdown_inline(goal_id)));
-    body.push_str(&format!("Goal status at generation: `{status}`\n\n"));
-    body.push_str(&format!(
-        "Linked proposals: {}\n\n",
-        closeout_inline_values(&proposals, "See work item details.")
-    ));
-    body.push_str(&format!(
-        "Linked specs: {}\n\n",
-        closeout_inline_values(&specs, "See work item details.")
-    ));
-    body.push_str("Linked ADRs: none recorded in the active goal manifest.\n\n");
-    body.push_str(&format!(
-        "Linked plans: {}\n\n",
-        closeout_inline_values(&plans, "See work item details.")
-    ));
-    body.push_str("Support-tier impact: review `docs/status/SUPPORT_TIERS.md` before promoting any claim.\n\n");
-    body.push_str("Policy impact: review `policy/` ledgers before recording policy changes.\n\n");
-    body.push_str("Required evidence:\n\n");
-    body.push_str(&closeout_bullet_list(
-        &proof_commands,
-        "No proof commands are recorded.",
-    ));
-    body.push_str("\nNon-goals:\n\n");
-    body.push_str(&non_goals);
-    body.push_str("\n\nClaim boundary:\n\n");
-    body.push_str("This generated closeout records the active goal contract and proof commands. It does not claim the goal is complete until maintainers replace generated notes with actual pass/fail evidence and review any support-tier or policy changes.\n\n");
-    body.push_str("Rollback:\n\n");
-    body.push_str(
-        "Remove the generated handoff and archive files, then rerun `cargo xtask closeout --goal ",
-    );
-    body.push_str(goal_id);
-    body.push_str("` after correcting the active goal manifest.\n\n");
-
-    body.push_str("## What landed\n\n");
-    write_closeout_work_items(&mut body, &done_items, "No done work items are recorded.");
-
-    body.push_str("## Proof executed\n\n");
-    body.push_str("Generated scaffold: replace this section with exact pass/fail states and receipt paths before final closeout.\n\n");
-    body.push_str("```bash\n");
-    body.push_str(&pr_body_proof_block(&proof_commands));
-    body.push_str("\n```\n\n");
-
-    body.push_str("## Claim changes\n\n");
-    body.push_str("No claim change is generated automatically. Record any product-claim movement here and map it in `docs/status/SUPPORT_TIERS.md`.\n\n");
-
-    body.push_str("## Policy changes\n\n");
-    body.push_str("No policy change is generated automatically. Record any CI, lint, file, package, or no-panic policy changes here and update the relevant ledger under `policy/`.\n\n");
-
-    body.push_str("## Remaining work\n\n");
-    write_closeout_work_items(
-        &mut body,
-        &remaining_items,
-        "No remaining work items are recorded.",
-    );
-
-    body.push_str("## Archive updates\n\n");
-    body.push_str(&format!("- Handoff: `{}`\n", normalize_path(handoff_path)));
-    body.push_str(&format!(
-        "- Archived active goal manifest: `{}`\n",
-        normalize_path(archive_path)
-    ));
-    if !receipts.is_empty() {
-        body.push_str(&format!(
-            "- Recorded receipts: {}\n",
-            closeout_inline_values(&receipts, "none")
-        ));
-    }
-    if !closeouts.is_empty() {
-        body.push_str(&format!(
-            "- Prior closeout references: {}\n",
-            closeout_inline_values(&closeouts, "none")
-        ));
-    }
-    body.push('\n');
-
-    body.push_str("## Next recommended goal\n\n");
-    body.push_str(&next_recommended);
-    body.push('\n');
-    body
-}
-
-fn write_closeout_work_items(body: &mut String, items: &[&CampaignWorkItem], fallback: &str) {
-    if items.is_empty() {
-        body.push_str(fallback);
-        body.push_str("\n\n");
-        return;
-    }
-    for item in items {
-        let id = item.id.as_deref().unwrap_or("<missing>");
-        let status = item.status.as_deref().unwrap_or("<missing>");
-        let branch = item.branch.as_deref().unwrap_or("<missing>");
-        let acceptance = item
-            .acceptance
-            .as_deref()
-            .unwrap_or("No acceptance text is recorded.");
-        body.push_str(&format!(
-            "- `{}` (`{status}`, branch `{}`): {}\n",
-            markdown_inline(id),
-            markdown_inline(branch),
-            markdown_inline(acceptance)
-        ));
-        if !item.commands.is_empty() {
-            body.push_str(&format!(
-                "  Proof: {}\n",
-                closeout_inline_values(&item.commands, "none")
-            ));
-        }
-        if !item.blocked_by.is_empty() {
-            body.push_str(&format!(
-                "  Blocked by: {}\n",
-                closeout_inline_values(&item.blocked_by, "none")
-            ));
-        }
-        if let Some(reason) = item.blocked_reason.as_deref() {
-            body.push_str(&format!("  Blocked reason: {}\n", markdown_inline(reason)));
-        }
-    }
-    body.push('\n');
-}
-
-fn closeout_collect_values<F>(items: &[CampaignWorkItem], mut field: F) -> Vec<String>
-where
-    F: FnMut(&CampaignWorkItem) -> Option<&str>,
-{
-    let mut values = Vec::new();
-    for item in items {
-        if let Some(value) = field(item) {
-            push_unique_value(&mut values, value);
-        }
-    }
-    values
-}
-
-fn closeout_collect_specs(items: &[CampaignWorkItem]) -> Vec<String> {
-    let mut values = Vec::new();
-    for item in items {
-        if let Some(spec) = item.spec.as_deref() {
-            push_unique_value(&mut values, spec);
-        }
-        for spec in &item.specs {
-            push_unique_value(&mut values, spec);
-        }
-    }
-    values
-}
-
-fn closeout_collect_commands(items: &[CampaignWorkItem]) -> Vec<String> {
-    let mut values = Vec::new();
-    for item in items {
-        for command in &item.commands {
-            push_unique_value(&mut values, command);
-        }
-    }
-    values
-}
-
-fn push_unique_value(values: &mut Vec<String>, value: &str) {
-    if !value.trim().is_empty() && !values.iter().any(|existing| existing == value) {
-        values.push(value.to_string());
-    }
-}
-
-fn closeout_inline_values(values: &[String], fallback: &str) -> String {
-    if values.is_empty() {
-        fallback.to_string()
-    } else {
-        values
-            .iter()
-            .map(|value| format!("`{}`", markdown_inline(value)))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-fn closeout_bullet_list(values: &[String], fallback: &str) -> String {
-    if values.is_empty() {
-        format!("- {fallback}\n")
-    } else {
-        values
-            .iter()
-            .map(|value| format!("- `{}`\n", markdown_inline(value)))
-            .collect::<String>()
-    }
-}
-
-fn closeout_next_recommendation(
-    manifest: &CampaignManifest,
-    remaining_items: &[&CampaignWorkItem],
-) -> String {
-    if let Some(successor) = manifest.successor.as_deref() {
-        return format!("Next successor recorded in active manifest: `{successor}`.\n");
-    }
-    if manifest.no_current_goal == Some(true) {
-        return "The active manifest explicitly records no current successor goal.\n".to_string();
-    }
-    if let Some(item) = remaining_items.iter().find(|item| {
-        matches!(
-            item.status.as_deref(),
-            Some("ready") | Some("active") | Some("blocked")
-        )
-    }) {
-        let id = item.id.as_deref().unwrap_or("<missing>");
-        let status = item.status.as_deref().unwrap_or("<missing>");
-        return format!(
-            "No successor goal is recorded; next unresolved work item is `{id}` (`{status}`).\n"
-        );
-    }
-    "No next goal is recorded in the historical `.ripr/goals/active.toml`; select current work from open GitHub issues and PRs.\n".to_string()
-}
-
-fn closeout_archive_text(active_text: &str, goal_id: &str, date: &str) -> String {
-    let mut body = String::new();
-    body.push_str(&format!(
-        "# Archived by `cargo xtask closeout --goal {goal_id}` on {date}.\n"
-    ));
-    body.push_str(active_text.trim_end());
-    body.push('\n');
-    body
-}
-
-fn closeout_slug(goal_id: &str) -> Result<String, String> {
-    let mut slug = String::new();
-    let mut last_dash = false;
-    for ch in goal_id.trim().chars() {
-        let next = if ch.is_ascii_alphanumeric() || ch == '_' {
-            Some(ch.to_ascii_lowercase())
-        } else if ch == '-' || ch == '/' || ch == '.' || ch.is_whitespace() {
-            Some('-')
-        } else {
-            None
-        };
-        if let Some(ch) = next {
-            if ch == '-' {
-                if !last_dash && !slug.is_empty() {
-                    slug.push(ch);
-                    last_dash = true;
-                }
-            } else {
-                slug.push(ch);
-                last_dash = false;
-            }
-        }
-    }
-    while slug.ends_with('-') {
-        slug.pop();
-    }
-    if slug.is_empty() {
-        Err(format!(
-            "goal id `{goal_id}` cannot be used in a closeout path"
-        ))
-    } else {
-        Ok(slug)
-    }
-}
-
-fn validate_closeout_date(date: &str) -> Result<(), String> {
-    let bytes = date.as_bytes();
-    let valid = bytes.len() == 10
-        && bytes[4] == b'-'
-        && bytes[7] == b'-'
-        && bytes
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit());
-    if valid {
-        Ok(())
-    } else {
-        Err(format!("closeout date `{date}` must use YYYY-MM-DD"))
-    }
-}
-
-fn ensure_new_text_file(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        return Err(format!("{} already exists", normalize_path(path)));
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create {}: {err}", normalize_path(parent)))?;
-    }
-    Ok(())
-}
-
-fn write_text_file(path: &Path, body: &str) -> Result<(), String> {
-    fs::write(path, body).map_err(|err| format!("failed to write {}: {err}", normalize_path(path)))
-}
-
-fn current_utc_date() -> Result<String, String> {
-    let elapsed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock is before Unix epoch: {err}"))?;
-    Ok(utc_date_from_unix_days((elapsed.as_secs() / 86_400) as i64))
-}
-
-fn utc_date_from_unix_days(days: i64) -> String {
-    let (year, month, day) = civil_from_unix_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-fn civil_from_unix_days(days: i64) -> (i64, i64, i64) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = year + if month <= 2 { 1 } else { 0 };
-    (year, month, day)
 }
 
 fn validate_readme_support_tier_pointer(
@@ -66659,565 +65770,10 @@ fn worktree_doctor_next_actions(findings: &[WorktreeDoctorFinding]) -> Vec<Strin
     actions.into_iter().collect()
 }
 
-fn goals(args: &[String]) -> Result<(), String> {
-    match args.first().map(String::as_str) {
-        Some("status") | Some("report") | None => goals_status(),
-        Some("next") => goals_next(),
-        Some(other) => Err(format!(
-            "unknown goals command `{other}`\nusage: cargo xtask goals status\n       cargo xtask goals next\n       cargo xtask goals report"
-        )),
-    }
-}
-
-fn check_campaign() -> Result<(), String> {
-    let mut violations = stale_agent_boundary_language_violations()?;
-    let manifest_path = Path::new(".ripr/goals/active.toml");
-    if manifest_path.exists() {
-        let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-        violations.extend(parse_violations);
-        if manifest.authority.as_deref() != Some("historical_read_only") {
-            violations.push(
-                ".ripr/goals/active.toml must declare `authority = \"historical_read_only\"`; goal files are read-only compatibility artifacts and grant no selection, mutation, proof, or support authority"
-                    .to_string(),
-            );
-        }
-    }
-    finish_campaign_report(&violations)
-}
-
-fn goals_status() -> Result<(), String> {
-    let manifest_path = Path::new(".ripr/goals/active.toml");
-    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = stale_agent_boundary_language_violations()?;
-    violations.extend(parse_violations);
-    let body = campaign_status_report_body(&manifest, &violations);
-    write_report("goals.md", &body)?;
-    println!("{body}");
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "goals status found campaign issues; see target/ripr/reports/goals.md\n{}",
-            violations.join("\n")
-        ))
-    }
-}
-
-fn goals_next() -> Result<(), String> {
-    let manifest_path = Path::new(".ripr/goals/active.toml");
-    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = stale_agent_boundary_language_violations()?;
-    violations.extend(parse_violations);
-    let body = campaign_next_report_body(&manifest, &violations);
-    write_report("goals-next.md", &body)?;
-    println!("{body}");
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "goals next found campaign issues; see target/ripr/reports/goals-next.md\n{}",
-            violations.join("\n")
-        ))
-    }
-}
-
-fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "campaign.md",
-            check: "check-campaign",
-            why_it_matters: "Goal files under .ripr/goals are read-only historical artifacts; a file that still claims live selection or mutation authority sends agents toward the wrong source of truth.",
-            fix_kind: FixKind::AuthorDecisionRequired,
-            recommended_fixes: &[
-                "Declare `authority = \"historical_read_only\"` in any retained .ripr/goals manifest.",
-                "Take live work selection from GitHub issues, PRs, checks, and the local worktree, not from goal files.",
-                "Keep one PR's scope in its PR-local implementation slice under .allow/spec-system/slices/.",
-            ],
-            rerun_command: "cargo xtask check-campaign",
-            exception_template: None,
-        },
-        violations,
-    )
-}
-
-fn stale_agent_boundary_language_violations() -> Result<Vec<String>, String> {
-    let files = tracked_files()?;
-    stale_agent_boundary_language_violations_for_root(Path::new("."), &files)
-}
-
-fn stale_agent_boundary_language_violations_for_root(
-    root: &Path,
-    files: &[String],
-) -> Result<Vec<String>, String> {
-    let mut entries = Vec::new();
-    for path in files {
-        if !is_stale_agent_boundary_scan_target(path) {
-            continue;
-        }
-        let text = read_text_lossy(&root.join(path))?;
-        entries.push((path.clone(), text));
-    }
-    Ok(stale_agent_boundary_language_violations_for_entries(
-        entries
-            .iter()
-            .map(|(path, text)| (path.as_str(), text.as_str())),
-    ))
-}
-
-fn stale_agent_boundary_language_violations_for_entries<'a>(
-    entries: impl IntoIterator<Item = (&'a str, &'a str)>,
-) -> Vec<String> {
-    let patterns = stale_agent_boundary_patterns();
-    let mut violations = Vec::new();
-    for (path, text) in entries {
-        if !is_stale_agent_boundary_scan_target(path) {
-            continue;
-        }
-        if patterns.iter().any(|pattern| text.contains(pattern)) {
-            violations.push(format!(
-                "{path} contains stale merge-boundary language; agents should finish scoped review, repair, validation, merge, and post-merge verification when checks and review are clean"
-            ));
-        }
-    }
-    violations
-}
-
-fn stale_agent_boundary_patterns() -> Vec<String> {
-    vec![
-        ["requires", "human", "merge"].join("_"),
-        ["requires", "human", "merge"].join(" "),
-        ["cannot", "continue", "productively"].join(" "),
-        ["without", "crossing"].join(" "),
-        ["human", "only", "merge"].join("-"),
-    ]
-}
-
-fn is_stale_agent_boundary_scan_target(path: &str) -> bool {
-    (path.starts_with(".ripr/goals/") && path.ends_with(".toml"))
-        || path == "AGENTS.md"
-        || (path.starts_with("docs/") && (path.ends_with(".md") || path.ends_with(".toml")))
-}
-
 fn normalize_repo_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map(normalize_path)
         .unwrap_or_else(|_| normalize_path(path))
-}
-fn campaign_status_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
-    let status = if violations.is_empty() {
-        "pass"
-    } else {
-        "fail"
-    };
-    let mut body =
-        format!("# ripr goals status\n\nStatus: {status}\n\n{GOAL_FILES_HISTORICAL_BANNER}\n");
-    body.push_str("## Campaign (historical record)\n\n");
-    body.push_str(&format!(
-        "- id: `{}`\n",
-        manifest.id.as_deref().unwrap_or("<missing>")
-    ));
-    body.push_str(&format!(
-        "- title: {}\n",
-        manifest.title.as_deref().unwrap_or("<missing>")
-    ));
-    body.push_str(&format!(
-        "- status: `{}`\n\n",
-        manifest.status.as_deref().unwrap_or("<missing>")
-    ));
-
-    body.push_str("## Work Items\n\n");
-    body.push_str("| Work item | Status | Branch | Stackable | Commands |\n");
-    body.push_str("| --- | --- | --- | --- | ---: |\n");
-    for item in &manifest.work_items {
-        body.push_str(&format!(
-            "| `{}` | `{}` | `{}` | `{}` | {} |\n",
-            item.id.as_deref().unwrap_or("<missing>"),
-            item.status.as_deref().unwrap_or("<missing>"),
-            item.branch.as_deref().unwrap_or("<missing>"),
-            item.stackable
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "<missing>".to_string()),
-            item.commands.len()
-        ));
-    }
-    body.push('\n');
-    write_violations_section(&mut body, violations);
-    body
-}
-
-fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
-    let status = if violations.is_empty() {
-        "pass"
-    } else {
-        "fail"
-    };
-    let mut body =
-        format!("# ripr goals next\n\nStatus: {status}\n\n{GOAL_FILES_HISTORICAL_BANNER}\n");
-    body.push_str("## Ready Work Items (historical record)\n\n");
-    let ready = manifest
-        .work_items
-        .iter()
-        .filter(|item| item.status.as_deref() == Some("ready"))
-        .collect::<Vec<_>>();
-    if ready.is_empty() {
-        body.push_str("No ready work items.\n\n");
-        let blocked = manifest
-            .work_items
-            .iter()
-            .filter(|item| item.status.as_deref() == Some("blocked"))
-            .collect::<Vec<_>>();
-        if !blocked.is_empty() {
-            body.push_str("## Blocked Work Items\n\n");
-            let unfinished_are_blocked = manifest
-                .work_items
-                .iter()
-                .all(|item| matches!(item.status.as_deref(), Some("done") | Some("blocked")));
-            if unfinished_are_blocked {
-                body.push_str(
-                    "All unfinished work items are blocked; do not infer ready work from chat history.\n\n",
-                );
-            } else {
-                body.push_str(
-                    "These work items are blocked and are not selectable until their blockers are resolved.\n\n",
-                );
-            }
-            if let Some(issue) = manifest
-                .issue
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                body.push_str(&format!("- campaign tracker: {issue}\n"));
-            }
-            if !manifest.end_state.is_empty() {
-                body.push_str("- campaign boundary:\n");
-                for entry in &manifest.end_state {
-                    body.push_str(&format!("  - {entry}\n"));
-                }
-            }
-            body.push('\n');
-            for item in blocked {
-                body.push_str(&format!(
-                    "- `{}` on branch `{}`\n",
-                    item.id.as_deref().unwrap_or("<missing>"),
-                    item.branch.as_deref().unwrap_or("<missing>")
-                ));
-                body.push_str(&format!(
-                    "  blocked reason: {}\n",
-                    item.blocked_reason.as_deref().unwrap_or("<missing>")
-                ));
-                if item.blocked_by.is_empty() {
-                    body.push_str("  blocked by: <none declared>\n");
-                } else {
-                    body.push_str("  blocked by:\n");
-                    for dependency in &item.blocked_by {
-                        body.push_str(&format!("  - `{dependency}`\n"));
-                    }
-                }
-                if let Some(acceptance) = item.acceptance.as_ref() {
-                    body.push_str(&format!("  acceptance: {acceptance}\n"));
-                }
-            }
-            body.push('\n');
-            body.push_str(
-                "Resolve the named blocker or record an accepted bounded blocker in the manifest before selecting closeout work.\n\n",
-            );
-        }
-        if manifest.status.as_deref() == Some("closed")
-            && let Some(successor) = manifest
-                .successor
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-        {
-            body.push_str("## Successor Goal\n\n");
-            body.push_str(&format!(
-                "The active manifest is closed and records successor `{successor}`; do not continue the closed campaign or infer a different successor from chat history.\n\n",
-            ));
-            body.push_str(
-                "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`.\n\n",
-            );
-        }
-        if manifest.status.as_deref() == Some("closed") && manifest.no_current_goal == Some(true) {
-            body.push_str("## No Current Goal\n\n");
-            body.push_str(
-                "The active manifest intentionally records `no_current_goal = true`; do not continue the closed campaign or infer a successor from chat history.\n\n",
-            );
-            body.push_str("To select new work, inspect repo-owned sources in this order:\n\n");
-            body.push_str("- open pull requests and required checks\n");
-            body.push_str("- `docs/IMPLEMENTATION_CAMPAIGNS.md`\n");
-            body.push_str("- `docs/IMPLEMENTATION_PLAN.md`\n");
-            body.push_str("- accepted proposals, specs, ADRs, and campaign plans\n");
-            body.push_str("- open issues that cite those repo artifacts\n\n");
-            body.push_str(
-                "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`.\n\n",
-            );
-        }
-    } else {
-        for item in ready {
-            body.push_str(&format!(
-                "- `{}` on branch `{}`\n",
-                item.id.as_deref().unwrap_or("<missing>"),
-                item.branch.as_deref().unwrap_or("<missing>")
-            ));
-            if let Some(acceptance) = item.acceptance.as_ref() {
-                body.push_str(&format!("  acceptance: {acceptance}\n"));
-            }
-            if !item.commands.is_empty() {
-                body.push_str("  commands:\n");
-                for command in &item.commands {
-                    body.push_str(&format!("  - `{command}`\n"));
-                }
-            }
-        }
-        body.push('\n');
-    }
-    write_violations_section(&mut body, violations);
-    body
-}
-
-fn parse_campaign_manifest(path: &Path) -> Result<(CampaignManifest, Vec<String>), String> {
-    let text = read_text_lossy(path)?;
-    let mut manifest = CampaignManifest::default();
-    let mut violations = Vec::new();
-    let mut current: Option<CampaignWorkItem> = None;
-    let mut active_array: Option<(String, Vec<String>, usize)> = None;
-    let mut active_multiline: Option<(String, usize)> = None;
-
-    for (index, line) in text.lines().enumerate() {
-        let line_number = index + 1;
-        let trimmed = line.trim();
-        if let Some((key, _start_line)) = active_multiline.clone() {
-            if trimmed.contains("\"\"\"") {
-                active_multiline = None;
-            }
-            if key != "objective" {
-                violations.push(format!(
-                    "{}:{} unsupported multiline field `{key}`",
-                    normalize_path(path),
-                    line_number
-                ));
-            }
-            continue;
-        }
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if let Some((key, values, start_line)) = active_array.as_mut() {
-            if trimmed.starts_with(']') {
-                assign_campaign_array(&mut manifest, &mut current, key, values.clone());
-                active_array = None;
-                continue;
-            }
-            match parse_array_item(trimmed) {
-                Ok(Some(value)) => values.push(value),
-                Ok(None) => {}
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
-            }
-            if line_number < *start_line {
-                violations.push(format!(
-                    "{}:{} invalid array state",
-                    normalize_path(path),
-                    line_number
-                ));
-            }
-            continue;
-        }
-        if trimmed == "[[work_item]]" {
-            if let Some(item) = current.take() {
-                manifest.work_items.push(item);
-            }
-            current = Some(CampaignWorkItem::default());
-            continue;
-        }
-        let Some((key, value)) = trimmed.split_once('=') else {
-            violations.push(format!(
-                "{}:{line_number} expected `key = value`",
-                normalize_path(path)
-            ));
-            continue;
-        };
-        let key = key.trim();
-        let value = value.trim();
-        if value.starts_with("\"\"\"") {
-            if !value.trim_start_matches("\"\"\"").contains("\"\"\"") {
-                active_multiline = Some((key.to_string(), line_number));
-            }
-            continue;
-        }
-        if value == "[" {
-            active_array = Some((key.to_string(), Vec::new(), line_number));
-            continue;
-        }
-        if value.starts_with('[') {
-            match parse_inline_array(value) {
-                Ok(values) => assign_campaign_array(&mut manifest, &mut current, key, values),
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
-            }
-            continue;
-        }
-        assign_campaign_scalar(
-            &mut manifest,
-            &mut current,
-            key,
-            value,
-            line_number,
-            &mut violations,
-        );
-    }
-
-    if let Some((key, start_line)) = active_multiline {
-        violations.push(format!(
-            "{}:{start_line} multiline field `{key}` is missing closing triple quotes",
-            normalize_path(path)
-        ));
-    }
-    if let Some((key, _, start_line)) = active_array {
-        violations.push(format!(
-            "{}:{start_line} array `{key}` is missing closing `]`",
-            normalize_path(path)
-        ));
-    }
-    if let Some(item) = current {
-        manifest.work_items.push(item);
-    }
-    Ok((manifest, violations))
-}
-
-fn assign_campaign_array(
-    manifest: &mut CampaignManifest,
-    current: &mut Option<CampaignWorkItem>,
-    key: &str,
-    values: Vec<String>,
-) {
-    if let Some(item) = current.as_mut() {
-        match key {
-            "specs" => item.specs = values,
-            "commands" => item.commands = values,
-            "blocked_by" => item.blocked_by = values,
-            _ => {}
-        }
-    } else {
-        match key {
-            "end_state" => manifest.end_state = values,
-            "hard_rules" => manifest.hard_rules = values,
-            "non_goals" => manifest.non_goals = values,
-            _ => {}
-        }
-    }
-}
-
-fn assign_campaign_scalar(
-    manifest: &mut CampaignManifest,
-    current: &mut Option<CampaignWorkItem>,
-    key: &str,
-    value: &str,
-    line_number: usize,
-    violations: &mut Vec<String>,
-) {
-    if let Some(item) = current.as_mut() {
-        match key {
-            "id" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.id = Some(parsed);
-            }),
-            "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.status = Some(parsed);
-            }),
-            "branch" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.branch = Some(parsed);
-            }),
-            "proposal" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.proposal = Some(parsed);
-            }),
-            "plan" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.plan = Some(parsed);
-            }),
-            "spec" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.spec = Some(parsed);
-            }),
-            "receipt" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.receipt = Some(parsed);
-            }),
-            "closeout" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                item.closeout = Some(parsed);
-            }),
-            "acceptance" => {
-                assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                    item.acceptance = Some(parsed);
-                })
-            }
-            "blocked_reason" => {
-                assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                    item.blocked_reason = Some(parsed);
-                });
-            }
-            "stackable" => item.stackable = parse_campaign_bool(value, line_number, violations),
-            _ => violations.push(format!(
-                "campaign manifest line {line_number} uses unsupported work_item field `{key}`"
-            )),
-        }
-    } else {
-        match key {
-            "id" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.id = Some(parsed);
-            }),
-            "title" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.title = Some(parsed);
-            }),
-            "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.status = Some(parsed);
-            }),
-            "issue" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.issue = Some(parsed);
-            }),
-            "lane" => manifest.lane = Some(value.trim_matches('"').to_string()),
-            "successor" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.successor = Some(parsed);
-            }),
-            "no_current_goal" => {
-                manifest.no_current_goal = parse_campaign_bool(value, line_number, violations);
-            }
-            "authority" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
-                manifest.authority = Some(parsed);
-            }),
-            _ => violations.push(format!(
-                "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
-            )),
-        }
-    }
-}
-
-fn assign_quoted_campaign_value(
-    value: &str,
-    line_number: usize,
-    violations: &mut Vec<String>,
-    assign: impl FnOnce(String),
-) {
-    match parse_quoted_value(value) {
-        Ok(parsed) => assign(parsed),
-        Err(message) => violations.push(format!("campaign manifest line {line_number}: {message}")),
-    }
-}
-
-fn parse_campaign_bool(
-    value: &str,
-    line_number: usize,
-    violations: &mut Vec<String>,
-) -> Option<bool> {
-    match value {
-        "true" => Some(true),
-        "false" => Some(false),
-        other => {
-            violations.push(format!(
-                "campaign manifest line {line_number}: expected boolean, got `{other}`"
-            ));
-            None
-        }
-    }
 }
 
 fn is_kebab_case_id(value: &str) -> bool {
@@ -69079,34 +67635,6 @@ fn receipts_dir() -> PathBuf {
     Path::new("target").join("ripr").join("receipts")
 }
 
-fn report_index_campaign() -> ReportIndexCampaign {
-    let path = Path::new(".ripr/goals/active.toml");
-    match parse_campaign_manifest(path) {
-        Ok((manifest, violations)) => {
-            let ready_work_items = manifest
-                .work_items
-                .iter()
-                .filter(|item| item.status.as_deref() == Some("ready"))
-                .filter_map(|item| item.id.clone())
-                .collect::<Vec<_>>();
-            ReportIndexCampaign {
-                id: manifest.id.unwrap_or_else(|| "unknown".to_string()),
-                title: manifest.title.unwrap_or_else(|| "unknown".to_string()),
-                status: manifest.status.unwrap_or_else(|| "unknown".to_string()),
-                ready_work_items,
-                issues: violations,
-            }
-        }
-        Err(err) => ReportIndexCampaign {
-            id: "unknown".to_string(),
-            title: "unknown".to_string(),
-            status: "unknown".to_string(),
-            ready_work_items: Vec::new(),
-            issues: vec![err],
-        },
-    }
-}
-
 fn report_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
     file_index_entries(&reports_dir(), &["index.md", "index.json"])
 }
@@ -69584,10 +68112,6 @@ fn report_index_missing_expected(
     {
         expected.insert("readme-state.md".to_string());
     }
-    if changes.iter().any(|change| is_campaign_path(&change.path)) {
-        expected.insert("campaign.md".to_string());
-        expected.insert("goals-next.md".to_string());
-    }
     if changes.iter().any(|change| is_analysis_path(&change.path)) {
         expected.insert("pr-shape.md".to_string());
         expected.insert("fixtures.md".to_string());
@@ -69626,13 +68150,6 @@ fn is_docs_path(path: &str) -> bool {
         || path == "CONTRIBUTING.md"
         || path == "CHANGELOG.md"
         || path.starts_with("docs/")
-        || is_plan_path(path)
-}
-
-fn is_campaign_path(path: &str) -> bool {
-    path == ".ripr/goals/active.toml"
-        || path == "docs/IMPLEMENTATION_CAMPAIGNS.md"
-        || path == "docs/IMPLEMENTATION_PLAN.md"
         || is_plan_path(path)
 }
 
@@ -69717,12 +68234,6 @@ fn report_index_next_commands(
         .any(|path| path.ends_with("/golden-drift.md") || path.ends_with("\\golden-drift.md"))
     {
         commands.insert("cargo xtask golden-drift".to_string());
-    }
-    if missing
-        .iter()
-        .any(|path| path.ends_with("/campaign.md") || path.ends_with("\\campaign.md"))
-    {
-        commands.insert("cargo xtask check-campaign".to_string());
     }
     if missing
         .iter()
@@ -70477,7 +68988,6 @@ fn pr_bool_path(value: &Value, path: &[&str]) -> Option<bool> {
 
 fn report_index_markdown(
     status: &str,
-    campaign: &ReportIndexCampaign,
     reports: &[ReportIndexEntry],
     receipts: &[ReportIndexEntry],
     missing: &[String],
@@ -70485,25 +68995,6 @@ fn report_index_markdown(
 ) -> String {
     let mut body = format!("# ripr report index\n\nStatus: {status}\n\n");
     body.push_str("This is the reviewer front door for generated `ripr` artifacts.\n\n");
-
-    body.push_str("## Campaign\n\n");
-    body.push_str(&format!("- id: `{}`\n", campaign.id));
-    body.push_str(&format!("- title: {}\n", campaign.title));
-    body.push_str(&format!("- status: `{}`\n", campaign.status));
-    body.push_str("- ready work items:\n");
-    if campaign.ready_work_items.is_empty() {
-        body.push_str("  - None detected.\n");
-    } else {
-        for item in &campaign.ready_work_items {
-            body.push_str(&format!("  - `{item}`\n"));
-        }
-    }
-    if !campaign.issues.is_empty() {
-        body.push_str("- campaign issues:\n");
-        for issue in &campaign.issues {
-            body.push_str(&format!("  - {issue}\n"));
-        }
-    }
 
     body.push_str("\n## Summary\n\n");
     body.push_str(&format!("- available reports: {}\n", reports.len()));
@@ -70555,8 +69046,6 @@ fn report_index_markdown(
         "test-oracles.md",
         "dogfood.md",
         "metrics.md",
-        "campaign.md",
-        "goals-next.md",
     ] {
         body.push_str(&format!(
             "- `{file}`: {}\n",
@@ -70627,7 +69116,6 @@ fn report_index_markdown(
 
 fn report_index_json(
     status: &str,
-    campaign: &ReportIndexCampaign,
     reports: &[ReportIndexEntry],
     receipts: &[ReportIndexEntry],
     missing: &[String],
@@ -70636,23 +69124,6 @@ fn report_index_json(
     let mut body = String::from("{\n");
     body.push_str("  \"schema_version\": \"0.1\",\n");
     body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
-    body.push_str("  \"campaign\": {\n");
-    body.push_str(&format!("    \"id\": \"{}\",\n", json_escape(&campaign.id)));
-    body.push_str(&format!(
-        "    \"title\": \"{}\",\n",
-        json_escape(&campaign.title)
-    ));
-    body.push_str(&format!(
-        "    \"status\": \"{}\",\n",
-        json_escape(&campaign.status)
-    ));
-    body.push_str("    \"ready_work_items\": [");
-    write_json_string_array(&mut body, &campaign.ready_work_items);
-    body.push_str("],\n");
-    body.push_str("    \"issues\": [");
-    write_json_string_array(&mut body, &campaign.issues);
-    body.push_str("]\n");
-    body.push_str("  },\n");
     body.push_str("  \"reports\": [\n");
     write_report_index_entry_array(&mut body, reports);
     body.push_str("  ],\n");
@@ -71036,26 +69507,6 @@ fn critic_findings(
             evidence: missing_blessings,
             recommended_action:
                 "Record the intentional output change in the fixture expected-output changelog.",
-        });
-    }
-
-    let campaign_changed = changes.iter().any(|change| is_campaign_path(&change.path));
-    if campaign_changed && missing_or_bad_report(reports, "campaign.md") {
-        findings.push(CriticFinding {
-            id: "campaign_missing_check_report",
-            severity: "warn",
-            message: "Campaign state changed without a passing campaign report.",
-            evidence: vec![format_report_status(reports, "campaign.md")],
-            recommended_action: "Run `cargo xtask check-campaign` before review.",
-        });
-    }
-    if campaign_changed && missing_or_bad_report(reports, "goals-next.md") {
-        findings.push(CriticFinding {
-            id: "campaign_missing_goals_next_report",
-            severity: "warn",
-            message: "Campaign state changed without a goals-next report.",
-            evidence: vec![format_report_status(reports, "goals-next.md")],
-            recommended_action: "Run `cargo xtask goals next` before review.",
         });
     }
 
@@ -75389,18 +73840,18 @@ mod tests {
     use super::{
         BUN_UB_CROSS_LANGUAGE_DOGFOOD_REQUIRED_CASES, BadgeArtifactJob, BadgeBasisReport,
         BadgeBasisSignal, BadgeCanonicalProjection, BadgeCountBreakdown, BadgeEndpointSnapshot,
-        BadgeNativeAuditSnapshot, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath,
-        CheckReport, CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry,
-        CwdCommand, DOC_ARTIFACT_LEDGER, DogfoodBunUbCrossLanguageScenario,
-        DogfoodEditorFirstPrBridgeRun, DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun,
-        DogfoodFindingAlignmentScenario, DogfoodFirstActionRun, DogfoodFirstPrRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodPythonNoActionEvalScenario, DogfoodPythonRealRepoEvalScenario,
-        DogfoodPythonStaticLimitEvalScenario, DogfoodRealRepairAttemptScenario,
-        DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
-        DogfoodSurfaceProjectionAlignmentScenario, DogfoodTypescriptPreviewRepairLoopScenario,
-        DogfoodUserSurfaceProjectionScenario, EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        BadgeNativeAuditSnapshot, BadgeNativeSlot, Capability, ChangedPath, CheckReport,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
+        DOC_ARTIFACT_LEDGER, DogfoodBunUbCrossLanguageScenario, DogfoodEditorFirstPrBridgeRun,
+        DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario,
+        DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
+        DogfoodPreviewProjectionRuns, DogfoodPythonNoActionEvalScenario,
+        DogfoodPythonRealRepoEvalScenario, DogfoodPythonStaticLimitEvalScenario,
+        DogfoodRealRepairAttemptScenario, DogfoodReportInputs, DogfoodReportPacketIndexRun,
+        DogfoodRun, DogfoodSurfaceProjectionAlignmentScenario,
+        DogfoodTypescriptPreviewRepairLoopScenario, DogfoodUserSurfaceProjectionScenario,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
         EVIDENCE_QUALITY_TREND_PREVIOUS_ARTIFACT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
@@ -75414,10 +73865,10 @@ mod tests {
         REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV,
         REPO_EXPOSURE_SUMMARY_REPORT_DEFAULT_TIMEOUT_MS, REPO_EXPOSURE_SUMMARY_REPORT_TIMEOUT_ENV,
         ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH,
-        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES,
+        RepoExposureLatencyTrace, ReportIndexEntry, ReportIndexRepoOpsArtifact,
+        RiprSwarmReadinessNextActionSources, SUPPORT_TIERS_PATH, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TYPESCRIPT_BUN_UB_CALIBRATION_REQUIRED_CASES,
         TYPESCRIPT_PREVIEW_FALSE_ACTIONABLE_AUDIT_REQUIRED_CASES,
         TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES, TestOracleClass,
         USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES, USER_SURFACE_PROJECTION_REQUIRED_SURFACES,
@@ -75472,16 +73923,14 @@ mod tests {
         gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
         glob_matches, golden_changes_without_blessing, golden_drift_semantics,
         guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
+        is_dependency_surface_candidate, is_generated_candidate, is_non_rust_programming_candidate,
         is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook, is_snake_case_id,
-        is_spec_id, is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_actionable_gap_packets_json, lane1_actionable_gap_packets_markdown,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
-        lane1_evidence_audit_repo_exposure_args,
+        is_spec_id, json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_actionable_gap_packets_json,
+        lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
+        lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
         lane1_evidence_audit_report_from_complete_repo_exposure,
         lane1_evidence_audit_timeout_error, lane1_readiness_packet_specs,
         limited_badge_artifacts_json, limited_badge_artifacts_markdown,
@@ -75492,15 +73941,14 @@ mod tests {
         next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         normalize_path, panic_family_from_pattern, parse_actionable_gap_outcomes_args,
-        parse_campaign_manifest, parse_doc_artifact_ledger_text, parse_file_policy_allowlist,
-        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
-        parse_mutation_calibration_args, parse_mutation_outcomes_json,
-        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
-        parse_pr_triage_pull_requests, parse_reason, parse_repo_badge_artifact_options,
-        parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
-        parse_required_status_contexts, parse_ripr_swarm_args, parse_ripr_swarm_plan_args,
-        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, parse_targeted_test_outcome_args,
+        parse_doc_artifact_ledger_text, parse_file_policy_allowlist, parse_gh_pr_status_args,
+        parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
+        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
+        parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
+        parse_repo_badge_artifact_options, parse_repo_exposure_static_seams,
+        parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
+        parse_ripr_swarm_plan_args, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
         pr_actionable_delta_front_panel_from_inputs, pr_body_validation_warning, pr_checks_summary,
         pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
         pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
@@ -75515,12 +73963,11 @@ mod tests {
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_exposure_summary_report_timeout_ms_from_env, repo_root,
-        repo_seam_inventory_command_args_for_root, report_index_json,
-        report_index_lane1_overall_status, report_index_lane1_readiness_packets,
-        report_index_markdown, report_index_missing_artifact_count, report_index_missing_expected,
-        report_index_next_commands, report_index_repo_ops_packets, report_index_repo_ops_status,
-        report_status_from_text, ripr_command_literals_in_text, ripr_debug_binary,
-        ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
+        repo_seam_inventory_command_args_for_root, report_index_lane1_overall_status,
+        report_index_lane1_readiness_packets, report_index_missing_artifact_count,
+        report_index_missing_expected, report_index_next_commands, report_index_repo_ops_packets,
+        report_index_repo_ops_status, report_status_from_text, ripr_command_literals_in_text,
+        ripr_debug_binary, ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
         ripr_plus_receipt_from_repo_badge_json, ripr_plus_receipt_from_repo_exposure_summary_json,
         ripr_plus_receipt_from_repo_exposure_summary_json_with_source, ripr_plus_receipt_markdown,
         ripr_pre_commit_hook, ripr_swarm_attempt_allowed_file_line,
@@ -75540,8 +73987,8 @@ mod tests {
         sorted_command_catalog_content, sorted_markdown_index_table_content,
         sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
         spec_numbering_violations, specs, static_language_allowlist_covers,
-        static_language_violation_message, status_for_report, suggested_fixes_patch,
-        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        static_language_violation_message, suggested_fixes_patch, suspicious_runtime_file_names,
+        targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, unknown_command_message,
@@ -75578,10 +74025,6 @@ mod tests {
     use super::{
         audit_push_value_counts_table_limited, static_limitation_category,
         static_limitation_repair_route,
-    };
-    use super::{
-        stale_agent_boundary_language_violations_for_entries,
-        stale_agent_boundary_language_violations_for_root, stale_agent_boundary_patterns,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -86127,30 +84570,6 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
     }
 
     #[test]
-    fn path_classification_separates_production_evidence_and_policy() {
-        assert!(is_production_path("crates/ripr/src/analysis/mod.rs"));
-        assert!(is_production_path("editors/vscode/src/client.ts"));
-        assert!(is_evidence_path(
-            "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
-        ));
-        assert!(is_docs_path(
-            "plans/campaign-27/lane3-editor-preview-routing.md"
-        ));
-        assert!(is_campaign_path(
-            "plans/campaign-27/lane3-editor-preview-routing.md"
-        ));
-        assert!(is_evidence_path(
-            "plans/campaign-27/lane3-editor-preview-routing.md"
-        ));
-        assert!(is_evidence_path("fixtures/boundary_gap/SPEC.md"));
-        assert!(is_evidence_path("metrics/capabilities.toml"));
-        assert!(is_evidence_path("xtask/src/main.rs"));
-        assert!(is_policy_path(".github/workflows/ci.yml"));
-        assert!(is_policy_path("policy/non-rust-allowlist.toml"));
-        assert!(!is_production_path("docs/ENGINEERING.md"));
-    }
-
-    #[test]
     fn public_contract_rows_detect_json_and_lsp_surfaces() {
         let changes = vec![
             ChangedPath {
@@ -86565,8 +84984,8 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
         assert!(missing.contains(&"target/ripr/reports/check-pr.md".to_string()));
         assert!(missing.contains(&"target/ripr/reports/doc-index.md".to_string()));
         assert!(missing.contains(&"target/ripr/reports/markdown-links.md".to_string()));
-        assert!(missing.contains(&"target/ripr/reports/campaign.md".to_string()));
-        assert!(missing.contains(&"target/ripr/reports/goals-next.md".to_string()));
+        assert!(!missing.contains(&"target/ripr/reports/campaign.md".to_string()));
+        assert!(!missing.contains(&"target/ripr/reports/goals-next.md".to_string()));
     }
 
     #[test]
@@ -86591,44 +85010,6 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
         let missing = report_index_missing_expected(&reports, &changes);
 
         assert!(missing.contains(&"target/ripr/reports/golden-drift.md".to_string()));
-    }
-
-    #[test]
-    fn report_index_markdown_includes_review_path_and_receipts() {
-        let campaign = ReportIndexCampaign {
-            id: "evidence-quality".to_string(),
-            title: "Make ripr findings evidence-first".to_string(),
-            status: "active".to_string(),
-            ready_work_items: vec!["output/unknown-stop-reason-invariant".to_string()],
-            issues: Vec::new(),
-        };
-        let reports = vec![ReportIndexEntry {
-            file: "pr-summary.md".to_string(),
-            path: "target/ripr/reports/pr-summary.md".to_string(),
-            status: "pass".to_string(),
-        }];
-        let receipts = vec![ReportIndexEntry {
-            file: "check-pr.json".to_string(),
-            path: "target/ripr/receipts/check-pr.json".to_string(),
-            status: "pass".to_string(),
-        }];
-        let body = report_index_markdown(
-            "pass",
-            &campaign,
-            &reports,
-            &receipts,
-            &[],
-            &["cargo xtask check-pr".to_string()],
-        );
-
-        assert!(body.contains("# ripr report index"));
-        assert!(body.contains("output/unknown-stop-reason-invariant"));
-        assert!(body.contains("Suggested Reviewer Path"));
-        assert!(body.contains("Lane 1 Evidence Readiness"));
-        assert!(body.contains("cargo xtask lane1-evidence-audit"));
-        assert!(body.contains("Repo-Ops Packets"));
-        assert_eq!(status_for_report(&reports, "pr-summary.md"), "pass");
-        assert_eq!(status_for_report(&reports, "missing.md"), "missing");
     }
 
     #[test]
@@ -86818,59 +85199,6 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
                 .map(|packet| packet.status.as_str()),
             Some("pass")
         );
-    }
-
-    #[test]
-    fn report_index_json_includes_repo_ops_packet_queue() -> Result<(), String> {
-        let campaign = ReportIndexCampaign {
-            id: "repo-ops-ux".to_string(),
-            title: "Repo-Ops UX".to_string(),
-            status: "active".to_string(),
-            ready_work_items: Vec::new(),
-            issues: Vec::new(),
-        };
-        let reports = vec![ReportIndexEntry {
-            file: "commands.json".to_string(),
-            path: "target/ripr/reports/commands.json".to_string(),
-            status: "present".to_string(),
-        }];
-
-        let body = report_index_json(
-            "warn",
-            &campaign,
-            &reports,
-            &[],
-            &["target/ripr/reports/check-pr.md".to_string()],
-            &["cargo xtask check-pr".to_string()],
-        );
-        let value: serde_json::Value =
-            serde_json::from_str(&body).map_err(|err| err.to_string())?;
-        let packets = value["repo_ops_packets"]
-            .as_array()
-            .ok_or_else(|| "repo_ops_packets must be an array".to_string())?;
-        let lane1 = value["lane1_readiness"]
-            .as_object()
-            .ok_or_else(|| "lane1_readiness must be an object".to_string())?;
-
-        assert!(packets.iter().any(|packet| {
-            packet["id"] == "command_mutability_catalog"
-                && packet["status"] == "incomplete"
-                && packet["next_command"] == "cargo xtask commands"
-        }));
-        assert!(packets.iter().any(|packet| packet["id"] == "pr_ready"));
-        assert!(packets.iter().any(|packet| packet["id"] == "repo_cockpit"));
-        assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
-        assert_eq!(lane1["status"], "warn");
-        assert_eq!(lane1["missing_artifacts"], 12);
-        assert!(
-            lane1["packets"]
-                .as_array()
-                .ok_or_else(|| "lane1_readiness.packets must be an array".to_string())?
-                .iter()
-                .any(|packet| packet["id"] == "lane1_evidence_audit"
-                    && packet["next_command"] == "cargo xtask lane1-evidence-audit")
-        );
-        Ok(())
     }
 
     #[test]
@@ -87166,56 +85494,6 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
                 "agent-context-v2".to_string()
             ])
         );
-    }
-
-    #[test]
-    fn campaign_manifest_parser_reads_work_items() -> Result<(), Box<dyn std::error::Error>> {
-        let path = std::env::temp_dir().join(format!(
-            "ripr-campaign-manifest-test-{}.toml",
-            std::process::id()
-        ));
-        let source = r#"id = "agentic-devex-foundation"
-title = "Agentic DevEx Foundation"
-status = "active"
-successor = "next-campaign"
-no_current_goal = false
-
-objective = """
-Build the repo operating system.
-"""
-
-end_state = [
-  "architecture guard exists"
-]
-
-[[work_item]]
-id = "fixtures/first-two-goldens"
-status = "ready"
-branch = "fixtures/first-two-goldens"
-stackable = false
-acceptance = "fixtures pass"
-commands = [
-  "cargo xtask fixtures",
-  "cargo xtask check-pr"
-]
-"#;
-        fs::write(&path, source)?;
-
-        let parsed = parse_campaign_manifest(&path);
-        let _ = fs::remove_file(&path);
-        let (manifest, violations) = parsed?;
-
-        assert!(violations.is_empty());
-        assert_eq!(manifest.id, Some("agentic-devex-foundation".to_string()));
-        assert_eq!(manifest.successor, Some("next-campaign".to_string()));
-        assert_eq!(manifest.no_current_goal, Some(false));
-        assert_eq!(manifest.work_items.len(), 1);
-        assert_eq!(
-            manifest.work_items[0].id,
-            Some("fixtures/first-two-goldens".to_string())
-        );
-        assert_eq!(manifest.work_items[0].commands.len(), 2);
-        Ok(())
     }
 
     #[test]
@@ -97159,21 +95437,6 @@ blocked_reason = "Waiting on docs/wait."
         }
     }
 
-    fn mark_repo_contract_active_goal_closed(root: &Path) -> Result<(), String> {
-        let path = root.join(".ripr/goals/active.toml");
-        let text = fs::read_to_string(&path)
-            .map_err(|err| format!("active goal fixture should be readable: {err}"))?;
-        let text = text
-            .replace(
-                "status = \"active\"",
-                "status = \"closed\"\nno_current_goal = true",
-            )
-            .replace("status = \"ready\"", "status = \"done\"")
-            .replace("status = \"blocked\"", "status = \"done\"");
-        write(&path, &text);
-        Ok(())
-    }
-
     #[test]
     fn doc_artifacts_rejects_duplicate_artifact_id() -> Result<(), String> {
         with_temp_cwd("doc-artifacts-duplicate", |root| {
@@ -98489,78 +96752,6 @@ metric = "language_adapter_python_repair_routing_quality_metrics"
     }
 
     #[test]
-    fn repo_contract_report_writes_graph_markdown_and_json() -> Result<(), String> {
-        with_temp_cwd("repo-contract-report", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let (markdown, json) = super::repo_contract_report_from_root(root)?;
-            assert!(markdown.contains("## Active Goal"));
-            assert!(markdown.contains("Status: pass"));
-            assert!(markdown.contains("`docs/report`"));
-            assert!(markdown.contains("`RIPR-ADR-0001`: `proposed`"));
-            assert!(markdown.contains("`RIPR-PROP-0002` -> `RIPR-PROP-0001`"));
-            assert!(markdown.contains("## Support-Tier Impacts"));
-            let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
-            assert_eq!(value["schema_version"], "0.1");
-            assert_eq!(value["report_id"], "source_of_truth_graph");
-            assert_eq!(value["mode"], "advisory");
-            assert_eq!(value["status"], "pass");
-            assert_eq!(value["active_goal"]["id"], "source-of-truth-control-plane");
-            assert!(
-                value["ready_work_items"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| item["id"] == "docs/report"))
-            );
-            assert!(
-                value["ready_work_items"]
-                    .as_array()
-                    .is_some_and(|items| items.len() == 2)
-            );
-            assert!(markdown.contains("## Blocked Work Items"));
-            assert!(markdown.contains("`docs/wait`"));
-            assert!(markdown.contains("blocked reason: Waiting on runner proof."));
-            assert!(markdown.contains("blocked by: docs/wait"));
-            assert!(
-                value["blocked_work_items"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| {
-                        item["id"] == "docs/wait"
-                            && item["blocked_reason"] == "Waiting on runner proof."
-                    }))
-            );
-            assert!(
-                value["blocked_work_items"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| {
-                        item["id"] == "docs/wait-dependent"
-                            && item["blocked_by"].as_array().is_some_and(|blocked_by| {
-                                blocked_by
-                                    .iter()
-                                    .any(|dependency| dependency == "docs/wait")
-                            })
-                    }))
-            );
-            assert!(value["accepted_proposals"].is_array());
-            assert!(
-                value["open_adrs"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| item["id"] == "RIPR-ADR-0001"))
-            );
-            assert!(
-                value["superseded_artifacts"]
-                    .as_array()
-                    .is_some_and(|items| items.iter().any(|item| item["id"] == "RIPR-PROP-0002"))
-            );
-            assert!(value["policy_ledgers"].as_array().is_some_and(|items| {
-                items
-                    .iter()
-                    .any(|item| item == "policy/workflow_allowlist.txt")
-            }));
-            Ok(())
-        })
-    }
-
-    #[test]
     fn repo_contract_report_command_writes_indexable_report_files() -> Result<(), String> {
         with_temp_cwd("repo-contract-report-command", |root| {
             write_repo_contract_report_fixture(root, true);
@@ -98633,603 +96824,6 @@ owner = "repo-infra"
         });
     }
 
-    #[test]
-    fn repo_contract_report_renders_empty_and_warning_states() -> Result<(), String> {
-        let summary = super::RepoContractSummary {
-            active_goal_id: None,
-            active_goal_title: None,
-            active_goal_status: None,
-            artifacts: Vec::new(),
-            ready_work_items: Vec::new(),
-            blocked_work_items: Vec::new(),
-            done_work_items: Vec::new(),
-            support_rows: Vec::new(),
-            policy_ledgers: Vec::new(),
-            missing_links: vec!["missing source-of-truth edge".to_string()],
-        };
-
-        let markdown = super::repo_contract_report_markdown(&summary);
-        assert!(markdown.contains("Status: warn"));
-        assert!(markdown.contains("No support-tier rows found."));
-        assert!(markdown.contains("No policy ledgers found."));
-        assert!(markdown.contains("- missing source-of-truth edge"));
-        assert!(markdown.contains("None registered."));
-
-        let json = super::repo_contract_report_json(&summary);
-        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
-        assert_eq!(value["status"], "warn");
-        assert_eq!(value["active_goal"]["id"], Value::Null);
-        assert_eq!(
-            value["blocked_work_items"].as_array().map(Vec::len),
-            Some(0)
-        );
-        assert_eq!(value["support_tiers"].as_array().map(Vec::len), Some(0));
-        assert_eq!(value["policy_ledgers"].as_array().map(Vec::len), Some(0));
-        assert_eq!(value["missing_links"][0], "missing source-of-truth edge");
-        Ok(())
-    }
-
-    #[test]
-    fn pr_body_writes_body_from_work_item_contract() -> Result<(), String> {
-        with_temp_cwd("pr-body-command", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            dispatch::execute(XtaskCommand::PrBody(vec![
-                "--work-item".to_string(),
-                "docs/report".to_string(),
-            ]))?;
-
-            let body_path = root
-                .join(super::reports_dir())
-                .join("source-of-truth-pr-body.md");
-            let body = fs::read_to_string(body_path)
-                .map_err(|err| format!("failed to read generated PR body: {err}"))?;
-            assert!(body.contains("Proposal: `RIPR-PROP-0001`"));
-            assert!(body.contains("Spec: `RIPR-SPEC-0001`"));
-            assert!(body.contains("Plan item: `PLAN-0001`"));
-            assert!(body.contains("Work item: `docs/report`"));
-            assert!(body.contains("cargo xtask repo-contract-report"));
-            assert!(body.contains("## Claim boundary"));
-            assert!(body.contains(
-                "Review before checking a box; `pr-body` does not infer support-tier impact."
-            ));
-            assert!(
-                body.contains(
-                    "Review before checking a box; `pr-body` does not infer policy impact."
-                )
-            );
-            assert!(!body.contains("- [x] none"));
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn pr_body_rejects_missing_work_item() {
-        with_temp_cwd("pr-body-missing-work-item", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let error = super::pr_body_from_root(root, "docs/missing")
-                .expect_err("unknown work item should fail PR body generation");
-            assert!(
-                error.contains("does not contain work item `docs/missing`"),
-                "{error}"
-            );
-        });
-    }
-
-    #[test]
-    fn pr_body_rejects_unregistered_artifact_reference() -> Result<(), String> {
-        with_temp_cwd("pr-body-unregistered-artifact", |root| {
-            write_repo_contract_report_fixture(root, true);
-            let active_path = root.join(".ripr/goals/active.toml");
-            let active = fs::read_to_string(&active_path)
-                .map_err(|err| format!("failed to read active goal fixture: {err}"))?;
-            write(
-                &active_path,
-                &active.replace(
-                    "proposal = \"RIPR-PROP-0001\"",
-                    "proposal = \"RIPR-PROP-0999\"",
-                ),
-            );
-
-            let error = super::pr_body_from_root(root, "docs/report")
-                .expect_err("unregistered artifact should fail PR body generation");
-            assert!(
-                error.contains("artifact `RIPR-PROP-0999` is not registered"),
-                "{error}"
-            );
-            assert!(error.contains("cargo xtask check-doc-artifacts"), "{error}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn pr_body_rejects_registered_artifact_without_path() -> Result<(), String> {
-        with_temp_cwd("pr-body-artifact-without-path", |root| {
-            write_repo_contract_report_fixture(root, true);
-            let active_path = root.join(".ripr/goals/active.toml");
-            let active = fs::read_to_string(&active_path)
-                .map_err(|err| format!("failed to read active goal fixture: {err}"))?;
-            write(
-                &active_path,
-                &active.replace(
-                    "proposal = \"RIPR-PROP-0001\"",
-                    "proposal = \"RIPR-PROP-0999\"",
-                ),
-            );
-            let ledger_path = root.join(super::DOC_ARTIFACT_LEDGER);
-            let ledger = fs::read_to_string(&ledger_path)
-                .map_err(|err| format!("failed to read doc artifact ledger fixture: {err}"))?;
-            write(
-                &ledger_path,
-                &format!(
-                    "{ledger}\n[[artifact]]\nid = \"RIPR-PROP-0999\"\nkind = \"proposal\"\nstatus = \"accepted\"\nowner = \"repo-infra\"\n"
-                ),
-            );
-
-            let error = super::pr_body_from_root(root, "docs/report")
-                .expect_err("pathless artifact should fail PR body generation");
-            assert!(
-                error.contains("artifact `RIPR-PROP-0999` is registered"),
-                "{error}"
-            );
-            assert!(error.contains("without a path"), "{error}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn pr_body_rejects_blocked_work_item() {
-        with_temp_cwd("pr-body-blocked-work-item", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let error = super::pr_body_from_root(root, "docs/wait")
-                .expect_err("blocked work item should fail PR body generation");
-            assert!(
-                error.contains("work item `docs/wait` has status `blocked`"),
-                "{error}"
-            );
-            assert!(
-                error.contains("only generates PR bodies for ready or active work items"),
-                "{error}"
-            );
-            assert!(error.contains("cargo xtask goals next"), "{error}");
-        });
-    }
-
-    #[test]
-    fn pr_body_rejects_done_work_item() {
-        with_temp_cwd("pr-body-done-work-item", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let error = super::pr_body_from_root(root, "docs/ledger")
-                .expect_err("done work item should fail PR body generation");
-            assert!(
-                error.contains("work item `docs/ledger` has status `done`"),
-                "{error}"
-            );
-            assert!(
-                error.contains("only generates PR bodies for ready or active work items"),
-                "{error}"
-            );
-        });
-    }
-
-    #[test]
-    fn pr_body_requires_work_item_argument() {
-        let error = super::parse_pr_body_args(&["--work-item".to_string()])
-            .expect_err("missing work item id should fail argument parsing");
-        assert!(error.contains("cargo xtask pr-body --work-item <id>"));
-    }
-
-    #[test]
-    fn closeout_writes_handoff_and_archive_from_goal_contract() -> Result<(), String> {
-        with_temp_cwd("closeout-command", |root| {
-            write_repo_contract_report_fixture(root, true);
-            mark_repo_contract_active_goal_closed(root)?;
-
-            let result =
-                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")?;
-
-            let handoff = fs::read_to_string(&result.handoff_path)
-                .map_err(|err| format!("failed to read generated closeout: {err}"))?;
-            let archive = fs::read_to_string(&result.archive_path)
-                .map_err(|err| format!("failed to read archived goal manifest: {err}"))?;
-            assert!(
-                result.handoff_path.ends_with(
-                    "docs/handoffs/2026-05-21-source-of-truth-control-plane-closeout.md"
-                )
-            );
-            assert!(
-                result
-                    .archive_path
-                    .ends_with(".ripr/goals/archive/2026-05-21-source-of-truth-control-plane.toml")
-            );
-            assert!(handoff.contains("# Closeout: Source of Truth Control Plane"));
-            assert!(handoff.contains("Active goal: `source-of-truth-control-plane`"));
-            assert!(handoff.contains("## What landed"));
-            assert!(handoff.contains("`docs/ledger`"));
-            assert!(handoff.contains("## Remaining work"));
-            assert!(handoff.contains("No remaining work items are recorded."));
-            assert!(handoff.contains("cargo xtask repo-contract-report"));
-            assert!(handoff.contains("docs/status/SUPPORT_TIERS.md"));
-            assert!(
-                handoff
-                    .contains("The active manifest explicitly records no current successor goal.")
-            );
-            assert!(archive.contains("id = \"source-of-truth-control-plane\""));
-            assert!(archive.contains("status = \"closed\""));
-            assert!(archive.contains("no_current_goal = true"));
-            assert!(archive.contains("cargo xtask closeout --goal source-of-truth-control-plane"));
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn closeout_rejects_active_goal_before_archive() -> Result<(), String> {
-        with_temp_cwd("closeout-active-goal", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let error = match super::closeout_from_root(
-                root,
-                "source-of-truth-control-plane",
-                "2026-05-21",
-            ) {
-                Ok(_) => return Err("active goal should not be archived".to_string()),
-                Err(error) => error,
-            };
-            assert!(error.contains("status `closed`"), "{error}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn closeout_rejects_closed_goal_without_successor_marker() -> Result<(), String> {
-        with_temp_cwd("closeout-closed-without-successor", |root| {
-            write_repo_contract_report_fixture(root, true);
-            let path = root.join(".ripr/goals/active.toml");
-            let text = fs::read_to_string(&path)
-                .map_err(|err| format!("active goal fixture should be readable: {err}"))?;
-            let text = text
-                .replace("status = \"active\"", "status = \"closed\"")
-                .replace("status = \"ready\"", "status = \"done\"")
-                .replace("status = \"blocked\"", "status = \"done\"");
-            write(&path, &text);
-
-            let error = match super::closeout_from_root(
-                root,
-                "source-of-truth-control-plane",
-                "2026-05-21",
-            ) {
-                Ok(_) => {
-                    return Err(
-                        "closed goal without successor marker should not be archived".to_string(),
-                    );
-                }
-                Err(error) => error,
-            };
-            assert!(
-                error.contains("successor = \"<campaign-id>\"")
-                    && error.contains("no_current_goal = true"),
-                "{error}"
-            );
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn closeout_rejects_mismatched_goal_id() {
-        with_temp_cwd("closeout-wrong-goal", |root| {
-            write_repo_contract_report_fixture(root, true);
-
-            let error = super::closeout_from_root(root, "wrong-goal", "2026-05-21")
-                .expect_err("mismatched goal id should fail closeout generation");
-            assert!(
-                error.contains(
-                    "records active goal `source-of-truth-control-plane`, not `wrong-goal`"
-                ),
-                "{error}"
-            );
-        });
-    }
-
-    #[test]
-    fn closeout_refuses_to_overwrite_existing_files() -> Result<(), String> {
-        with_temp_cwd("closeout-existing-file", |root| {
-            write_repo_contract_report_fixture(root, true);
-            mark_repo_contract_active_goal_closed(root)?;
-            super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")?;
-
-            let error =
-                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")
-                    .expect_err("existing closeout files should not be overwritten");
-            assert!(error.contains("already exists"), "{error}");
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn closeout_preflights_all_outputs_before_writing() -> Result<(), String> {
-        with_temp_cwd("closeout-existing-archive-only", |root| {
-            write_repo_contract_report_fixture(root, true);
-            mark_repo_contract_active_goal_closed(root)?;
-            let handoff_path =
-                root.join("docs/handoffs/2026-05-21-source-of-truth-control-plane-closeout.md");
-            let archive_path =
-                root.join(".ripr/goals/archive/2026-05-21-source-of-truth-control-plane.toml");
-            if let Some(parent) = archive_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|err| format!("failed to create archive parent: {err}"))?;
-            }
-            fs::write(&archive_path, "existing archive")
-                .map_err(|err| format!("failed to write existing archive: {err}"))?;
-
-            let error =
-                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")
-                    .expect_err("existing archive should fail before writing handoff");
-            assert!(error.contains("already exists"), "{error}");
-            assert!(
-                !handoff_path.exists(),
-                "closeout should not write a handoff when any output path is unsafe"
-            );
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn closeout_requires_goal_argument() {
-        let error = super::parse_closeout_args(&["--goal".to_string()])
-            .expect_err("missing goal id should fail argument parsing");
-        assert!(error.contains("cargo xtask closeout --goal <goal-id>"));
-    }
-
-    #[test]
-    fn closeout_date_from_unix_days_handles_epoch() {
-        assert_eq!(super::utc_date_from_unix_days(0), "1970-01-01");
-    }
-
-    #[test]
-    fn campaign_manifest_parses_valid_file() {
-        with_temp_cwd("campaign-manifest", |root| {
-            let manifest_path = root.join("campaign.toml");
-            write(
-                &manifest_path,
-                r#"
-id = "campaign-01"
-title = "Add test coverage"
-status = "in_progress"
-
-[[work_item]]
-id = "item-1"
-status = "ready"
-stackable = true
-"#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok());
-            let (manifest, _violations) = result.unwrap();
-            assert_eq!(manifest.id, Some("campaign-01".to_string()));
-            assert_eq!(manifest.title, Some("Add test coverage".to_string()));
-            assert_eq!(manifest.status, Some("in_progress".to_string()));
-            assert_eq!(manifest.work_items.len(), 1);
-            assert_eq!(manifest.work_items[0].id, Some("item-1".to_string()));
-        });
-    }
-
-    #[test]
-    fn stale_agent_boundary_guard_targets_goal_manifests_and_agent_docs() {
-        assert!(is_stale_agent_boundary_scan_target(
-            ".ripr/goals/active.toml"
-        ));
-        assert!(is_stale_agent_boundary_scan_target(
-            ".ripr/goals/modularization.toml"
-        ));
-        assert!(is_stale_agent_boundary_scan_target("AGENTS.md"));
-        assert!(is_stale_agent_boundary_scan_target(
-            "docs/how-to/run-codex-goals.md"
-        ));
-        assert!(is_stale_agent_boundary_scan_target(
-            "docs/example-policy.toml"
-        ));
-
-        assert!(!is_stale_agent_boundary_scan_target("README.md"));
-        assert!(!is_stale_agent_boundary_scan_target("xtask/src/main.rs"));
-        assert!(!is_stale_agent_boundary_scan_target(
-            ".ripr/release/history.toml"
-        ));
-    }
-
-    #[test]
-    fn stale_agent_boundary_guard_reports_stale_entries() {
-        let patterns = stale_agent_boundary_patterns();
-        assert!(patterns.contains(&["requires", "human", "merge"].join("_")));
-        assert!(patterns.contains(&["cannot", "continue", "productively"].join(" ")));
-        let bad_text = format!("{} = false", patterns[0]);
-        let clean_text = "stackable = false";
-        let violations = stale_agent_boundary_language_violations_for_entries([
-            ("AGENTS.md", bad_text.as_str()),
-            (".ripr/goals/active.toml", bad_text.as_str()),
-            ("README.md", bad_text.as_str()),
-            ("docs/agent.md", clean_text),
-        ]);
-
-        assert_eq!(violations.len(), 2);
-        assert!(
-            violations
-                .iter()
-                .any(|message| message.contains("AGENTS.md"))
-        );
-        assert!(
-            violations
-                .iter()
-                .any(|message| message.contains(".ripr/goals/active.toml"))
-        );
-    }
-
-    #[test]
-    fn stale_agent_boundary_guard_reads_scoped_files_from_root()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let root = temp_dir("stale-agent-boundary");
-        let Some(pattern) = stale_agent_boundary_patterns().into_iter().next() else {
-            return Err("missing boundary pattern".into());
-        };
-        write(&root.join("AGENTS.md"), &format!("{pattern} = false"));
-        write(&root.join("docs/agent.md"), "stackable = false");
-        write(&root.join("README.md"), &format!("{pattern} = false"));
-        write(&root.join(".ripr/goals/active.toml"), "stackable = false");
-
-        let files = vec![
-            "AGENTS.md".to_string(),
-            "docs/agent.md".to_string(),
-            "README.md".to_string(),
-            ".ripr/goals/active.toml".to_string(),
-        ];
-        let violations = stale_agent_boundary_language_violations_for_root(&root, &files)?;
-        let _ = fs::remove_dir_all(root);
-
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].contains("AGENTS.md"));
-        Ok(())
-    }
-
-    #[test]
-    fn campaign_manifest_reports_violations_for_invalid_file() {
-        with_temp_cwd("campaign-invalid", |root| {
-            let manifest_path = root.join("campaign.toml");
-            write(&manifest_path, "this is not valid toml [ invalid");
-            let result = parse_campaign_manifest(&manifest_path);
-            // Invalid TOML should return Ok with violations, not an error
-            assert!(
-                result.is_ok(),
-                "invalid TOML should return Ok with violations"
-            );
-            let (_manifest, violations) = result.unwrap();
-            assert!(
-                !violations.is_empty(),
-                "invalid TOML should produce violations"
-            );
-        });
-    }
-
-    #[test]
-    fn goals_next_reports_no_current_goal_guidance() {
-        let manifest = CampaignManifest {
-            status: Some("closed".to_string()),
-            no_current_goal: Some(true),
-            ..Default::default()
-        };
-
-        let body = super::campaign_next_report_body(&manifest, &[]);
-
-        assert!(body.contains("No ready work items."));
-        assert!(body.contains("## No Current Goal"));
-        assert!(body.contains(
-            "do not continue the closed campaign or infer a successor from chat history"
-        ));
-        assert!(body.contains(
-            "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`."
-        ));
-        assert!(body.contains("Historical record:"));
-    }
-
-    #[test]
-    fn goals_next_reports_blocked_items_when_no_ready_work_remains() {
-        let manifest = CampaignManifest {
-            status: Some("active".to_string()),
-            issue: Some("https://github.com/EffortlessMetrics/ripr-swarm/issues/34".to_string()),
-            end_state: vec![
-                "issue #34 records CX53 primary proof or a bounded blocker".to_string(),
-                "issue #24 records the same cutover disposition".to_string(),
-            ],
-            work_items: vec![
-                super::CampaignWorkItem {
-                    id: Some("ops/current-routed-proof-refresh".to_string()),
-                    status: Some("done".to_string()),
-                    branch: Some("ops-current-routed-proof-refresh".to_string()),
-                    ..Default::default()
-                },
-                super::CampaignWorkItem {
-                    id: Some("ops/cx53-cx43-proof-closeout".to_string()),
-                    status: Some("blocked".to_string()),
-                    branch: Some("ops-cx53-cx43-proof-closeout".to_string()),
-                    blocked_reason: Some(
-                        "runner_image_unavailable leaves CX53/CX43 unproved".to_string(),
-                    ),
-                    acceptance: Some(
-                        "Close only after CX53 and CX43 proof or an accepted blocker.".to_string(),
-                    ),
-                    ..Default::default()
-                },
-                super::CampaignWorkItem {
-                    id: Some("campaign/self-hosted-routed-runner-proof-closeout".to_string()),
-                    status: Some("blocked".to_string()),
-                    branch: Some("campaign-self-hosted-routed-runner-proof-closeout".to_string()),
-                    blocked_by: vec!["ops/cx53-cx43-proof-closeout".to_string()],
-                    blocked_reason: Some(
-                        "Closeout depends on the self-hosted route proof.".to_string(),
-                    ),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-
-        let body = super::campaign_next_report_body(&manifest, &[]);
-
-        assert!(body.contains("No ready work items."));
-        assert!(body.contains("## Blocked Work Items"));
-        assert!(body.contains("All unfinished work items are blocked"));
-        assert!(body.contains("https://github.com/EffortlessMetrics/ripr-swarm/issues/34"));
-        assert!(body.contains("issue #24 records the same cutover disposition"));
-        assert!(body.contains("`ops/cx53-cx43-proof-closeout`"));
-        assert!(body.contains("runner_image_unavailable leaves CX53/CX43 unproved"));
-        assert!(body.contains("blocked by: <none declared>"));
-        assert!(body.contains("`campaign/self-hosted-routed-runner-proof-closeout`"));
-        assert!(body.contains("- `ops/cx53-cx43-proof-closeout`"));
-        assert!(body.contains("Resolve the named blocker or record an accepted bounded blocker"));
-        assert!(!body.contains("## No Current Goal"));
-        assert!(!body.contains("## Successor Goal"));
-    }
-
-    #[test]
-    fn goals_next_omits_no_current_goal_guidance_without_marker() {
-        for no_current_goal in [None, Some(false)] {
-            let manifest = CampaignManifest {
-                status: Some("closed".to_string()),
-                no_current_goal,
-                ..Default::default()
-            };
-
-            let body = super::campaign_next_report_body(&manifest, &[]);
-
-            assert!(body.contains("No ready work items."));
-            assert!(!body.contains("## No Current Goal"));
-            assert!(!body.contains(
-                "do not continue the closed campaign or infer a successor from chat history"
-            ));
-        }
-    }
-
-    #[test]
-    fn goals_next_reports_successor_guidance_for_closed_manifest() {
-        let manifest = CampaignManifest {
-            status: Some("closed".to_string()),
-            successor: Some("next-campaign".to_string()),
-            ..Default::default()
-        };
-
-        let body = super::campaign_next_report_body(&manifest, &[]);
-
-        assert!(body.contains("No ready work items."));
-        assert!(body.contains("## Successor Goal"));
-        assert!(body.contains("records successor `next-campaign`"));
-        assert!(body.contains("do not continue the closed campaign"));
-        assert!(body.contains(
-            "Select current work from open GitHub issues and PRs; do not record live selections in `.ripr/goals/`."
-        ));
-        assert!(!body.contains("## No Current Goal"));
-    }
-
     fn slice_test_repo_root() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
@@ -99248,95 +96842,6 @@ stackable = true
         }
         if profile.contains("active_goal_required") {
             return Err("current-v2 profile must not require an active goal".to_string());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn goal_manifest_without_authority_marker_is_flagged() -> Result<(), String> {
-        let root =
-            std::env::temp_dir().join(format!("ripr-goal-authority-marker-{}", std::process::id()));
-        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture root: {err}"))?;
-        let manifest_path = root.join("active.toml");
-        std::fs::write(
-            &manifest_path,
-            "id = \"legacy-campaign\"\nstatus = \"active\"\nlane = \"lane1\"\n",
-        )
-        .map_err(|err| format!("write manifest fixture: {err}"))?;
-        let parsed = super::parse_campaign_manifest(&manifest_path);
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture root: {err}"))?;
-        let (manifest, violations) = parsed?;
-        if !violations.is_empty() {
-            return Err(format!("fixture must parse: {violations:?}"));
-        }
-        if manifest.authority.as_deref() == Some("historical_read_only") {
-            return Err(
-                "legacy manifest without the marker must fail the authority condition".to_string(),
-            );
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn goal_manifest_legacy_fields_grant_no_authority() -> Result<(), String> {
-        let root =
-            std::env::temp_dir().join(format!("ripr-goal-legacy-fields-{}", std::process::id()));
-        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture root: {err}"))?;
-        let manifest_path = root.join("active.toml");
-        std::fs::write(
-            &manifest_path,
-            "id = \"legacy-campaign\"\nstatus = \"active\"\nlane = \"lane1\"\n\n[[work_item]]\nid = \"scope/name\"\nstatus = \"ready\"\nbranch = \"codex/scope-name\"\n",
-        )
-        .map_err(|err| format!("write manifest fixture: {err}"))?;
-        let parsed = super::parse_campaign_manifest(&manifest_path);
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture root: {err}"))?;
-        let (manifest, violations) = parsed?;
-        if !violations.is_empty() {
-            return Err(format!("fixture must parse: {violations:?}"));
-        }
-        // Legacy `active` / `ready` / `branch` / `lane` data must not grant
-        // selection authority: the report is bannered historical and the
-        // authority condition still flags the manifest.
-        if manifest.authority.as_deref() == Some("historical_read_only") {
-            return Err(
-                "unmarked manifest unexpectedly passed the authority condition".to_string(),
-            );
-        }
-        let body = super::campaign_next_report_body(&manifest, &[]);
-        if !body.contains("Historical record:")
-            || !body.contains("## Ready Work Items (historical record)")
-        {
-            return Err("goals next lost its historical banner".to_string());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn goals_next_is_a_historical_report_not_a_selection() -> Result<(), String> {
-        let manifest = CampaignManifest {
-            status: Some("active".to_string()),
-            work_items: vec![super::CampaignWorkItem {
-                id: Some("scope/name".to_string()),
-                status: Some("ready".to_string()),
-                branch: Some("codex/scope-name".to_string()),
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-        let body = super::campaign_next_report_body(&manifest, &[]);
-        if !body.contains("Historical record:") {
-            return Err("goals next lost its historical banner".to_string());
-        }
-        for retired in [
-            "Record the selected successor",
-            "Record or select the successor",
-            "before starting behavior work",
-        ] {
-            if body.contains(retired) {
-                return Err(format!(
-                    "goals next still instructs manifest selection: {retired}"
-                ));
-            }
         }
         Ok(())
     }
@@ -99448,28 +96953,6 @@ state = "unchanged"
     }
 
     #[test]
-    fn goals_next_reports_stale_closed_campaign_as_failed_state() {
-        let manifest = CampaignManifest {
-            status: Some("closed".to_string()),
-            ..Default::default()
-        };
-        let violations = vec![
-            "closed active campaign must declare `successor = \"<campaign-id>\"` or `no_current_goal = true` before it can remain in `.ripr/goals/active.toml`"
-                .to_string(),
-        ];
-
-        let body = super::campaign_next_report_body(&manifest, &violations);
-
-        assert!(body.contains("Status: fail"));
-        assert!(body.contains("No ready work items."));
-        assert!(body.contains("closed active campaign must declare"));
-        assert!(!body.contains("## No Current Goal"));
-        assert!(!body.contains(
-            "do not continue the closed campaign or infer a successor from chat history"
-        ));
-    }
-
-    #[test]
     fn local_context_findings_are_sorted_deterministically() {
         let mut findings = [
             LocalContextFinding {
@@ -99577,19 +97060,6 @@ state = "unchanged"
             status: "actionable".to_string(),
         }];
         assert_eq!(report_index_repo_ops_status(&artifacts), "actionable");
-    }
-
-    #[test]
-    fn report_index_campaign_tracks_id_title_and_ready_items() {
-        let campaign = ReportIndexCampaign {
-            id: "test-coverage".to_string(),
-            title: "Improve test coverage".to_string(),
-            status: "in_progress".to_string(),
-            ready_work_items: vec!["item-1".to_string(), "item-2".to_string()],
-            issues: vec![],
-        };
-        assert_eq!(campaign.id, "test-coverage");
-        assert_eq!(campaign.ready_work_items.len(), 2);
     }
 
     #[test]
@@ -103031,298 +100501,6 @@ jobs:
             )
         );
         Ok(())
-    }
-
-    #[test]
-    fn xtask_command_parse_preserves_subcommand_arguments() {
-        assert_eq!(
-            XtaskCommand::parse([
-                "goldens".to_string(),
-                "bless".to_string(),
-                "boundary_gap".to_string(),
-            ]),
-            XtaskCommand::Goldens(vec!["bless".to_string(), "boundary_gap".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["fixtures".to_string(), "boundary_gap".to_string()]),
-            XtaskCommand::Fixtures(Some("boundary_gap".to_string()))
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-no-panic-family".to_string(), "--propose".to_string(),]),
-            XtaskCommand::CheckNoPanicFamily(vec!["--propose".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-badge-diff-policy".to_string()]),
-            XtaskCommand::CheckBadgeDiffPolicy
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-proof-packs".to_string()]),
-            XtaskCommand::CheckProofPacks
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-doc-artifacts".to_string()]),
-            XtaskCommand::CheckDocArtifacts
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-support-tiers".to_string()]),
-            XtaskCommand::CheckSupportTiers
-        );
-        assert_eq!(
-            XtaskCommand::parse(["repo-contract-report".to_string()]),
-            XtaskCommand::RepoContractReport
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "pr-body".to_string(),
-                "--work-item".to_string(),
-                "docs/report".to_string(),
-            ]),
-            XtaskCommand::PrBody(vec!["--work-item".to_string(), "docs/report".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "closeout".to_string(),
-                "--goal".to_string(),
-                "source-of-truth-control-plane".to_string(),
-            ]),
-            XtaskCommand::Closeout(vec![
-                "--goal".to_string(),
-                "source-of-truth-control-plane".to_string()
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["pr-triage-report".to_string()]),
-            XtaskCommand::PrTriageReport
-        );
-        assert_eq!(
-            XtaskCommand::parse(["pr-ready".to_string()]),
-            XtaskCommand::PrReady
-        );
-        assert_eq!(
-            XtaskCommand::parse(["cockpit".to_string()]),
-            XtaskCommand::Cockpit
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "impacted-evidence".to_string(),
-                "--label".to_string(),
-                "release-risk".to_string(),
-                "--check".to_string(),
-            ]),
-            XtaskCommand::ImpactedEvidence(vec![
-                "--label".to_string(),
-                "release-risk".to_string(),
-                "--check".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "ripr-pr".to_string(),
-                "--base".to_string(),
-                "origin/main".to_string(),
-                "--head".to_string(),
-                "HEAD".to_string(),
-                "--check".to_string(),
-            ]),
-            XtaskCommand::RiprPr(vec![
-                "--base".to_string(),
-                "origin/main".to_string(),
-                "--head".to_string(),
-                "HEAD".to_string(),
-                "--check".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "first-pr".to_string(),
-                "--gap-ledger".to_string(),
-                "target/ripr/reports/gap-decision-ledger.json".to_string(),
-                "--check".to_string(),
-            ]),
-            XtaskCommand::FirstPr(vec![
-                "--gap-ledger".to_string(),
-                "target/ripr/reports/gap-decision-ledger.json".to_string(),
-                "--check".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "ripr-review-comments".to_string(),
-                "--base".to_string(),
-                "origin/main".to_string(),
-                "--head".to_string(),
-                "HEAD".to_string(),
-                "--check".to_string(),
-            ]),
-            XtaskCommand::RiprReviewComments(vec![
-                "--base".to_string(),
-                "origin/main".to_string(),
-                "--head".to_string(),
-                "HEAD".to_string(),
-                "--check".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["ripr-pr-summary".to_string(), "--check".to_string(),]),
-            XtaskCommand::RiprPrSummary(vec!["--check".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "ripr-annotations".to_string(),
-                "--comments".to_string(),
-                "target/ripr/review/comments.json".to_string(),
-                "--check".to_string(),
-            ]),
-            XtaskCommand::RiprAnnotations(vec![
-                "--comments".to_string(),
-                "target/ripr/review/comments.json".to_string(),
-                "--check".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "gh-pr-status".to_string(),
-                "--pr".to_string(),
-                "905".to_string(),
-            ]),
-            XtaskCommand::GhPrStatus(vec!["--pr".to_string(), "905".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["specs".to_string(), "next".to_string()]),
-            XtaskCommand::Specs(vec!["next".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-spec-numbering".to_string()]),
-            XtaskCommand::CheckSpecNumbering
-        );
-    }
-
-    #[test]
-    fn xtask_command_parse_preserves_compatibility_aliases() {
-        assert_eq!(
-            XtaskCommand::parse(["check-test-oracles".to_string()]),
-            XtaskCommand::TestOracleReport
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-spec-ids".to_string()]),
-            XtaskCommand::CheckTraceability
-        );
-        assert_eq!(
-            XtaskCommand::parse(["check-goals".to_string()]),
-            XtaskCommand::CheckCampaign
-        );
-        assert_eq!(
-            XtaskCommand::parse(["operator-cockpit".to_string()]),
-            XtaskCommand::OperatorCockpitReport
-        );
-        assert_eq!(
-            XtaskCommand::parse(["operator-cockpit-report".to_string()]),
-            XtaskCommand::OperatorCockpitReport
-        );
-        assert_eq!(
-            XtaskCommand::parse(["evidence-quality-audit".to_string()]),
-            XtaskCommand::Lane1EvidenceAudit
-        );
-        assert_eq!(
-            XtaskCommand::parse(["evidence-quality-scorecard".to_string()]),
-            XtaskCommand::EvidenceQualityScorecard
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "evidence-quality-trend".to_string(),
-                "--previous".to_string(),
-                "previous.json".to_string(),
-            ]),
-            XtaskCommand::EvidenceQualityTrend(vec![
-                "--previous".to_string(),
-                "previous.json".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "actionable-gap-outcomes".to_string(),
-                "--actionable-gaps".to_string(),
-                "target/ripr/reports/actionable-gaps.json".to_string(),
-            ]),
-            XtaskCommand::ActionableGapOutcomes(vec![
-                "--actionable-gaps".to_string(),
-                "target/ripr/reports/actionable-gaps.json".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["vscode-compile".to_string()]),
-            XtaskCommand::VscodeCompile
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "bun-ub-calibration".to_string(),
-                "--out".to_string(),
-                "target/ripr/reports/bun-ub-calibration.json".to_string(),
-            ]),
-            XtaskCommand::BunUbCalibration(vec![
-                "--out".to_string(),
-                "target/ripr/reports/bun-ub-calibration.json".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "bun-ub-preview-summary".to_string(),
-                "--out-md".to_string(),
-                "target/ripr/reports/bun-ub-preview-summary.md".to_string(),
-            ]),
-            XtaskCommand::BunUbPreviewSummary(vec![
-                "--out-md".to_string(),
-                "target/ripr/reports/bun-ub-preview-summary.md".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "configured-bridge-inventory".to_string(),
-                "--out".to_string(),
-                "target/ripr/reports/configured-bridge-inventory.json".to_string(),
-            ]),
-            XtaskCommand::ConfiguredBridgeInventory(vec![
-                "--out".to_string(),
-                "target/ripr/reports/configured-bridge-inventory.json".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["vscode-package".to_string()]),
-            XtaskCommand::VscodePackage
-        );
-        assert_eq!(
-            XtaskCommand::parse(["badges".to_string()]),
-            XtaskCommand::UpdateBadgeEndpoints(Vec::new())
-        );
-        assert_eq!(
-            XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
-            XtaskCommand::CheckBadgeEndpoints(vec!["--check".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse([
-                "badges".to_string(),
-                "--check".to_string(),
-                "--gap-ledger".to_string(),
-                "target/ripr/reports/gap-decision-ledger.json".to_string(),
-            ]),
-            XtaskCommand::CheckBadgeEndpoints(vec![
-                "--check".to_string(),
-                "--gap-ledger".to_string(),
-                "target/ripr/reports/gap-decision-ledger.json".to_string(),
-            ])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["doctor".to_string()]),
-            XtaskCommand::Worktree(vec!["doctor".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(["worktree".to_string(), "doctor".to_string()]),
-            XtaskCommand::Worktree(vec!["doctor".to_string()])
-        );
-        assert_eq!(
-            XtaskCommand::parse(std::iter::empty::<String>()),
-            XtaskCommand::Help(Vec::new())
-        );
     }
 
     #[test]

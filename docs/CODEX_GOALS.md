@@ -1,5 +1,12 @@
 # Codex Goals
 
+> **Retired model (2026-07-20, #1701 PR 3).** `.ripr/goals/` and the
+> goal-manifest scheduling surfaces described here were deleted. Live work
+> selection comes from GitHub issues, PRs, checks, and the local worktree;
+> one PR's scope is its `ImplementationSliceV1` under
+> `.allow/spec-system/slices/`; normative behavior is RIPR-SPEC requirements.
+> This document remains as campaign history.
+
 Codex `/goal` is the autonomous campaign runner for `ripr`.
 
 A Codex goal is not one PR. A Codex goal is a long-running implementation
@@ -16,7 +23,7 @@ into RIPR's existing repo artifacts instead of adding a second task system:
 proposal/PRD means `docs/proposals/RIPR-PROP-*`, spec means
 `docs/specs/RIPR-SPEC-*`, ADR means `docs/adr/`, implementation plan means
 `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, or `plans/`,
-active goal means `.ripr/goals/active.toml`, policy ledger means `policy/*.toml`
+the retired active goal manifest meant `.ripr/goals/active.toml` (deleted), policy ledger means `policy/*.toml`
 or `.ripr/traceability.toml`, capability claims mean `docs/CAPABILITY_MATRIX.md`
 and `metrics/capabilities.toml`, support tiers mean
 `docs/status/SUPPORT_TIERS.md`, closeout means `docs/handoffs/`, and durable

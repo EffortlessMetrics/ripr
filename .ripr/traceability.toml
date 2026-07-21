@@ -1491,7 +1491,6 @@ outputs = [
   "docs/handoffs/README.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1571,7 +1570,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1727,7 +1725,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "docs/ASSISTANT_LOOP_HEALTH_PROPOSAL.md",
   "docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md",
@@ -1816,7 +1813,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "docs/PR_REVIEW_FRONT_PANEL_PROPOSAL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -1900,7 +1896,6 @@ outputs = [
   "docs/CI.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "docs/REPORT_PACKET_INDEX_PROPOSAL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -1985,7 +1980,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md",
   "docs/handoffs/2026-05-10-pr-inline-comment-publisher-receipts.md",
@@ -2059,7 +2053,6 @@ outputs = [
   "docs/handoffs/2026-05-13-campaign-27-closeout.md",
   "CHANGELOG.md",
   ".ripr/traceability.toml",
-  ".ripr/goals/archive/2026-05-13-language-adapter-preview.toml",
 ]
 metrics = [
   "language_adapter_router_routed_files",
@@ -2487,7 +2480,6 @@ outputs = [
   "docs/handoffs/2026-05-12-policy-readiness-closeout.md",
   "docs/handoffs/README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
-  ".ripr/goals/lane2-policy-readiness.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -2535,7 +2527,6 @@ outputs = [
   "docs/specs/README.md",
   "docs/policy/POLICY_READINESS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
-  ".ripr/goals/lane2-policy-readiness.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -2620,7 +2611,6 @@ outputs = [
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "policy/process_allowlist.txt",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]
@@ -3049,9 +3039,6 @@ outputs = [
   "docs/ROADMAP.md",
   "CHANGELOG.md",
   "metrics/capabilities.toml",
-  ".ripr/goals/lane2-policy-operations.toml",
-  ".ripr/goals/active.toml",
-  ".ripr/goals/archive/2026-05-13-language-adapter-preview.toml",
   "plans/lane4-pr-ci-review-cockpit/implementation-plan.md",
   ".ripr/traceability.toml",
 ]
@@ -3113,7 +3100,6 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
-  ".ripr/goals/lane2-policy-operations.toml",
   ".ripr/traceability.toml",
   "metrics/capabilities.toml",
 ]
@@ -3227,7 +3213,6 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
-  ".ripr/goals/lane2-policy-operations.toml",
   ".ripr/traceability.toml",
   "metrics/capabilities.toml",
 ]
@@ -3280,7 +3265,6 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
-  ".ripr/goals/lane2-policy-operations.toml",
   ".ripr/traceability.toml",
   "metrics/capabilities.toml",
 ]
@@ -3393,7 +3377,6 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
-  ".ripr/goals/lane2-policy-operations.toml",
   ".ripr/traceability.toml",
   "metrics/capabilities.toml",
 ]
@@ -4032,7 +4015,6 @@ outputs = [
   "plans/start-here-surface-convergence/implementation-plan.md",
   "docs/handoffs/2026-05-22-start-here-surface-convergence-receipts.md",
   "docs/handoffs/2026-05-22-start-here-surface-convergence-closeout.md",
-  ".ripr/goals/archive/2026-05-22-start-here-surface-convergence.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -4460,8 +4442,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "CHANGELOG.md",
   "policy/doc-artifacts.toml",
-  ".ripr/goals/active.toml",
-  ".ripr/goals/archive/2026-05-23-actionable-surface-translation.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -4702,7 +4682,6 @@ outputs = [
   "fixtures/README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
-  ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -6902,36 +6881,6 @@ metrics = [
   "lsp_diagnostic_catalog_unresolved_gap_kinds",
 ]
 
-[[behavior]]
-id = "RIPR-SPEC-0128"
-name = "Active-goal authority audit"
-spec = "docs/specs/RIPR-SPEC-0128-active-goal-authority-audit.md"
-tests = [
-  "xtask::active_goal_authority::tests::repository_inventory_is_complete_and_deterministic",
-  "xtask::active_goal_authority::tests::hidden_singleton_and_legacy_ready_block_migration",
-  "xtask::active_goal_authority::tests::historical_reference_is_classified_without_authority",
-]
-fixtures = [
-  "fixtures/active-goal-authority-audit/consumers.toml",
-  "fixtures/active-goal-authority-audit/issue-contracts.json",
-  "fixtures/active-goal-authority-audit/hidden-singleton",
-  "fixtures/active-goal-authority-audit/historical-reference",
-]
-code = [
-  "xtask/src/active_goal_authority.rs",
-  "xtask/src/command.rs",
-  "xtask/src/dispatch.rs",
-]
-outputs = [
-  "target/ripr/reports/active-goal-authority-audit.json",
-  "target/ripr/reports/active-goal-authority-audit.md",
-]
-metrics = [
-  "active_goal_authority_consumers_total",
-  "active_goal_authority_unclassified_total",
-  "active_goal_authority_contradictions_total",
-  "active_goal_authority_blockers_total",
-]
 
 [[behavior]]
 id = "RIPR-SPEC-0129"
@@ -6963,22 +6912,18 @@ metrics = [
 
 [[behavior]]
 id = "RIPR-SPEC-0130"
-name = "RIPR authority map and legacy dialect conformance fixture"
+name = "RIPR authority map"
 spec = "docs/specs/RIPR-SPEC-0130-ripr-authority-map.md"
 tests = []
-fixtures = [
-  ".allow/conformance/legacy-dialect.json",
-]
+fixtures = []
 code = [
   ".allow/profiles/spec-system.toml",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0130-ripr-authority-map.md",
-  ".allow/conformance/legacy-dialect.json",
 ]
 metrics = [
   "authority_map_coverage",
-  "legacy_dialect_conformance",
 ]
 
 [[behavior]]

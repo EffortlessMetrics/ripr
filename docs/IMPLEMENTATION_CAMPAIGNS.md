@@ -3481,7 +3481,7 @@ References:
 - [RIPR-SPEC-0030: Preview evidence policy boundary](specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md)
 - [Output schema: Policy readiness report](OUTPUT_SCHEMA.md#policy-readiness-report)
 - [Output schema: Suppression health report](OUTPUT_SCHEMA.md#suppression-health-report)
-- [Focused Lane 2 tracker manifest](../.ripr/goals/lane2-policy-readiness.toml)
+- Focused Lane 2 tracker manifest (`.ripr/goals/`, deleted in #1701 PR 3)
 - [Language Adapter Preview](#campaign-27-language-adapter-preview)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
@@ -3520,7 +3520,7 @@ in the machine-readable manifest.
 Sources of truth:
 
 - [Policy operations tracker](policy/POLICY_OPERATIONS.md)
-- [Focused Lane 2 policy operations manifest](../.ripr/goals/lane2-policy-operations.toml)
+- Focused Lane 2 policy operations manifest (`.ripr/goals/`, deleted in #1701 PR 3)
 - [Policy readiness tracker](policy/POLICY_READINESS.md)
 
 Objective:

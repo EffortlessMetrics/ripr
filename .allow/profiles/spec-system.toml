@@ -17,8 +17,7 @@ templates_required = false
 support_tiers_required = true
 # current-v2 has no global goal root and no active manifest. Live work comes
 # from the controlling GitHub issue and a PR-local implementation slice under
-# `.allow/spec-system/slices/`; legacy `.ripr/goals` files are read-only
-# historical artifacts and cannot authorize work, proof, mutation, or support
-# promotion. Do not create `.allow/goals/active.toml` or any successor
-# repository-global goal pointer.
+# `.allow/spec-system/slices/`. The legacy `.ripr/goals/` scheduler was
+# deleted in #1701's PR 3; do not recreate `.ripr/goals/`,
+# `.allow/goals/active.toml`, or any successor repository-global goal pointer.
 closeout_required_for_done_items = false

@@ -13,8 +13,7 @@ Linked spec:
 Linked gap map:
 [generated-ci-gap-map.md](generated-ci-gap-map.md)
 
-Linked manifest:
-[.ripr/goals/lane4-pr-ci-review-cockpit.toml](../../.ripr/goals/lane4-pr-ci-review-cockpit.toml)
+Linked manifest: `.ripr/goals/lane4-pr-ci-review-cockpit.toml` (deleted with the `.ripr/goals/` retirement in #1701 PR 3).
 
 ## Purpose
 

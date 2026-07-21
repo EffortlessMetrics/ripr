@@ -16,9 +16,6 @@ For normal source-of-truth work in this repo:
 4. Read the linked spec.
 5. Read the linked proposal for context.
 6. Read linked ADRs only when the slice touches durable architecture.
-7. Read `.ripr/goals/` files only as historical context; they grant no
-   selection, mutation, proof, or support authority, and
-   `cargo xtask goals status|next|report` prints that historical record.
 8. Make one PR-sized change, scoped by its PR-local implementation slice under
    `.allow/spec-system/slices/` when the change alters behavior.
 9. Run the proof commands named by the plan item or prompt.
@@ -27,9 +24,8 @@ For normal source-of-truth work in this repo:
 12. Write a PR body with links, scope, proof, claim boundary, and rollback.
 13. Add or update closeout notes only when the lane or goal completes.
 
-If a retained goal manifest looks closed or stale, do not invent the next
-campaign and do not record a new selection in `.ripr/goals/`. Use the live
-GitHub board and the user's current scoped prompt as the active contract.
+Do not invent campaign state or record selections in tracked files. Use the
+live GitHub board and the user's current scoped prompt as the active contract.
 
 ## One-slice rule
 

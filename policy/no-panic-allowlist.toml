@@ -165,34 +165,6 @@ container = "collect_panic_findings_finds_exact_locations"
 callee = "unwrap"
 
 [[allow]]
-id = "panic-0013"
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-owner = "test-infra"
-expires = "2026-07-01"
-
-[allow.selector]
-kind = "method_call"
-container = "campaign_manifest_parses_valid_file"
-callee = "unwrap"
-
-[[allow]]
-id = "panic-0014"
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-owner = "test-infra"
-expires = "2026-07-01"
-
-[allow.selector]
-kind = "method_call"
-container = "campaign_manifest_reports_violations_for_invalid_file"
-callee = "unwrap"
-
-[[allow]]
 id = "panic-0015"
 path = "xtask/src/main.rs"
 family = "unwrap"

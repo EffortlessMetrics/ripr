@@ -215,7 +215,7 @@ decay) and the fact-contract lock that keeps a backend swap reviewable.
 - [RIPR-PROP-0001: Multi-Language Adapter Preview](../proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
 - [ADR 0008: TypeScript Parser Substrate](0008-typescript-parser-substrate.md)
 - Campaign 27: Language Adapter Preview (active in
-  [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml) and the
+  `.ripr/goals/active.toml` (deleted in #1701 PR 3) and the
   [implementation campaigns ledger](../IMPLEMENTATION_CAMPAIGNS.md)).
 
 The Python adapter scaffold work item is tracked separately. This ADR

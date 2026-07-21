@@ -238,7 +238,6 @@ picking up unfamiliar work:
 | `docs/ROADMAP.md` | Direction and checkpoints |
 | `docs/IMPLEMENTATION_PLAN.md` | Next scoped PR |
 | `docs/IMPLEMENTATION_CAMPAIGNS.md` | Active multi-PR campaigns |
-| `.ripr/goals/` | Historical campaign records (read-only; no live authority) |
 | GitHub issues / PRs / checks | Live work selection and ownership |
 | `.allow/spec-system/slices/` | One PR's scope and claim boundary |
 | `docs/CAPABILITY_MATRIX.md` | Current capability status per area |

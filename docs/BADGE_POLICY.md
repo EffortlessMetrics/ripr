@@ -26,7 +26,7 @@ repo-scoped artifact path, and the trunk-only public Shields endpoint
 have all landed under Campaign 4A. The current implementation status
 of each piece is tracked in the status table at the bottom of this
 doc and in
-[`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
+`.ripr/goals/active.toml` (deleted in #1701 PR 3).
 
 The public badge projection realignment has landed. This policy defines
 `canonical_actionable_gap` as the public basis, and generated endpoint snapshots
@@ -929,7 +929,7 @@ self-hosting is the v1 path.
 ## Implementation status
 
 Tracked alongside Campaign 4A and Campaign 5B in
-[`.ripr/goals/active.toml`](../.ripr/goals/active.toml) and
+`.ripr/goals/active.toml` (deleted in #1701 PR 3) and
 [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md).
 
 | Component | Status | Source |

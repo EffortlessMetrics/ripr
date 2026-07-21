@@ -138,7 +138,6 @@ observable behavior.
 | [RIPR-SPEC-0125](RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md) | proposed | Rust governed pilot missing-discriminator evidence fixtures |
 | [RIPR-SPEC-0126](RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md) | accepted | Pure deterministic finite LSP delivery budget over producer-owned canonical actionable items; explicit selected/omitted identities, byte limits, and overflow reasons |
 | [RIPR-SPEC-0127](RIPR-SPEC-0127-lsp-diagnostic-code-catalog.md) | accepted | Governed catalog of every emitted RIPR LSP diagnostic code (finding, seam, gap); single-source constructors, fail-closed gap emission, and resolution validation; byte-identical wire output for known kinds (#1662 slice A) |
-| [RIPR-SPEC-0128](RIPR-SPEC-0128-active-goal-authority-audit.md) | proposed | Deterministic audit-only inventory of singleton active-goal consumers, migration blockers, proof, and rollback |
 | [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | proposed | Three-layer editor integration contract (standard LSP, enhanced VS Code, headless riprAgent) and support matrix |
 | [RIPR-SPEC-0130](RIPR-SPEC-0130-ripr-authority-map.md) | proposed | RIPR source-of-truth authority map: canonical paths for every artifact category, plus a legacy-dialect conformance fixture |
 | [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | proposed | Versioned, capability-only riprAgent protocol, DTO envelopes, closed vocabularies, schemas, and recovery rules |
