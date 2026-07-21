@@ -443,11 +443,18 @@ impl Backend {
             }
             let budget = crate::lsp::diagnostic_budget::DiagnosticBudget::default();
             let push_budget = evaluate_push_delivery_budget(&batches_by_uri, &budget);
-            let budget_selected_ids: std::collections::BTreeSet<String> = match &push_budget {
+            // Distinguish "budget computation failed" (None → publish
+            // everything, no honest budget to apply) from "computation
+            // succeeded with an empty selection" (Some(empty) → publish
+            // nothing: the budget legitimately dropped every item). An
+            // `unwrap_or_default` + `is_empty()` check would conflate the two
+            // and silently invert a tight budget.
+            let budget_selected_ids: Option<std::collections::BTreeSet<String>> = match &push_budget
+            {
                 PushDeliveryBudgetOutcome::Applied { result, .. } => {
-                    result.selected_ids().map(str::to_string).collect()
+                    Some(result.selected_ids().map(str::to_string).collect())
                 }
-                PushDeliveryBudgetOutcome::Unavailable { .. } => std::collections::BTreeSet::new(),
+                PushDeliveryBudgetOutcome::Unavailable { .. } => None,
             };
             match &push_budget {
                 PushDeliveryBudgetOutcome::Applied {
@@ -500,12 +507,19 @@ impl Backend {
                     } => ids_by_document.get(batch.uri.as_str()).map(Vec::as_slice),
                     PushDeliveryBudgetOutcome::Unavailable { .. } => None,
                 };
-                let diagnostics_to_publish = push_diagnostics_for_batch(
-                    &batch.diagnostics,
-                    batch.uri.as_str(),
-                    &budget_selected_ids,
-                    ordered_ids,
-                );
+                let diagnostics_to_publish = match &budget_selected_ids {
+                    // Budget computation failed: no honest budget to apply,
+                    // publish everything (named by the fallback disclosure).
+                    None => batch.diagnostics.clone(),
+                    // Budget computed (even an empty selection): apply it
+                    // strictly. Zero selected means zero published.
+                    Some(selected_ids) => push_diagnostics_for_batch(
+                        &batch.diagnostics,
+                        batch.uri.as_str(),
+                        selected_ids,
+                        ordered_ids,
+                    ),
+                };
                 self.client
                     .publish_diagnostics(batch.uri.clone(), diagnostics_to_publish, None)
                     .await;
@@ -2582,10 +2596,6 @@ fn push_diagnostics_for_batch(
     budget_selected_ids: &std::collections::BTreeSet<String>,
     ordered_ids: Option<&[String]>,
 ) -> Vec<tower_lsp_server::ls_types::Diagnostic> {
-    if budget_selected_ids.is_empty() {
-        // Budget not computed or selected nothing — publish everything.
-        return diagnostics.to_vec();
-    }
     if let Some(ordered_ids) = ordered_ids {
         // Ids were computed by the budget builder in this exact order; reuse
         // them instead of serializing every diagnostic again.
@@ -2681,7 +2691,7 @@ fn push_budget_zero_selection_log_message(
     result: &crate::lsp::diagnostic_budget::DiagnosticBudgetResult,
 ) -> String {
     format!(
-        "ripr push diagnostic delivery budget selected zero of {} items; published all diagnostics unfiltered per the fallback rule: budget enforcement did not reduce delivery, completeness is unknown",
+        "ripr push diagnostic delivery budget selected zero of {} items; published nothing for this round: every item was omitted by the budget (profile filtering or delivery limits)",
         result.total_canonical_items
     )
 }
@@ -4753,18 +4763,17 @@ mod push_budget_disclosure_tests {
             &selected_ids,
             None,
         );
-        if published.len() != 2 {
+        if !published.is_empty() {
             return Err(format!(
-                "zero-selection fallback must publish the full batch, got {}",
+                "a legitimately empty selection must publish nothing, got {}",
                 published.len()
             ));
         }
         let message = push_budget_zero_selection_log_message(result);
         for expected in [
             "selected zero of 2 items",
-            "unfiltered per the fallback rule",
-            "budget enforcement did not reduce delivery",
-            "completeness is unknown",
+            "published nothing for this round",
+            "every item was omitted by the budget",
         ] {
             if !message.contains(expected) {
                 return Err(format!(
@@ -4839,15 +4848,24 @@ mod push_budget_disclosure_tests {
             "fallback detail must name the failing limit: {detail}"
         );
 
-        // The fallback keeps the #1911 semantics: an empty selected set
-        // publishes every diagnostic unfiltered.
-        let budget_selected_ids = std::collections::BTreeSet::new();
-        let published = push_diagnostics_for_batch(
-            &diagnostics,
-            "file:///workspace/src/lib.rs",
-            &budget_selected_ids,
-            None,
-        );
+        // The fallback keeps the #1911 semantics at the call site: an
+        // unavailable budget (`None` selected set) publishes the batch
+        // unfiltered instead of applying the strict filter.
+        let budget_selected_ids: Option<std::collections::BTreeSet<String>> = match &outcome {
+            PushDeliveryBudgetOutcome::Applied { result, .. } => {
+                Some(result.selected_ids().map(str::to_string).collect())
+            }
+            PushDeliveryBudgetOutcome::Unavailable { .. } => None,
+        };
+        let published = match &budget_selected_ids {
+            None => diagnostics.clone(),
+            Some(selected_ids) => push_diagnostics_for_batch(
+                &diagnostics,
+                "file:///workspace/src/lib.rs",
+                selected_ids,
+                None,
+            ),
+        };
         assert_eq!(
             published.len(),
             diagnostics.len(),
