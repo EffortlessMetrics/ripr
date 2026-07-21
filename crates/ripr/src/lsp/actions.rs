@@ -1770,6 +1770,7 @@ mod tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
+            delivery_selection: None,
             seams_deferred: false,
         }
     }

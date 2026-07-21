@@ -255,6 +255,15 @@ pub(super) struct AnalysisSnapshot {
     pub(super) gap_artifacts: Vec<ValidatedGapArtifact>,
     pub(super) gap_artifact_rejections: Vec<GapArtifactRejection>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
+    /// The one immutable delivery selection shared by push publication and
+    /// both pull handlers (#1973). Computed once at refresh-transaction
+    /// prepare time (before any publication) and retained with the committed
+    /// snapshot. `None` only for snapshots constructed outside the refresh
+    /// transaction (unit-test fixtures); `commit_refresh_snapshot` fills it
+    /// before the snapshot becomes the committed authority, so pull handlers
+    /// always read a stored selection rather than re-evaluating the budget.
+    pub(super) delivery_selection:
+        Option<std::sync::Arc<super::diagnostic_budget::DiagnosticDeliverySelection>>,
     /// True when the seam inventory pass was intentionally skipped on an
     /// interactive open/save refresh to avoid the 336s cold-start cost.
     /// The snapshot carries complete diff-scoped findings but no seam
@@ -319,6 +328,37 @@ impl AnalysisSnapshot {
                     .map(|(_, diagnostics)| diagnostics)
             })
             .map(Vec::as_slice)
+    }
+
+    /// The stored document key and complete diagnostics for one URI. The
+    /// stored key is the document identity the delivery selection was
+    /// computed against, so transports must look the selection up by this
+    /// key rather than the request URI's spelling.
+    pub(super) fn diagnostics_entry_for_uri(&self, uri: &Uri) -> Option<(&Uri, &[Diagnostic])> {
+        self.diagnostics_by_uri
+            .get_key_value(uri)
+            .map(|(stored_uri, diagnostics)| (stored_uri, diagnostics.as_slice()))
+            .or_else(|| {
+                self.diagnostics_by_uri
+                    .iter()
+                    .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
+                    .map(|(stored_uri, diagnostics)| (stored_uri, diagnostics.as_slice()))
+            })
+    }
+
+    /// The diagnostics one URI serves under the stored delivery selection
+    /// (#1973). A committed snapshot always carries a selection, so this is
+    /// the selection-filtered set push and pull agree on. A snapshot without
+    /// a committed selection (unit-test fixture) serves its complete
+    /// diagnostics, matching the pre-selection-authority behavior.
+    pub(super) fn served_diagnostics_for_uri(&self, uri: &Uri) -> Vec<Diagnostic> {
+        let Some((stored_uri, diagnostics)) = self.diagnostics_entry_for_uri(uri) else {
+            return Vec::new();
+        };
+        match &self.delivery_selection {
+            Some(selection) => selection.diagnostics_for_document(stored_uri.as_str(), diagnostics),
+            None => diagnostics.to_vec(),
+        }
     }
 
     pub(super) fn diagnostic_count(&self) -> usize {
@@ -496,6 +536,7 @@ mod tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
+            delivery_selection: None,
             seams_deferred: false,
         };
 
@@ -522,6 +563,7 @@ mod tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
+            delivery_selection: None,
             seams_deferred: false,
         };
 

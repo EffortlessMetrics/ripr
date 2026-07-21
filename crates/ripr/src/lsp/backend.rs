@@ -7,7 +7,7 @@ use super::capabilities::{
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, DiagnosticResultIdCache, WorkspaceDiagnostics,
-    diagnostic_refresh_plan, take_all_uris, workspace_diagnostic_result_id,
+    diagnostic_refresh_plan, take_all_uris,
 };
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
@@ -38,6 +38,7 @@ use crate::analysis::cancellation::{AnalysisAbortKind, is_cancellation_error};
 use crate::config::LspDiagnosticProfile;
 use crate::domain::context_packet::ContextPacket;
 use crate::domain::{StageEvidence, StageState};
+use crate::lsp::diagnostic_budget::DiagnosticDeliveryOutcome;
 use crate::output::agent_seam_packets::{
     render_agent_gap_record_packet_json, suggested_assertion_for_classified_seam,
     targeted_test_brief_outline_for_classified_seam, validate_agent_gap_record_packet,
@@ -441,43 +442,35 @@ impl Backend {
             return cancellation_outcome(request);
         }
         if !self.pull_diagnostics_enabled() {
-            // Apply the diagnostic delivery budget to the push path (#1911)
-            // and disclose its outcome (#1969). The full budget result is
-            // retained: when the budget trims diagnostics, the client is told
-            // the publication is partial (bounded omission summary); when the
-            // budget itself fails, the unfiltered fallback is named as a
+            // Read the stored delivery selection computed at refresh-transaction
+            // prepare time (#1973). The push path no longer evaluates the
+            // budget at publish time; it applies the same stored outcome the
+            // pull handlers serve. The full budget result is retained: when
+            // the budget trims diagnostics, the client is told the
+            // publication is partial (bounded omission summary); when the
+            // budget itself failed, the unfiltered fallback is named as a
             // partial state instead of passing silently.
-            let mut batches_by_uri: std::collections::BTreeMap<
-                tower_lsp_server::ls_types::Uri,
-                Vec<tower_lsp_server::ls_types::Diagnostic>,
-            > = std::collections::BTreeMap::new();
-            for batch in &plan.publish_batches {
-                batches_by_uri.insert(batch.uri.clone(), batch.diagnostics.clone());
-            }
-            let budget = crate::lsp::diagnostic_budget::DiagnosticBudget::default();
-            let push_budget = evaluate_push_delivery_budget(&batches_by_uri, &budget);
+            let selection = match &snapshot.delivery_selection {
+                Some(selection) => Arc::clone(selection),
+                // Defensive only: prepare always computes the selection
+                // before publication. Never publish without one.
+                None => compute_delivery_selection(&snapshot),
+            };
             // Distinguish "budget computation failed" (None → publish
             // everything, no honest budget to apply) from "computation
             // succeeded with an empty selection" (Some(empty) → publish
-            // nothing: the budget legitimately dropped every item). An
-            // `unwrap_or_default` + `is_empty()` check would conflate the two
-            // and silently invert a tight budget.
-            let budget_selected_ids: Option<std::collections::BTreeSet<String>> = match &push_budget
-            {
-                PushDeliveryBudgetOutcome::Applied { result, .. } => {
-                    Some(result.selected_ids().map(str::to_string).collect())
-                }
-                PushDeliveryBudgetOutcome::Unavailable { .. } => None,
-            };
-            match &push_budget {
-                PushDeliveryBudgetOutcome::Applied {
+            // nothing: the budget legitimately dropped every item).
+            match &selection.outcome {
+                DiagnosticDeliveryOutcome::Applied {
                     result,
                     document_by_canonical_id,
                     ..
                 } => {
-                    if let Some(disclosure) =
-                        push_budget_omission_disclosure(result, &budget, document_by_canonical_id)
-                    {
+                    if let Some(disclosure) = push_budget_omission_disclosure(
+                        result,
+                        &selection.budget,
+                        document_by_canonical_id,
+                    ) {
                         self.client
                             .log_message(MessageType::WARNING, disclosure)
                             .await;
@@ -494,7 +487,7 @@ impl Backend {
                             .await;
                     }
                 }
-                PushDeliveryBudgetOutcome::Unavailable { detail } => {
+                DiagnosticDeliveryOutcome::Unavailable { detail, .. } => {
                     self.client
                         .log_message(
                             MessageType::WARNING,
@@ -514,25 +507,12 @@ impl Backend {
                     .await;
                     return cancellation_outcome(request);
                 }
-                let ordered_ids = match &push_budget {
-                    PushDeliveryBudgetOutcome::Applied {
-                        ids_by_document, ..
-                    } => ids_by_document.get(batch.uri.as_str()).map(Vec::as_slice),
-                    PushDeliveryBudgetOutcome::Unavailable { .. } => None,
-                };
-                let diagnostics_to_publish = match &budget_selected_ids {
-                    // Budget computation failed: no honest budget to apply,
-                    // publish everything (named by the fallback disclosure).
-                    None => batch.diagnostics.clone(),
-                    // Budget computed (even an empty selection): apply it
-                    // strictly. Zero selected means zero published.
-                    Some(selected_ids) => push_diagnostics_for_batch(
-                        &batch.diagnostics,
-                        batch.uri.as_str(),
-                        selected_ids,
-                        ordered_ids,
-                    ),
-                };
+                // The stored selection is the membership authority: an
+                // unavailable budget publishes the batch unfiltered (named by
+                // the fallback disclosure); a computed selection is applied
+                // strictly, so zero selected means zero published.
+                let diagnostics_to_publish =
+                    selection.diagnostics_for_document(batch.uri.as_str(), &batch.diagnostics);
                 self.client
                     .publish_diagnostics(batch.uri.clone(), diagnostics_to_publish, None)
                     .await;
@@ -648,12 +628,21 @@ impl Backend {
         &self,
         diagnostics: WorkspaceDiagnostics,
     ) -> Option<RefreshTransaction> {
-        let WorkspaceDiagnostics { snapshot, batches } = diagnostics;
+        let WorkspaceDiagnostics {
+            mut snapshot,
+            batches,
+        } = diagnostics;
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
         if snapshot.diagnostics_by_uri != diagnostics_by_uri_from_batches(&batches) {
             return None;
+        }
+        // Compute the one delivery selection before any publication (#1973):
+        // push publication and both pull handlers read this stored outcome
+        // instead of re-evaluating the budget per transport.
+        if snapshot.delivery_selection.is_none() {
+            snapshot.delivery_selection = Some(compute_delivery_selection(&snapshot));
         }
         let plan = diagnostic_refresh_plan(&last_diagnostics, batches);
         debug_assert!(snapshot.is_consistent());
@@ -666,11 +655,18 @@ impl Backend {
 
     pub(super) fn commit_refresh_snapshot(
         &self,
-        snapshot: AnalysisSnapshot,
+        mut snapshot: AnalysisSnapshot,
         plan: &DiagnosticRefreshPlan,
     ) -> bool {
         if snapshot.input_identity.is_none() {
             return false;
+        }
+        // Final authority guard: a committed snapshot always carries its
+        // delivery selection (#1973). The refresh-transaction prepare step
+        // already computed it on the real path; this fills snapshots that
+        // bypassed prepare so pull never re-evaluates the budget.
+        if snapshot.delivery_selection.is_none() {
+            snapshot.delivery_selection = Some(compute_delivery_selection(&snapshot));
         }
         let snapshot = Arc::new(snapshot);
         let diagnostic_result_ids =
@@ -2243,9 +2239,16 @@ impl LanguageServer for Backend {
             )
             .into());
         }
-        let diagnostics = snapshot
-            .diagnostics_for_uri(&uri)
-            .map_or_else(Vec::new, |items| items.to_vec());
+        // Serve exactly the stored delivery selection's per-document set
+        // (#1973): the same membership push publishes, never a re-evaluated
+        // budget. A partial delivery state is disclosed, not hidden behind an
+        // empty report.
+        if let Some(disclosure) = pull_delivery_disclosure(&snapshot) {
+            self.client
+                .log_message(MessageType::WARNING, disclosure)
+                .await;
+        }
+        let diagnostics = snapshot.served_diagnostics_for_uri(&uri);
         Ok(
             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                 related_documents: None,
@@ -2278,6 +2281,11 @@ impl LanguageServer for Backend {
                 .map(|entry| entry.uri.clone()),
         );
         let mut items = Vec::with_capacity(uris.len());
+        // Serve the stored delivery selection (#1973). Disclose a partial
+        // delivery state once per workspace report rather than once per
+        // document; the per-document membership still comes from the stored
+        // selection so push and pull agree.
+        let mut disclosed = false;
         for uri in uris {
             let result_id = result_ids.document_id(&snapshot, &uri);
             let previous = params
@@ -2297,9 +2305,15 @@ impl LanguageServer for Backend {
                 ));
                 continue;
             }
-            let diagnostics = snapshot
-                .diagnostics_for_uri(&uri)
-                .map_or_else(Vec::new, |items| items.to_vec());
+            if !disclosed {
+                if let Some(disclosure) = pull_delivery_disclosure(&snapshot) {
+                    self.client
+                        .log_message(MessageType::WARNING, disclosure)
+                        .await;
+                }
+                disclosed = true;
+            }
+            let diagnostics = snapshot.served_diagnostics_for_uri(&uri);
             items.push(WorkspaceDocumentDiagnosticReport::Full(
                 WorkspaceFullDocumentDiagnosticReport {
                     uri,
@@ -2508,38 +2522,31 @@ impl Backend {
             .count();
         let gap_artifact_rejections = snapshot.gap_artifact_rejections.len();
 
-        // Compute the diagnostic delivery budget result for workspace status.
-        let (diagnostic_budget_json, diagnostic_budget_state) = {
-            let complete_evidence_identity = workspace_diagnostic_result_id(&snapshot);
-            let snapshot_profile_identity = snapshot
-                .input_identity_id()
-                .unwrap_or_else(|| complete_evidence_identity.clone());
-            match crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(
-                &snapshot.diagnostics_by_uri,
-            ) {
-                Ok(items) => match crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
-                    items,
-                    &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
-                    &snapshot_profile_identity,
-                    &complete_evidence_identity,
-                ) {
-                    Ok(result) => (
-                        diagnostic_budget_result_json(&result),
-                        serde_json::json!({
-                            "status": "available",
-                            "inline_detail_measurement": "not_available",
-                        }),
-                    ),
-                    Err(error) => (
-                        serde_json::Value::Null,
-                        diagnostic_budget_unavailable_state("evaluation_failure", error),
-                    ),
-                },
-                Err(error) => (
-                    serde_json::Value::Null,
-                    diagnostic_budget_unavailable_state("serialization_failure", error),
+        // Project the stored delivery selection (#1973): the same outcome
+        // push publication and both pull handlers serve, not a re-evaluated
+        // budget. A snapshot without a committed selection (unit-test
+        // fixture) reports the selection state honestly as not committed.
+        let (diagnostic_budget_json, diagnostic_budget_state) = match &snapshot.delivery_selection {
+            Some(selection) => match &selection.outcome {
+                DiagnosticDeliveryOutcome::Applied { result, .. } => (
+                    diagnostic_budget_result_json(result),
+                    serde_json::json!({
+                        "status": "available",
+                        "inline_detail_measurement": "not_available",
+                    }),
                 ),
-            }
+                DiagnosticDeliveryOutcome::Unavailable { reason, detail } => (
+                    serde_json::Value::Null,
+                    diagnostic_budget_unavailable_state(reason.as_status_reason(), detail),
+                ),
+            },
+            None => (
+                serde_json::Value::Null,
+                serde_json::json!({
+                    "status": "unavailable",
+                    "reason": "selection_not_committed",
+                }),
+            ),
         };
 
         let top_actionable_packet =
@@ -2727,105 +2734,66 @@ fn overflow_reason_name(
 /// continuation route and the workspace-status budget projection.
 const PUSH_BUDGET_DISCLOSURE_MAX_OMITTED_ITEMS: usize = 20;
 
-/// Outcome of evaluating the diagnostic delivery budget for one push
-/// publication round. The full
-/// [`crate::lsp::diagnostic_budget::DiagnosticBudgetResult`] is retained so
-/// the omission evidence the budget already computes is disclosed rather than
-/// dropped (#1969).
-#[derive(Debug)]
-enum PushDeliveryBudgetOutcome {
-    Applied {
-        result: Box<crate::lsp::diagnostic_budget::DiagnosticBudgetResult>,
-        /// Canonical identity to publishing document, recovered from the
-        /// budget items so per-document omitted counts can be disclosed
-        /// without changing the shared budget result shape.
-        document_by_canonical_id: std::collections::BTreeMap<String, String>,
-        /// Publishing document to ordered canonical identities, in the same
-        /// order the budget builder walked the batches, so the publish filter
-        /// does not re-serialize every diagnostic.
-        ids_by_document: std::collections::BTreeMap<String, Vec<String>>,
-    },
-    /// The budget could not be built or evaluated. Publication falls back to
-    /// unfiltered delivery; the detail names why the partial state occurred.
-    Unavailable { detail: String },
+/// Compute the one delivery selection for a snapshot (#1973). Called once at
+/// refresh-transaction prepare time (before any publication); the result is
+/// stored on the snapshot and read by push publication and both pull
+/// handlers, so no transport re-evaluates the budget with a different
+/// result.
+fn compute_delivery_selection(
+    snapshot: &AnalysisSnapshot,
+) -> Arc<crate::lsp::diagnostic_budget::DiagnosticDeliverySelection> {
+    let complete_evidence_identity =
+        super::diagnostics::complete_diagnostic_evidence_identity(snapshot);
+    let snapshot_profile_identity = snapshot
+        .input_identity_id()
+        .unwrap_or_else(|| complete_evidence_identity.clone());
+    Arc::new(
+        crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &snapshot.diagnostics_by_uri,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            &snapshot_profile_identity,
+            &complete_evidence_identity,
+        ),
+    )
 }
 
-fn evaluate_push_delivery_budget(
-    batches_by_uri: &std::collections::BTreeMap<
-        tower_lsp_server::ls_types::Uri,
-        Vec<tower_lsp_server::ls_types::Diagnostic>,
-    >,
-    budget: &crate::lsp::diagnostic_budget::DiagnosticBudget,
-) -> PushDeliveryBudgetOutcome {
-    let items =
-        match crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(batches_by_uri) {
-            Ok(items) => items,
-            Err(error) => {
-                return PushDeliveryBudgetOutcome::Unavailable {
-                    detail: format!("budget item serialization failed: {error}"),
-                };
+/// Bounded pull-side disclosure for a partial delivery state (#1973).
+/// Returns `None` when the stored selection is complete — profile filtering
+/// alone does not make a delivery partial — mirroring the push omission
+/// disclosure. When the pull transport serves a partial, collapsed, or
+/// unfiltered-fallback delivery, the state is named and the retrieval route
+/// for the complete evidence is given; an empty or unchanged report never
+/// hides the overflow.
+fn pull_delivery_disclosure(snapshot: &AnalysisSnapshot) -> Option<String> {
+    let selection = snapshot.delivery_selection.as_ref()?;
+    match &selection.outcome {
+        DiagnosticDeliveryOutcome::Applied { result, .. } => {
+            let route = result.continuation_or_inspect_route.as_str();
+            if result.selected.is_empty() && result.total_canonical_items > 0 {
+                return Some(format!(
+                    "ripr pull diagnostic delivery served zero of {} items: every item was omitted by the delivery budget (profile filtering or delivery limits); retrieve the complete evidence via {route}",
+                    result.total_canonical_items
+                ));
             }
-        };
-    let document_by_canonical_id = items
-        .iter()
-        .map(|item| (item.canonical_id.clone(), item.document.clone()))
-        .collect();
-    let mut ids_by_document: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for item in &items {
-        ids_by_document
-            .entry(item.document.clone())
-            .or_default()
-            .push(item.canonical_id.clone());
-    }
-    match crate::lsp::diagnostic_budget::evaluate_diagnostic_budget(
-        items,
-        budget,
-        "push_delivery",
-        "push_delivery",
-    ) {
-        Ok(result) => PushDeliveryBudgetOutcome::Applied {
-            result: Box::new(result),
-            document_by_canonical_id,
-            ids_by_document,
-        },
-        Err(error) => PushDeliveryBudgetOutcome::Unavailable {
-            detail: format!("budget evaluation failed: {error}"),
-        },
-    }
-}
-
-/// Diagnostics to publish for one batch under the budget selection. An empty
-/// selected set keeps the #1911 fallback semantics: publish everything.
-fn push_diagnostics_for_batch(
-    diagnostics: &[tower_lsp_server::ls_types::Diagnostic],
-    document: &str,
-    budget_selected_ids: &std::collections::BTreeSet<String>,
-    ordered_ids: Option<&[String]>,
-) -> Vec<tower_lsp_server::ls_types::Diagnostic> {
-    if let Some(ordered_ids) = ordered_ids {
-        // Ids were computed by the budget builder in this exact order; reuse
-        // them instead of serializing every diagnostic again.
-        if ordered_ids.len() == diagnostics.len() {
-            return diagnostics
-                .iter()
-                .zip(ordered_ids.iter())
-                .filter(|(_, id)| budget_selected_ids.contains(id.as_str()))
-                .map(|(diagnostic, _)| diagnostic.clone())
-                .collect();
+            if result.overflowed {
+                let overflow_reasons = result
+                    .overflow_reasons
+                    .iter()
+                    .map(|reason| overflow_reason_name(*reason))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                return Some(format!(
+                    "ripr pull diagnostic delivery is partial: {} of {} items omitted by the delivery budget (overflow: {overflow_reasons}); retrieve the omitted evidence via {route}",
+                    result.omitted.len(),
+                    result.total_canonical_items
+                ));
+            }
+            None
         }
+        DiagnosticDeliveryOutcome::Unavailable { detail, .. } => Some(format!(
+            "ripr pull diagnostic delivery budget unavailable ({detail}); served all diagnostics unfiltered: budget enforcement was not applied, delivery completeness is unknown"
+        )),
     }
-    diagnostics
-        .iter()
-        .filter(|diagnostic| {
-            let payload = serde_json::to_vec(diagnostic).unwrap_or_default();
-            let id = crate::lsp::diagnostic_budget::diagnostic_canonical_id(
-                diagnostic, document, &payload,
-            );
-            budget_selected_ids.contains(id.as_str())
-        })
-        .cloned()
-        .collect()
 }
 
 /// Bounded machine-readable omission disclosure for one push publication
@@ -4820,14 +4788,22 @@ mod push_budget_disclosure_tests {
             max_inline_detail_bytes: 4096,
         };
 
-        let outcome = evaluate_push_delivery_budget(&batches, &budget);
-        let PushDeliveryBudgetOutcome::Applied {
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &batches,
+            &budget,
+            "test-snapshot-profile",
+            "test-complete-evidence",
+        );
+        let DiagnosticDeliveryOutcome::Applied {
             result,
             document_by_canonical_id,
             ..
-        } = &outcome
+        } = &selection.outcome
         else {
-            return Err(format!("expected applied budget outcome, got {outcome:?}"));
+            return Err(format!(
+                "expected applied budget outcome, got {:?}",
+                selection.outcome
+            ));
         };
         assert!(result.overflowed, "budget must report overflow");
 
@@ -4874,23 +4850,15 @@ mod push_budget_disclosure_tests {
 
         // Selection behavior is unchanged: only budget-selected diagnostics
         // are published for the batch.
-        let selected_ids = result
-            .selected_ids()
-            .map(str::to_string)
-            .collect::<std::collections::BTreeSet<_>>();
-        let published = push_diagnostics_for_batch(
-            &diagnostics,
-            "file:///workspace/src/lib.rs",
-            &selected_ids,
-            None,
-        );
+        let published =
+            selection.diagnostics_for_document("file:///workspace/src/lib.rs", &diagnostics);
         assert_eq!(published.len(), 3);
-        assert_eq!(selected_ids.len(), 3);
+        assert_eq!(result.selected_ids().count(), 3);
         Ok(())
     }
 
     #[test]
-    fn publish_filter_reuses_budget_ids_without_reserializing() -> Result<(), String> {
+    fn delivery_filter_reuses_budget_ids_without_reserializing() -> Result<(), String> {
         let mut batches = single_document_batches(vec![
             headline_diagnostic("diag:actionable-a", true),
             headline_diagnostic("diag:actionable-b", true),
@@ -4900,14 +4868,22 @@ mod push_budget_disclosure_tests {
             max_items_per_document: 2,
             ..crate::lsp::diagnostic_budget::DiagnosticBudget::default()
         };
-        let outcome = evaluate_push_delivery_budget(&batches, &budget);
-        let PushDeliveryBudgetOutcome::Applied {
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &batches,
+            &budget,
+            "test-snapshot-profile",
+            "test-complete-evidence",
+        );
+        let DiagnosticDeliveryOutcome::Applied {
             result,
             ids_by_document,
             ..
-        } = &outcome
+        } = &selection.outcome
         else {
-            return Err(format!("expected applied budget outcome, got {outcome:?}"));
+            return Err(format!(
+                "expected applied budget outcome, got {:?}",
+                selection.outcome
+            ));
         };
         let selected_ids = result
             .selected_ids()
@@ -4929,13 +4905,24 @@ mod push_budget_disclosure_tests {
                 "ids_by_document must cover the document in batch order: {ordered_ids:?}"
             ));
         }
-        let reused =
-            push_diagnostics_for_batch(&diagnostics, &document, &selected_ids, ordered_ids);
-        let reserialized = push_diagnostics_for_batch(&diagnostics, &document, &selected_ids, None);
-        if reused != reserialized || reused.len() != 2 {
+        let served = selection.diagnostics_for_document(&document, &diagnostics);
+        // Independently reserialize every diagnostic and re-derive canonical
+        // identities: the stored-selection filter must agree exactly.
+        let reserialized = diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                let payload = serde_json::to_vec(diagnostic).unwrap_or_default();
+                let id = crate::lsp::diagnostic_budget::diagnostic_canonical_id(
+                    diagnostic, &document, &payload,
+                );
+                selected_ids.contains(id.as_str())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if served != reserialized || served.len() != 2 {
             return Err(format!(
-                "reuse path diverged from reserialization: reused={} reserialized={}",
-                reused.len(),
+                "stored-selection filter diverged from reserialization: served={} reserialized={}",
+                served.len(),
                 reserialized.len()
             ));
         }
@@ -4943,32 +4930,31 @@ mod push_budget_disclosure_tests {
     }
 
     #[test]
-    fn zero_selection_publishes_everything_and_names_the_fallback() -> Result<(), String> {
+    fn zero_selection_serves_nothing_and_names_the_fallback() -> Result<(), String> {
         let batches = single_document_batches(vec![
             headline_diagnostic("diag:advisory-a", false),
             headline_diagnostic("diag:advisory-b", false),
         ])?;
-        let outcome = evaluate_push_delivery_budget(
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
             &batches,
             &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "test-snapshot-profile",
+            "test-complete-evidence",
         );
-        let PushDeliveryBudgetOutcome::Applied { result, .. } = &outcome else {
-            return Err(format!("expected applied budget outcome, got {outcome:?}"));
+        let DiagnosticDeliveryOutcome::Applied { result, .. } = &selection.outcome else {
+            return Err(format!(
+                "expected applied budget outcome, got {:?}",
+                selection.outcome
+            ));
         };
         if !result.selected.is_empty() || result.total_canonical_items != 2 {
             return Err(format!(
                 "expected collapsed selection over two items, got {result:?}"
             ));
         }
-        let selected_ids = result
-            .selected_ids()
-            .map(str::to_string)
-            .collect::<std::collections::BTreeSet<_>>();
-        let published = push_diagnostics_for_batch(
-            batches.values().next().ok_or("missing batch")?,
+        let published = selection.diagnostics_for_document(
             "file:///workspace/src/lib.rs",
-            &selected_ids,
-            None,
+            batches.values().next().ok_or("missing batch")?,
         );
         if !published.is_empty() {
             return Err(format!(
@@ -4998,17 +4984,22 @@ mod push_budget_disclosure_tests {
             headline_diagnostic("diag:other", true),
             headline_diagnostic("diag:advisory", false),
         ])?;
-        let outcome = evaluate_push_delivery_budget(
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
             &batches,
             &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "test-snapshot-profile",
+            "test-complete-evidence",
         );
-        let PushDeliveryBudgetOutcome::Applied {
+        let DiagnosticDeliveryOutcome::Applied {
             result,
             document_by_canonical_id,
             ..
-        } = &outcome
+        } = &selection.outcome
         else {
-            return Err(format!("expected applied budget outcome, got {outcome:?}"));
+            return Err(format!(
+                "expected applied budget outcome, got {:?}",
+                selection.outcome
+            ));
         };
         assert!(
             !result.overflowed,
@@ -5044,10 +5035,16 @@ mod push_budget_disclosure_tests {
             ..crate::lsp::diagnostic_budget::DiagnosticBudget::default()
         };
 
-        let outcome = evaluate_push_delivery_budget(&batches, &invalid_budget);
-        let PushDeliveryBudgetOutcome::Unavailable { detail } = &outcome else {
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &batches,
+            &invalid_budget,
+            "test-snapshot-profile",
+            "test-complete-evidence",
+        );
+        let DiagnosticDeliveryOutcome::Unavailable { detail, .. } = &selection.outcome else {
             return Err(format!(
-                "expected unavailable budget outcome, got {outcome:?}"
+                "expected unavailable budget outcome, got {:?}",
+                selection.outcome
             ));
         };
         assert!(
@@ -5056,23 +5053,10 @@ mod push_budget_disclosure_tests {
         );
 
         // The fallback keeps the #1911 semantics at the call site: an
-        // unavailable budget (`None` selected set) publishes the batch
-        // unfiltered instead of applying the strict filter.
-        let budget_selected_ids: Option<std::collections::BTreeSet<String>> = match &outcome {
-            PushDeliveryBudgetOutcome::Applied { result, .. } => {
-                Some(result.selected_ids().map(str::to_string).collect())
-            }
-            PushDeliveryBudgetOutcome::Unavailable { .. } => None,
-        };
-        let published = match &budget_selected_ids {
-            None => diagnostics.clone(),
-            Some(selected_ids) => push_diagnostics_for_batch(
-                &diagnostics,
-                "file:///workspace/src/lib.rs",
-                selected_ids,
-                None,
-            ),
-        };
+        // unavailable budget serves the batch unfiltered instead of applying
+        // the strict filter.
+        let published =
+            selection.diagnostics_for_document("file:///workspace/src/lib.rs", &diagnostics);
         assert_eq!(
             published.len(),
             diagnostics.len(),
@@ -5092,6 +5076,624 @@ mod push_budget_disclosure_tests {
             message.contains("budget enforcement was not applied"),
             "fallback disclosure must name the partial state explicitly: {message}"
         );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod delivery_selection_parity_tests {
+    use super::*;
+    use tower_lsp_server::LspService;
+    use tower_lsp_server::ls_types::{
+        DocumentDiagnosticParams, PartialResultParams, TextDocumentIdentifier,
+        WorkspaceDiagnosticParams,
+    };
+
+    fn parity_uri(name: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
+        format!("file:///workspace/src/{name}")
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))
+    }
+
+    /// A gap-ledger diagnostic whose budget eligibility is explicit. The
+    /// `gap_id` data key keeps the snapshot consistency invariant
+    /// (findings + seams + gap diagnostics == diagnostic count) satisfiable
+    /// without fabricating findings.
+    fn parity_diagnostic(id: &str, eligible: bool) -> tower_lsp_server::ls_types::Diagnostic {
+        tower_lsp_server::ls_types::Diagnostic {
+            message: format!("diagnostic {id}"),
+            data: Some(serde_json::json!({
+                "diagnostic_id": id,
+                "gap_id": id,
+                "headline_eligible": eligible,
+            })),
+            ..Default::default()
+        }
+    }
+
+    fn parity_workspace_diagnostics(
+        documents: Vec<(
+            tower_lsp_server::ls_types::Uri,
+            Vec<tower_lsp_server::ls_types::Diagnostic>,
+        )>,
+    ) -> WorkspaceDiagnostics {
+        let diagnostics_by_uri = documents.iter().cloned().collect::<BTreeMap<_, _>>();
+        let batches = documents
+            .into_iter()
+            .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
+            .collect();
+        let snapshot = AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            input_identity: Some(
+                crate::lsp::input_identity::LspAnalysisInputIdentity::from_refresh_inputs(
+                    PathBuf::from("/workspace"),
+                    1,
+                    &LspAnalysisConfig::default(),
+                ),
+            ),
+            base: Some("origin/main".to_string()),
+            mode: crate::app::Mode::Draft,
+            refresh: crate::lsp::state::RefreshMetadata::default(),
+            findings: Vec::new(),
+            diagnostic_profile: LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
+            diagnostics_by_uri,
+            delivery_selection: None,
+            seams_deferred: false,
+        };
+        WorkspaceDiagnostics { snapshot, batches }
+    }
+
+    fn parity_backend() -> Result<ParityHarness, String> {
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to start test runtime: {err}"))?;
+        Ok(ParityHarness {
+            service,
+            _socket: socket,
+            runtime,
+        })
+    }
+
+    struct ParityHarness {
+        service: tower_lsp_server::LspService<Backend>,
+        // Keep the socket alive for the whole test so client log-message
+        // disclosures have an open channel, mirroring the other LSP handler
+        // tests in this crate.
+        _socket: tower_lsp_server::ClientSocket,
+        runtime: tokio::runtime::Runtime,
+    }
+
+    fn commit(
+        backend: &Backend,
+        diagnostics: WorkspaceDiagnostics,
+    ) -> Result<AnalysisSnapshot, String> {
+        backend
+            .refresh_plan(diagnostics)
+            .ok_or_else(|| "expected committed snapshot".to_string())?;
+        backend
+            .latest_analysis_snapshot()
+            .ok_or_else(|| "expected latest analysis snapshot".to_string())
+    }
+
+    fn stored_selection(
+        snapshot: &AnalysisSnapshot,
+    ) -> Result<&crate::lsp::diagnostic_budget::DiagnosticDeliverySelection, String> {
+        snapshot
+            .delivery_selection
+            .as_deref()
+            .ok_or_else(|| "committed snapshot must carry a delivery selection".to_string())
+    }
+
+    fn applied_result(
+        selection: &crate::lsp::diagnostic_budget::DiagnosticDeliverySelection,
+    ) -> Result<&crate::lsp::diagnostic_budget::DiagnosticBudgetResult, String> {
+        match &selection.outcome {
+            DiagnosticDeliveryOutcome::Applied { result, .. } => Ok(result),
+            DiagnosticDeliveryOutcome::Unavailable { detail, .. } => Err(format!(
+                "expected applied selection, got unavailable: {detail}"
+            )),
+        }
+    }
+
+    fn diagnostic_ids(
+        diagnostics: &[tower_lsp_server::ls_types::Diagnostic],
+    ) -> Result<Vec<String>, String> {
+        diagnostics
+            .iter()
+            .map(|diagnostic| {
+                diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("diagnostic_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("diagnostic missing diagnostic_id: {diagnostic:?}"))
+            })
+            .collect()
+    }
+
+    /// Pull one document through the real async `textDocument/diagnostic`
+    /// handler and return the served canonical ids plus the result id.
+    fn pulled_document(
+        backend: &Backend,
+        runtime: &tokio::runtime::Runtime,
+        uri: &tower_lsp_server::ls_types::Uri,
+        previous_result_id: Option<String>,
+    ) -> Result<(String, Vec<String>), String> {
+        let report = runtime
+            .block_on(backend.diagnostic(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id,
+                work_done_progress_params: Default::default(),
+                partial_result_params: PartialResultParams::default(),
+            }))
+            .map_err(|err| format!("document pull failed: {err}"))?;
+        let json = serde_json::to_value(report)
+            .map_err(|err| format!("serialize document report failed: {err}"))?;
+        if json.get("kind").and_then(serde_json::Value::as_str) != Some("full") {
+            return Err(format!("expected full document report: {json}"));
+        }
+        let result_id = json
+            .get("resultId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "full document report did not carry resultId".to_string())?
+            .to_string();
+        let ids = json
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("full document report had no items array: {json}"))?
+            .iter()
+            .map(|item| {
+                item.get("data")
+                    .and_then(|data| data.get("diagnostic_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("pulled item missing diagnostic_id: {item}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((result_id, ids))
+    }
+
+    /// The push-side projection for one snapshot: exactly the computation the
+    /// publish loop performs per batch, read from the stored selection.
+    fn push_projection(
+        snapshot: &AnalysisSnapshot,
+    ) -> Result<BTreeMap<String, Vec<String>>, String> {
+        let selection = stored_selection(snapshot)?;
+        snapshot
+            .diagnostics_by_uri
+            .iter()
+            .map(|(uri, diagnostics)| {
+                diagnostic_ids(&selection.diagnostics_for_document(uri.as_str(), diagnostics))
+                    .map(|ids| (uri.as_str().to_string(), ids))
+            })
+            .collect()
+    }
+
+    fn sorted(ids: &[String]) -> Vec<String> {
+        let mut sorted = ids.to_vec();
+        sorted.sort();
+        sorted
+    }
+
+    #[test]
+    fn push_and_pull_serve_identical_selected_sets_for_one_snapshot() -> Result<(), String> {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let runtime = &harness.runtime;
+        let uri_a = parity_uri("a.rs")?;
+        let uri_b = parity_uri("b.rs")?;
+        let snapshot = commit(
+            backend,
+            parity_workspace_diagnostics(vec![
+                (
+                    uri_a.clone(),
+                    vec![
+                        parity_diagnostic("gap:a-1", true),
+                        parity_diagnostic("gap:a-2", true),
+                        parity_diagnostic("gap:a-3", true),
+                    ],
+                ),
+                (
+                    uri_b.clone(),
+                    vec![
+                        parity_diagnostic("gap:b-1", true),
+                        parity_diagnostic("gap:b-2", true),
+                        parity_diagnostic("gap:b-advisory", false),
+                    ],
+                ),
+            ]),
+        )?;
+        let selection = stored_selection(&snapshot)?;
+        let DiagnosticDeliveryOutcome::Applied {
+            selected_ids_by_document,
+            ..
+        } = &selection.outcome
+        else {
+            return Err("expected applied selection".to_string());
+        };
+        let push = push_projection(&snapshot)?;
+
+        // Item-level and per-document parity: the pull handler, the push
+        // projection, and the stored per-document selected sets all agree.
+        for uri in [&uri_a, &uri_b] {
+            let (_, pull_ids) = pulled_document(backend, runtime, uri, None)?;
+            let push_ids = push
+                .get(uri.as_str())
+                .ok_or_else(|| format!("push projection missing {}", uri.as_str()))?;
+            if pull_ids != *push_ids {
+                return Err(format!(
+                    "push/pull item parity failed for {}: pull={pull_ids:?} push={push_ids:?}",
+                    uri.as_str()
+                ));
+            }
+            let stored = selected_ids_by_document
+                .get(uri.as_str())
+                .ok_or_else(|| format!("stored selection missing {}", uri.as_str()))?;
+            if sorted(&pull_ids) != sorted(stored) {
+                return Err(format!(
+                    "per-document membership parity failed for {}: pull={pull_ids:?} stored={stored:?}",
+                    uri.as_str()
+                ));
+            }
+        }
+
+        // The workspace pull handler agrees per document as well.
+        let workspace = runtime
+            .block_on(backend.workspace_diagnostic(WorkspaceDiagnosticParams {
+                identifier: None,
+                previous_result_ids: Vec::new(),
+                work_done_progress_params: Default::default(),
+                partial_result_params: PartialResultParams::default(),
+            }))
+            .map_err(|err| format!("workspace pull failed: {err}"))?;
+        let workspace_json = serde_json::to_value(workspace)
+            .map_err(|err| format!("serialize workspace report failed: {err}"))?;
+        let items = workspace_json
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("workspace report had no items: {workspace_json}"))?;
+        for item in items {
+            let uri = item
+                .get("uri")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| format!("workspace item missing uri: {item}"))?;
+            let ids = item
+                .get("items")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| format!("workspace item missing diagnostics: {item}"))?
+                .iter()
+                .filter_map(|diagnostic| {
+                    diagnostic
+                        .get("data")
+                        .and_then(|data| data.get("diagnostic_id"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                })
+                .collect::<Vec<_>>();
+            let push_ids = push
+                .get(uri)
+                .ok_or_else(|| format!("push projection missing {uri}"))?;
+            if ids != *push_ids {
+                return Err(format!(
+                    "workspace pull diverged from push for {uri}: pull={ids:?} push={push_ids:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn omitted_identities_and_reasons_are_shared_by_both_transports() -> Result<(), String> {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let runtime = &harness.runtime;
+        let uri = parity_uri("omitted.rs")?;
+        let complete = vec![
+            parity_diagnostic("gap:keep-1", true),
+            parity_diagnostic("gap:drop-advisory", false),
+            parity_diagnostic("gap:keep-2", true),
+        ];
+        let snapshot = commit(
+            backend,
+            parity_workspace_diagnostics(vec![(uri.clone(), complete.clone())]),
+        )?;
+        let selection = stored_selection(&snapshot)?;
+        let result = applied_result(selection)?;
+        let stored_omitted = result
+            .omitted
+            .iter()
+            .map(|item| (item.canonical_id.clone(), item.reason))
+            .collect::<BTreeMap<_, _>>();
+        if stored_omitted.len() != 1
+            || stored_omitted.get("gap:drop-advisory")
+                != Some(&crate::lsp::diagnostic_budget::OmittedDiagnosticReason::ProfileFiltered)
+        {
+            return Err(format!(
+                "expected one profile-filtered omission, got {stored_omitted:?}"
+            ));
+        }
+
+        // Both transports leave exactly the stored omitted identities
+        // unserved, with the stored reasons.
+        let (_, pull_ids) = pulled_document(backend, runtime, &uri, None)?;
+        let push = push_projection(&snapshot)?;
+        let push_ids = push
+            .get(uri.as_str())
+            .ok_or_else(|| "push projection missing document".to_string())?;
+        let complete_ids = diagnostic_ids(&complete)?;
+        for (transport, served) in [("pull", &pull_ids), ("push", push_ids)] {
+            let unserved = complete_ids
+                .iter()
+                .filter(|id| !served.contains(id))
+                .cloned()
+                .collect::<Vec<_>>();
+            let stored = stored_omitted.keys().cloned().collect::<Vec<_>>();
+            if unserved != stored {
+                return Err(format!(
+                    "{transport} unserved identities diverge from stored omissions: unserved={unserved:?} stored={stored:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pull_after_budget_limits_discloses_the_push_overflow_state_and_route() -> Result<(), String>
+    {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let runtime = &harness.runtime;
+        let uri = parity_uri("overflow.rs")?;
+        let diagnostics = (0..60)
+            .map(|index| parity_diagnostic(&format!("gap:overflow-{index:02}"), true))
+            .collect::<Vec<_>>();
+        let snapshot = commit(
+            backend,
+            parity_workspace_diagnostics(vec![(uri.clone(), diagnostics)]),
+        )?;
+        let selection = stored_selection(&snapshot)?;
+        let result = applied_result(selection)?;
+        if !result.overflowed
+            || !result.overflow_reasons.contains(
+                &crate::lsp::diagnostic_budget::DiagnosticOverflowReason::DocumentItemLimit,
+            )
+        {
+            return Err(format!("expected document-limit overflow, got {result:?}"));
+        }
+        let route = result.continuation_or_inspect_route.clone();
+
+        // Push disclosure state.
+        let DiagnosticDeliveryOutcome::Applied {
+            document_by_canonical_id,
+            ..
+        } = &selection.outcome
+        else {
+            return Err("expected applied selection".to_string());
+        };
+        let push_disclosure =
+            push_budget_omission_disclosure(result, &selection.budget, document_by_canonical_id)
+                .ok_or_else(|| "overflowed push publication must disclose".to_string())?;
+        let push_payload: serde_json::Value = serde_json::from_str(
+            &push_disclosure[push_disclosure
+                .find('{')
+                .ok_or_else(|| "push disclosure missing JSON payload".to_string())?..],
+        )
+        .map_err(|err| format!("parse push disclosure failed: {err}"))?;
+        if push_payload["overflow_reasons"] != serde_json::json!(["document_item_limit"])
+            || push_payload["continuation_or_inspect_route"] != serde_json::json!(route)
+        {
+            return Err(format!(
+                "push disclosure overflow state mismatch: {push_payload}"
+            ));
+        }
+
+        // Pull serves the same bounded set and discloses the same state and
+        // retrieval route.
+        let (result_id, pull_ids) = pulled_document(backend, runtime, &uri, None)?;
+        if pull_ids.len() != result.selected.len() {
+            return Err(format!(
+                "pull must serve the stored selected set: pull={} selected={}",
+                pull_ids.len(),
+                result.selected.len()
+            ));
+        }
+        let pull_disclosure = pull_delivery_disclosure(&snapshot)
+            .ok_or_else(|| "overflowed pull delivery must disclose".to_string())?;
+        for expected in ["partial", route.as_str(), "document_item_limit"] {
+            if !pull_disclosure.contains(expected) {
+                return Err(format!(
+                    "pull disclosure missing `{expected}`: {pull_disclosure}"
+                ));
+            }
+        }
+
+        // The workspace-status projection mirrors the same stored overflow
+        // state and retrieval route.
+        let status = backend
+            .collect_workspace_status()
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        if status["diagnostic_budget"]["overflowed"] != serde_json::json!(true)
+            || status["diagnostic_budget"]["overflow_reasons"]
+                != serde_json::json!(["document_item_limit"])
+            || status["diagnostic_budget"]["continuation_or_inspect_route"]
+                != serde_json::json!(route)
+        {
+            return Err(format!(
+                "workspace-status budget projection diverged from the stored selection: {status}"
+            ));
+        }
+
+        // The overflow is never hidden by an unchanged report: a repeated
+        // equivalent pull returns `unchanged` against the served identity.
+        let second = runtime
+            .block_on(backend.diagnostic(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: Some(result_id),
+                work_done_progress_params: Default::default(),
+                partial_result_params: PartialResultParams::default(),
+            }))
+            .map_err(|err| format!("second pull failed: {err}"))?;
+        let second_json = serde_json::to_value(second)
+            .map_err(|err| format!("serialize second report failed: {err}"))?;
+        if second_json.get("kind").and_then(serde_json::Value::as_str) != Some("unchanged") {
+            return Err(format!(
+                "expected unchanged report for the same selection: {second_json}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_selection_snapshot_serves_nothing_on_both_transports_and_discloses()
+    -> Result<(), String> {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let runtime = &harness.runtime;
+        let uri = parity_uri("zero.rs")?;
+        let snapshot = commit(
+            backend,
+            parity_workspace_diagnostics(vec![(
+                uri.clone(),
+                vec![
+                    parity_diagnostic("gap:advisory-1", false),
+                    parity_diagnostic("gap:advisory-2", false),
+                ],
+            )]),
+        )?;
+        let selection = stored_selection(&snapshot)?;
+        let result = applied_result(selection)?;
+        if !result.selected.is_empty() || result.total_canonical_items != 2 {
+            return Err(format!(
+                "expected a legitimately empty selection over two items, got {result:?}"
+            ));
+        }
+
+        // Pull serves nothing.
+        let (_, pull_ids) = pulled_document(backend, runtime, &uri, None)?;
+        if !pull_ids.is_empty() {
+            return Err(format!(
+                "zero-selection pull must serve nothing: {pull_ids:?}"
+            ));
+        }
+        // Push publishes nothing.
+        let push = push_projection(&snapshot)?;
+        let push_ids = push
+            .get(uri.as_str())
+            .ok_or_else(|| "push projection missing document".to_string())?;
+        if !push_ids.is_empty() {
+            return Err(format!(
+                "zero-selection push must publish nothing: {push_ids:?}"
+            ));
+        }
+        // Both transports disclose the collapsed selection with the retrieval
+        // route.
+        let pull_disclosure = pull_delivery_disclosure(&snapshot)
+            .ok_or_else(|| "zero-selection pull delivery must disclose".to_string())?;
+        for expected in [
+            "served zero of 2 items",
+            result.continuation_or_inspect_route.as_str(),
+        ] {
+            if !pull_disclosure.contains(expected) {
+                return Err(format!(
+                    "pull zero-selection disclosure missing `{expected}`: {pull_disclosure}"
+                ));
+            }
+        }
+        let push_message = push_budget_zero_selection_log_message(result);
+        if !push_message.contains("selected zero of 2 items") {
+            return Err(format!(
+                "push zero-selection disclosure mismatch: {push_message}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pull_reads_the_stored_selection_without_reevaluating_the_budget() -> Result<(), String> {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let runtime = &harness.runtime;
+        let uri = parity_uri("stored.rs")?;
+        let mut workspace = parity_workspace_diagnostics(vec![(
+            uri.clone(),
+            vec![
+                parity_diagnostic("gap:stored-1", true),
+                parity_diagnostic("gap:stored-2", true),
+            ],
+        )]);
+        // A selection computed under a tighter budget than the default: one
+        // selected item instead of two. If the pull path re-evaluated the
+        // budget with the default limits it would serve both items.
+        let tight_budget = crate::lsp::diagnostic_budget::DiagnosticBudget {
+            max_items_per_document: 1,
+            ..crate::lsp::diagnostic_budget::DiagnosticBudget::default()
+        };
+        let injected = Arc::new(
+            crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+                &workspace.snapshot.diagnostics_by_uri,
+                &tight_budget,
+                "test-tight-profile",
+                "test-tight-evidence",
+            ),
+        );
+        let injected_result = applied_result(&injected)?;
+        if injected_result.selected.len() != 1 {
+            return Err(format!(
+                "tight budget must select exactly one item: {injected_result:?}"
+            ));
+        }
+        let expected_served = injected_result.selected[0].canonical_id.clone();
+        workspace.snapshot.delivery_selection = Some(Arc::clone(&injected));
+
+        let snapshot = commit(backend, workspace)?;
+        let committed = stored_selection(&snapshot)?;
+        // The committed selection is the injected one — stored, not recomputed.
+        let committed_arc = snapshot
+            .delivery_selection
+            .as_ref()
+            .ok_or_else(|| "committed snapshot lost its selection".to_string())?;
+        if !Arc::ptr_eq(committed_arc, &injected) {
+            return Err("commit replaced the stored selection instead of retaining it".to_string());
+        }
+        let committed_result = applied_result(committed)?;
+        if !committed_result
+            .snapshot_profile_budget_identity
+            .contains("test-tight-profile")
+        {
+            return Err(format!(
+                "committed selection identity is not the injected one: {}",
+                committed_result.snapshot_profile_budget_identity
+            ));
+        }
+
+        let (_, pull_ids) = pulled_document(backend, runtime, &uri, None)?;
+        if pull_ids != vec![expected_served.clone()] {
+            return Err(format!(
+                "pull must serve the stored selection, not a re-evaluated budget: pull={pull_ids:?} stored=[{expected_served}]"
+            ));
+        }
+
+        // Sanity: the default budget would have served both items, so serving
+        // exactly the stored one-item set is only possible by reading the
+        // stored selection.
+        let default_evaluation =
+            crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+                &snapshot.diagnostics_by_uri,
+                &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+                "test-default-profile",
+                "test-default-evidence",
+            );
+        if applied_result(&default_evaluation)?.selected.len() != 2 {
+            return Err("default budget must select both items in this fixture".to_string());
+        }
         Ok(())
     }
 }

@@ -5,7 +5,7 @@
 //! producer supplies eligibility and evidence-owned ordering ranks; this module
 //! only applies finite delivery limits and records every omitted identity.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use sha2::{Digest, Sha256};
 
@@ -283,6 +283,206 @@ pub fn evaluate_diagnostic_budget(
         overflowed,
         overflow_reasons,
     })
+}
+
+/// Outcome of computing the one delivery selection for a snapshot. The full
+/// [`DiagnosticBudgetResult`] is retained so the omission evidence the budget
+/// already computes is disclosed rather than dropped (#1969).
+#[derive(Clone, Debug)]
+pub(crate) enum DiagnosticDeliveryOutcome {
+    Applied {
+        result: Box<DiagnosticBudgetResult>,
+        /// Canonical identity to publishing document, recovered from the
+        /// budget items so per-document omitted counts can be disclosed
+        /// without changing the shared budget result shape.
+        document_by_canonical_id: BTreeMap<String, String>,
+        /// Publishing document to ordered canonical identities, in the same
+        /// order the budget builder walked the documents, so the delivery
+        /// filter does not re-serialize every diagnostic.
+        ids_by_document: BTreeMap<String, Vec<String>>,
+        /// Publishing document to the selected canonical identities it
+        /// serves. This is the exact per-document membership every transport
+        /// must agree on (#1973).
+        selected_ids_by_document: BTreeMap<String, Vec<String>>,
+    },
+    /// The budget could not be built or evaluated. Delivery falls back to
+    /// unfiltered serving; the reason class names the failure family and the
+    /// detail carries the human-readable cause. Consumers match on the class,
+    /// never on the detail string.
+    Unavailable {
+        reason: DiagnosticDeliveryUnavailableReason,
+        detail: String,
+    },
+}
+
+/// The failure family of an unavailable delivery selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DiagnosticDeliveryUnavailableReason {
+    /// Serializing diagnostics into budget items failed.
+    ItemSerialization,
+    /// The budget evaluation itself rejected its inputs.
+    Evaluation,
+}
+
+impl DiagnosticDeliveryUnavailableReason {
+    pub(crate) fn as_status_reason(self) -> &'static str {
+        match self {
+            Self::ItemSerialization => "serialization_failure",
+            Self::Evaluation => "evaluation_failure",
+        }
+    }
+}
+
+/// The one immutable diagnostic delivery selection shared by push publication
+/// and both pull handlers (#1973).
+///
+/// This is computed once per snapshot (at refresh-transaction prepare time,
+/// before any publication) and stored on the committed snapshot. Neither
+/// transport may rerun ranking or re-evaluate the budget with a different
+/// result: push and pull for the same snapshot, profile, and budget read this
+/// stored outcome and therefore agree on selected items, per-document
+/// membership, omitted identities and reasons, overflow state, and the
+/// retrieval route.
+#[derive(Clone, Debug)]
+pub(crate) struct DiagnosticDeliverySelection {
+    pub(crate) budget: DiagnosticBudget,
+    pub(crate) outcome: DiagnosticDeliveryOutcome,
+}
+
+impl DiagnosticDeliverySelection {
+    /// Compute the delivery selection for one snapshot's complete diagnostics.
+    ///
+    /// `snapshot_profile_identity` binds the selection to the snapshot input
+    /// and diagnostic profile; `complete_evidence_identity` binds it to the
+    /// complete (unfiltered) evidence so a budget/profile/input change
+    /// produces a new selection identity without renumbering canonical
+    /// evidence. Computation failure is recorded as
+    /// [`DiagnosticDeliveryOutcome::Unavailable`] rather than propagated:
+    /// delivery then falls back to unfiltered serving with a disclosed
+    /// partial state.
+    pub(crate) fn evaluate(
+        diagnostics_by_uri: &BTreeMap<
+            tower_lsp_server::ls_types::Uri,
+            Vec<tower_lsp_server::ls_types::Diagnostic>,
+        >,
+        budget: &DiagnosticBudget,
+        snapshot_profile_identity: &str,
+        complete_evidence_identity: &str,
+    ) -> Self {
+        let outcome = Self::evaluate_outcome(
+            diagnostics_by_uri,
+            budget,
+            snapshot_profile_identity,
+            complete_evidence_identity,
+        );
+        Self {
+            budget: budget.clone(),
+            outcome,
+        }
+    }
+
+    fn evaluate_outcome(
+        diagnostics_by_uri: &BTreeMap<
+            tower_lsp_server::ls_types::Uri,
+            Vec<tower_lsp_server::ls_types::Diagnostic>,
+        >,
+        budget: &DiagnosticBudget,
+        snapshot_profile_identity: &str,
+        complete_evidence_identity: &str,
+    ) -> DiagnosticDeliveryOutcome {
+        let items = match build_budget_items_from_diagnostics(diagnostics_by_uri) {
+            Ok(items) => items,
+            Err(error) => {
+                return DiagnosticDeliveryOutcome::Unavailable {
+                    reason: DiagnosticDeliveryUnavailableReason::ItemSerialization,
+                    detail: format!("budget item serialization failed: {error}"),
+                };
+            }
+        };
+        let document_by_canonical_id = items
+            .iter()
+            .map(|item| (item.canonical_id.clone(), item.document.clone()))
+            .collect();
+        let mut ids_by_document: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for item in &items {
+            ids_by_document
+                .entry(item.document.clone())
+                .or_default()
+                .push(item.canonical_id.clone());
+        }
+        match evaluate_diagnostic_budget(
+            items,
+            budget,
+            snapshot_profile_identity,
+            complete_evidence_identity,
+        ) {
+            Ok(result) => {
+                let mut selected_ids_by_document: BTreeMap<String, Vec<String>> = BTreeMap::new();
+                for item in &result.selected {
+                    selected_ids_by_document
+                        .entry(item.document.clone())
+                        .or_default()
+                        .push(item.canonical_id.clone());
+                }
+                DiagnosticDeliveryOutcome::Applied {
+                    result: Box::new(result),
+                    document_by_canonical_id,
+                    ids_by_document,
+                    selected_ids_by_document,
+                }
+            }
+            Err(error) => DiagnosticDeliveryOutcome::Unavailable {
+                reason: DiagnosticDeliveryUnavailableReason::Evaluation,
+                detail: format!("budget evaluation failed: {error}"),
+            },
+        }
+    }
+
+    /// The diagnostics one document serves under this selection. This is the
+    /// single membership authority for both transports: an unavailable budget
+    /// serves the document unfiltered (named by the fallback disclosure); a
+    /// computed selection is applied strictly, so zero selected means zero
+    /// served. Membership is checked against the stored per-document
+    /// selected set, not a re-evaluated budget.
+    pub(crate) fn diagnostics_for_document(
+        &self,
+        document: &str,
+        diagnostics: &[tower_lsp_server::ls_types::Diagnostic],
+    ) -> Vec<tower_lsp_server::ls_types::Diagnostic> {
+        let DiagnosticDeliveryOutcome::Applied {
+            ids_by_document,
+            selected_ids_by_document,
+            ..
+        } = &self.outcome
+        else {
+            return diagnostics.to_vec();
+        };
+        let selected_for_document = selected_ids_by_document
+            .get(document)
+            .map(|ids| ids.iter().map(String::as_str).collect::<BTreeSet<_>>())
+            .unwrap_or_default();
+        // Ids were computed by the budget builder in this exact order; reuse
+        // them instead of serializing every diagnostic again.
+        if let Some(ordered_ids) = ids_by_document.get(document)
+            && ordered_ids.len() == diagnostics.len()
+        {
+            return diagnostics
+                .iter()
+                .zip(ordered_ids.iter())
+                .filter(|(_, id)| selected_for_document.contains(id.as_str()))
+                .map(|(diagnostic, _)| diagnostic.clone())
+                .collect();
+        }
+        diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                let payload = serde_json::to_vec(diagnostic).unwrap_or_default();
+                let id = diagnostic_canonical_id(diagnostic, document, &payload);
+                selected_for_document.contains(id.as_str())
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 /// Build [`DiagnosticBudgetItem`]s from a snapshot's diagnostics.

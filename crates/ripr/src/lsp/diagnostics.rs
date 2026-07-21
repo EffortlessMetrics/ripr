@@ -4,7 +4,7 @@ use super::gap_artifacts::{
     validate_workspace_gap_artifact_report,
 };
 use super::state::{AnalysisSnapshot, RefreshMetadata};
-use super::uri::{file_uri_for_path, file_uris_match, path_from_file_uri};
+use super::uri::{file_uri_for_path, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
@@ -450,15 +450,19 @@ fn normalize_path_values(root: &Path, value: &mut serde_json::Value, key: Option
 ///
 /// The identity is deliberately scoped to the document. A change in another
 /// document therefore does not invalidate an unchanged document report. The
-/// canonical payload digest removes checkout-root-specific paths before
-/// hashing, while the snapshot inputs capture changes that affect the whole
-/// projection.
+/// digest covers exactly the diagnostics the document serves under the stored
+/// delivery selection (#1973), and the selection identity is part of the
+/// derivation, so a budget/profile/input change produces a new result
+/// identity without renumbering canonical evidence — and a selection change
+/// can never be hidden by an `unchanged` report. The canonical payload digest
+/// removes checkout-root-specific paths before hashing, while the snapshot
+/// inputs capture changes that affect the whole projection.
 pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &Uri) -> String {
     let relative_uri = normalized_document_uri(&snapshot.root, uri);
-    let diagnostics = snapshot.diagnostics_for_uri(uri).unwrap_or(&[]);
-    let payload_digest = normalized_diagnostic_payload_digest(&snapshot.root, diagnostics);
+    let served = snapshot.served_diagnostics_for_uri(uri);
+    let payload_digest = normalized_diagnostic_payload_digest(&snapshot.root, &served);
     stable_diagnostic_id(
-        "ripr-document-diagnostics-v1",
+        "ripr-document-diagnostics-v2",
         [
             snapshot.mode.as_str(),
             snapshot.diagnostic_profile.as_str(),
@@ -470,8 +474,61 @@ pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &U
             ),
             snapshot.base.as_deref().unwrap_or("no-base"),
             relative_uri.as_str(),
+            delivery_selection_identity(snapshot).as_str(),
             payload_digest.as_str(),
         ],
+    )
+}
+
+/// The identity fragment the document result IDs bind to. For a committed
+/// snapshot this is the stored selection's `snapshot:profile:budget`
+/// identity (or the disclosed unavailable fallback); every transport reads
+/// the same stored value, so push and pull derive matching identities.
+fn delivery_selection_identity(snapshot: &AnalysisSnapshot) -> String {
+    match &snapshot.delivery_selection {
+        Some(selection) => match &selection.outcome {
+            super::diagnostic_budget::DiagnosticDeliveryOutcome::Applied { result, .. } => {
+                result.snapshot_profile_budget_identity.clone()
+            }
+            super::diagnostic_budget::DiagnosticDeliveryOutcome::Unavailable { detail, .. } => {
+                format!("delivery-unavailable:{detail}")
+            }
+        },
+        None => "delivery-selection:not-committed".to_string(),
+    }
+}
+
+/// Build the identity of the snapshot's complete (unfiltered) diagnostic
+/// evidence. The delivery selection binds to this as its
+/// `complete_evidence_identity` so the selected subset always names the
+/// complete evidence it was drawn from — and the complete evidence stays
+/// retrievable independently of the passive transport.
+pub(super) fn complete_diagnostic_evidence_identity(snapshot: &AnalysisSnapshot) -> String {
+    let mut parts = vec![
+        snapshot.mode.as_str().to_string(),
+        snapshot.diagnostic_profile.as_str().to_string(),
+        derive_run_status(
+            &snapshot.findings,
+            &snapshot.gap_artifact_rejections,
+            &snapshot.gap_artifacts,
+            snapshot.seams_deferred,
+        )
+        .to_string(),
+        snapshot
+            .base
+            .clone()
+            .unwrap_or_else(|| "no-base".to_string()),
+    ];
+    for (uri, diagnostics) in &snapshot.diagnostics_by_uri {
+        parts.push(normalized_document_uri(&snapshot.root, uri));
+        parts.push(normalized_diagnostic_payload_digest(
+            &snapshot.root,
+            diagnostics,
+        ));
+    }
+    stable_diagnostic_id(
+        "ripr-complete-diagnostic-evidence-v1",
+        parts.iter().map(String::as_str),
     )
 }
 
@@ -499,7 +556,7 @@ pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> Str
         parts.push(document_diagnostic_result_id(snapshot, uri));
     }
     stable_diagnostic_id(
-        "ripr-workspace-diagnostics-v1",
+        "ripr-workspace-diagnostics-v2",
         parts.iter().map(String::as_str),
     )
 }
@@ -536,14 +593,10 @@ impl DiagnosticResultIdCache {
     }
 
     pub(super) fn document_id(&self, snapshot: &AnalysisSnapshot, uri: &Uri) -> String {
+        // Exact-key lookup only: the stored selection keys on the stored URI
+        // string; fuzzy URI matching is not part of the authority contract.
         self.document_ids
             .get(uri)
-            .or_else(|| {
-                self.document_ids
-                    .iter()
-                    .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
-                    .map(|(_, result_id)| result_id)
-            })
             .cloned()
             .unwrap_or_else(|| document_diagnostic_result_id(snapshot, uri))
     }
@@ -792,6 +845,7 @@ pub(super) fn workspace_diagnostics_with_config(
         gap_artifacts: gap_artifact_report.artifacts,
         gap_artifact_rejections: gap_artifact_report.rejections,
         diagnostics_by_uri,
+        delivery_selection: None,
         seams_deferred: defer_seam_inventory,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
@@ -2811,6 +2865,7 @@ mod delivery_tests {
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
+            delivery_selection: None,
             seams_deferred: false,
         })
     }

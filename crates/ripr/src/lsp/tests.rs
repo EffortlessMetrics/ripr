@@ -366,6 +366,22 @@ fn pull_diagnostics_before_first_snapshot_return_empty_full_reports() -> Result<
 
 #[test]
 fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
+    // Selection-authority contract (#1973): pull serves the stored selected
+    // set and derives result IDs from it, so the changed document must be a
+    // served (budget-actionable) item for its message change to be
+    // selection-relevant. `headline_eligible` is the producer-owned
+    // eligibility signal the budget reads.
+    fn served_diagnostic(root: &Path, finding: &Finding) -> tower_lsp_server::ls_types::Diagnostic {
+        let mut diagnostic = diagnostic_for_finding(root, finding);
+        if let Some(data) = diagnostic
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.insert("headline_eligible".to_string(), serde_json::json!(true));
+        }
+        diagnostic
+    }
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
     let first_uri = test_uri("file:///workspace/src/first.rs")?;
@@ -375,9 +391,8 @@ fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
     second_finding.id = "probe:second:88:predicate".to_string();
     second_finding.probe.id = ProbeId("probe:second:88:predicate".to_string());
     second_finding.probe.location.file = PathBuf::from("src/second.rs");
-    let first_diagnostic = diagnostic_for_finding(Path::new("/workspace"), &first_finding);
-    let initial_second_diagnostic =
-        diagnostic_for_finding(Path::new("/workspace"), &second_finding);
+    let first_diagnostic = served_diagnostic(Path::new("/workspace"), &first_finding);
+    let initial_second_diagnostic = served_diagnostic(Path::new("/workspace"), &second_finding);
     let mut snapshot = sample_analysis_snapshot(
         PathBuf::from("/workspace"),
         first_uri.clone(),
@@ -441,12 +456,12 @@ fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
         .collect::<Result<Vec<_>, String>>()?;
 
     let mut changed_second_diagnostic =
-        diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+        served_diagnostic(Path::new("/workspace"), &sample_finding());
     changed_second_diagnostic.message.push_str(" changed");
     let mut changed_snapshot = sample_analysis_snapshot(
         PathBuf::from("/workspace"),
         first_uri.clone(),
-        vec![diagnostic_for_finding(
+        vec![served_diagnostic(
             Path::new("/workspace"),
             &sample_finding(),
         )],
@@ -461,7 +476,7 @@ fn workspace_pull_marks_only_changed_document_full() -> Result<(), String> {
             batches: vec![
                 DiagnosticBatch {
                     uri: first_uri,
-                    diagnostics: vec![diagnostic_for_finding(
+                    diagnostics: vec![served_diagnostic(
                         Path::new("/workspace"),
                         &sample_finding(),
                     )],
@@ -623,6 +638,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
+        delivery_selection: None,
         seams_deferred: false,
     };
 
@@ -4913,6 +4929,7 @@ fn sample_analysis_snapshot(
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
+        delivery_selection: None,
         seams_deferred: false,
     }
 }
