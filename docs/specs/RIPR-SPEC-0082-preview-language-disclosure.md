@@ -29,8 +29,10 @@ Linked PRs:
 Support-tier impact:
 
 - No tier change. This spec adds advisory disclosure output when TypeScript,
-  JavaScript, or Python files are in the analyzed scope and the repo has opted
-  in to those adapters. It does not promote any preview adapter to a higher
+  JavaScript, Python, or Perl files are in the analyzed scope and the repo has
+  opted in to those adapters. Perl presence is disclosed even when its
+  optional adapter is not compiled; that disclosure does not claim analysis
+  ran. It does not promote any preview adapter to a higher
   support tier, does not change pass/fail authority, and does not alter what
   the adapters classify.
 - The disclosure is additive output only. Claim boundaries remain governed by
@@ -48,7 +50,7 @@ Policy impact:
 ## Problem
 
 When a user runs `ripr check --diff` on a diff that contains TypeScript,
-JavaScript, or Python files, an empty result is ambiguous. The output says
+JavaScript, Python, or Perl files, an empty result is ambiguous. The output says
 "No diff-derived mutation exposure probes found" but gives no signal that the
 diff contained preview-language files. A reader cannot distinguish between:
 
@@ -75,11 +77,12 @@ same path router (`analysis::language::route`) that dispatches to adapters.
 **Detection does not require the adapter to be enabled** — it is pure path /
 extension matching. The count is real, never fabricated.
 
-A `PreviewLanguageAdvisory` is produced for each compiled preview language
-(`LanguageId::is_available`) that has at least one file in scope. Only the
-languages `ripr` advertises as preview — TypeScript, JavaScript, Python — are
-disclosed. Non-analyzable files (`.md`, `.yaml`, etc.) never trigger an
-advisory. Each advisory carries:
+A `PreviewLanguageAdvisory` is produced for each preview language. TypeScript,
+JavaScript, and Python are disclosed only when their adapters are compiled in
+(`LanguageId::is_available`). Perl is disclosed by extension even when its
+optional adapter is unavailable, so a Rust-only run cannot silently omit Perl
+changes. The remaining non-analyzable files (`.md`, `.yaml`, etc.) never
+trigger an advisory. Each advisory carries:
 
 - `language`: stable wire string (e.g. `"typescript"`, `"python"`)
 - `file_count`: number of files in scope that routed to this adapter
@@ -170,8 +173,9 @@ advisory-may-be-incomplete `why` string.
   or workspace file walk from `analysis::workspace::discover_preview_language_files`
   (repo mode).
 - Language router output from `analysis::language::route` for each path.
-- `LanguageId::is_available` to restrict disclosure to compiled-in preview
-  adapters.
+- `LanguageId::is_available` to restrict TypeScript/JavaScript/Python
+  disclosure to compiled-in adapters; Perl presence remains disclosable when
+  its optional adapter is unavailable.
 
 ## Inputs
 
@@ -213,6 +217,7 @@ advisory-may-be-incomplete `why` string.
 - `crates/ripr/src/output/human.rs::tests::render_preview_disclosure_count_matches_advisory_file_count`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_preview_advisory_when_ts_files_present`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_ts_diff_with_rust_only_config`
+- `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_perl_without_adapter`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff`
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope`
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope`
@@ -225,7 +230,8 @@ advisory-may-be-incomplete `why` string.
   `detect_preview_advisories()` (diff), `detect_repo_preview_advisories()`
   (repo); detection runs after the language loop, independent of enablement.
 - `crates/ripr/src/analysis/workspace/discover.rs` —
-  `discover_preview_language_files()` for repo-mode detection.
+  `discover_preview_language_files()` for repo-mode detection, including Perl
+  paths when the optional adapter is unavailable.
 - `crates/ripr/src/app.rs` — `CheckOutput::preview_language_advisories` field.
 - `crates/ripr/src/app/check/output_builder.rs` — maps advisory field through.
 - `crates/ripr/src/output/human.rs` — `render_preview_language_advisories()`

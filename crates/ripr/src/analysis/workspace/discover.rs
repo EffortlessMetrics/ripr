@@ -20,7 +20,7 @@ pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// Discover production files in the workspace that route to a preview-language
-/// adapter (TypeScript/JavaScript or Python), by path extension only.
+/// adapter (TypeScript/JavaScript, Python, or Perl), by path extension only.
 ///
 /// Routing is `analysis::language::route`, the same predicate adapter dispatch
 /// uses. This does not require the adapter to be enabled; it is used so the
@@ -49,7 +49,10 @@ fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) 
         } else if let Some(language) = route(&path)
             && matches!(
                 language,
-                LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Python
+                LanguageId::TypeScript
+                    | LanguageId::JavaScript
+                    | LanguageId::Python
+                    | LanguageId::Perl
             )
         {
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
@@ -126,6 +129,25 @@ mod tests {
         let result = discover_rust_files(&dir)?;
         assert_eq!(result, vec![PathBuf::from("src/lib.rs")]);
 
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn discover_preview_language_files_includes_perl_without_adapter()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir =
+            std::env::temp_dir().join(format!("ripr-discover-perl-preview-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("lib/My"))?;
+        fs::write(dir.join("lib/My/App.pm"), "sub value { return 1 }\n")?;
+
+        let result = discover_preview_language_files(&dir);
+
+        assert_eq!(
+            result,
+            vec![(LanguageId::Perl, PathBuf::from("lib/My/App.pm"))]
+        );
         let _ = fs::remove_dir_all(&dir);
         Ok(())
     }
