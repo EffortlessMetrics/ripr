@@ -369,8 +369,11 @@ Each future xtask check is its own PR:
     active, ADRs referencing missing specs, or work items pointing at
     nonexistent branches
 
-None of those are added in this PR. This PR establishes the contract; the
-xtask code follows.
+None of those commands exists today — they are unimplemented future
+work (#1631), not a surface an agent can call. Until they land, the
+"contract" language in this document and in
+`docs/reference/AGENT_HANDOFF_PROTOCOL.md` is working-method guidance:
+no validator checks a handoff or context packet (#2097).
 
 ## Rollout
 
