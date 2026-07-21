@@ -350,7 +350,11 @@ export class RiprClientController {
       command: server.command,
       args: config.serverArgs,
       options: {
-        cwd: this.workspaceRoot
+        cwd: this.workspaceRoot,
+        // A win32 PATH shim resolved through the shell probe must be spawned
+        // with the same launch semantics (#2079 review); explicit paths keep
+        // shell-free spawns.
+        ...(server.needsShell ? { shell: true } : {})
       }
     };
 
