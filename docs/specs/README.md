@@ -142,3 +142,4 @@ observable behavior.
 | [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | proposed | Three-layer editor integration contract (standard LSP, enhanced VS Code, headless riprAgent) and support matrix |
 | [RIPR-SPEC-0130](RIPR-SPEC-0130-ripr-authority-map.md) | proposed | RIPR source-of-truth authority map: canonical paths for every artifact category, plus a legacy-dialect conformance fixture |
 | [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | proposed | Versioned, capability-only riprAgent protocol, DTO envelopes, closed vocabularies, schemas, and recovery rules |
+| [RIPR-SPEC-0132](RIPR-SPEC-0132-spec-v2-runtime-promotion.md) | proposed | First RIPR-SPEC v2 requirement and spec/governance runtime-promotion boundary |

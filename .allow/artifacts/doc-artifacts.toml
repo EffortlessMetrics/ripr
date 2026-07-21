@@ -38,3 +38,12 @@ created = "2026-07-09"
 linked_proposal = "RIPR-PROP-0014"
 linked_spec = "RIPR-SPEC-0068"
 linked_support_tier = "RIPR-SUPPORT-0001"
+
+[[artifact]]
+id = "RIPR-SPEC-0132"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0132-spec-v2-runtime-promotion.md"
+status = "proposed"
+owner = "product-swarm"
+created = "2026-07-15"
+standalone_reason = "The first RIPR-SPEC v2 control-plane requirement is the bounded walking-skeleton source for issues #1667, #1672, and #1676; no separate product proposal is required."

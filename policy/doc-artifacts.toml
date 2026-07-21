@@ -610,3 +610,11 @@ path = "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Issue #1599 protocol contract slice: ratifies capability-only riprAgent v0.1 request, success, and error envelopes with independent protocol/schema identities, repository-owned JSON schemas, closed vocabularies, and recovery routes; supported_requests and supported_profiles remain empty, with no handlers, source edits, provider integration, lifecycle, or repair-usefulness claim."
+
+[[artifact]]
+id = "RIPR-SPEC-0132"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0132-spec-v2-runtime-promotion.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "First RIPR-SPEC v2 requirement: a spec/governance slice may define or amend a runtime requirement but cannot mark runtime behavior implemented, claim current runtime proof, or promote runtime support without compatible implementation and evidence dispositions. Walking skeleton for #1667/#1672/#1676."
