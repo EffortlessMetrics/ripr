@@ -1,0 +1,39 @@
+name: Source Swarm Sync Observer
+
+on:
+  push:
+    branches:
+      - agent/source-swarm-sync-observer-2026-07-21
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    if: ${{ !contains(github.event.head_commit.message, '[observer-report]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Record runner workflow status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNNER_BRANCH: agent/source-swarm-sync-runner-2026-07-21
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?branch=${RUNNER_BRANCH}&per_page=20"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api" \
+            | jq '{total_count, workflow_runs: [.workflow_runs[] | {id,name,event,status,conclusion,head_sha,head_branch,created_at,updated_at,html_url}]}' \
+            > source-swarm-runner-status.json
+          git config user.name "Effortless Metrics Sync Observer"
+          git config user.email "actions@users.noreply.github.com"
+          git add source-swarm-runner-status.json
+          git commit -m "chore: record source/swarm runner status [observer-report]"
+          git push origin HEAD:agent/source-swarm-sync-observer-2026-07-21
