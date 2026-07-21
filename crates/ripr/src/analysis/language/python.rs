@@ -6323,6 +6323,10 @@ impl LanguageAdapter for PythonAdapter {
     ) -> Result<LanguageRepoResult, String> {
         // Repo-mode preview output lands in a follow-up. The current
         // sub-slice scopes to diff-mode for the smallest useful fixture.
+        // This stub returns an empty result; callers that consume
+        // repo-scoped formats on a Python-only workspace get zero seams
+        // with no warning. See docs/LANGUAGE_ADAPTER_PREVIEW.md
+        // § "Repo-Mode Analysis Is Rust-Only" for the limitation contract.
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,

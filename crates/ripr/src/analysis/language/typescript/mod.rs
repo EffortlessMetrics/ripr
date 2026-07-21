@@ -258,6 +258,14 @@ impl LanguageAdapter for TypeScriptAdapter {
     ) -> Result<LanguageRepoResult, String> {
         // Repo-mode preview output lands in a follow-up. The current
         // sub-slice scopes to diff-mode for the smallest useful fixture.
+        // This stub returns an empty result; callers that consume
+        // repo-scoped formats on a TypeScript-only workspace get zero
+        // seams from this adapter. Note that repo_exposure.rs emits a
+        // `typescript_diff_first` limitation entry for TS/JS-only
+        // workspaces, so a TypeScript-only run is not entirely warning-
+        // free — but the empty adapter result itself is silent. See
+        // docs/LANGUAGE_ADAPTER_PREVIEW.md § "Repo-Mode Analysis Is
+        // Rust-Only" for the limitation contract.
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,
