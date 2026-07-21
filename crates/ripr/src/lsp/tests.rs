@@ -25,7 +25,8 @@ use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
 };
 use super::state::{
-    AnalysisAttemptState, AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration,
+    AnalysisAttemptState, AnalysisSnapshot, DocumentStore, RefreshMetadata, content_digest,
+    format_duration,
 };
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
@@ -6704,8 +6705,19 @@ fn refresh_transaction_does_not_replace_snapshot_before_commit() -> Result<(), S
         .ok_or_else(|| "expected retained baseline snapshot".to_string())?;
     assert_eq!(retained.findings[0].id, baseline_finding.id);
 
-    let super::backend::RefreshTransaction { plan, snapshot, .. } = transaction;
-    assert!(backend.commit_refresh_snapshot(snapshot, &plan));
+    let super::backend::RefreshTransaction {
+        plan,
+        snapshot,
+        pending_analyzed,
+        pending_entered,
+        ..
+    } = transaction;
+    if backend
+        .commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
+        .is_none()
+    {
+        return Err("expected snapshot commit".to_string());
+    }
     let committed = backend
         .latest_analysis_snapshot()
         .ok_or_else(|| "expected committed snapshot".to_string())?;
@@ -8843,4 +8855,823 @@ fn work_done_progress_capability_absent_refresh_emits_no_traffic() -> Result<(),
         drop(root);
         Ok(())
     })
+}
+
+// ---------------------------------------------------------------------------
+// Dirty-buffer quarantine (#1970): saved-workspace authority for line-local
+// diagnostics.
+// ---------------------------------------------------------------------------
+
+const QUARANTINE_TEXT_A: &str = "fn a() -> bool { true }\n";
+const QUARANTINE_TEXT_B: &str = "fn b() -> bool { true }\n";
+const QUARANTINE_TEXT_A_DIRTY: &str = "fn a() -> bool { false }\n";
+
+struct QuarantineFixture {
+    _temp: TempLspRoot,
+    root: PathBuf,
+    path_a: PathBuf,
+    uri_a: tower_lsp_server::ls_types::Uri,
+    uri_b: tower_lsp_server::ls_types::Uri,
+}
+
+fn quarantine_fixture(name: &str) -> Result<QuarantineFixture, String> {
+    let temp = unique_lsp_test_root(name)?;
+    let root = temp.path().to_path_buf();
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src failed: {err}"))?;
+    let path_a = root.join("src/a.rs");
+    let path_b = root.join("src/b.rs");
+    std::fs::write(&path_a, QUARANTINE_TEXT_A)
+        .map_err(|err| format!("write a.rs failed: {err}"))?;
+    std::fs::write(&path_b, QUARANTINE_TEXT_B)
+        .map_err(|err| format!("write b.rs failed: {err}"))?;
+    let uri_a = file_uri_for_path(&path_a).map_err(|err| format!("a.rs URI failed: {err}"))?;
+    let uri_b = file_uri_for_path(&path_b).map_err(|err| format!("b.rs URI failed: {err}"))?;
+    Ok(QuarantineFixture {
+        _temp: temp,
+        root,
+        path_a,
+        uri_a,
+        uri_b,
+    })
+}
+
+fn quarantine_finding(id: &str, file: &str) -> Finding {
+    let mut finding = sample_finding();
+    finding.id = id.to_string();
+    finding.probe.id = ProbeId(id.to_string());
+    finding.probe.location.file = PathBuf::from(file);
+    finding.probe.location.line = 1;
+    finding
+}
+
+fn quarantine_workspace_diagnostics(fixture: &QuarantineFixture) -> WorkspaceDiagnostics {
+    // `headline_eligible` is the producer-owned eligibility signal the
+    // delivery budget reads (#1973); without it the stored selection omits
+    // the diagnostics and pull/push serve an empty set.
+    fn served_diagnostic(root: &Path, finding: &Finding) -> Diagnostic {
+        let mut diagnostic = diagnostic_for_finding(root, finding);
+        if let Some(data) = diagnostic
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.insert("headline_eligible".to_string(), serde_json::json!(true));
+        }
+        diagnostic
+    }
+    let finding_a = quarantine_finding("probe:a:1:predicate", "src/a.rs");
+    let finding_b = quarantine_finding("probe:b:1:predicate", "src/b.rs");
+    let diagnostic_a = served_diagnostic(&fixture.root, &finding_a);
+    let diagnostic_b = served_diagnostic(&fixture.root, &finding_b);
+    let mut diagnostics_by_uri = BTreeMap::new();
+    diagnostics_by_uri.insert(fixture.uri_a.clone(), vec![diagnostic_a.clone()]);
+    diagnostics_by_uri.insert(fixture.uri_b.clone(), vec![diagnostic_b.clone()]);
+    let input_identity = LspAnalysisInputIdentity::from_refresh_inputs(
+        fixture.root.clone(),
+        1,
+        &LspAnalysisConfig::default(),
+    );
+    let snapshot = AnalysisSnapshot {
+        root: fixture.root.clone(),
+        input_identity: Some(input_identity),
+        base: Some("origin/main".to_string()),
+        mode: Mode::Draft,
+        refresh: RefreshMetadata::generated_now(),
+        findings: vec![finding_a, finding_b],
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        classified_seams: Vec::new(),
+        gap_artifacts: Vec::new(),
+        gap_artifact_rejections: Vec::new(),
+        diagnostics_by_uri,
+        delivery_selection: None,
+        seams_deferred: false,
+        partial_scope: None,
+    };
+    WorkspaceDiagnostics {
+        snapshot,
+        batches: vec![
+            DiagnosticBatch {
+                uri: fixture.uri_a.clone(),
+                diagnostics: vec![diagnostic_a],
+            },
+            DiagnosticBatch {
+                uri: fixture.uri_b.clone(),
+                diagnostics: vec![diagnostic_b],
+            },
+        ],
+    }
+}
+
+fn commit_quarantine_snapshot(
+    backend: &Backend,
+    fixture: &QuarantineFixture,
+) -> Result<(), String> {
+    backend
+        .refresh_plan(quarantine_workspace_diagnostics(fixture))
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    Ok(())
+}
+
+fn quarantine_open_params(
+    uri: &tower_lsp_server::ls_types::Uri,
+    text: &str,
+) -> DidOpenTextDocumentParams {
+    DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(uri.clone(), "rust".to_string(), 1, text.to_string()),
+    }
+}
+
+fn quarantine_change_params(
+    uri: &tower_lsp_server::ls_types::Uri,
+    version: i32,
+    text: &str,
+) -> DidChangeTextDocumentParams {
+    DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier::new(uri.clone(), version),
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: text.to_string(),
+        }],
+    }
+}
+
+fn quarantine_save_params(
+    uri: &tower_lsp_server::ls_types::Uri,
+    text: &str,
+) -> DidSaveTextDocumentParams {
+    DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        text: Some(text.to_string()),
+    }
+}
+
+async fn pull_document_json(
+    backend: &Backend,
+    uri: &tower_lsp_server::ls_types::Uri,
+    previous_result_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let report = backend
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .map_err(|err| format!("document pull failed: {err}"))?;
+    serde_json::to_value(report).map_err(|err| format!("serialize report failed: {err}"))
+}
+
+fn report_kind_and_items(report: &serde_json::Value) -> (Option<&str>, usize) {
+    (
+        report.get("kind").and_then(serde_json::Value::as_str),
+        report
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len),
+    )
+}
+
+async fn workspace_status_json(backend: &Backend) -> Result<serde_json::Value, String> {
+    backend
+        .execute_command(ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: Vec::new(),
+            work_done_progress_params: Default::default(),
+        })
+        .await
+        .map_err(|err| format!("workspace status command failed: {err}"))?
+        .ok_or_else(|| "expected workspace status payload".to_string())
+}
+
+fn open_document_entry<'a>(
+    status: &'a serde_json::Value,
+    uri: &str,
+) -> Result<&'a serde_json::Value, String> {
+    status
+        .get("open_documents")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|documents| {
+            documents
+                .iter()
+                .find(|entry| entry.get("uri").and_then(serde_json::Value::as_str) == Some(uri))
+        })
+        .ok_or_else(|| format!("missing open_documents entry for {uri}: {status}"))
+}
+
+#[tokio::test]
+async fn dirty_document_withdraws_line_local_diagnostics_and_discloses() -> Result<(), String> {
+    let fixture = quarantine_fixture("dirty-withdraw")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // The loopback client channel is bounded and nothing drains it in an
+    // in-process test, so client sends would block once it fills. Dropping
+    // the socket makes the server-to-client sends fail fast; the quarantine
+    // bookkeeping under test runs before and after each send regardless.
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_b, QUARANTINE_TEXT_B))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+
+    // Clean documents are served on pull.
+    let served = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, served_items) = report_kind_and_items(&served);
+    if served_items == 0 {
+        return Err(format!(
+            "expected served diagnostics before the edit: {served}"
+        ));
+    }
+
+    // Make A dirty: the buffer diverges from the analyzed saved content.
+    backend
+        .did_change(quarantine_change_params(
+            &fixture.uri_a,
+            2,
+            QUARANTINE_TEXT_A_DIRTY,
+        ))
+        .await;
+
+    // Its line-local diagnostics are withdrawn under a distinct result id.
+    let withdrawn = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (kind, items) = report_kind_and_items(&withdrawn);
+    if kind != Some("full") || items != 0 {
+        return Err(format!(
+            "expected an empty full report for the dirty document: {withdrawn}"
+        ));
+    }
+    let quarantined_id = withdrawn
+        .get("resultId")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "withdrawn report did not carry resultId".to_string())?;
+    if !quarantined_id.ends_with(":quarantined") {
+        return Err(format!(
+            "withdrawn result id must be distinct from the served id: {quarantined_id}"
+        ));
+    }
+    // A repeated pull with the quarantined id reports unchanged.
+    let repeat =
+        pull_document_json(backend, &fixture.uri_a, Some(quarantined_id.to_string())).await?;
+    if repeat.get("kind").and_then(serde_json::Value::as_str) != Some("unchanged") {
+        return Err(format!(
+            "expected unchanged for a repeated quarantined pull: {repeat}"
+        ));
+    }
+    // The withdrawal is disclosed once per episode.
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    let Some(quarantine) = &state.quarantine else {
+        return Err("expected a quarantine marker on the dirty document".to_string());
+    };
+    if quarantine.reason.as_str() != "buffer_diverges_from_analyzed_saved_content" {
+        return Err(format!(
+            "wrong staleness reason: {}",
+            quarantine.reason.as_str()
+        ));
+    }
+    if !quarantine.withdrawal_disclosed {
+        return Err("withdrawal must be disclosed".to_string());
+    }
+    // The client-visible baseline carries an empty set for the dirty document.
+    if backend
+        .last_diagnostics_for_uri_for_test(&fixture.uri_a)
+        .is_none_or(|diagnostics| !diagnostics.is_empty())
+    {
+        return Err("client-visible baseline must be empty for the dirty document".to_string());
+    }
+
+    // The other (clean) document is unaffected on both pull transports.
+    let served_b = pull_document_json(backend, &fixture.uri_b, None).await?;
+    let (_, served_b_items) = report_kind_and_items(&served_b);
+    if served_b_items == 0 {
+        return Err(format!(
+            "clean document must keep its diagnostics: {served_b}"
+        ));
+    }
+    let workspace = backend
+        .workspace_diagnostic(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .map_err(|err| format!("workspace pull failed: {err}"))?;
+    let workspace_json =
+        serde_json::to_value(workspace).map_err(|err| format!("serialize failed: {err}"))?;
+    let entries = workspace_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("expected workspace report items: {workspace_json}"))?;
+    for (uri, expect_empty) in [
+        (fixture.uri_a.as_str(), true),
+        (fixture.uri_b.as_str(), false),
+    ] {
+        let entry = entries
+            .iter()
+            .find(|entry| entry.get("uri").and_then(serde_json::Value::as_str) == Some(uri))
+            .ok_or_else(|| format!("missing workspace report for {uri}: {workspace_json}"))?;
+        let count = entry
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len);
+        if (count == 0) != expect_empty {
+            return Err(format!(
+                "workspace report wrong for {uri} (expect_empty={expect_empty}): {entry}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn save_with_changed_content_lifts_quarantine_and_resumes_refresh() -> Result<(), String> {
+    let fixture = quarantine_fixture("save-changed-lift")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // The loopback client channel is bounded and nothing drains it in an
+    // in-process test, so client sends would block once it fills. Dropping
+    // the socket makes the server-to-client sends fail fast; the quarantine
+    // bookkeeping under test runs before and after each send regardless.
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+    backend
+        .did_change(quarantine_change_params(
+            &fixture.uri_a,
+            2,
+            QUARANTINE_TEXT_A_DIRTY,
+        ))
+        .await;
+
+    // Saving the changed content schedules a refresh but cannot lift the
+    // quarantine before the new saved content is analyzed. The client
+    // persists the bytes on save, so the fixture mirrors them to disk.
+    let baseline = backend.workspace_revision();
+    backend
+        .did_save(quarantine_save_params(
+            &fixture.uri_a,
+            QUARANTINE_TEXT_A_DIRTY,
+        ))
+        .await;
+    std::fs::write(&fixture.path_a, QUARANTINE_TEXT_A_DIRTY)
+        .map_err(|err| format!("persist save failed: {err}"))?;
+    if backend.workspace_revision() != baseline + 1 {
+        return Err("changed save must schedule a refresh".to_string());
+    }
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if !state.is_quarantined() {
+        return Err("an unanalyzed save must stay quarantined".to_string());
+    }
+
+    // The refresh commits: the analyzed saved content catches up with the
+    // buffer and the quarantine lifts.
+    commit_quarantine_snapshot(backend, &fixture)?;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if state.is_quarantined() {
+        return Err("quarantine must lift once the saved content is analyzed".to_string());
+    }
+    if state.saved_digest != state.analyzed_saved_digest {
+        return Err("saved and analyzed identities must agree after the refresh".to_string());
+    }
+    if state.analyzed_saved_digest.as_deref()
+        != Some(content_digest(QUARANTINE_TEXT_A_DIRTY.as_bytes()).as_str())
+    {
+        return Err("analyzed identity must equal the new saved content".to_string());
+    }
+
+    // Pull serves the document again without a quarantined result id.
+    let served = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, items) = report_kind_and_items(&served);
+    if items == 0 {
+        return Err(format!("expected re-served diagnostics: {served}"));
+    }
+    if served
+        .get("resultId")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| id.ends_with(":quarantined"))
+    {
+        return Err(format!(
+            "served report must not use the quarantined id: {served}"
+        ));
+    }
+
+    // The workspace status payload names the lifted state.
+    let status = workspace_status_json(backend).await?;
+    let entry = open_document_entry(&status, fixture.uri_a.as_str())?;
+    if entry.get("state").and_then(serde_json::Value::as_str) != Some("clean") {
+        return Err(format!("expected a clean document state: {entry}"));
+    }
+    if entry
+        .get("line_local_diagnostics")
+        .and_then(serde_json::Value::as_str)
+        != Some("served")
+    {
+        return Err(format!("expected served line-local diagnostics: {entry}"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn save_with_unchanged_content_dedups_and_keeps_lifted_quarantine() -> Result<(), String> {
+    let fixture = quarantine_fixture("save-unchanged-dedup")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // The loopback client channel is bounded and nothing drains it in an
+    // in-process test, so client sends would block once it fills. Dropping
+    // the socket makes the server-to-client sends fail fast; the quarantine
+    // bookkeeping under test runs before and after each send regardless.
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+    // Record the initial save so the dedup path has a recorded digest.
+    backend
+        .did_save(quarantine_save_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    let baseline = backend.workspace_revision();
+
+    // Dirty the buffer, then type back to the analyzed saved content.
+    backend
+        .did_change(quarantine_change_params(
+            &fixture.uri_a,
+            2,
+            QUARANTINE_TEXT_A_DIRTY,
+        ))
+        .await;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if !state.is_quarantined() {
+        return Err("dirty buffer must be quarantined".to_string());
+    }
+    backend
+        .did_change(quarantine_change_params(
+            &fixture.uri_a,
+            3,
+            QUARANTINE_TEXT_A,
+        ))
+        .await;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if state.is_quarantined() {
+        return Err(
+            "quarantine must lift when the buffer matches the analyzed saved content".to_string(),
+        );
+    }
+    let served = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, items) = report_kind_and_items(&served);
+    if items == 0 {
+        return Err(format!(
+            "expected re-served diagnostics after the lift: {served}"
+        ));
+    }
+
+    // The save is unchanged since the recorded save: dedup applies (no
+    // refresh, no revision advance) and the quarantine stays lifted.
+    backend
+        .did_save(quarantine_save_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    if backend.workspace_revision() != baseline {
+        return Err(format!(
+            "deduplicated save advanced the revision: {baseline} -> {}",
+            backend.workspace_revision()
+        ));
+    }
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if state.is_quarantined() {
+        return Err("deduplicated save must keep the lifted quarantine".to_string());
+    }
+    let served = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, items) = report_kind_and_items(&served);
+    if items == 0 {
+        return Err(format!(
+            "expected served diagnostics after the dedup: {served}"
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn repeated_open_change_save_cycles_keep_identities_consistent() -> Result<(), String> {
+    let fixture = quarantine_fixture("cycles")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // The loopback client channel is bounded and nothing drains it in an
+    // in-process test, so client sends would block once it fills. Dropping
+    // the socket makes the server-to-client sends fail fast; the quarantine
+    // bookkeeping under test runs before and after each send regardless.
+    drop(socket);
+    let backend = service.inner();
+    for cycle in 0..3_u32 {
+        let disk_text = format!("fn a_{cycle}() {{}}\n");
+        std::fs::write(&fixture.path_a, &disk_text)
+            .map_err(|err| format!("write cycle {cycle} failed: {err}"))?;
+        backend
+            .did_open(quarantine_open_params(&fixture.uri_a, &disk_text))
+            .await;
+        let state = backend
+            .document_state_for_test(&fixture.uri_a)
+            .ok_or_else(|| "expected document state".to_string())?;
+        if state.saved_digest.as_deref() != Some(content_digest(disk_text.as_bytes()).as_str()) {
+            return Err(format!(
+                "cycle {cycle}: open must seed the saved identity from persisted bytes"
+            ));
+        }
+
+        // Dirty the buffer, save it, and stay quarantined until analysis.
+        // The client persists the bytes on save, so the fixture mirrors
+        // them to disk.
+        let dirty_text = format!("fn a_{cycle}_dirty() {{}}\n");
+        backend
+            .did_change(quarantine_change_params(&fixture.uri_a, 2, &dirty_text))
+            .await;
+        backend
+            .did_save(quarantine_save_params(&fixture.uri_a, &dirty_text))
+            .await;
+        std::fs::write(&fixture.path_a, &dirty_text)
+            .map_err(|err| format!("persist cycle {cycle} save failed: {err}"))?;
+        let state = backend
+            .document_state_for_test(&fixture.uri_a)
+            .ok_or_else(|| "expected document state".to_string())?;
+        if !state.is_quarantined() {
+            return Err(format!(
+                "cycle {cycle}: unanalyzed save must stay quarantined"
+            ));
+        }
+
+        // The refresh analyzes the new saved content and the quarantine lifts.
+        commit_quarantine_snapshot(backend, &fixture)?;
+        let state = backend
+            .document_state_for_test(&fixture.uri_a)
+            .ok_or_else(|| "expected document state".to_string())?;
+        if state.is_quarantined() {
+            return Err(format!("cycle {cycle}: quarantine must lift once analyzed"));
+        }
+        if state.saved_digest != state.analyzed_saved_digest {
+            return Err(format!("cycle {cycle}: saved/analyzed identity drift"));
+        }
+        if state.analyzed_saved_digest.as_deref()
+            != Some(content_digest(dirty_text.as_bytes()).as_str())
+        {
+            return Err(format!(
+                "cycle {cycle}: analyzed identity must equal the saved content"
+            ));
+        }
+        if state.analyzed_input_identity.is_none() {
+            return Err(format!("cycle {cycle}: missing analyzed input identity"));
+        }
+
+        backend
+            .did_close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier {
+                    uri: fixture.uri_a.clone(),
+                },
+            })
+            .await;
+        if backend.document_state_for_test(&fixture.uri_a).is_some() {
+            return Err(format!("cycle {cycle}: close must drop the document state"));
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn unsaved_buffer_text_never_enters_snapshot_or_status_payloads() -> Result<(), String> {
+    let fixture = quarantine_fixture("no-unsaved-leak")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // The loopback client channel is bounded and nothing drains it in an
+    // in-process test, so client sends would block once it fills. Dropping
+    // the socket makes the server-to-client sends fail fast; the quarantine
+    // bookkeeping under test runs before and after each send regardless.
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+
+    const UNSAVED: &str = "fn a() -> bool { UNSAVED_BUFFER_MARKER }";
+    backend
+        .did_change(quarantine_change_params(&fixture.uri_a, 2, UNSAVED))
+        .await;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if !state.is_quarantined() {
+        return Err("dirty buffer must be quarantined".to_string());
+    }
+
+    // The snapshot's diagnostics for the dirty document describe the saved
+    // state only; the unsaved buffer text appears nowhere in them.
+    let snapshot = backend
+        .latest_analysis_snapshot()
+        .ok_or_else(|| "expected committed snapshot".to_string())?;
+    let snapshot_json = serde_json::to_string(&snapshot.diagnostics_by_uri)
+        .map_err(|err| format!("serialize snapshot failed: {err}"))?;
+    if snapshot_json.contains("UNSAVED_BUFFER_MARKER") {
+        return Err("unsaved buffer text leaked into snapshot diagnostics".to_string());
+    }
+    // The committed client-visible baseline for the dirty document is empty.
+    if backend.last_diagnostics_for_uri_for_test(&fixture.uri_a) != Some(Vec::new()) {
+        return Err("client-visible baseline must be empty for the dirty document".to_string());
+    }
+    // Pull serves nothing for the dirty document.
+    let report = pull_document_json(backend, &fixture.uri_a, None).await?;
+    if serde_json::to_string(&report)
+        .map_err(|err| format!("serialize report failed: {err}"))?
+        .contains("UNSAVED_BUFFER_MARKER")
+    {
+        return Err("unsaved buffer text leaked into the pull report".to_string());
+    }
+    let (_, items) = report_kind_and_items(&report);
+    if items != 0 {
+        return Err(format!("expected an empty pull report: {report}"));
+    }
+    // The workspace status payload names the quarantine with digest
+    // identities only — no unsaved text.
+    let status = workspace_status_json(backend).await?;
+    let status_json =
+        serde_json::to_string(&status).map_err(|err| format!("serialize status failed: {err}"))?;
+    if status_json.contains("UNSAVED_BUFFER_MARKER") {
+        return Err("unsaved buffer text leaked into the status payload".to_string());
+    }
+    let entry = open_document_entry(&status, fixture.uri_a.as_str())?;
+    if entry.get("state").and_then(serde_json::Value::as_str) != Some("quarantined") {
+        return Err(format!("expected a quarantined document state: {entry}"));
+    }
+    if entry
+        .get("line_local_diagnostics")
+        .and_then(serde_json::Value::as_str)
+        != Some("withdrawn")
+    {
+        return Err(format!(
+            "expected withdrawn line-local diagnostics: {entry}"
+        ));
+    }
+    if entry
+        .get("staleness_reason")
+        .and_then(serde_json::Value::as_str)
+        != Some("buffer_diverges_from_analyzed_saved_content")
+    {
+        return Err(format!("expected the staleness reason: {entry}"));
+    }
+    if entry
+        .get("diagnostics_authority")
+        .and_then(serde_json::Value::as_str)
+        != Some("saved_workspace")
+    {
+        return Err(format!("expected the saved-workspace authority: {entry}"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn superseded_transaction_leaves_document_state_unadvanced() -> Result<(), String> {
+    let fixture = quarantine_fixture("superseded-tx")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    // See the other quarantine tests: dropping the loopback socket keeps
+    // in-process client sends from blocking.
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_b, QUARANTINE_TEXT_B))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+
+    // Save new content; the document is quarantined until the new saved
+    // content is analyzed. The fixture mirrors the persisted bytes.
+    backend
+        .did_save(quarantine_save_params(
+            &fixture.uri_a,
+            QUARANTINE_TEXT_A_DIRTY,
+        ))
+        .await;
+    std::fs::write(&fixture.path_a, QUARANTINE_TEXT_A_DIRTY)
+        .map_err(|err| format!("persist save failed: {err}"))?;
+
+    // A transaction is prepared — pending identities computed — but then
+    // superseded: it never becomes latest_analysis. Document identities
+    // must not advance with it.
+    let transaction = backend
+        .prepare_refresh_transaction(quarantine_workspace_diagnostics(&fixture))
+        .ok_or_else(|| "expected prepared transaction".to_string())?;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if !state.is_quarantined() {
+        return Err("a superseded transaction must not lift the quarantine".to_string());
+    }
+    if state.analyzed_saved_digest.as_deref()
+        != Some(content_digest(QUARANTINE_TEXT_A.as_bytes()).as_str())
+    {
+        return Err("analyzed identity must stay at the committed snapshot's content".to_string());
+    }
+    // Pull still serves the committed (previous) snapshot's authority: the
+    // dirty document is withdrawn against it, the clean one is served.
+    let withdrawn = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, withdrawn_items) = report_kind_and_items(&withdrawn);
+    if withdrawn_items != 0 {
+        return Err(format!(
+            "expected the dirty document to stay withdrawn: {withdrawn}"
+        ));
+    }
+    let served_b = pull_document_json(backend, &fixture.uri_b, None).await?;
+    let (_, served_b_items) = report_kind_and_items(&served_b);
+    if served_b_items == 0 {
+        return Err(format!(
+            "expected the previous snapshot to keep serving the clean document: {served_b}"
+        ));
+    }
+    drop(transaction);
+
+    // When a transaction does commit, identities advance with it.
+    commit_quarantine_snapshot(backend, &fixture)?;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if state.is_quarantined() {
+        return Err("quarantine must lift once a transaction commits".to_string());
+    }
+    if state.analyzed_saved_digest.as_deref()
+        != Some(content_digest(QUARANTINE_TEXT_A_DIRTY.as_bytes()).as_str())
+    {
+        return Err("analyzed identity must advance with the commit".to_string());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn externally_changed_disk_content_does_not_falsely_clear_quarantine() -> Result<(), String> {
+    let fixture = quarantine_fixture("external-disk-change")?;
+    let (service, socket) = LspService::new(|client| Backend::new(client, fixture.root.clone()));
+    drop(socket);
+    let backend = service.inner();
+    backend
+        .did_open(quarantine_open_params(&fixture.uri_a, QUARANTINE_TEXT_A))
+        .await;
+    commit_quarantine_snapshot(backend, &fixture)?;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if state.is_quarantined() {
+        return Err("buffer matching the analyzed saved content must be clean".to_string());
+    }
+
+    // An external tool (git checkout, formatter, another editor) rewrites
+    // the file: no didChange and no didSave arrive, so the didSave-tracked
+    // saved digest stays stale. The refresh analyzes the new persisted
+    // bytes, and the analyzed identity must come from those bytes — the
+    // old-content buffer must not be marked clean against them.
+    std::fs::write(&fixture.path_a, QUARANTINE_TEXT_A_DIRTY)
+        .map_err(|err| format!("external rewrite failed: {err}"))?;
+    commit_quarantine_snapshot(backend, &fixture)?;
+    let state = backend
+        .document_state_for_test(&fixture.uri_a)
+        .ok_or_else(|| "expected document state".to_string())?;
+    if !state.is_quarantined() {
+        return Err(
+            "a buffer older than the externally analyzed bytes must be quarantined".to_string(),
+        );
+    }
+    let Some(quarantine) = &state.quarantine else {
+        return Err("expected a quarantine marker".to_string());
+    };
+    if quarantine.reason.as_str() != "buffer_diverges_from_analyzed_saved_content" {
+        return Err(format!(
+            "wrong staleness reason: {}",
+            quarantine.reason.as_str()
+        ));
+    }
+    if state.analyzed_saved_digest.as_deref()
+        != Some(content_digest(QUARANTINE_TEXT_A_DIRTY.as_bytes()).as_str())
+    {
+        return Err("analyzed identity must come from the persisted bytes".to_string());
+    }
+    let withdrawn = pull_document_json(backend, &fixture.uri_a, None).await?;
+    let (_, items) = report_kind_and_items(&withdrawn);
+    if items != 0 {
+        return Err(format!(
+            "expected the stale buffer's diagnostics to be withdrawn: {withdrawn}"
+        ));
+    }
+    Ok(())
 }
