@@ -17,10 +17,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Record source promotion VS Code failure tail
+      - name: Record replacement source promotion VS Code failure tail
         env:
           GH_TOKEN: ${{ github.token }}
-          JOB_ID: "88759215218"
+          JOB_ID: "88761358175"
         shell: bash
         run: |
           set -euo pipefail
@@ -28,12 +28,12 @@ jobs:
           curl --fail --silent --show-error --location "${auth[@]}" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
             > /tmp/job.log
-          tail -450 /tmp/job.log > source-promotion-vscode-failure-tail.txt
+          tail -450 /tmp/job.log > source-promotion-vscode2-failure-tail.txt
           grep -n -E '(^|[^A-Za-z])(Error|ERROR|Failed|FAILED|failure|AssertionError|Timeout|timed out|expected|actual)' /tmp/job.log \
-            | tail -160 > source-promotion-vscode-failure-index.txt || true
+            | tail -160 > source-promotion-vscode2-failure-index.txt || true
 
           git config user.name "Effortless Metrics Sync Observer"
           git config user.email "actions@users.noreply.github.com"
-          git add source-promotion-vscode-failure-tail.txt source-promotion-vscode-failure-index.txt
-          git commit -m "chore: record source promotion VS Code failure [observer-report]"
+          git add source-promotion-vscode2-failure-tail.txt source-promotion-vscode2-failure-index.txt
+          git commit -m "chore: record replacement promotion VS Code failure [observer-report]"
           git push origin HEAD:agent/source-swarm-sync-observer-2026-07-21
