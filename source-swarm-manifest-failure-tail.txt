@@ -1,0 +1,350 @@
+2026-07-21T20:38:23.3731734Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-21T20:38:23.3770679Z ##[endgroup]
+2026-07-21T20:38:23.3771775Z ##[group]Fetching the repository
+2026-07-21T20:38:23.3784985Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-07-21T20:38:30.2554105Z From https://github.com/EffortlessMetrics/ripr
+2026-07-21T20:38:30.2555452Z  * [new branch]        agent/source-swarm-sync-observer-2026-07-21 -> origin/agent/source-swarm-sync-observer-2026-07-21
+2026-07-21T20:38:30.2557178Z  * [new branch]        agent/source-swarm-sync-runner-2026-07-21 -> origin/agent/source-swarm-sync-runner-2026-07-21
+2026-07-21T20:38:30.2558821Z  * [new branch]        agent/source-swarm-tree-manifest-2026-07-21 -> origin/agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.2560818Z  * [new branch]        analysis-activation-same-line-guard -> origin/analysis-activation-same-line-guard
+2026-07-21T20:38:30.2562142Z  * [new branch]        analysis-python-assertion-oracle -> origin/analysis-python-assertion-oracle
+2026-07-21T20:38:30.2563567Z  * [new branch]        analysis-python-owner-test-facts -> origin/analysis-python-owner-test-facts
+2026-07-21T20:38:30.2565245Z  * [new branch]        analysis-python-probe-facts -> origin/analysis-python-probe-facts
+2026-07-21T20:38:30.2566543Z  * [new branch]        analysis-python-related-test-facts -> origin/analysis-python-related-test-facts
+2026-07-21T20:38:30.2567709Z  * [new branch]        analysis-python-static-limits -> origin/analysis-python-static-limits
+2026-07-21T20:38:30.2568453Z  * [new branch]        analysis/repo-ripr-classification-v1 -> origin/analysis/repo-ripr-classification-v1
+2026-07-21T20:38:30.2569271Z  * [new branch]        analysis/repo-seam-inventory-v1 -> origin/analysis/repo-seam-inventory-v1
+2026-07-21T20:38:30.2569937Z  * [new branch]        analysis/repo-seam-model-v1 -> origin/analysis/repo-seam-model-v1
+2026-07-21T20:38:30.2571128Z  * [new branch]        analysis/test-grip-evidence-v1 -> origin/analysis/test-grip-evidence-v1
+2026-07-21T20:38:30.2571851Z  * [new branch]        calibration/cargo-mutants-v1 -> origin/calibration/cargo-mutants-v1
+2026-07-21T20:38:30.2572719Z  * [new branch]        campaign-calibrated-gate-closeout -> origin/campaign-calibrated-gate-closeout
+2026-07-21T20:38:30.2573499Z  * [new branch]        campaign-editor-agent-integration -> origin/campaign-editor-agent-integration
+2026-07-21T20:38:30.2574248Z  * [new branch]        campaign-gate-adoption-ux-closeout -> origin/campaign-gate-adoption-ux-closeout
+2026-07-21T20:38:30.2575036Z  * [new branch]        campaign-hot-sidecar-latency-closeout -> origin/campaign-hot-sidecar-latency-closeout
+2026-07-21T20:38:30.2575829Z  * [new branch]        campaign-llm-work-loop-closeout -> origin/campaign-llm-work-loop-closeout
+2026-07-21T20:38:30.2576505Z  * [new branch]        campaign-ripr-zero-evidence -> origin/campaign-ripr-zero-evidence
+2026-07-21T20:38:30.2577471Z  * [new branch]        campaign/scope-voice-b-usability-precision -> origin/campaign/scope-voice-b-usability-precision
+2026-07-21T20:38:30.2578312Z  * [new branch]        ci-gate-decision-summary-polish -> origin/ci-gate-decision-summary-polish
+2026-07-21T20:38:30.2579234Z  * [new branch]        claude/c6-06-rust-index-module-split -> origin/claude/c6-06-rust-index-module-split
+2026-07-21T20:38:30.2580050Z  * [new branch]        claude/c6-08-ra-syntax-adapter-extraction -> origin/claude/c6-08-ra-syntax-adapter-extraction
+2026-07-21T20:38:30.2581387Z  * [new branch]        claude/c6-09-lexical-syntax-fallback-extraction -> origin/claude/c6-09-lexical-syntax-fallback-extraction
+2026-07-21T20:38:30.2582283Z  * [new branch]        claude/c6-10-extractors-modularization -> origin/claude/c6-10-extractors-modularization
+2026-07-21T20:38:30.2583079Z  * [new branch]        claude/campaign-pre4b-lsp-groundwork -> origin/claude/campaign-pre4b-lsp-groundwork
+2026-07-21T20:38:30.2583888Z  * [new branch]        claude/codecov-upload-blocking-iYn7d -> origin/claude/codecov-upload-blocking-iYn7d
+2026-07-21T20:38:30.2584727Z  * [new branch]        claude/coverage-output-gate-v2 -> origin/claude/coverage-output-gate-v2
+2026-07-21T20:38:30.2585450Z  * [new branch]        claude/coverage-pilot-timeout -> origin/claude/coverage-pilot-timeout
+2026-07-21T20:38:30.2586117Z  * [new branch]        claude/coverage-seam-inventory -> origin/claude/coverage-seam-inventory
+2026-07-21T20:38:30.2586875Z  * [new branch]        claude/droid-security-rollout-docs-GYzTu -> origin/claude/droid-security-rollout-docs-GYzTu
+2026-07-21T20:38:30.2587669Z  * [new branch]        claude/improve-code-coverage-JOiZc -> origin/claude/improve-code-coverage-JOiZc
+2026-07-21T20:38:30.2588517Z  * [new branch]        claude/multi-pr-rollout-pr-01-ci-economics-docs -> origin/claude/multi-pr-rollout-pr-01-ci-economics-docs
+2026-07-21T20:38:30.2589486Z  * [new branch]        claude/multi-pr-rollout-pr-02-ci-lane-ledgers -> origin/claude/multi-pr-rollout-pr-02-ci-lane-ledgers
+2026-07-21T20:38:30.2590641Z  * [new branch]        claude/multi-pr-rollout-pr-03-lane-lint -> origin/claude/multi-pr-rollout-pr-03-lane-lint
+2026-07-21T20:38:30.2591541Z  * [new branch]        claude/multi-pr-rollout-pr-10-ripr-dogfood -> origin/claude/multi-pr-rollout-pr-10-ripr-dogfood
+2026-07-21T20:38:30.2592597Z  * [new branch]        claude/panic-safety-policy-stack-TBzKa -> origin/claude/panic-safety-policy-stack-TBzKa
+2026-07-21T20:38:30.2593450Z  * [new branch]        claude/policy-stack-api-correctness-lints -> origin/claude/policy-stack-api-correctness-lints
+2026-07-21T20:38:30.2594355Z  * [new branch]        claude/policy-stack-ast-safety-lints -> origin/claude/policy-stack-ast-safety-lints
+2026-07-21T20:38:30.2595170Z  * [new branch]        claude/policy-stack-async-lints -> origin/claude/policy-stack-async-lints
+2026-07-21T20:38:30.2595994Z  * [new branch]        claude/policy-stack-check-lint-policy -> origin/claude/policy-stack-check-lint-policy
+2026-07-21T20:38:30.2596849Z  * [new branch]        claude/policy-stack-format-io-lints -> origin/claude/policy-stack-format-io-lints
+2026-07-21T20:38:30.2597670Z  * [new branch]        claude/policy-stack-numeric-lints -> origin/claude/policy-stack-numeric-lints
+2026-07-21T20:38:30.2598566Z  * [new branch]        claude/policy-stack-silent-failure-lints -> origin/claude/policy-stack-silent-failure-lints
+2026-07-21T20:38:30.2599488Z  * [new branch]        claude/policy-stack-unwrap-deny-flip -> origin/claude/policy-stack-unwrap-deny-flip
+2026-07-21T20:38:30.2600661Z  * [new branch]        claude/refactor-panic-allowlist-xskQZ -> origin/claude/refactor-panic-allowlist-xskQZ
+2026-07-21T20:38:30.2601530Z  * [new branch]        claude/refactor-srp-modules-xHivT -> origin/claude/refactor-srp-modules-xHivT
+2026-07-21T20:38:30.2602342Z  * [new branch]        claude/setup-ripr-reference-kVEhm -> origin/claude/setup-ripr-reference-kVEhm
+2026-07-21T20:38:30.2603278Z  * [new branch]        claude/spec-repo-seam-inventory -> origin/claude/spec-repo-seam-inventory
+2026-07-21T20:38:30.2604099Z  * [new branch]        claude/stricter-test-linting-VWQMw -> origin/claude/stricter-test-linting-VWQMw
+2026-07-21T20:38:30.2604871Z  * [new branch]        claude/vscode-lsp-smoke-tests -> origin/claude/vscode-lsp-smoke-tests
+2026-07-21T20:38:30.2605816Z  * [new branch]        codex/add-badge-stack-and-ripr-integration-guide -> origin/codex/add-badge-stack-and-ripr-integration-guide
+2026-07-21T20:38:30.2606994Z  * [new branch]        codex/add-badge-stack-and-ripr-integration-guide-01v936 -> origin/codex/add-badge-stack-and-ripr-integration-guide-01v936
+2026-07-21T20:38:30.2608237Z  * [new branch]        codex/add-badge-stack-and-ripr-integration-guide-4fyzpz -> origin/codex/add-badge-stack-and-ripr-integration-guide-4fyzpz
+2026-07-21T20:38:30.2609324Z  * [new branch]        codex/add-edge-case-test-coverage-0l5wiq -> origin/codex/add-edge-case-test-coverage-0l5wiq
+2026-07-21T20:38:30.2610438Z  * [new branch]        codex/add-unit-testing-c66q7y -> origin/codex/add-unit-testing-c66q7y
+2026-07-21T20:38:30.2611286Z  * [new branch]        codex/add-unit-testing-dkyeca -> origin/codex/add-unit-testing-dkyeca
+2026-07-21T20:38:30.2612238Z  * [new branch]        codex/break-complex-function-into-srp-submodules -> origin/codex/break-complex-function-into-srp-submodules
+2026-07-21T20:38:30.2613433Z  * [new branch]        codex/break-complex-function-into-srp-submodules-3y3ri7 -> origin/codex/break-complex-function-into-srp-submodules-3y3ri7
+2026-07-21T20:38:30.2614723Z  * [new branch]        codex/break-complex-function-into-srp-submodules-prk4he -> origin/codex/break-complex-function-into-srp-submodules-prk4he
+2026-07-21T20:38:30.2615912Z  * [new branch]        codex/break-down-large-module-into-srp-submodules -> origin/codex/break-down-large-module-into-srp-submodules
+2026-07-21T20:38:30.2617109Z  * [new branch]        codex/break-down-large-module-into-srp-submodules-g64dbv -> origin/codex/break-down-large-module-into-srp-submodules-g64dbv
+2026-07-21T20:38:30.2618393Z  * [new branch]        codex/break-down-large-module-into-srp-submodules-pzp5mh -> origin/codex/break-down-large-module-into-srp-submodules-pzp5mh
+2026-07-21T20:38:30.2619680Z  * [new branch]        codex/break-down-large-module-into-srp-submodules-t4boqf -> origin/codex/break-down-large-module-into-srp-submodules-t4boqf
+2026-07-21T20:38:30.2621187Z  * [new branch]        codex/ci-lane-ledgers-risk-packs -> origin/codex/ci-lane-ledgers-risk-packs
+2026-07-21T20:38:30.2622061Z  * [new branch]        codex/ci-verification-economics-policy -> origin/codex/ci-verification-economics-policy
+2026-07-21T20:38:30.2622955Z  * [new branch]        codex/consolidate-droid-rollout-docs -> origin/codex/consolidate-droid-rollout-docs
+2026-07-21T20:38:30.2623967Z  * [new branch]        codex/create-actionable-evidence-projection-spec -> origin/codex/create-actionable-evidence-projection-spec
+2026-07-21T20:38:30.2625009Z  * [new branch]        codex/define-linked-source-of-truth-stack -> origin/codex/define-linked-source-of-truth-stack
+2026-07-21T20:38:30.2626041Z  * [new branch]        codex/define-linked-source-of-truth-stack-9c727s -> origin/codex/define-linked-source-of-truth-stack-9c727s
+2026-07-21T20:38:30.2627130Z  * [new branch]        codex/define-linked-source-of-truth-stack-wnk6zr -> origin/codex/define-linked-source-of-truth-stack-wnk6zr
+2026-07-21T20:38:30.2628115Z  * [new branch]        codex/droid-security-scan-invariants -> origin/codex/droid-security-scan-invariants
+2026-07-21T20:38:30.2629109Z  * [new branch]        codex/encode-action-authority-matrix-for-editor -> origin/codex/encode-action-authority-matrix-for-editor
+2026-07-21T20:38:30.2630032Z  * [new branch]        codex/enhance-bdd-testing-dt49v3 -> origin/codex/enhance-bdd-testing-dt49v3
+2026-07-21T20:38:30.2631193Z  * [new branch]        codex/finalize-droid-ci-bot-hygiene -> origin/codex/finalize-droid-ci-bot-hygiene
+2026-07-21T20:38:30.2632271Z  * [new branch]        codex/finalize-droid-ci-bot-hygiene-p63lia -> origin/codex/finalize-droid-ci-bot-hygiene-p63lia
+2026-07-21T20:38:30.2633266Z  * [new branch]        codex/finalize-droid-ci-bot-hygiene-zokpao -> origin/codex/finalize-droid-ci-bot-hygiene-zokpao
+2026-07-21T20:38:30.2634245Z  * [new branch]        codex/finalize-rollout-checklist-for-ripr -> origin/codex/finalize-rollout-checklist-for-ripr
+2026-07-21T20:38:30.2635299Z  * [new branch]        codex/finalize-rollout-checklist-for-ripr-8vyu3g -> origin/codex/finalize-rollout-checklist-for-ripr-8vyu3g
+2026-07-21T20:38:30.2636394Z  * [new branch]        codex/finalize-rollout-checklist-for-ripr-9bq091 -> origin/codex/finalize-rollout-checklist-for-ripr-9bq091
+2026-07-21T20:38:30.2637481Z  * [new branch]        codex/finalize-rollout-checklist-for-ripr-iyxh90 -> origin/codex/finalize-rollout-checklist-for-ripr-iyxh90
+2026-07-21T20:38:30.2638525Z  * [new branch]        codex/find-and-fix-non-obvious-errors-efohty -> origin/codex/find-and-fix-non-obvious-errors-efohty
+2026-07-21T20:38:30.2639523Z  * [new branch]        codex/find-candidates-for-rust-conversion -> origin/codex/find-candidates-for-rust-conversion
+2026-07-21T20:38:30.2640887Z  * [new branch]        codex/find-candidates-for-rust-conversion-1s42sm -> origin/codex/find-candidates-for-rust-conversion-1s42sm
+2026-07-21T20:38:30.2641992Z  * [new branch]        codex/find-candidates-for-rust-conversion-9hbk6u -> origin/codex/find-candidates-for-rust-conversion-9hbk6u
+2026-07-21T20:38:30.2643201Z  * [new branch]        codex/find-complex-function-and-break-into-srp-submodules -> origin/codex/find-complex-function-and-break-into-srp-submodules
+2026-07-21T20:38:30.2644569Z  * [new branch]        codex/find-complex-function-and-break-into-srp-submodules-5dd1z4 -> origin/codex/find-complex-function-and-break-into-srp-submodules-5dd1z4
+2026-07-21T20:38:30.2646112Z  * [new branch]        codex/find-complex-function-and-break-into-srp-submodules-hdztph -> origin/codex/find-complex-function-and-break-into-srp-submodules-hdztph
+2026-07-21T20:38:30.2647186Z  * [new branch]        codex/github-settings-contract -> origin/codex/github-settings-contract
+2026-07-21T20:38:30.2647975Z  * [new branch]        codex/improve-and-build-out-xtask -> origin/codex/improve-and-build-out-xtask
+2026-07-21T20:38:30.2648863Z  * [new branch]        codex/improve-and-build-out-xtask-icewl3 -> origin/codex/improve-and-build-out-xtask-icewl3
+2026-07-21T20:38:30.2649897Z  * [new branch]        codex/improve-code-coverage-wg0fna -> origin/codex/improve-code-coverage-wg0fna
+2026-07-21T20:38:30.2651015Z  * [new branch]        codex/improve-code-coverage-y3btg9 -> origin/codex/improve-code-coverage-y3btg9
+2026-07-21T20:38:30.2651729Z  * [new branch]        codex/improve-fuzzing   -> origin/codex/improve-fuzzing
+2026-07-21T20:38:30.2652396Z  * [new branch]        codex/improve-fuzzing-71qni1 -> origin/codex/improve-fuzzing-71qni1
+2026-07-21T20:38:30.2653094Z  * [new branch]        codex/improve-fuzzing-8535j4 -> origin/codex/improve-fuzzing-8535j4
+2026-07-21T20:38:30.2653806Z  * [new branch]        codex/improve-fuzzing-j0x1p8 -> origin/codex/improve-fuzzing-j0x1p8
+2026-07-21T20:38:30.2654504Z  * [new branch]        codex/improve-fuzzing-nbweai -> origin/codex/improve-fuzzing-nbweai
+2026-07-21T20:38:30.2655211Z  * [new branch]        codex/improve-fuzzing-pflqjb -> origin/codex/improve-fuzzing-pflqjb
+2026-07-21T20:38:30.2655919Z  * [new branch]        codex/improve-fuzzing-pu5b8e -> origin/codex/improve-fuzzing-pu5b8e
+2026-07-21T20:38:30.2656616Z  * [new branch]        codex/improve-fuzzing-uhznaz -> origin/codex/improve-fuzzing-uhznaz
+2026-07-21T20:38:30.2657315Z  * [new branch]        codex/improve-fuzzing-vnwzty -> origin/codex/improve-fuzzing-vnwzty
+2026-07-21T20:38:30.2658078Z  * [new branch]        codex/improve-integration-testing -> origin/codex/improve-integration-testing
+2026-07-21T20:38:30.2658954Z  * [new branch]        codex/improve-integration-testing-0k479e -> origin/codex/improve-integration-testing-0k479e
+2026-07-21T20:38:30.2660027Z  * [new branch]        codex/improve-integration-testing-9ega2h -> origin/codex/improve-integration-testing-9ega2h
+2026-07-21T20:38:30.2661218Z  * [new branch]        codex/improve-property-testing -> origin/codex/improve-property-testing
+2026-07-21T20:38:30.2662056Z  * [new branch]        codex/improve-property-testing-akhf47 -> origin/codex/improve-property-testing-akhf47
+2026-07-21T20:38:30.2662965Z  * [new branch]        codex/improve-property-testing-cfs31w -> origin/codex/improve-property-testing-cfs31w
+2026-07-21T20:38:30.2663846Z  * [new branch]        codex/improve-property-testing-cjj9ux -> origin/codex/improve-property-testing-cjj9ux
+2026-07-21T20:38:30.2664715Z  * [new branch]        codex/improve-property-testing-j6uh57 -> origin/codex/improve-property-testing-j6uh57
+2026-07-21T20:38:30.2665545Z  * [new branch]        codex/improve-rust-documentation -> origin/codex/improve-rust-documentation
+2026-07-21T20:38:30.2666409Z  * [new branch]        codex/improve-rust-documentation-72skdm -> origin/codex/improve-rust-documentation-72skdm
+2026-07-21T20:38:30.2667330Z  * [new branch]        codex/improve-rust-documentation-ffq8c1 -> origin/codex/improve-rust-documentation-ffq8c1
+2026-07-21T20:38:30.2668243Z  * [new branch]        codex/improve-rust-documentation-ya06hz -> origin/codex/improve-rust-documentation-ya06hz
+2026-07-21T20:38:30.2669141Z  * [new branch]        codex/improve-rust-documentation-ycdwwr -> origin/codex/improve-rust-documentation-ycdwwr
+2026-07-21T20:38:30.2670040Z  * [new branch]        codex/improve-snapshot-testing-5prave -> origin/codex/improve-snapshot-testing-5prave
+2026-07-21T20:38:30.2671059Z  * [new branch]        codex/improve-snapshot-testing-nk3f07 -> origin/codex/improve-snapshot-testing-nk3f07
+2026-07-21T20:38:30.2671932Z  * [new branch]        codex/improve-snapshot-testing-nvypu4 -> origin/codex/improve-snapshot-testing-nvypu4
+2026-07-21T20:38:30.2672700Z  * [new branch]        codex/improve-test-coverage -> origin/codex/improve-test-coverage
+2026-07-21T20:38:30.2673463Z  * [new branch]        codex/improve-test-coverage-0nbcdh -> origin/codex/improve-test-coverage-0nbcdh
+2026-07-21T20:38:30.2674284Z  * [new branch]        codex/improve-test-coverage-7r5ujf -> origin/codex/improve-test-coverage-7r5ujf
+2026-07-21T20:38:30.2675092Z  * [new branch]        codex/improve-test-coverage-bklx2m -> origin/codex/improve-test-coverage-bklx2m
+2026-07-21T20:38:30.2676085Z  * [new branch]        codex/improve-test-coverage-ffoe8a -> origin/codex/improve-test-coverage-ffoe8a
+2026-07-21T20:38:30.2676895Z  * [new branch]        codex/improve-test-coverage-ix5rbg -> origin/codex/improve-test-coverage-ix5rbg
+2026-07-21T20:38:30.2677706Z  * [new branch]        codex/improve-test-coverage-sff2kr -> origin/codex/improve-test-coverage-sff2kr
+2026-07-21T20:38:30.2678444Z  * [new branch]        codex/improve-unit-testing -> origin/codex/improve-unit-testing
+2026-07-21T20:38:30.2679189Z  * [new branch]        codex/improve-unit-testing-8qqloy -> origin/codex/improve-unit-testing-8qqloy
+2026-07-21T20:38:30.2680191Z  * [new branch]        codex/increase-droid-review-repair-value -> origin/codex/increase-droid-review-repair-value
+2026-07-21T20:38:30.2681111Z  * [new branch]        codex/locate-code-for-rust-conversion -> origin/codex/locate-code-for-rust-conversion
+2026-07-21T20:38:30.2682062Z  * [new branch]        codex/locate-code-for-rust-conversion-0cz8lx -> origin/codex/locate-code-for-rust-conversion-0cz8lx
+2026-07-21T20:38:30.2683074Z  * [new branch]        codex/locate-code-for-rust-conversion-4ma5e3 -> origin/codex/locate-code-for-rust-conversion-4ma5e3
+2026-07-21T20:38:30.2684070Z  * [new branch]        codex/locate-code-for-rust-conversion-rgy8mz -> origin/codex/locate-code-for-rust-conversion-rgy8mz
+2026-07-21T20:38:30.2684972Z  * [new branch]        codex/lsp-agent-loop-copy-commands -> origin/codex/lsp-agent-loop-copy-commands
+2026-07-21T20:38:30.2685924Z  * [new branch]        codex/refactor-code-into-srp-submodules-9z16lu -> origin/codex/refactor-code-into-srp-submodules-9z16lu
+2026-07-21T20:38:30.2687136Z  * [new branch]        codex/refactor-code-into-srp-submodules-px84b5 -> origin/codex/refactor-code-into-srp-submodules-px84b5
+2026-07-21T20:38:30.2688250Z  * [new branch]        codex/refactor-code-to-follow-dry-principle-swaaac -> origin/codex/refactor-code-to-follow-dry-principle-swaaac
+2026-07-21T20:38:30.2689457Z  * [new branch]        codex/refactor-complex-function-into-srp-modules-d69mds -> origin/codex/refactor-complex-function-into-srp-modules-d69mds
+2026-07-21T20:38:30.2690856Z  * [new branch]        codex/refactor-complex-function-into-srp-modules-oxa6bm -> origin/codex/refactor-complex-function-into-srp-modules-oxa6bm
+2026-07-21T20:38:30.2692089Z  * [new branch]        codex/refactor-complex-function-into-srp-modules-w5mcev -> origin/codex/refactor-complex-function-into-srp-modules-w5mcev
+2026-07-21T20:38:30.2693126Z  * [new branch]        codex/refresh-public-badge-endpoints -> origin/codex/refresh-public-badge-endpoints
+2026-07-21T20:38:30.2694065Z  * [new branch]        codex/update-changelog-and-release-history -> origin/codex/update-changelog-and-release-history
+2026-07-21T20:38:30.2695372Z  * [new branch]        codex/update-changelog-and-release-history-asrg2x -> origin/codex/update-changelog-and-release-history-asrg2x
+2026-07-21T20:38:30.2696698Z  * [new branch]        codex/update-changelog-and-release-history-f2cu53 -> origin/codex/update-changelog-and-release-history-f2cu53
+2026-07-21T20:38:30.2697886Z  * [new branch]        codex/update-dependabot-configuration-and-documentation -> origin/codex/update-dependabot-configuration-and-documentation
+2026-07-21T20:38:30.2699205Z  * [new branch]        codex/update-dependabot-configuration-and-documentation-wf7vm0 -> origin/codex/update-dependabot-configuration-and-documentation-wf7vm0
+2026-07-21T20:38:30.2700885Z  * [new branch]        codex/update-dependabot-configuration-and-documentation-z84vxu -> origin/codex/update-dependabot-configuration-and-documentation-z84vxu
+2026-07-21T20:38:30.2701942Z  * [new branch]        context/agent-seam-packets-v1 -> origin/context/agent-seam-packets-v1
+2026-07-21T20:38:30.2702657Z  * [new branch]        coverage/codecov-config-v1 -> origin/coverage/codecov-config-v1
+2026-07-21T20:38:30.2703530Z  * [new branch]        dependabot/cargo/cargo-minor-patch-bded29dbec -> origin/dependabot/cargo/cargo-minor-patch-bded29dbec
+2026-07-21T20:38:30.2704615Z  * [new branch]        dependabot/npm_and_yarn/editors/vscode/form-data-4.0.6 -> origin/dependabot/npm_and_yarn/editors/vscode/form-data-4.0.6
+2026-07-21T20:38:30.2706010Z  * [new branch]        dependabot/npm_and_yarn/editors/vscode/vscode-dev-tools-049c2d3095 -> origin/dependabot/npm_and_yarn/editors/vscode/vscode-dev-tools-049c2d3095
+2026-07-21T20:38:30.2707020Z  * [new branch]        docs-blocking-readiness-guide -> origin/docs-blocking-readiness-guide
+2026-07-21T20:38:30.2707882Z  * [new branch]        docs-editor-adoption-assurance-stack -> origin/docs-editor-adoption-assurance-stack
+2026-07-21T20:38:30.2708716Z  * [new branch]        docs-editor-adoption-plan-index -> origin/docs-editor-adoption-plan-index
+2026-07-21T20:38:30.2709520Z  * [new branch]        docs-remove-human-merge-boundary -> origin/docs-remove-human-merge-boundary
+2026-07-21T20:38:30.2710450Z  * [new branch]        docs/agent-dispatch-workflow-v1 -> origin/docs/agent-dispatch-workflow-v1
+2026-07-21T20:38:30.2711246Z  * [new branch]        docs/release-version-neutral-1472 -> origin/docs/release-version-neutral-1472
+2026-07-21T20:38:30.2712132Z  * [new branch]        doctrine-mutation-exposure-positioning -> origin/doctrine-mutation-exposure-positioning
+2026-07-21T20:38:30.2713103Z  * [new branch]        dogfood-language-adapter-preview-receipts -> origin/dogfood-language-adapter-preview-receipts
+2026-07-21T20:38:30.2713984Z  * [new branch]        droid/security-report-2026-05-11 -> origin/droid/security-report-2026-05-11
+2026-07-21T20:38:30.2714748Z  * [new branch]        droid/security-report-2026-05-18 -> origin/droid/security-report-2026-05-18
+2026-07-21T20:38:30.2715504Z  * [new branch]        droid/security-report-2026-05-25 -> origin/droid/security-report-2026-05-25
+2026-07-21T20:38:30.2716381Z  * [new branch]        droid/security-report-2026-06-01 -> origin/droid/security-report-2026-06-01
+2026-07-21T20:38:30.2717133Z  * [new branch]        editor-root-artifact-matching -> origin/editor-root-artifact-matching
+2026-07-21T20:38:30.2717936Z  * [new branch]        goals-first-action-lane4-sequencing -> origin/goals-first-action-lane4-sequencing
+2026-07-21T20:38:30.2718735Z  * [new branch]        lane1-actionable-gap-top-list -> origin/lane1-actionable-gap-top-list
+2026-07-21T20:38:30.2719526Z  * [new branch]        lane1-activation-struct-projection -> origin/lane1-activation-struct-projection
+2026-07-21T20:38:30.2720518Z  * [new branch]        lane1-activation-struct-projection-v2 -> origin/lane1-activation-struct-projection-v2
+2026-07-21T20:38:30.2721354Z  * [new branch]        lane1-activation-value-burndown -> origin/lane1-activation-value-burndown
+2026-07-21T20:38:30.2722129Z  * [new branch]        lane1-audit-failure-diagnostics -> origin/lane1-audit-failure-diagnostics
+2026-07-21T20:38:30.2722826Z  * [new branch]        lane1-audit-reliability -> origin/lane1-audit-reliability
+2026-07-21T20:38:30.2723486Z  * [new branch]        lane1-run-reliable-bucket2 -> origin/lane1-run-reliable-bucket2
+2026-07-21T20:38:30.2724135Z  * [new branch]        lane1-run-reliable-next -> origin/lane1-run-reliable-next
+2026-07-21T20:38:30.2724852Z  * [new branch]        lane1-static-limitation-taxonomy -> origin/lane1-static-limitation-taxonomy
+2026-07-21T20:38:30.2725597Z  * [new branch]        lane3-receipt-state-fixtures -> origin/lane3-receipt-state-fixtures
+2026-07-21T20:38:30.2726312Z  * [new branch]        lsp/repo-seam-diagnostics-v1 -> origin/lsp/repo-seam-diagnostics-v1
+2026-07-21T20:38:30.2726997Z  * [new branch]        lsp/seam-evidence-hover-v1 -> origin/lsp/seam-evidence-hover-v1
+2026-07-21T20:38:30.2727556Z  * [new branch]        main                    -> origin/main
+2026-07-21T20:38:30.2728175Z  * [new branch]        output/repo-exposure-report-v1 -> origin/output/repo-exposure-report-v1
+2026-07-21T20:38:30.2728925Z  * [new branch]        policy/check-lint-policy-xtask -> origin/policy/check-lint-policy-xtask
+2026-07-21T20:38:30.2729655Z  * [new branch]        policy/clippy-api-trait-rails -> origin/policy/clippy-api-trait-rails
+2026-07-21T20:38:30.2730727Z  * [new branch]        policy/clippy-concurrency-rails -> origin/policy/clippy-concurrency-rails
+2026-07-21T20:38:30.2731504Z  * [new branch]        policy/clippy-numeric-expansion -> origin/policy/clippy-numeric-expansion
+2026-07-21T20:38:30.2732196Z  * [new branch]        release/0.11.0-swarm-sync -> origin/release/0.11.0-swarm-sync
+2026-07-21T20:38:30.2732912Z  * [new branch]        release/v0.6.0-execution-closeout -> origin/release/v0.6.0-execution-closeout
+2026-07-21T20:38:30.2733681Z  * [new branch]        repo-allow-release-sync-merge -> origin/repo-allow-release-sync-merge
+2026-07-21T20:38:30.2734426Z  * [new branch]        repo-exposure-warm-path-reuse -> origin/repo-exposure-warm-path-reuse
+2026-07-21T20:38:30.2735297Z  * [new branch]        repo-ops-suggested-fixes-command-catalog -> origin/repo-ops-suggested-fixes-command-catalog
+2026-07-21T20:38:30.2736108Z  * [new branch]        report-ripr-swarm-plan-v2 -> origin/report-ripr-swarm-plan-v2
+2026-07-21T20:38:30.2736852Z  * [new branch]        review-feedback-outcome-receipts -> origin/review-feedback-outcome-receipts
+2026-07-21T20:38:30.2737518Z  * [new branch]        scratch-test            -> origin/scratch-test
+2026-07-21T20:38:30.2738175Z  * [new branch]        spec-calibrated-gate-policy -> origin/spec-calibrated-gate-policy
+2026-07-21T20:38:30.2738744Z  * [new tag]           v0.1.0                  -> v0.1.0
+2026-07-21T20:38:30.2739178Z  * [new tag]           v0.10.0                 -> v0.10.0
+2026-07-21T20:38:30.2739603Z  * [new tag]           v0.2.0                  -> v0.2.0
+2026-07-21T20:38:30.2740019Z  * [new tag]           v0.3.0                  -> v0.3.0
+2026-07-21T20:38:30.2740731Z  * [new tag]           v0.3.1                  -> v0.3.1
+2026-07-21T20:38:30.2741314Z  * [new tag]           v0.4.0                  -> v0.4.0
+2026-07-21T20:38:30.2741748Z  * [new tag]           v0.5.0                  -> v0.5.0
+2026-07-21T20:38:30.2742165Z  * [new tag]           v0.6.0                  -> v0.6.0
+2026-07-21T20:38:30.2742577Z  * [new tag]           v0.7.0                  -> v0.7.0
+2026-07-21T20:38:30.2742996Z  * [new tag]           v0.8.0                  -> v0.8.0
+2026-07-21T20:38:30.2743404Z  * [new tag]           v0.9.0                  -> v0.9.0
+2026-07-21T20:38:30.2828192Z [command]/usr/bin/git branch --list --remote origin/agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.2857774Z   origin/agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.2868024Z [command]/usr/bin/git rev-parse refs/remotes/origin/agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.2889924Z 0e2ea9721ae7ec6888c9ecb8d31a05147b8ef895
+2026-07-21T20:38:30.2896126Z ##[endgroup]
+2026-07-21T20:38:30.2897357Z ##[group]Determining the checkout info
+2026-07-21T20:38:30.2898598Z ##[endgroup]
+2026-07-21T20:38:30.2903762Z [command]/usr/bin/git sparse-checkout disable
+2026-07-21T20:38:30.2961096Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-21T20:38:30.2991774Z ##[group]Checking out the ref
+2026-07-21T20:38:30.2995974Z [command]/usr/bin/git checkout --progress --force -B agent/source-swarm-tree-manifest-2026-07-21 refs/remotes/origin/agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.5434679Z Switched to a new branch 'agent/source-swarm-tree-manifest-2026-07-21'
+2026-07-21T20:38:30.5442394Z branch 'agent/source-swarm-tree-manifest-2026-07-21' set up to track 'origin/agent/source-swarm-tree-manifest-2026-07-21'.
+2026-07-21T20:38:30.5462907Z ##[endgroup]
+2026-07-21T20:38:30.5515752Z [command]/usr/bin/git log -1 --format=%H
+2026-07-21T20:38:30.5546702Z 0e2ea9721ae7ec6888c9ecb8d31a05147b8ef895
+2026-07-21T20:38:30.5736485Z ##[group]Run set -euo pipefail
+2026-07-21T20:38:30.5736892Z [36;1mset -euo pipefail[0m
+2026-07-21T20:38:30.5737154Z [36;1mruby -ryaml -e '[0m
+2026-07-21T20:38:30.5737597Z [36;1m  workflow = YAML.load_file(".github/workflows/source-swarm-sync-runner.yml")[0m
+2026-07-21T20:38:30.5738219Z [36;1m  step = workflow.fetch("jobs").fetch("create-promotion").fetch("steps").find do |candidate|[0m
+2026-07-21T20:38:30.5739010Z [36;1m    candidate["name"] == "Create, verify, and push the two-parent promotion join"[0m
+2026-07-21T20:38:30.5739415Z [36;1m  end[0m
+2026-07-21T20:38:30.5739674Z [36;1m  abort("promotion step not found") unless step[0m
+2026-07-21T20:38:30.5740005Z [36;1m  print step.fetch("run")[0m
+2026-07-21T20:38:30.5740599Z [36;1m' > /tmp/promote-original.sh[0m
+2026-07-21T20:38:30.5740867Z [36;1m[0m
+2026-07-21T20:38:30.5741047Z [36;1mpython3 <<'PY'[0m
+2026-07-21T20:38:30.5741297Z [36;1mfrom pathlib import Path[0m
+2026-07-21T20:38:30.5741536Z [36;1m[0m
+2026-07-21T20:38:30.5741804Z [36;1mpath = Path('/tmp/promote-original.sh')[0m
+2026-07-21T20:38:30.5742161Z [36;1mscript = path.read_text(encoding='utf-8')[0m
+2026-07-21T20:38:30.5742449Z [36;1m[0m
+2026-07-21T20:38:30.5742735Z [36;1mold_copy = '''    cp "$report" source-swarm-promotion-report.txt[0m
+2026-07-21T20:38:30.5743168Z [36;1m    git add source-swarm-promotion-report.txt'''[0m
+2026-07-21T20:38:30.5743585Z [36;1mnew_copy = '''    cp "$report" source-swarm-promotion-report.txt[0m
+2026-07-21T20:38:30.5744137Z [36;1m    cp /tmp/source-swarm-final-tree-summary.json source-swarm-final-tree-summary.json[0m
+2026-07-21T20:38:30.5744828Z [36;1m    cp /tmp/source-swarm-final-tree-entries.ndjson source-swarm-final-tree-entries.ndjson[0m
+2026-07-21T20:38:30.5745658Z [36;1m    git add source-swarm-promotion-report.txt source-swarm-final-tree-summary.json source-swarm-final-tree-entries.ndjson'''[0m
+2026-07-21T20:38:30.5746303Z [36;1mif old_copy not in script:[0m
+2026-07-21T20:38:30.5746646Z [36;1m    raise SystemExit('publish_report copy block not found')[0m
+2026-07-21T20:38:30.5747045Z [36;1mscript = script.replace(old_copy, new_copy, 1)[0m
+2026-07-21T20:38:30.5747360Z [36;1m[0m
+2026-07-21T20:38:30.5747651Z [36;1mold_end = '''git push origin "HEAD:refs/heads/$PROMOTION_BRANCH"[0m
+2026-07-21T20:38:30.5748065Z [36;1mpublish_report promotion_branch_pushed'''[0m
+2026-07-21T20:38:30.5748379Z [36;1mnew_end = r'''python3 <<'PYTREE'[0m
+2026-07-21T20:38:30.5748653Z [36;1mimport json[0m
+2026-07-21T20:38:30.5748863Z [36;1mimport os[0m
+2026-07-21T20:38:30.5749074Z [36;1mimport subprocess[0m
+2026-07-21T20:38:30.5749295Z [36;1m[0m
+2026-07-21T20:38:30.5749490Z [36;1mdef tree_entries(revision: str):[0m
+2026-07-21T20:38:30.5749877Z [36;1m    raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', revision])[0m
+2026-07-21T20:38:30.5750546Z [36;1m    entries = {}[0m
+2026-07-21T20:38:30.5750793Z [36;1m    for record in raw.split(b'\0'):[0m
+2026-07-21T20:38:30.5751093Z [36;1m        if not record:[0m
+2026-07-21T20:38:30.5751333Z [36;1m            continue[0m
+2026-07-21T20:38:30.5815995Z [36;1m        metadata, raw_path = record.split(b'\t', 1)[0m
+2026-07-21T20:38:30.5816564Z [36;1m        mode, object_type, sha = metadata.decode('ascii').split()[0m
+2026-07-21T20:38:30.5816988Z [36;1m        path = raw_path.decode('utf-8')[0m
+2026-07-21T20:38:30.5817341Z [36;1m        entries[path] = {[0m
+2026-07-21T20:38:30.5817633Z [36;1m            'mode': mode,[0m
+2026-07-21T20:38:30.5817911Z [36;1m            'type': object_type,[0m
+2026-07-21T20:38:30.5818211Z [36;1m            'sha': sha,[0m
+2026-07-21T20:38:30.5818472Z [36;1m        }[0m
+2026-07-21T20:38:30.5818689Z [36;1m    return entries[0m
+2026-07-21T20:38:30.5818940Z [36;1m[0m
+2026-07-21T20:38:30.5819197Z [36;1mbase = tree_entries(os.environ['SWARM_CANDIDATE'])[0m
+2026-07-21T20:38:30.5819535Z [36;1mresolved = tree_entries('HEAD')[0m
+2026-07-21T20:38:30.5819794Z [36;1mchanges = [][0m
+2026-07-21T20:38:30.5820588Z [36;1mfor path in sorted(set(base) | set(resolved)):[0m
+2026-07-21T20:38:30.5820951Z [36;1m    before = base.get(path)[0m
+2026-07-21T20:38:30.5821241Z [36;1m    after = resolved.get(path)[0m
+2026-07-21T20:38:30.5821522Z [36;1m    if before == after:[0m
+2026-07-21T20:38:30.5821760Z [36;1m        continue[0m
+2026-07-21T20:38:30.5821985Z [36;1m    if after is None:[0m
+2026-07-21T20:38:30.5822225Z [36;1m        changes.append({[0m
+2026-07-21T20:38:30.5822602Z [36;1m            'path': path,[0m
+2026-07-21T20:38:30.5822864Z [36;1m            'mode': before['mode'],[0m
+2026-07-21T20:38:30.5823143Z [36;1m            'type': before['type'],[0m
+2026-07-21T20:38:30.5823401Z [36;1m            'sha': None,[0m
+2026-07-21T20:38:30.5823625Z [36;1m        })[0m
+2026-07-21T20:38:30.5823821Z [36;1m    else:[0m
+2026-07-21T20:38:30.5824062Z [36;1m        changes.append({'path': path, **after})[0m
+2026-07-21T20:38:30.5824356Z [36;1m[0m
+2026-07-21T20:38:30.5824579Z [36;1mdef rev_parse(expression: str) -> str:[0m
+2026-07-21T20:38:30.5825046Z [36;1m    return subprocess.check_output(['git', 'rev-parse', expression], text=True).strip()[0m
+2026-07-21T20:38:30.5825474Z [36;1m[0m
+2026-07-21T20:38:30.5825661Z [36;1msummary = {[0m
+2026-07-21T20:38:30.5825877Z [36;1m    'schema_version': 1,[0m
+2026-07-21T20:38:30.5826172Z [36;1m    'source_parent': os.environ['SOURCE_PARENT'],[0m
+2026-07-21T20:38:30.5826593Z [36;1m    'source_tree_sha': rev_parse(os.environ['SOURCE_PARENT'] + '^{tree}'),[0m
+2026-07-21T20:38:30.5827029Z [36;1m    'swarm_candidate': os.environ['SWARM_CANDIDATE'],[0m
+2026-07-21T20:38:30.5827457Z [36;1m    'swarm_tree_sha': rev_parse(os.environ['SWARM_CANDIDATE'] + '^{tree}'),[0m
+2026-07-21T20:38:30.5827891Z [36;1m    'resolved_join_sha': rev_parse('HEAD'),[0m
+2026-07-21T20:38:30.5828232Z [36;1m    'resolved_tree_sha': rev_parse('HEAD^{tree}'),[0m
+2026-07-21T20:38:30.5828562Z [36;1m    'parent_1': rev_parse('HEAD^1'),[0m
+2026-07-21T20:38:30.5828863Z [36;1m    'parent_2': rev_parse('HEAD^2'),[0m
+2026-07-21T20:38:30.5829168Z [36;1m    'entry_count': len(changes),[0m
+2026-07-21T20:38:30.5829428Z [36;1m}[0m
+2026-07-21T20:38:30.5829856Z [36;1mwith open('/tmp/source-swarm-final-tree-summary.json', 'w', encoding='utf-8') as handle:[0m
+2026-07-21T20:38:30.5830704Z [36;1m    json.dump(summary, handle, indent=2, sort_keys=True)[0m
+2026-07-21T20:38:30.5831045Z [36;1m    handle.write('\n')[0m
+2026-07-21T20:38:30.5831503Z [36;1mwith open('/tmp/source-swarm-final-tree-entries.ndjson', 'w', encoding='utf-8') as handle:[0m
+2026-07-21T20:38:30.5831983Z [36;1m    for entry in changes:[0m
+2026-07-21T20:38:30.5832366Z [36;1m        handle.write(json.dumps(entry, sort_keys=True, separators=(',', ':')) + '\n')[0m
+2026-07-21T20:38:30.5832761Z [36;1mPYTREE[0m
+2026-07-21T20:38:30.5832993Z [36;1mpublish_report ready_for_api_publish'''[0m
+2026-07-21T20:38:30.5833281Z [36;1mif old_end not in script:[0m
+2026-07-21T20:38:30.5833596Z [36;1m    raise SystemExit('promotion push block not found')[0m
+2026-07-21T20:38:30.5833969Z [36;1mscript = script.replace(old_end, new_end, 1)[0m
+2026-07-21T20:38:30.5834309Z [36;1mpath.write_text(script, encoding='utf-8')[0m
+2026-07-21T20:38:30.5834602Z [36;1mPY[0m
+2026-07-21T20:38:30.5834781Z [36;1m[0m
+2026-07-21T20:38:30.5834974Z [36;1mbash /tmp/promote-original.sh[0m
+2026-07-21T20:38:30.5918089Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-07-21T20:38:30.5918460Z env:
+2026-07-21T20:38:30.5918737Z   SOURCE_PARENT: ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+2026-07-21T20:38:30.5919133Z   SWARM_CANDIDATE: 3a80c634f2157dee0e7f74fc72b7975f07699143
+2026-07-21T20:38:30.5919499Z   SWARM_FREEZE_REF: freeze/source-sync-2026-07-21
+2026-07-21T20:38:30.5919810Z   PROMOTION_BRANCH: promote/0.10.1-swarm
+2026-07-21T20:38:30.5920478Z   RUNNER_BRANCH: agent/source-swarm-tree-manifest-2026-07-21
+2026-07-21T20:38:30.5920825Z ##[endgroup]
+2026-07-21T20:38:31.6916660Z publish_report copy block not found
+2026-07-21T20:38:31.6971884Z ##[error]Process completed with exit code 1.
+2026-07-21T20:38:31.7105704Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-21T20:38:31.7107354Z Post job cleanup.
+2026-07-21T20:38:31.7959964Z [command]/usr/bin/git version
+2026-07-21T20:38:31.7997586Z git version 2.54.0
+2026-07-21T20:38:31.8037131Z Temporarily overriding HOME='/home/runner/work/_temp/b40f899d-fc69-4ebb-972f-fed58e0942b2' before making global git config changes
+2026-07-21T20:38:31.8038609Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-21T20:38:31.8043615Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/ripr/ripr
+2026-07-21T20:38:31.8082988Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-21T20:38:31.8118414Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-21T20:38:31.8355538Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-21T20:38:31.8382782Z http.https://github.com/.extraheader
+2026-07-21T20:38:31.8394143Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-21T20:38:31.8425880Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-21T20:38:31.8654583Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-21T20:38:31.8686865Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-21T20:38:31.9052622Z Cleaning up orphan processes
+2026-07-21T20:38:31.9333731Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
