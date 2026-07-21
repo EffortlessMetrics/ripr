@@ -296,19 +296,19 @@
       },
       {
         "command": "ripr.showReceiptStatus",
-        "title": "RIPR: Show Receipt Status"
+        "title": "ripr: Show Receipt Status"
       },
       {
         "command": "ripr.copyReceiptCommand",
-        "title": "RIPR: Copy Receipt Command"
+        "title": "ripr: Copy Receipt Command"
       },
       {
         "command": "ripr.openAttemptLedger",
-        "title": "RIPR: Open Attempt Ledger"
+        "title": "ripr: Open Attempt Ledger"
       },
       {
         "command": "ripr.showRouteQuality",
-        "title": "RIPR: Show Route Quality"
+        "title": "ripr: Show Route Quality"
       }
     ]
   }
