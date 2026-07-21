@@ -169,19 +169,28 @@ impl Backend {
         // Debounce interactive triggers (did_open/did_save/did_close) so
         // rapid saves collapse into one analysis run. Explicit refresh and
         // config reload bypass the debounce (#1908).
+        //
+        // The collapse itself is handled by the refresh scheduler:
+        // `refresh_scheduler.request()` deduplicates matching active/pending
+        // work before incrementing `next_generation`, so rapid equivalent
+        // saves do not each obtain a new generation. The sleep here just
+        // delays the request so a second save arriving within the window
+        // can coalesce with the first rather than triggering a cancel +
+        // re-queue cycle on the scheduler.
+        //
+        // The earlier version of this block used a `tokio::select!` arm on
+        // `refresh_idle.notified()` to "cancel" when a superseding
+        // notification arrived. That arm was dead code for the described
+        // race: `notify_waiters` is called when an in-flight analysis
+        // finishes and when a root-authority transition completes — not
+        // when a new save arrives. The dedup never depended on it.
+        // Removed in the post-merge review of #2041.
         let is_interactive = matches!(
             reason,
             RefreshReason::DidOpen | RefreshReason::DidSave | RefreshReason::DidClose
         );
         if is_interactive {
-            tokio::select! {
-                _ = tokio::time::sleep(INTERACTIVE_REFRESH_DEBOUNCE) => {}
-                _ = self.refresh_idle.notified() => {
-                    // A superseding notification arrived during the debounce
-                    // window. The newer call will handle the analysis.
-                    return;
-                }
-            }
+            tokio::time::sleep(INTERACTIVE_REFRESH_DEBOUNCE).await;
             // Re-check preconditions after the debounce window — config or
             // authority may have changed during the wait.
             if self.configuration_failure().is_some() {
