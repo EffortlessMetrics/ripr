@@ -216,79 +216,51 @@ Each orchestrator should:
 
 ## Promotion Back To Source
 
-Promotion remains a source-repo pull request. Before opening it, confirm the
-promotion is carrying reviewed swarm state rather than active construction:
+Promotion remains a source-repository pull request. Follow the canonical
+[Source Promotion](SOURCE_PROMOTION.md) runbook rather than reconstructing the
+procedure from historical handoffs or issue comments.
 
-```bash
-rtk gh pr list --repo EffortlessMetrics/ripr --state open
-rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-rtk gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection
-rtk gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --branch main --limit 1
-```
+Freeze one exact swarm candidate first. Open swarm PRs do not block promotion by
+themselves, but each must be classified as included, deferred, superseded, or
+not release-relevant.
 
-The operator should see no ordinary source-repo development PRs, a protected
-`ripr-swarm/main` branch requiring `Ripr Rust Small Result`, and a recent green
-routed Rust result on swarm `main`. Open swarm PRs do not block promotion by
-themselves, but each one should be classified as included, deferred, superseded,
-or not release-relevant in the promotion PR body.
-
-Create the source promotion branch with a fast-forward-only merge:
-
-```bash
-rtk git clone git@github.com:EffortlessMetrics/ripr.git ripr-promote
-cd ripr-promote
-rtk git remote add swarm git@github.com:EffortlessMetrics/ripr-swarm.git
-rtk git fetch origin --prune --tags
-rtk git fetch swarm --prune --tags
-rtk git switch -c promote/swarm-main origin/main
-rtk git merge --ff-only swarm/main
-rtk git push origin promote/swarm-main
-```
-
-If `git merge --ff-only swarm/main` fails, stop. Do not resolve conflicts inside
-the promotion branch. First reconcile the source and swarm histories with an
-explicit source-sync or owner-approved promotion plan.
-
-Open the resulting source-repo PR as:
+There are two valid promotion modes:
 
 ```text
-promote: sync ripr-swarm main
+fast_forward
+  source parent is already an ancestor of the frozen swarm candidate
+  and no source-only divergence must survive
+
+two_parent_join
+  source and swarm have diverged
+  source parent remains first
+  frozen swarm candidate remains second
 ```
 
-The PR body should include:
+The `0.11.0` release train requires `two_parent_join` because source contains
+release and analyzer work that must survive alongside the frozen swarm history.
+
+Non-negotiable history rules:
 
 ```text
-Included swarm range:
-  <first promoted commit>..<last promoted commit>
-
-Swarm proof:
-  Ripr Rust Small Result on swarm/main: <run URL>
-  latest routed target/reason: <target>/<reason>
-
-Source proof to run:
-  cargo xtask check-pr
-  cargo xtask release-readiness --version <current-version>
-  cargo package -p ripr --list
-  cargo publish -p ripr --dry-run
-  npm --prefix editors/vscode ci
-  npm --prefix editors/vscode run compile
-  npm --prefix editors/vscode run package
-
-Deferred swarm PRs:
-  <number/title/disposition>
+never squash
+never rebase
+never cherry-pick or reconstruct the swarm range
+merge the source-promotion PR with Create a merge commit
 ```
 
-Abort promotion when any of these are true:
+Before opening the source PR, record:
 
-- the source repository has an ordinary development PR that should have targeted
-  `ripr-swarm`;
-- `ripr-swarm/main` is not protected by `Ripr Rust Small Result`;
-- the latest routed Rust result on swarm `main` failed or is missing;
-- the promotion is not a fast-forward from source `main` to swarm `main`;
-- release, publish, signing, marketplace, or GitHub Release secrets would need
-  to move into `ripr-swarm`;
-- badge endpoint JSON changed outside the generated badge refresh path;
-- source CI or release-readiness proof fails.
+- exact source parent, frozen swarm candidate, and merge base;
+- included swarm range and check receipts;
+- conflicts and their planned resolution;
+- source-only commits and paths that must survive;
+- swarm-only workflows/settings that must remain excluded or source-owned;
+- version and changelog state, which must not change in the source-sync PR.
+
+The source PR review focuses on identity, conflict resolution, survivors,
+exclusions, and current source proof. It does not treat already-reviewed swarm
+commits as one new opaque patch.
 
 The source repository CI remains the final release and publish proof. A green
 swarm route proves development readiness; it does not replace source release
