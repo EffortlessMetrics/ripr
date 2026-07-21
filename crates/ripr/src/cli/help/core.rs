@@ -88,13 +88,21 @@ Options:
                            instead of HEAD, including staged and unstaged
                            tracked edits. Cannot be combined with --diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, human-full, json, github, sarif, badge-json, badge-shields,
-                           badge-plus-json, badge-plus-shields, repo-badge-json,
-                           repo-badge-shields, repo-badge-plus-json,
-                           repo-badge-plus-shields, repo-seams-json,
-                           repo-seams-md, repo-exposure-json,
-                           repo-exposure-summary-json, repo-exposure-md,
-                           repo-sarif, agent-seam-packets-json. Defaults to human.
+  --format FORMAT          Output format. Defaults to human. Groups:
+                             Analysis (diff-scoped):
+                               human, human-full, json, github, sarif
+                             Badge (diff-scoped, for README status):
+                               badge-json, badge-shields,
+                               badge-plus-json, badge-plus-shields
+                             Badge (repo-scoped, from gap ledger):
+                               repo-badge-json, repo-badge-shields,
+                               repo-badge-plus-json, repo-badge-plus-shields
+                             Repo-scope (full-repo analysis):
+                               repo-seams-json, repo-seams-md,
+                               repo-exposure-json, repo-exposure-summary-json,
+                               repo-exposure-md, repo-sarif
+                             Agent (machine-readable repair evidence):
+                               agent-seam-packets-json
                            badge-plus-* and repo-badge-plus-* formats read
                            target/ripr/reports/test-efficiency.json when present;
                            missing input renders a neutral "needs test-efficiency"
