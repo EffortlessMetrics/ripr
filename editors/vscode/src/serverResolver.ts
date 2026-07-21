@@ -103,6 +103,10 @@ export function requestedServerVersion(context: vscode.ExtensionContext, config:
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {
+  // Dormant by design (#2085): no platform VSIX ships a bundled server
+  // today, so this candidate never exists on disk and resolution falls
+  // through to the cache/download path. Kept as the documented first
+  // preference for when #1443 / #1624 ship platform VSIXs.
   return path.join(context.extensionUri.fsPath, 'server', platform.target, platform.executableName);
 }
 

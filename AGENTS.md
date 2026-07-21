@@ -195,7 +195,8 @@ The extension should resolve the server in this order:
 
 ```text
 ripr.server.path
-bundled server binary
+bundled server binary        (not yet shipped — no platform VSIX carries one
+                              today; planned under #1443 / #1624)
 downloaded cached server binary
 verified first-run download
 ripr on PATH
