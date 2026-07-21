@@ -2867,19 +2867,21 @@ fn cockpit() -> Result<(), String> {
 fn check_command_catalog() -> Result<(), String> {
     let commands = known_commands();
     let catalog = command_catalog();
-    let violations = command_catalog_violations(&commands, &catalog);
+    let mut violations = command_catalog_violations(&commands, &catalog);
+    violations.extend(command_catalog_ci_drift_violations_for_repo(&catalog)?);
 
     finish_policy_report(
         PolicyReportSpec {
             report_file: "command-catalog.md",
             check: "check-command-catalog",
-            why_it_matters: "The command mutability catalog is the repo-ops map for agents. Every xtask command must stay classified so workers know what is safe to run, what writes generated evidence, and what requires judgment.",
+            why_it_matters: "The command mutability catalog is the repo-ops map for agents. Every xtask command must stay classified so workers know what is safe to run, what writes generated evidence, what requires judgment, and which checks a CI workflow enforces.",
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Add a command catalog entry for every new xtask command.",
                 "Remove catalog entries for commands that no longer exist.",
                 "Document writes for mutating, external-state, and argument-dependent commands.",
                 "Mark external-state mutations as judgment-required.",
+                "Keep ci_enforced aligned with the commands CI workflows invoke without advisory shielding.",
             ],
             rerun_command: "cargo xtask check-command-catalog",
             exception_template: None,
@@ -2991,6 +2993,177 @@ fn is_command_mutability(value: &str) -> bool {
     )
 }
 
+/// One `cargo xtask` invocation extracted from a workflow run block:
+/// the command root and its bare subcommand (empty when none).
+type WorkflowXtaskInvocation = (String, String);
+
+/// Scans one workflow file and returns the xtask invocations CI enforces:
+/// run-block commands without `|| true` shielding and outside any job or step
+/// marked `continue-on-error: true`. Line-scanning on purpose: check-workflows
+/// reads workflows the same way and the repo does not take a YAML dependency.
+fn ci_enforced_xtask_invocations(workflow: &str) -> BTreeSet<WorkflowXtaskInvocation> {
+    let mut enforced = BTreeSet::new();
+    let mut job_continue_on_error = false;
+    let mut step_continue_on_error = false;
+    let mut pending: Vec<WorkflowXtaskInvocation> = Vec::new();
+    let mut run_block_indent: Option<usize> = None;
+
+    for line in workflow.lines() {
+        let indent = line.len() - line.trim_start().len();
+        let trimmed = line.trim();
+
+        if let Some(run_indent) = run_block_indent {
+            if trimmed.is_empty() || indent > run_indent {
+                if let Some(invocation) = workflow_run_xtask_invocation(trimmed) {
+                    pending.push(invocation);
+                }
+                continue;
+            }
+            run_block_indent = None;
+        }
+
+        if indent == 2 && trimmed.ends_with(':') && !trimmed.starts_with('-') {
+            flush_workflow_step_invocations(
+                &mut pending,
+                &mut enforced,
+                job_continue_on_error || step_continue_on_error,
+            );
+            job_continue_on_error = false;
+            step_continue_on_error = false;
+            continue;
+        }
+        if indent == 4 && trimmed == "continue-on-error: true" {
+            job_continue_on_error = true;
+            continue;
+        }
+        if indent == 6 && trimmed.starts_with("- ") {
+            flush_workflow_step_invocations(
+                &mut pending,
+                &mut enforced,
+                job_continue_on_error || step_continue_on_error,
+            );
+            step_continue_on_error = false;
+            if let Some(inline) = trimmed.strip_prefix("- run:") {
+                let inline = inline.trim();
+                if inline.starts_with('|') || inline.starts_with('>') {
+                    run_block_indent = Some(indent);
+                } else if let Some(invocation) = workflow_run_xtask_invocation(inline) {
+                    pending.push(invocation);
+                }
+            }
+            continue;
+        }
+        if indent == 8 {
+            if trimmed == "continue-on-error: true" {
+                step_continue_on_error = true;
+                continue;
+            }
+            if let Some(inline) = trimmed.strip_prefix("run:") {
+                let inline = inline.trim();
+                if inline.starts_with('|') || inline.starts_with('>') {
+                    run_block_indent = Some(indent);
+                } else if let Some(invocation) = workflow_run_xtask_invocation(inline) {
+                    pending.push(invocation);
+                }
+            }
+        }
+    }
+    flush_workflow_step_invocations(
+        &mut pending,
+        &mut enforced,
+        job_continue_on_error || step_continue_on_error,
+    );
+    enforced
+}
+
+/// Moves the current step's invocations into the enforced set unless the
+/// enclosing job or step is advisory (`continue-on-error: true`).
+fn flush_workflow_step_invocations(
+    pending: &mut Vec<WorkflowXtaskInvocation>,
+    enforced: &mut BTreeSet<WorkflowXtaskInvocation>,
+    advisory: bool,
+) {
+    if !advisory {
+        enforced.extend(pending.drain(..));
+    } else {
+        pending.clear();
+    }
+}
+
+/// Extracts the xtask command invoked by one run-block line, if the line
+/// invokes `cargo xtask` directly. Advisory `|| true` shielding is handled by
+/// the caller's step scan, so this only parses the command shape.
+fn workflow_run_xtask_invocation(line: &str) -> Option<WorkflowXtaskInvocation> {
+    if line.contains("|| true") {
+        return None;
+    }
+    let rest = line.strip_prefix("cargo xtask ")?;
+    let mut tokens = rest.split_whitespace();
+    let root = tokens.next()?.trim_matches('"');
+    if root.is_empty() || root.starts_with('$') {
+        return None;
+    }
+    let subcommand = tokens
+        .next()
+        .filter(|token| {
+            token.starts_with(|c: char| c.is_ascii_lowercase())
+                && token.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+        })
+        .unwrap_or_default();
+    Some((root.to_string(), subcommand.to_string()))
+}
+
+fn catalog_command_matches_ci_invocation(
+    command: &str,
+    (root, subcommand): &WorkflowXtaskInvocation,
+) -> bool {
+    let mut words = command.split_whitespace();
+    if words.next() != Some(root.as_str()) {
+        return false;
+    }
+    subcommand.is_empty() || words.next() == Some(subcommand.as_str())
+}
+
+fn command_catalog_ci_drift_violations(
+    catalog: &[CommandCatalogEntry],
+    enforced: &BTreeSet<WorkflowXtaskInvocation>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for entry in catalog {
+        let expected = enforced
+            .iter()
+            .any(|invocation| catalog_command_matches_ci_invocation(entry.command, invocation));
+        if expected && !entry.ci_enforced {
+            violations.push(format!(
+                "command `{}` is invoked by a CI workflow without advisory shielding but the catalog marks ci_enforced=false",
+                entry.command
+            ));
+        }
+        if !expected && entry.ci_enforced {
+            violations.push(format!(
+                "command `{}` is marked ci_enforced=true but no CI workflow invokes it in an enforced lane",
+                entry.command
+            ));
+        }
+    }
+    violations
+}
+
+fn command_catalog_ci_drift_violations_for_repo(
+    catalog: &[CommandCatalogEntry],
+) -> Result<Vec<String>, String> {
+    let mut enforced = BTreeSet::new();
+    for path in collect_files(Path::new(".github/workflows"))? {
+        let normalized = normalize_path(&path);
+        if !(normalized.ends_with(".yml") || normalized.ends_with(".yaml")) {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        enforced.extend(ci_enforced_xtask_invocations(&text));
+    }
+    Ok(command_catalog_ci_drift_violations(catalog, &enforced))
+}
+
 fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {
     let mut body = "# ripr command mutability catalog\n\n".to_string();
     body.push_str("Status: pass\n");
@@ -3000,20 +3173,27 @@ fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {
         "- distinguish commands that may edit the worktree from checks and generated reports\n",
     );
     body.push_str("- keep generated evidence separate from authored source-of-truth\n");
-    body.push_str("- make judgment-required operations visible before agents run them\n\n");
+    body.push_str("- make judgment-required operations visible before agents run them\n");
+    body.push_str(
+        "- mark commands a CI workflow enforces so load-bearing gates stay distinct from advisory checks\n\n",
+    );
     body.push_str("Boundaries:\n\n");
     body.push_str("- `check-pr` is non-mutating for tracked files\n");
     body.push_str("- `target/ripr/**` outputs are generated evidence\n");
-    body.push_str("- judgment-required commands need explicit review before use\n\n");
-    body.push_str("| Command | Mutability | Writes | Judgment required | Notes |\n");
-    body.push_str("| --- | --- | --- | --- | --- |\n");
+    body.push_str("- judgment-required commands need explicit review before use\n");
+    body.push_str(
+        "- CI enforced means a CI workflow fails when the command fails; unmarked commands are advisory or local-only\n\n",
+    );
+    body.push_str("| Command | Mutability | Writes | Judgment required | CI enforced | Notes |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- |\n");
     for entry in entries {
         body.push_str(&format!(
-            "| `{}` | `{}` | {} | {} | {} |\n",
+            "| `{}` | `{}` | {} | {} | {} | {} |\n",
             markdown_cell(entry.command),
             markdown_cell(entry.mutability),
             markdown_cell(entry.writes),
             if entry.judgment_required { "yes" } else { "no" },
+            if entry.ci_enforced { "yes" } else { "no" },
             markdown_cell(entry.notes)
         ));
     }
@@ -3046,6 +3226,7 @@ fn commands_report_json(entries: &[CommandCatalogEntry]) -> String {
             "      \"judgment_required\": {},\n",
             entry.judgment_required
         ));
+        body.push_str(&format!("      \"ci_enforced\": {},\n", entry.ci_enforced));
         body.push_str(&format!(
             "      \"notes\": \"{}\"\n",
             json_escape(entry.notes)
@@ -73924,8 +74105,9 @@ mod tests {
         check_allow_attributes, check_badge_diff_policy_with_context, check_doc_artifacts,
         check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
         check_network_policy, check_no_panic_family, check_process_policy, check_static_language,
-        check_support_tiers, check_workflows, ci_full_evidence_gates, cockpit_json,
-        cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        check_support_tiers, check_workflows, ci_enforced_xtask_invocations,
+        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
+        collect_semantic_panic_findings, command_catalog, command_catalog_ci_drift_violations,
         command_catalog_violations, commands_report_json, commands_report_markdown,
         critic_findings, days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
         dogfood_bun_ub_cross_language_run, dogfood_bun_ub_cross_language_scenarios,
@@ -100831,6 +101013,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "mutating",
                 writes: "",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "Writes local files.",
             },
             CommandCatalogEntry {
@@ -100838,6 +101021,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "external_state_mutating",
                 writes: "GitHub",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "Uploads artifacts.",
             },
             CommandCatalogEntry {
@@ -100845,6 +101029,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "argument_dependent",
                 writes: "target/ripr/reports",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "May write.",
             },
         ];
@@ -100867,6 +101052,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "non_mutating_check",
                 writes: "target/ripr/reports",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "Review-ready gate.",
             },
             CommandCatalogEntry {
@@ -100874,6 +101060,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "mutating",
                 writes: "source files",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "Runs deterministic shaping.",
             },
         ];
@@ -100892,6 +101079,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "mutating",
                 writes: "fixtures/**/expected/**",
                 judgment_required: true,
+                ci_enforced: false,
                 notes: "Updates golden expected outputs.",
             },
             CommandCatalogEntry {
@@ -100899,6 +101087,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 mutability: "non_mutating_check",
                 writes: "target/ripr/reports/goldens.md",
                 judgment_required: false,
+                ci_enforced: false,
                 notes: "Checks golden drift.",
             },
         ];
@@ -100957,6 +101146,161 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# ripr command mutability catalog"));
         assert!(markdown.contains("Status: pass"));
         assert!(markdown.contains("| `check-pr` | `non_mutating_check` |"));
+        Ok(())
+    }
+
+    #[test]
+    fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {
+        let catalog = command_catalog();
+        let ci_enforced = |command: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .map(|entry| entry.ci_enforced)
+                .ok_or_else(|| format!("missing catalog entry for {command}"))
+        };
+        assert!(ci_enforced("check-static-language")?);
+        assert!(ci_enforced("goldens check")?);
+        assert!(ci_enforced("check-doc-index")?);
+        assert!(ci_enforced("release-upload-assets --version <version>")?);
+        assert!(!ci_enforced("goldens bless <name> --reason <reason>")?);
+        assert!(!ci_enforced("check-supply-chain")?);
+        assert!(!ci_enforced("check-doc-artifacts")?);
+        assert!(!ci_enforced("markdown-links")?);
+        Ok(())
+    }
+
+    #[test]
+    fn ci_enforced_xtask_invocations_separates_enforced_from_advisory() {
+        let workflow = r#"
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo xtask check-static-language
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo xtask check-network-policy
+          cargo xtask goldens check
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask test-efficiency-report || true
+      - name: Badge refresh
+        continue-on-error: true
+        run: cargo xtask badges
+      - name: Advisory step
+        run: cargo xtask check-support-tiers
+        continue-on-error: true
+  docs:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - run: cargo xtask check-doc-artifacts
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Package
+        run: cargo xtask release-server-archive --version "${{ github.ref_name }}"
+      - name: Open PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          body: |
+            ```bash
+            cargo xtask badges
+            ```
+"#;
+        let enforced = ci_enforced_xtask_invocations(workflow);
+        let has_root = |root: &str| enforced.iter().any(|(command, _)| command == root);
+        assert!(enforced.contains(&("check-static-language".to_string(), String::new())));
+        assert!(enforced.contains(&("check-network-policy".to_string(), String::new())));
+        assert!(enforced.contains(&("goldens".to_string(), "check".to_string())));
+        assert!(enforced.contains(&("ripr-pr".to_string(), String::new())));
+        assert!(enforced.contains(&("release-server-archive".to_string(), String::new())));
+        assert!(!has_root("test-efficiency-report"));
+        assert!(!has_root("badges"));
+        assert!(!has_root("check-support-tiers"));
+        assert!(!has_root("check-doc-artifacts"));
+        assert!(!has_root("fmt"));
+    }
+
+    #[test]
+    fn command_catalog_ci_drift_reports_both_directions() {
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "check-static-language",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                ci_enforced: false,
+                notes: "Checks static language policy.",
+            },
+            CommandCatalogEntry {
+                command: "check-supply-chain",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                ci_enforced: true,
+                notes: "Checks supply-chain policy.",
+            },
+            CommandCatalogEntry {
+                command: "goldens check",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports/goldens.md",
+                judgment_required: false,
+                ci_enforced: false,
+                notes: "Checks golden drift.",
+            },
+            CommandCatalogEntry {
+                command: "goldens bless <name> --reason <reason>",
+                mutability: "mutating",
+                writes: "fixtures/**/expected/**",
+                judgment_required: true,
+                ci_enforced: false,
+                notes: "Updates golden expected outputs.",
+            },
+        ];
+        let enforced = std::collections::BTreeSet::from([
+            ("check-static-language".to_string(), String::new()),
+            ("goldens".to_string(), "check".to_string()),
+        ]);
+
+        let violations = command_catalog_ci_drift_violations(&catalog, &enforced);
+        let report = violations.join("\n");
+        assert_eq!(violations.len(), 3);
+        assert!(report.contains(
+            "`check-static-language` is invoked by a CI workflow without advisory shielding but the catalog marks ci_enforced=false"
+        ));
+        assert!(
+            report
+                .contains("`goldens check` is invoked by a CI workflow without advisory shielding")
+        );
+        assert!(report.contains(
+            "`check-supply-chain` is marked ci_enforced=true but no CI workflow invokes it"
+        ));
+        assert!(!report.contains("goldens bless"));
+    }
+
+    #[test]
+    fn command_catalog_ci_enforced_flags_match_repo_workflows() -> Result<(), String> {
+        let workflows_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".github/workflows");
+        let mut enforced = std::collections::BTreeSet::new();
+        for entry in std::fs::read_dir(&workflows_dir).map_err(|err| err.to_string())? {
+            let path = entry.map_err(|err| err.to_string())?.path();
+            let name = path.file_name().map(|name| name.to_string_lossy());
+            if !name.is_some_and(|name| name.ends_with(".yml") || name.ends_with(".yaml")) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
+            enforced.extend(ci_enforced_xtask_invocations(&text));
+        }
+        let catalog = command_catalog();
+        assert_eq!(
+            command_catalog_ci_drift_violations(&catalog, &enforced),
+            Vec::<String>::new()
+        );
         Ok(())
     }
 
