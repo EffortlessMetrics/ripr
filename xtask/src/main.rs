@@ -2683,8 +2683,30 @@ fn shape() -> Result<(), String> {
     ensure_reports_dir()?;
     run("cargo", &["fmt"])?;
     let sorted = sort_allowlist_files()?;
+    // Surface the tracked-file rewrites before the contributor commits: a
+    // silent `policy/*.txt` / `.ripr/*.txt` rewrite is a surprising diff in
+    // a PR that never touched policy (#2088).
+    if let Some(notice) = shape_rewrite_notice(&sorted) {
+        eprintln!("{notice}");
+    }
     let body = shape_report_body(&sorted);
     write_report("shape.md", &body)
+}
+
+/// The stderr notice listing tracked allowlist files `shape` rewrote, or
+/// `None` when nothing changed (#2088).
+fn shape_rewrite_notice(sorted: &[String]) -> Option<String> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let mut notice = format!(
+        "shape: rewrote {} tracked allowlist file(s) (review before `git add`):",
+        sorted.len()
+    );
+    for path in sorted {
+        notice.push_str(&format!("\n  - {path}"));
+    }
+    Some(notice)
 }
 
 fn fix_pr() -> Result<(), String> {
@@ -84102,6 +84124,23 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
             sorted,
             "# Header\n# More\n\na|kind|owner|reason\nz|kind|owner|reason\n"
         );
+    }
+
+    #[test]
+    fn shape_rewrite_notice_lists_rewritten_files() {
+        assert_eq!(super::shape_rewrite_notice(&[]), None);
+        let notice =
+            super::shape_rewrite_notice(&["policy/a.txt".to_string(), ".ripr/b.txt".to_string()]);
+        assert!(
+            notice.is_some(),
+            "expected a rewrite notice for two sorted files"
+        );
+        if let Some(notice) = notice {
+            assert!(notice.contains("2 tracked allowlist file(s)"));
+            assert!(notice.contains("policy/a.txt"));
+            assert!(notice.contains(".ripr/b.txt"));
+            assert!(notice.contains("review before `git add`"));
+        }
     }
 
     #[test]
