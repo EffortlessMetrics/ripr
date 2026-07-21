@@ -63,3 +63,24 @@ labels:
   - name: clippy-future
     color: "d4c5f9"
     description: Run future or candidate Clippy lint lanes in advisory mode.
+  # Status labels — the closed status vocabulary used by the status-comment
+  # verification contract (AGENTS.md § "Status-comment verification contract").
+  # These are the primary status signal; a status comment is secondary.
+  - name: status/done-open
+    color: "0E8A16"
+    description: Delivered; the issue is intentionally kept open.
+  - name: status/blocked-upstream
+    color: "B60205"
+    description: Blocked on cargo-allow or an external repo.
+  - name: status/blocked-repo
+    color: "D93F0B"
+    description: Blocked on a tracked in-repo item (PR, issue, or code).
+  - name: status/needs-work
+    color: "FBCA04"
+    description: Actionable and not started. Do not use for partially landed work.
+  - name: status/mis-scoped
+    color: "5319E7"
+    description: Re-scope, close, or supersede — wrong scope or stale.
+  - name: status/partial
+    color: "FBCA04"
+    description: A bounded portion has merged to main (or another authoritative repository) and the residual acceptance plus next owner are recorded. Apply only when a merged deliverable exists.
