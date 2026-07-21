@@ -310,6 +310,56 @@
         "command": "ripr.showRouteQuality",
         "title": "ripr: Show Route Quality"
       }
+    ],
+    "walkthroughs": [
+      {
+        "id": "ripr.getStarted",
+        "title": "ripr: Get Started",
+        "description": "First-run guide for ripr's static mutation-exposure diagnostics: trust, open, diagnose, act.",
+        "steps": [
+          {
+            "id": "ripr.trustWorkspace",
+            "title": "Trust this workspace",
+            "description": "ripr starts its server only in trusted workspaces.\n[Why trust matters](walkthrough/trust.md)",
+            "media": {
+              "markdown": "walkthrough/trust.md"
+            },
+            "completionEvents": [
+              "onContext:workspaceTrusted"
+            ]
+          },
+          {
+            "id": "ripr.openRustFile",
+            "title": "Open a Rust file",
+            "description": "ripr analyzes the saved workspace in the background.\n[What happens on open](walkthrough/open-file.md)",
+            "media": {
+              "markdown": "walkthrough/open-file.md"
+            },
+            "completionEvents": [
+              "onContext:resourceLangId == rust"
+            ]
+          },
+          {
+            "id": "ripr.readDiagnostics",
+            "title": "Read ripr diagnostics",
+            "description": "Problems panel entries carry the `ripr` source label.\n[Reading ripr evidence](walkthrough/diagnostics.md)",
+            "media": {
+              "markdown": "walkthrough/diagnostics.md"
+            }
+          },
+          {
+            "id": "ripr.tryCodeAction",
+            "title": "Try a ripr code action",
+            "description": "Copy the missing test assertion (the check that would catch a wrong behavior) or the repair packet from the lightbulb.\n[ripr actions](walkthrough/code-action.md)",
+            "media": {
+              "markdown": "walkthrough/code-action.md"
+            },
+            "completionEvents": [
+              "onCommand:ripr.showStatus"
+            ]
+          }
+        ]
+      }
     ]
   }
 }
