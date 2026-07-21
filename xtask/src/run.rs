@@ -680,7 +680,7 @@ mod tests {
         run_output_owned, run_owned, spawn_stream_reader_channel, terminate_after_timeout,
         timeout_was_enforced,
     };
-    use crate::acquire_test_cwd_lock;
+    use crate::acquire_test_cwd_read_guard;
     use std::fs;
     use std::io::{Cursor, Read};
     use std::path::Path;
@@ -695,7 +695,7 @@ mod tests {
     fn run_reports_success_and_failure_status() -> Result<(), String> {
         // Hold the shared cwd lock so concurrent cwd-manipulating tests in
         // main.rs cannot race this subprocess spawn (issue #2044).
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let status = run("rustc", &["--version"])?;
         if !status.success() {
             return Err("rustc --version should succeed".to_string());
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn owned_run_helpers_report_success_and_failure_status() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let version_args = vec!["--version".to_string()];
         if !command_success_owned("rustc", &version_args)? {
             return Err("rustc --version should report success".to_string());
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn run_in_dir_reports_success_and_failure_with_cwd() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         let status = run_in_dir(Path::new("rustc"), &["--version"], cwd)?;
         if !status.success() {
@@ -754,7 +754,7 @@ mod tests {
 
     #[test]
     fn run_output_reports_stdout_and_failure() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let stdout = run_output("rustc", &["--version"])?;
         if !stdout.contains("rustc") {
             return Err(format!("rustc version output should name rustc: {stdout}"));
@@ -771,7 +771,7 @@ mod tests {
 
     #[test]
     fn run_output_owned_includes_stderr_on_failure() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["--version".to_string()];
         let stdout = run_output_owned("rustc", &args)?;
         if !stdout.contains("rustc") {
@@ -792,7 +792,7 @@ mod tests {
 
     #[test]
     fn run_output_optional_returns_empty_for_failure() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let stdout = run_output_optional("rustc", &["--version"])?;
         if !stdout.contains("rustc") {
             return Err(format!("rustc version output should name rustc: {stdout}"));
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn capture_output_returns_status_stdout_and_stderr() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let CapturedOutput {
             status,
             stdout,
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn capture_output_with_timeout_reports_completed_process() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["--version".to_string()];
         let output = capture_output_with_timeout(
             "rustc",
@@ -855,7 +855,7 @@ mod tests {
 
     #[test]
     fn capture_output_with_timeout_reports_timed_out_process() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let (program, args, envs) = long_running_command()?;
         let env_refs = envs
             .iter()
@@ -903,7 +903,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["-c".to_string(), "sleep 30 & wait".to_string()];
         // The timeout must comfortably exceed the time for `sh` to fork
         // `sleep 30` INTO its process group, otherwise the group-kill on
@@ -931,7 +931,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let marker = std::env::temp_dir().join(format!(
             "ripr-xtask-pipe-descendant-{}-{}.txt",
             std::process::id(),
@@ -973,7 +973,7 @@ mod tests {
 
     #[test]
     fn capture_stdout_to_file_with_timeout_streams_stdout_to_file() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let path = std::env::temp_dir().join(format!(
             "ripr-xtask-stdout-file-{}-{}.txt",
             std::process::id(),
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn terminate_after_timeout_returns_false_for_already_finished_child() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let mut child = Command::new("rustc")
             .arg("--version")
             .stdout(Stdio::null())
@@ -1078,7 +1078,7 @@ mod tests {
 
     #[test]
     fn timeout_was_enforced_reports_requested_termination() -> Result<(), String> {
-        let _cwd_guard = acquire_test_cwd_lock();
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let success = capture_output("rustc", &["--version"], "rustc version")?.status;
         let failure =
             capture_output("rustc", &["--ripr-invalid-test-flag"], "rustc invalid flag")?.status;

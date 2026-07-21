@@ -58,28 +58,45 @@ use run::{
     run_with_envs,
 };
 
-/// Process-wide mutex serialising tests that mutate the process working
-/// directory. The xtask test suite spawns subprocesses (rustc, cargo, git) that
-/// inherit the current cwd; meanwhile other tests (`with_temp_cwd`,
+/// Process-wide reader-writer lock serialising tests that mutate the process
+/// working directory. The xtask test suite spawns subprocesses (rustc, cargo,
+/// git) that inherit the current cwd; meanwhile other tests (`with_temp_cwd`,
 /// `with_repo_cwd`) call `std::env::set_current_dir` and delete the temporary
 /// directory on teardown. Without serialisation, a subprocess spawn can land
 /// in the tiny window between `set_current_dir(temp)` and
 /// `remove_dir_all(temp)`, producing "Could not locate working directory" or
 /// exit-status-1 failures in unrelated `run_output*` / `capture_output*`
-/// tests. Both `main.rs` and `run.rs` test suites acquire this lock around any
-/// code path that either mutates cwd or spawns a subprocess, so they cannot
-/// race. See issue #2044.
+/// tests.
+///
+/// The lock is a `RwLock` rather than a `Mutex` so that subprocess-spawning
+/// tests (which only READ the cwd) can run in parallel with each other, while
+/// cwd-manipulating tests (which WRITE the cwd) take the exclusive write guard
+/// and exclude everyone. This avoids over-serialising the spawning-test lane
+/// behind the slow (109s) `policy_checker_facade_runs_current_repo_checks`
+/// test. See issues #2044 and #2124.
 #[cfg(test)]
-pub(crate) static CWD_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+pub(crate) static CWD_LOCK: std::sync::OnceLock<std::sync::RwLock<()>> = std::sync::OnceLock::new();
 
-/// Acquire the shared cwd lock for a test body. Returned guard serialises the
-/// caller against every other test that mutates cwd or spawns a subprocess
-/// inheriting cwd.
+/// Acquire the exclusive write guard for cwd-manipulating tests (those that
+/// call `set_current_dir` or delete a temp cwd). Excludes every other cwd-
+/// sensitive test — both writers and readers.
 #[cfg(test)]
-pub(crate) fn acquire_test_cwd_lock() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn acquire_test_cwd_write_guard() -> std::sync::RwLockWriteGuard<'static, ()> {
     CWD_LOCK
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
+        .get_or_init(|| std::sync::RwLock::new(()))
+        .write()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// Acquire the shared read guard for subprocess-spawning tests (those that
+/// inherit the process cwd but do not change it). Multiple spawning tests can
+/// hold the read guard concurrently; they are only excluded while a
+/// cwd-manipulating test holds the write guard.
+#[cfg(test)]
+pub(crate) fn acquire_test_cwd_read_guard() -> std::sync::RwLockReadGuard<'static, ()> {
+    CWD_LOCK
+        .get_or_init(|| std::sync::RwLock::new(()))
+        .read()
         .unwrap_or_else(|poison| poison.into_inner())
 }
 
@@ -73813,7 +73830,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 mod tests {
     use std::io::Read;
 
-    use crate::acquire_test_cwd_lock;
+    use crate::acquire_test_cwd_write_guard;
     use ripr::output::receipt_lifecycle::{
         RECEIPT_MISSING, RECEIPT_MOVEMENT_IMPROVED, RECEIPT_NOT_APPLICABLE,
     };
@@ -81126,7 +81143,7 @@ TypeScript repair packet (advisory)
     }
 
     fn with_temp_cwd<T>(name: &str, f: impl FnOnce(&Path) -> T) -> T {
-        let lock = acquire_test_cwd_lock();
+        let lock = acquire_test_cwd_write_guard();
         let old = std::env::current_dir().unwrap();
         let root = temp_dir(name);
         std::env::set_current_dir(&root).unwrap();
@@ -81148,7 +81165,7 @@ TypeScript repair packet (advisory)
     }
 
     fn with_repo_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-        let guard = acquire_test_cwd_lock();
+        let guard = acquire_test_cwd_write_guard();
         let old = std::env::current_dir()
             .map_err(|err| format!("failed to capture current dir: {err}"))?;
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
