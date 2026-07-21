@@ -15,11 +15,13 @@ concurrency:
 
 jobs:
   preflight:
+    if: ${{ !contains(github.event.head_commit.message, '[sync-report]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       SOURCE_PARENT: ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
       SWARM_CANDIDATE: b026c4841d31df2b31c880c03684c905bf9f1f9c
+      RUNNER_BRANCH: agent/source-swarm-sync-runner-2026-07-21
     steps:
       - name: Check out runner branch with full source history
         uses: actions/checkout@v4
@@ -36,28 +38,36 @@ jobs:
           git fetch swarm "$SWARM_CANDIDATE"
           git cat-file -e "$SOURCE_PARENT^{commit}"
           git cat-file -e "$SWARM_CANDIDATE^{commit}"
-          printf 'source_parent=%s\n' "$SOURCE_PARENT"
-          printf 'swarm_candidate=%s\n' "$SWARM_CANDIDATE"
-          printf 'merge_base=%s\n' "$(git merge-base "$SOURCE_PARENT" "$SWARM_CANDIDATE")"
-          printf 'swarm_commits_since_base=%s\n' "$(git rev-list --count "$(git merge-base "$SOURCE_PARENT" "$SWARM_CANDIDATE")..$SWARM_CANDIDATE")"
 
-      - name: Run non-committing merge preflight
+      - name: Run non-committing merge and persist the report
         shell: bash
         run: |
           set -uo pipefail
           git config user.name "Effortless Metrics Sync Bot"
           git config user.email "actions@users.noreply.github.com"
+          merge_base="$(git merge-base "$SOURCE_PARENT" "$SWARM_CANDIDATE")"
+          swarm_count="$(git rev-list --count "$merge_base..$SWARM_CANDIDATE")"
           git switch --detach "$SOURCE_PARENT"
           set +e
           git merge --no-ff --no-commit "$SWARM_CANDIDATE"
           merge_status=$?
           set -e
-          printf 'merge_status=%s\n' "$merge_status"
-          echo '--- unresolved paths ---'
-          git diff --name-only --diff-filter=U || true
-          echo '--- working tree summary ---'
-          git status --short
-          echo '--- unmerged index entries ---'
-          git ls-files -u || true
+          {
+            printf 'source_parent=%s\n' "$SOURCE_PARENT"
+            printf 'swarm_candidate=%s\n' "$SWARM_CANDIDATE"
+            printf 'merge_base=%s\n' "$merge_base"
+            printf 'swarm_commits_since_base=%s\n' "$swarm_count"
+            printf 'merge_status=%s\n' "$merge_status"
+            echo '--- unresolved paths ---'
+            git diff --name-only --diff-filter=U || true
+            echo '--- working tree summary ---'
+            git status --short
+            echo '--- unmerged index entries ---'
+            git ls-files -u || true
+          } | tee /tmp/source-swarm-preflight.txt
           git merge --abort || true
-          exit 0
+          git switch "$RUNNER_BRANCH"
+          cp /tmp/source-swarm-preflight.txt source-swarm-preflight.txt
+          git add source-swarm-preflight.txt
+          git commit -m "chore: record source/swarm preflight [sync-report]"
+          git push origin "HEAD:$RUNNER_BRANCH"
