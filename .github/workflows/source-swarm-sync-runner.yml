@@ -1,4 +1,4 @@
-name: Source Swarm Sync Runner
+name: Source Swarm Promotion Runner
 
 on:
   push:
@@ -14,13 +14,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  resolve-and-check:
+  create-promotion:
     if: ${{ !contains(github.event.head_commit.message, '[sync-report]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       SOURCE_PARENT: ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
-      SWARM_CANDIDATE: b026c4841d31df2b31c880c03684c905bf9f1f9c
+      SWARM_CANDIDATE: 3a80c634f2157dee0e7f74fc72b7975f07699143
+      SWARM_FREEZE_REF: freeze/source-sync-2026-07-21
+      PROMOTION_BRANCH: promote/0.10.1-swarm
       RUNNER_BRANCH: agent/source-swarm-sync-runner-2026-07-21
     steps:
       - name: Check out runner branch with full source history
@@ -29,23 +31,72 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Resolve the join and run targeted proof
+      - name: Create, verify, and push the two-parent promotion join
         shell: bash
         run: |
           set -uo pipefail
           git config user.name "Effortless Metrics Sync Bot"
           git config user.email "actions@users.noreply.github.com"
           git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
-          git fetch origin "$SOURCE_PARENT"
-          git fetch swarm "$SWARM_CANDIDATE"
+          git fetch origin "$SOURCE_PARENT" "$RUNNER_BRANCH"
+          git fetch swarm main "$SWARM_CANDIDATE" "$SWARM_FREEZE_REF"
+
+          report=/tmp/source-swarm-promotion-report.txt
+          : > "$report"
+
+          source_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          freeze_sha="$(git rev-parse "swarm/$SWARM_FREEZE_REF")"
           merge_base="$(git merge-base "$SOURCE_PARENT" "$SWARM_CANDIDATE")"
           swarm_count="$(git rev-list --count "$merge_base..$SWARM_CANDIDATE")"
-          git switch --detach "$SOURCE_PARENT"
+          preflight_failed=0
+          if [ "$source_main" != "$SOURCE_PARENT" ]; then
+            preflight_failed=1
+          fi
+          if [ "$freeze_sha" != "$SWARM_CANDIDATE" ]; then
+            preflight_failed=1
+          fi
+          if ! git merge-base --is-ancestor "$SWARM_CANDIDATE" swarm/main; then
+            preflight_failed=1
+          fi
+
+          {
+            echo 'source_swarm_promotion_report=v1'
+            printf 'source_parent=%s\n' "$SOURCE_PARENT"
+            printf 'source_main_at_run=%s\n' "$source_main"
+            printf 'swarm_candidate=%s\n' "$SWARM_CANDIDATE"
+            printf 'swarm_freeze_ref=%s\n' "$SWARM_FREEZE_REF"
+            printf 'swarm_freeze_sha=%s\n' "$freeze_sha"
+            printf 'merge_base=%s\n' "$merge_base"
+            printf 'swarm_commits_since_merge_base=%s\n' "$swarm_count"
+            printf 'promotion_branch=%s\n' "$PROMOTION_BRANCH"
+            printf 'preflight_status=%s\n' "$preflight_failed"
+          } >> "$report"
+
+          publish_report() {
+            outcome="$1"
+            printf 'outcome=%s\n' "$outcome" >> "$report"
+            git merge --abort >/dev/null 2>&1 || true
+            git reset --hard >/dev/null 2>&1 || true
+            git switch "$RUNNER_BRANCH"
+            git pull --ff-only origin "$RUNNER_BRANCH"
+            cp "$report" source-swarm-promotion-report.txt
+            git add source-swarm-promotion-report.txt
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: record source/swarm promotion proof [sync-report]"
+              git push origin "HEAD:$RUNNER_BRANCH"
+            fi
+          }
+
+          if [ "$preflight_failed" -ne 0 ]; then
+            publish_report preflight_failed
+            exit 1
+          fi
+
+          git switch -C "$PROMOTION_BRANCH" "$SOURCE_PARENT"
           set +e
           git merge --no-ff --no-commit "$SWARM_CANDIDATE"
           merge_status=$?
           set -e
-
           unresolved_before="$(git diff --name-only --diff-filter=U | sort)"
           expected_unresolved="$(cat <<'EOF'
           CHANGELOG.md
@@ -63,7 +114,19 @@ jobs:
           if [ "$unresolved_before" != "$expected_unresolved" ]; then
             conflict_set_status=1
           fi
+          {
+            printf 'merge_status=%s\n' "$merge_status"
+            printf 'conflict_set_status=%s\n' "$conflict_set_status"
+            echo '--- unresolved before ---'
+            printf '%s\n' "$unresolved_before"
+          } >> "$report"
+          if [ "$conflict_set_status" -ne 0 ]; then
+            publish_report unexpected_conflicts
+            exit 1
+          fi
 
+          # Current swarm structure wins for analyzer, output, editor, fixture,
+          # and policy files. Source remains authoritative for release settings.
           git checkout --theirs -- \
             CHANGELOG.md \
             crates/ripr/src/analysis/probes/diff.rs \
@@ -77,7 +140,6 @@ jobs:
 
           python3 <<'PY'
           from pathlib import Path
-          import os
           import re
 
           def read(path: str) -> str:
@@ -86,8 +148,8 @@ jobs:
           def write(path: str, text: str) -> None:
               Path(path).write_text(text, encoding="utf-8")
 
-          # Keep current swarm probe construction and insert the bounded adapter
-          # authority before parser/lexical fallback classification.
+          # Port the source-only bounded subprocess recognizer into the current
+          # parser-backed swarm probe pipeline before parser/lexical fallback.
           path = "crates/ripr/src/analysis/probes/diff.rs"
           text = read(path)
           import_line = "use super::subprocess::bounded_subprocess_family;\n"
@@ -110,7 +172,8 @@ jobs:
               text = text.replace("mod repo;\n", "mod repo;\nmod subprocess;\n", 1)
           write(mod_path, text)
 
-          # Allocate a collision-free spec identity from the merged registry.
+          # Resolve the semantic RIPR-SPEC-0112 collision by allocating the next
+          # identity from the merged registry rather than guessing in advance.
           old_spec = Path("docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md")
           ids = []
           for candidate in Path("docs/specs").glob("RIPR-SPEC-*.md"):
@@ -121,12 +184,9 @@ jobs:
                   ids.append(int(match.group(1)))
           new_num = max(ids) + 1
           new_id = f"RIPR-SPEC-{new_num:04d}"
-          new_spec = old_spec.with_name(
-              f"{new_id}-bounded-subprocess-adapter-boundary.md"
-          )
+          new_spec = old_spec.with_name(f"{new_id}-bounded-subprocess-adapter-boundary.md")
           old_spec.rename(new_spec)
-          text = read(str(new_spec)).replace("RIPR-SPEC-0112", new_id)
-          write(str(new_spec), text)
+          write(str(new_spec), read(str(new_spec)).replace("RIPR-SPEC-0112", new_id))
           Path("/tmp/new-spec-id.txt").write_text(new_id, encoding="utf-8")
 
           trace_path = ".ripr/traceability.toml"
@@ -142,8 +202,6 @@ jobs:
           )
           write(trace_path, text)
 
-          # Preserve the complete swarm spec registry and append the source-only
-          # bounded subprocess contract under its newly allocated identity.
           specs_index = "docs/specs/README.md"
           text = read(specs_index).rstrip() + "\n"
           row = (
@@ -186,15 +244,18 @@ jobs:
               "add a network client.\n"
           )
           if network_row not in text:
-              anchor = "crates/ripr/src/output/typescript_packet_projection.rs|curl"
-              position = text.find(anchor)
+              anchors = [
+                  "crates/ripr/src/output/perl_gap_record_projection.rs|curl",
+                  "crates/ripr/src/output/typescript_packet_projection.rs|curl",
+              ]
+              position = next((text.find(anchor) for anchor in anchors if text.find(anchor) >= 0), -1)
               if position < 0:
                   raise SystemExit("network allowlist insertion anchor not found")
               text = text[:position] + network_row + text[position:]
           write(network_path, text)
 
-          # Preserve swarm's accumulated Unreleased and historical corrections,
-          # then insert source's staged 0.10.1 section.
+          # Preserve source's already-staged 0.10.1 release metadata while
+          # retaining swarm's accumulated Unreleased history and dependency tree.
           changelog_path = "CHANGELOG.md"
           text = read(changelog_path)
           section = f"""## 0.10.1 - Bounded subprocess adapter analysis\n\nRelease date: staged (unreleased).\n\nRIPR 0.10.1 adds a narrow, deny-by-default boundary for recognizing bounded\nallowlisted subprocess adapters as observable side effects during static\nanalysis. The boundary preserves strict exposure behavior for dynamic, shell,\nunbounded, or otherwise unsupported subprocess shapes.\n\n### Fixed\n\n- **Bounded subprocess adapter classification** ({new_id}, #1454):\n  receipt-producing adapters with a literal allowlisted command, arguments,\n  timeout, captured output, cleanup, and explicit error handling can use the\n  existing `side_effect` probe family. Dynamic command names and shell-shaped\n  dispatch remain unclassified and continue through the conservative exposure\n  path.\n\n### Non-claims\n\n- RIPR remains static mutation-exposure analysis; this release does not execute\n  subprocesses, prove runtime subprocess safety, run mutation testing, or add a\n  network client.\n\n"""
@@ -205,14 +266,11 @@ jobs:
               text = text.replace(marker, section + marker, 1)
           write(changelog_path, text)
 
-          # Keep source release/distribution version authority while retaining
-          # the newer swarm dependency graph and product surface.
           cargo_toml = "crates/ripr/Cargo.toml"
-          text = read(cargo_toml)
           text, count = re.subn(
               r'(\[package\]\nname = "ripr"\nversion = ")[^"]+("\n)',
               r'\g<1>0.10.1\2',
-              text,
+              read(cargo_toml),
               count=1,
           )
           if count != 1:
@@ -220,11 +278,10 @@ jobs:
           write(cargo_toml, text)
 
           cargo_lock = "Cargo.lock"
-          text = read(cargo_lock)
           text, count = re.subn(
               r'(\[\[package\]\]\nname = "ripr"\nversion = ")[^"]+("\n)',
               r'\g<1>0.10.1\2',
-              text,
+              read(cargo_lock),
               count=1,
           )
           if count != 1:
@@ -232,11 +289,10 @@ jobs:
           write(cargo_lock, text)
 
           package_json = "editors/vscode/package.json"
-          text = read(package_json)
           text, count = re.subn(
               r'("version": ")[^"]+("[,])',
               r'\g<1>0.10.1\2',
-              text,
+              read(package_json),
               count=1,
           )
           if count != 1:
@@ -244,32 +300,69 @@ jobs:
           write(package_json, text)
 
           package_lock = "editors/vscode/package-lock.json"
-          text = read(package_lock)
           text, count = re.subn(
               r'("version": ")[^"]+("[,])',
               r'\g<1>0.10.1\2',
-              text,
+              read(package_lock),
               count=2,
           )
           if count != 2:
               raise SystemExit("VS Code lock versions replacement failed")
           write(package_lock, text)
+
+          # The merged settings document must describe source policy rather than
+          # silently applying the swarm-only squash/auto-merge contract to ripr.
+          settings_doc = "docs/REPO_SETTINGS.md"
+          text = read(settings_doc)
+          old_intro = """This checkout is `EffortlessMetrics/ripr-swarm`, the public development landing\nzone for trusted same-repo `ripr` PRs. The release-facing source repository\nremains `EffortlessMetrics/ripr`.\n"""
+          new_intro = """This checkout is `EffortlessMetrics/ripr`, the release, publishing, signing,\nmarketplace, badge, and distribution authority. Reviewed development lands in\n`EffortlessMetrics/ripr-swarm` and is promoted here with preserved history.\n"""
+          if old_intro not in text:
+              raise SystemExit("repository settings intro anchor not found")
+          text = text.replace(old_intro, new_intro, 1)
+          old_managed = """- merge policy: squash merge enabled, merge commits disabled, rebase merge\n  disabled, auto-merge enabled, update branch enabled, and delete branch on\n  merge enabled\n- branch protection for `main` requires only the routed `Ripr Rust Small\n  Result` check\n"""
+          new_managed = """- merge policy: squash and merge commits enabled, rebase merge and auto-merge\n  disabled, update branch enabled, and delete branch on merge enabled\n- branch protection for `main` requires `rust`, `msrv`, `vscode`, `cargo-deny`,\n  and `dependency-review`\n"""
+          if old_managed not in text:
+              raise SystemExit("repository settings managed-policy anchor not found")
+          text = text.replace(old_managed, new_managed, 1)
+          text = text.replace("`EffortlessMetrics/ripr-swarm`.\n- Let the app apply", "`EffortlessMetrics/ripr`.\n- Let the app apply", 1)
+          text = text.replace("## Swarm Development Boundary", "## Source / Swarm Boundary", 1)
+          text = text.replace(
+              "`ripr-swarm` is not the release authority for `ripr`. Keep these surfaces in\n`EffortlessMetrics/ripr` until a focused promotion changes that boundary:",
+              "`ripr` is the release authority. Keep these surfaces here unless a focused,\nreviewed boundary change explicitly moves them:",
+              1,
+          )
+          text = text.replace(
+              "must pass the protected routed result and any owner-required security review\nbefore merge. Security, coverage, and `xtask` lanes remain review signals unless\npromoted in a focused policy PR.",
+              "must pass the protected source checks and any owner-required security review\nbefore merge. Additional security, coverage, and `xtask` lanes remain review\nsignals unless promoted in a focused policy PR.",
+              1,
+          )
+          branch_start = text.index("## Branch Protection And Rulesets")
+          release_start = text.index("## Release Environments")
+          source_branch_section = """## Branch Protection And Rulesets\n\nRequired checks use emitted check-run names, not display-style workflow\nprefixes. Source `main` requires:\n\n- `rust`\n- `msrv`\n- `vscode`\n- `cargo-deny`\n- `dependency-review`\n\nThe routed `Ripr Rust Small Result` remains useful development-trunk evidence,\nbut it does not replace the source repository's release-oriented protected\nchecks.\n\nSettings App managed rules:\n\n- block force pushes to `main`;\n- block branch deletion for `main`;\n- leave conversation resolution disabled unless a focused policy change\n  promotes it;\n- leave linear history disabled so history-preserving source promotions are\n  possible;\n- permit squash merges for ordinary PRs and merge commits for audited source\n  promotions;\n- keep rebase merge and auto-merge disabled; and\n- require release workflow changes to pass security review.\n\nGitHub Rulesets should separately block direct pushes to `main` and require the\nPR merge path. A source promotion must use **Create a merge commit** so the\nreviewed two-parent join remains reachable; it must never be squashed or\nrebased. See [Source Promotion](SOURCE_PROMOTION.md).\n\nAdvisory lanes should not become protected requirements without a focused\npolicy change after calibration.\n\n"""
+          text = text[:branch_start] + source_branch_section + text[release_start:]
+          write(settings_doc, text)
+
+          # Normalize inherited whitespace that makes the source promotion diff
+          # fail `git diff --check`; preserve the actual blank patch lines.
+          whitespace_paths = [
+              "docs/handoffs/2026-07-11-targeted-rerun-benchmark.md",
+              "docs/handoffs/2026-07-12-call-presence-evidence-packet.md",
+              "docs/status/RUST_ROUTE_QUALITY.md",
+              "fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff",
+              "fixtures/rust_transitive_reach_test_helper_chain/diff.patch",
+              "plans/rust-one-shot-evidence-to-repair.md",
+          ]
+          for item in whitespace_paths:
+              path_obj = Path(item)
+              lines = path_obj.read_text(encoding="utf-8").splitlines()
+              path_obj.write_text("\n".join(line.rstrip(" \t") for line in lines) + "\n", encoding="utf-8")
           PY
 
           git add -A
           unresolved_after="$(git diff --name-only --diff-filter=U | sort)"
-
-          report=/tmp/source-swarm-resolution-report.txt
+          new_spec_id="$(cat /tmp/new-spec-id.txt)"
           {
-            printf 'source_parent=%s\n' "$SOURCE_PARENT"
-            printf 'swarm_candidate=%s\n' "$SWARM_CANDIDATE"
-            printf 'merge_base=%s\n' "$merge_base"
-            printf 'swarm_commits_since_base=%s\n' "$swarm_count"
-            printf 'merge_status=%s\n' "$merge_status"
-            printf 'conflict_set_status=%s\n' "$conflict_set_status"
-            printf 'new_spec_id=%s\n' "$(cat /tmp/new-spec-id.txt)"
-            echo '--- unresolved before ---'
-            printf '%s\n' "$unresolved_before"
+            printf 'new_spec_id=%s\n' "$new_spec_id"
             echo '--- unresolved after ---'
             printf '%s\n' "$unresolved_after"
             echo '--- staged diff stat ---'
@@ -279,11 +372,11 @@ jobs:
             grep -n '^version = "0.10.1"' crates/ripr/Cargo.toml || true
             grep -n '"version": "0.10.1"' editors/vscode/package.json | head -1 || true
             grep -n 'bounded subprocess adapter boundary' .ripr/traceability.toml || true
-            echo '--- bounded subprocess integration diff ---'
-            git diff --cached -- crates/ripr/src/analysis/probes/diff.rs crates/ripr/src/analysis/probes/mod.rs || true
-          } > "$report"
+            grep -n 'This checkout is `EffortlessMetrics/ripr`' docs/REPO_SETTINGS.md || true
+          } >> "$report"
 
-          run_check() {
+          required_failed=0
+          run_required() {
             name="$1"
             shift
             log="/tmp/${name}.log"
@@ -293,25 +386,66 @@ jobs:
             set -e
             {
               printf '\n--- check %s status=%s ---\n' "$name" "$status"
-              tail -120 "$log"
+              tail -160 "$log"
             } >> "$report"
+            if [ "$status" -ne 0 ]; then
+              required_failed=1
+            fi
           }
 
-          run_check no_unmerged bash -lc 'test -z "$(git diff --name-only --diff-filter=U)"'
-          run_check diff_check git diff --cached --check
-          run_check fmt cargo fmt --all -- --check
-          run_check subprocess_tests cargo test -p ripr subprocess --locked
-          run_check bounded_probe_test cargo test -p ripr probes_for_file_emits_side_effect_for_bounded_adapter_line --locked
-          run_check spec_format cargo xtask check-spec-format
-          run_check spec_numbering cargo xtask check-spec-numbering
-          run_check traceability cargo xtask check-traceability
-          run_check process_policy cargo xtask check-process-policy
-          run_check network_policy cargo xtask check-network-policy
-          run_check cargo_check cargo check -p ripr --all-targets --all-features --locked
+          run_required no_unmerged bash -lc 'test -z "$(git diff --name-only --diff-filter=U)"'
+          run_required diff_check git diff --cached --check
+          run_required fmt cargo fmt --all -- --check
+          run_required subprocess_tests cargo test -p ripr subprocess --locked
+          run_required bounded_probe_test cargo test -p ripr probes_for_file_emits_side_effect_for_bounded_adapter_line --locked
+          run_required ripr_lib_tests cargo test -p ripr --lib --locked
+          run_required spec_format cargo xtask check-spec-format
+          run_required spec_numbering cargo xtask check-spec-numbering
+          run_required traceability cargo xtask check-traceability
+          run_required doc_index cargo xtask check-doc-index
+          run_required doc_artifacts cargo xtask check-doc-artifacts
+          run_required file_policy cargo xtask check-file-policy
+          run_required static_language cargo xtask check-static-language
+          run_required workflow_policy cargo xtask check-workflows
+          run_required process_policy cargo xtask check-process-policy
+          run_required network_policy cargo xtask check-network-policy
+          run_required architecture cargo xtask check-architecture
+          run_required workspace_shape cargo xtask check-workspace-shape
+          run_required output_contracts cargo xtask check-output-contracts
+          run_required goldens cargo xtask goldens check
+          run_required cargo_check cargo check --workspace --all-targets --all-features --locked
 
-          git merge --abort || true
-          git switch "$RUNNER_BRANCH"
-          cp "$report" source-swarm-resolution-report.txt
-          git add source-swarm-resolution-report.txt
-          git commit -m "chore: record source/swarm resolution proof [sync-report]"
-          git push origin "HEAD:$RUNNER_BRANCH"
+          if [ "$required_failed" -ne 0 ]; then
+            publish_report validation_failed
+            exit 1
+          fi
+
+          git commit -m "promote: join frozen ripr-swarm candidate for 0.10.1" \
+            -m "Parent 1 preserves source release authority at $SOURCE_PARENT." \
+            -m "Parent 2 preserves reviewed swarm history at $SWARM_CANDIDATE."
+          join_sha="$(git rev-parse HEAD)"
+          parent_one="$(git rev-parse HEAD^1)"
+          parent_two="$(git rev-parse HEAD^2)"
+          parent_count="$(git show -s --format='%P' HEAD | wc -w | tr -d ' ')"
+          topology_failed=0
+          [ "$parent_count" = "2" ] || topology_failed=1
+          [ "$parent_one" = "$SOURCE_PARENT" ] || topology_failed=1
+          [ "$parent_two" = "$SWARM_CANDIDATE" ] || topology_failed=1
+          git merge-base --is-ancestor "$SOURCE_PARENT" "$join_sha" || topology_failed=1
+          git merge-base --is-ancestor "$SWARM_CANDIDATE" "$join_sha" || topology_failed=1
+          {
+            printf 'join_sha=%s\n' "$join_sha"
+            printf 'join_parent_count=%s\n' "$parent_count"
+            printf 'join_parent_1=%s\n' "$parent_one"
+            printf 'join_parent_2=%s\n' "$parent_two"
+            printf 'topology_status=%s\n' "$topology_failed"
+            echo '--- join summary ---'
+            git show -s --format='join %H%nparents %P%nsubject %s' "$join_sha"
+          } >> "$report"
+          if [ "$topology_failed" -ne 0 ]; then
+            publish_report topology_failed
+            exit 1
+          fi
+
+          git push origin "HEAD:refs/heads/$PROMOTION_BRANCH"
+          publish_report promotion_branch_pushed
