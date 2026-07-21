@@ -1,0 +1,14 @@
+823:2026-07-21T21:02:00.8219936Z [5525:0721/210200.821020:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+824:2026-07-21T21:02:00.8422928Z [5525:0721/210200.840552:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+825:2026-07-21T21:02:00.8425424Z [5525:0721/210200.841106:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+826:2026-07-21T21:02:00.8453157Z [5525:0721/210200.843963:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+828:2026-07-21T21:02:01.0918261Z [5525:0721/210201.091108:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+834:2026-07-21T21:02:01.1388847Z [5525:0721/210201.138485:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+948:2026-07-21T21:04:09.1756639Z   [32m  ✔[0m[90m startServerOnce coalesces concurrent starts and retries after failure[0m
+956:2026-07-21T21:04:09.1776658Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+969:2026-07-21T21:04:09.1789268Z [0m[31m     Error: timed out waiting for ripr seam diagnostic.
+983:2026-07-21T21:04:09.1799364Z       [31mAssertionError [ERR_ASSERTION]: expected setup report to include ripr server state: ripr_version_ok (ripr 0.8.0-test)
+1020:2026-07-21T21:04:09.1829572Z       [32m+ expected[0m [31m- actual[0m
+1030:2026-07-21T21:04:09.1836416Z Error: 3 tests failed.
+1033:2026-07-21T21:04:09.1839182Z Extension host test runner error Error: 3 tests failed.
+1039:2026-07-21T21:04:09.3864451Z Failed to run tests: TestRunFailedError: Test run failed with code 1
