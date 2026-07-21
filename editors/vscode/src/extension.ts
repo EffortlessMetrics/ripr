@@ -176,6 +176,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         output.appendLine(`ripr server start after workspace trust failed: ${String(error)}`);
       }
     }),
+    // Auto-start when a workspace folder appears after a no-workspace start.
+    // Without this listener, opening a single Rust file first (no folder)
+    // hits the noWorkspace early return in client.ts and stops. Opening
+    // a folder later does nothing — the user has to run `ripr: Restart
+    // Server` manually. We only react when the PRE-event folder count was
+    // zero and at least one folder was added, so we don't restart on
+    // routine folder additions/removals in an already-running multi-root
+    // workspace. The pre-event count is derived from the post-event count
+    // by adding back removals and subtracting additions. (#2015)
+    vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      const folderCount = vscode.workspace.workspaceFolders?.length ?? 0;
+      // Reconstruct the pre-event folder count. VS Code does not expose it
+      // directly; derive it from the post-event count and the event delta.
+      const preEventFolderCount = folderCount + event.removed.length - event.added.length;
+      const zeroToFolderTransition = preEventFolderCount === 0 && event.added.length > 0;
+      if (zeroToFolderTransition && !controller?.isRunning()) {
+        output.appendLine('ripr workspace folder added; starting server session.');
+        try {
+          await controller?.start();
+        } catch (error) {
+          output.appendLine(`ripr server start after workspace folder added failed: ${String(error)}`);
+        }
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (
         event.affectsConfiguration('ripr.enabled') ||

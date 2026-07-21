@@ -208,6 +208,19 @@ export class RiprClientController {
     nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
+  /**
+   * In-flight start() promise, used to deduplicate concurrent start attempts.
+   *
+   * start() is re-entrant from several listeners: the initial activate() call,
+   * onDidGrantWorkspaceTrust, onDidChangeWorkspaceFolders, and restart()
+   * (which calls stop() then start()). Without deduplication, two events
+   * firing in quick succession during the async setup window (before
+   * this.client is assigned) would both pass the `if (this.client) return`
+   * guard and both spawn a server. The promise is cleared on
+   * completion/failure so the next start() attempt can proceed. (#2060
+   * review feedback.)
+   */
+  private startingPromise: Promise<void> | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -219,6 +232,30 @@ export class RiprClientController {
   }
 
   async start(): Promise<void> {
+    // Fast path: server is already up.
+    if (this.client) {
+      return;
+    }
+    // Deduplicate concurrent in-flight starts. Two listeners firing in quick
+    // succession (e.g. trust granted + workspace folder added) would otherwise
+    // both pass the `if (this.client) return` guard above during the async
+    // setup window and both spawn a server. The promise is cleared on
+    // completion/failure so the next start() attempt can proceed.
+    if (this.startingPromise) {
+      return this.startingPromise;
+    }
+    const promise = this.startOnce();
+    this.startingPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.startingPromise === promise) {
+        this.startingPromise = undefined;
+      }
+    }
+  }
+
+  private async startOnce(): Promise<void> {
     if (this.client) {
       return;
     }
@@ -362,9 +399,25 @@ export class RiprClientController {
     await this.start();
   }
 
+  /**
+   * Whether the language client is currently bound and (nominally) running.
+   * Used by listeners (e.g. onDidChangeWorkspaceFolders) to decide whether a
+   * transition should trigger a fresh start, or whether the server is already
+   * up and a restart would just churn. This is a cheap nominal check; it does
+   * not probe the language-client's actual lifecycle state.
+   */
+  isRunning(): boolean {
+    return this.client !== undefined;
+  }
+
   async stop(): Promise<void> {
     const client = this.client;
     this.client = undefined;
+    // Clear any in-flight start dedup so the next start() can proceed fresh.
+    // If a start() is mid-flight when stop() is called, that start's finally
+    // block will see startingPromise !== its own promise and leave the field
+    // cleared.
+    this.startingPromise = undefined;
     this.server = undefined;
     this.receivedTypedAnalysisStatus = false;
     this.typedAnalysisStatusState = undefined;
