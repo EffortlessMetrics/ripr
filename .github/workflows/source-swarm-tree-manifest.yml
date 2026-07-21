@@ -1,0 +1,132 @@
+name: Source Swarm Join Tree Manifest
+
+on:
+  push:
+    branches:
+      - agent/source-swarm-tree-manifest-2026-07-21
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-swarm-tree-manifest-2026-07-21
+  cancel-in-progress: true
+
+jobs:
+  export-tree:
+    if: ${{ !contains(github.event.head_commit.message, '[sync-report]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_PARENT: ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
+      SWARM_CANDIDATE: 3a80c634f2157dee0e7f74fc72b7975f07699143
+      SWARM_FREEZE_REF: freeze/source-sync-2026-07-21
+      PROMOTION_BRANCH: promote/0.10.1-swarm
+      RUNNER_BRANCH: agent/source-swarm-tree-manifest-2026-07-21
+    steps:
+      - name: Check out manifest branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reproduce validated join and export Git-tree entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -ryaml -e '
+            workflow = YAML.load_file(".github/workflows/source-swarm-sync-runner.yml")
+            step = workflow.fetch("jobs").fetch("create-promotion").fetch("steps").find do |candidate|
+              candidate["name"] == "Create, verify, and push the two-parent promotion join"
+            end
+            abort("promotion step not found") unless step
+            print step.fetch("run")
+          ' > /tmp/promote-original.sh
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/promote-original.sh')
+          script = path.read_text(encoding='utf-8')
+
+          old_copy = '''    cp "$report" source-swarm-promotion-report.txt
+              git add source-swarm-promotion-report.txt'''
+          new_copy = '''    cp "$report" source-swarm-promotion-report.txt
+              cp /tmp/source-swarm-final-tree-summary.json source-swarm-final-tree-summary.json
+              cp /tmp/source-swarm-final-tree-entries.ndjson source-swarm-final-tree-entries.ndjson
+              git add source-swarm-promotion-report.txt source-swarm-final-tree-summary.json source-swarm-final-tree-entries.ndjson'''
+          if old_copy not in script:
+              raise SystemExit('publish_report copy block not found')
+          script = script.replace(old_copy, new_copy, 1)
+
+          old_end = '''git push origin "HEAD:refs/heads/$PROMOTION_BRANCH"
+          publish_report promotion_branch_pushed'''
+          new_end = r'''python3 <<'PYTREE'
+          import json
+          import os
+          import subprocess
+
+          def tree_entries(revision: str):
+              raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', revision])
+              entries = {}
+              for record in raw.split(b'\0'):
+                  if not record:
+                      continue
+                  metadata, raw_path = record.split(b'\t', 1)
+                  mode, object_type, sha = metadata.decode('ascii').split()
+                  path = raw_path.decode('utf-8')
+                  entries[path] = {
+                      'mode': mode,
+                      'type': object_type,
+                      'sha': sha,
+                  }
+              return entries
+
+          base = tree_entries(os.environ['SWARM_CANDIDATE'])
+          resolved = tree_entries('HEAD')
+          changes = []
+          for path in sorted(set(base) | set(resolved)):
+              before = base.get(path)
+              after = resolved.get(path)
+              if before == after:
+                  continue
+              if after is None:
+                  changes.append({
+                      'path': path,
+                      'mode': before['mode'],
+                      'type': before['type'],
+                      'sha': None,
+                  })
+              else:
+                  changes.append({'path': path, **after})
+
+          def rev_parse(expression: str) -> str:
+              return subprocess.check_output(['git', 'rev-parse', expression], text=True).strip()
+
+          summary = {
+              'schema_version': 1,
+              'source_parent': os.environ['SOURCE_PARENT'],
+              'source_tree_sha': rev_parse(os.environ['SOURCE_PARENT'] + '^{tree}'),
+              'swarm_candidate': os.environ['SWARM_CANDIDATE'],
+              'swarm_tree_sha': rev_parse(os.environ['SWARM_CANDIDATE'] + '^{tree}'),
+              'resolved_join_sha': rev_parse('HEAD'),
+              'resolved_tree_sha': rev_parse('HEAD^{tree}'),
+              'parent_1': rev_parse('HEAD^1'),
+              'parent_2': rev_parse('HEAD^2'),
+              'entry_count': len(changes),
+          }
+          with open('/tmp/source-swarm-final-tree-summary.json', 'w', encoding='utf-8') as handle:
+              json.dump(summary, handle, indent=2, sort_keys=True)
+              handle.write('\n')
+          with open('/tmp/source-swarm-final-tree-entries.ndjson', 'w', encoding='utf-8') as handle:
+              for entry in changes:
+                  handle.write(json.dumps(entry, sort_keys=True, separators=(',', ':')) + '\n')
+          PYTREE
+          publish_report ready_for_api_publish'''
+          if old_end not in script:
+              raise SystemExit('promotion push block not found')
+          script = script.replace(old_end, new_end, 1)
+          path.write_text(script, encoding='utf-8')
+          PY
+
+          bash /tmp/promote-original.sh
