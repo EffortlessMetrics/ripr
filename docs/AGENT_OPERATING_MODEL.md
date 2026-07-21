@@ -198,9 +198,12 @@ Specifically:
 
 ### CI watching
 
-Use the cost-aware adaptive poller (the `ci-watch` skill), not `gh run watch`.
+Poll check status with cost-aware, spaced queries (for example
+`gh pr checks <pr>` at widening intervals), not `gh run watch`.
 `gh run watch` polls every 3 seconds and consumes the authenticated rate limit
-across long runs.
+across long runs. (An earlier revision of this section named a `ci-watch`
+skill; no such skill exists in the repo — the guidance is the polling
+discipline itself, see `docs/LIBRARY.md`'s CI watcher economics entry.)
 
 Do not repeatedly poll unchanged advisory state. Park only the affected merge
 step, continue an independent dependency-safe lane when available, and issue at

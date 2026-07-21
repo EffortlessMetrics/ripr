@@ -656,6 +656,10 @@ When picking up work:
 - use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
 - use `docs/CODEX_GOALS.md` for the multi-PR campaign model
 - use `docs/SCOPED_PR_CONTRACT.md` for one work item's PR-sized evidence bar
+- use `.allow/spec-system/slices/` for one PR's scope of record: each
+  behavior-changing PR owns a small PR-local `ImplementationSliceV1` there
+  (requirement IDs, change class, seams, evidence obligations, non-goals,
+  claim boundary) — never worker, branch, CI, or progress state
 - use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
 - choose the smallest vertical slice with one production delta and one evidence
   package
