@@ -135,7 +135,7 @@ jobs:
               r'(?m)^git push origin "HEAD:refs/heads/\$PROMOTION_BRANCH"\n'
               r'publish_report promotion_branch_pushed$'
           )
-          script, end_count = end_pattern.subn(manifest_block, script, count=1)
+          script, end_count = end_pattern.subn(lambda _: manifest_block, script, count=1)
           if end_count != 1:
               raise SystemExit(f'promotion push block count={end_count}')
 
