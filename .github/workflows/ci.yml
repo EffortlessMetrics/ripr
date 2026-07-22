@@ -37,7 +37,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       # Campaign 31 PR 11/C1: exercise the lang-perl feature-gated code path.
-      - run: cargo check -p ripr --no-default-features --features lang-perl
+      - run: cargo check -p ripr --no-default-features --features lang-rust,lang-perl
       - run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
       - run: cargo xtask check-static-language
       - run: cargo xtask check-no-panic-family
@@ -163,6 +163,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - name: Report promotion tree identity
+        run: echo "PROMOTION_TREE_SHA=$(git rev-parse 'HEAD^{tree}')"
       - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
