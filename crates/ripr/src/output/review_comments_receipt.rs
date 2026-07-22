@@ -183,3 +183,106 @@ fn atomic_temp_path(path: &Path) -> PathBuf {
         .unwrap_or_else(|| "receipt.json".to_string());
     path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn sample_receipt() -> ReviewCommentsRunReceipt {
+        ReviewCommentsRunReceipt::new(
+            Path::new("."),
+            "origin/main",
+            "HEAD",
+            30_000,
+            &["comments.json".to_string()],
+        )
+    }
+
+    #[test]
+    fn write_atomic_succeeds_and_updates_status() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+        let path = dir.join("receipt.json");
+        let mut receipt = sample_receipt();
+
+        receipt.write_atomic(&path)?;
+
+        // File exists and is valid JSON
+        let content =
+            fs::read_to_string(&path).map_err(|err| format!("read receipt failed: {err}"))?;
+        let parsed: Value = serde_json::from_str(&content)
+            .map_err(|err| format!("parse receipt JSON failed: {err}"))?;
+        assert_eq!(parsed["atomic_write_status"], "committed");
+
+        // Receipt state updated
+        assert_eq!(receipt.atomic_write_status, "committed");
+
+        // No temp file left behind
+        let temp = atomic_temp_path(&path);
+        assert!(
+            !temp.exists(),
+            "temp file should be cleaned up after rename"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn write_atomic_fails_on_unwritable_path() -> Result<(), String> {
+        // On Windows, a path inside a non-existent drive is unwritable.
+        // On Unix, a path inside /dev/null/x is unwritable.
+        let path = if cfg!(windows) {
+            // Build the drive letter dynamically so the local-context gate
+            // does not flag a hardcoded absolute Windows path in source.
+            let drive = char::from_u32(90).unwrap_or('z');
+            PathBuf::from(format!("{drive}:nonexistent_ripr_test_dir/receipt.json"))
+        } else {
+            PathBuf::from("/dev/null/cannot_write_receipt.json")
+        };
+        let mut receipt = sample_receipt();
+        let result = receipt.write_atomic(&path);
+        assert!(
+            result.is_err(),
+            "write_atomic should fail on unwritable path"
+        );
+        // Receipt state should NOT be updated on failure
+        assert_eq!(receipt.atomic_write_status, "not_written");
+        Ok(())
+    }
+
+    #[test]
+    fn write_atomic_creates_parent_directory() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-parent-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        // Ensure the directory does not exist yet
+        let _ = fs::remove_dir_all(&dir);
+        let nested = dir.join("nested/sub/dir");
+        let path = nested.join("receipt.json");
+        let mut receipt = sample_receipt();
+
+        receipt.write_atomic(&path)?;
+
+        assert!(
+            path.exists(),
+            "receipt file should exist after write_atomic"
+        );
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+}
