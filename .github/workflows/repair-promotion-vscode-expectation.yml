@@ -18,7 +18,7 @@ jobs:
         with:
           ref: promote/0.10.1-swarm
           fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dcba9c38 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           cache: npm
