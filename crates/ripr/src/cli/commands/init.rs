@@ -211,6 +211,18 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Cache the cargo registry, git checkouts, and dependency builds
+      # (#2008): an uncached `cargo install ripr --locked` recompiles for
+      # minutes on every PR. The install itself still runs (no stale-binary
+      # risk); the warm caches cut most of the compile.
+      # Pinned to a commit SHA (#2190 review): the generated workflow
+      # grants pull-requests: write and security-events: write, so a
+      # mutable third-party tag is a supply-chain risk in consumer repos.
+      # Swatinem/rust-cache v2 = e18b497796c12c097a38f9edb9d0641fb99eee32.
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ripr-install
+
       - name: Install ripr
         run: cargo install ripr --locked
 
