@@ -1799,3 +1799,72 @@ not a question of *if* but *when*. Extract the logic into one function and call
 it from both sites. The cost of extraction is always lower than the cost of the
 bug that drift produces — especially when the drift is in a fail-closed
 posture (one copy discloses `seams_deferred`, the other doesn't).
+
+## 2026-07-22: The required CI lane must invoke the local gate table, not enumerate a copy
+
+The routed-rust lanes enumerated an xtask check list that had drifted from
+`cargo xtask precommit` by ten gates (`check-architecture`,
+`check-readme-state`, `check-workspace-shape`, `check-public-api`,
+`check-doc-artifacts`, `check-doc-index`, `markdown-links`, `check-pr-shape`,
+`check-proof-packs`, `check-lint-policy`). Main broke three times in one day
+(#2234, #2240, #2257) when PRs passed the required lane but violated a gate
+that only ran locally — and `check-architecture` is textual, so docs-only and
+test-only diffs are not exempt. The fix (#2265) makes every required lane and
+the docs-gate invoke `cargo xtask precommit` as the single shared table and
+pins the composition with drift tests.
+
+The lesson: never maintain two enumerated copies of a gate list — one always
+drifts. A lane should invoke the same entry point developers run locally; if
+a gate is too slow for the lane, narrow the documented contract explicitly
+rather than letting the lane silently skip it. Command-catalog truth then
+needs a semantic expansion rule (an enforced `precommit` invocation
+transitively enforces its table), not just string matching.
+
+## 2026-07-22: Advisory databases move under a green main
+
+`cargo deny check advisories` went red on main with zero repo changes when
+RUSTSEC-2026-0190 (anyhow `Error::downcast_mut` unsoundness) was published;
+the locked anyhow 1.0.102 predated the patched >=1.0.103 floor. The fix was
+an in-range lockfile bump (#2263), not a suppression.
+
+The lesson: a cargo-deny failure on an unrelated PR is often a newly
+published advisory, not the PR's diff. Reproduce on clean main first; the
+fix is usually `cargo update -p <crate>` within the existing semver
+requirement. Related verification: cargo-deny 0.18.9 does not deserialize
+`until` fields on advisory ignores, so expiry enforcement for long-lived
+suppressions must live in repo tooling (an xtask check reading dated
+comments), not in deny.toml syntax (#1949).
+
+## 2026-07-22: Canonical-input validation must compare bytes, not parsed values
+
+The receipt verify-input validator compared two parsed `serde_json::Value`s;
+hand-authored JSON with identical values but different key order or spacing
+passed as "canonical" (codex P1 on #2254, reproduced by compact
+re-serialization of real `agent verify` output). The fix compares the
+supplied document against the canonical rendered bytes (trailing-newline
+tolerant) and parses the downstream value from the canonical body, with a
+regression test that re-renders real output differently and expects
+rejection.
+
+The lesson: whenever a contract says "must be the exact output of tool X",
+equality of parsed values is not the contract — byte identity is. Parsed-value
+equality silently accepts any producer that emits semantically equal JSON.
+This generalizes beyond receipts: any "canonical" or "producer-bound" input
+check should pin bytes (or a digest of bytes). On the fail-closed seams
+(repair packets, receipts, provenance) that distinction is the difference
+between validation and theater.
+
+## 2026-07-22: A squash merge is invisible to branch-ancestry checks
+
+A builder reported "PR #2259 is not merged" because the PR's branch head was
+not an ancestor of main — but the PR had squash-merged hours earlier, so main
+contained every change under a new commit while the branch head remained
+outside the ancestry. The builder still flagged the right collision risk (its
+own diff rewrote the same file), but for the wrong reason.
+
+The lesson: in a squash-merge repo, "does my base include PR N" means "does
+main contain N's squash commit" (check `git log main --grep "(#N)"` or the
+PR's merged-at timestamp against your base), never "is the PR branch head an
+ancestor". Sub-agent prompts should state the merge mechanism whenever base
+recency matters, and builders should re-fetch main before pronouncing a PR
+unmerged.
