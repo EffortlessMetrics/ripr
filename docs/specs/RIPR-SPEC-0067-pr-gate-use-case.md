@@ -21,6 +21,7 @@ Linked plan:
 Linked issues:
 
 - #1440
+- #1933
 
 Linked PRs:
 
@@ -244,6 +245,61 @@ command, that source emits `incomplete_repair_route` rather than guessing.
 static repair guidance under the configured gate policy, not runtime mutation
 evidence, coverage adequacy, or proof of correctness.
 
+### Canonical repair-route eligibility contract
+
+The gate may consider a candidate for policy eligibility only when one
+producer-owned evidence record supplies every field below. These are eligibility
+inputs; renderers and gate adapters must not reconstruct them from file names,
+line numbers, display text, or ordered evidence arrays.
+
+```text
+canonical_gap_id
+seam_id
+source_artifact_identity
+file
+line
+gap_state
+classification
+changed_owner
+changed_behavior
+missing_discriminator
+repair_target
+test_intent
+inspection_command
+verify_command
+receipt_command
+analysis_completeness
+analysis_currentness
+authority_boundary
+```
+
+`source_artifact_identity` identifies the producer artifact and its repository,
+configuration, input, and content identity. `analysis_completeness` uses the
+closed run vocabulary `complete`, `limited`, `stale`, `failed`, or `unavailable`.
+`analysis_currentness` records whether the artifact is current for the selected
+repository snapshot. A route is not complete merely because its human-facing
+strings are non-empty.
+
+The eligibility decision has this closed outcome table:
+
+| Evidence condition | Eligibility outcome |
+| --- | --- |
+| Complete, current, full-scope route | May become policy-eligible; the configured gate mode still decides whether it can block. |
+| Any missing route field | `incomplete_repair_route`; visible advisory only. |
+| Limited or partial analysis scope | `limited_partial_scope`; gate-ineligible and never a full-run pass. |
+| Stale artifact or non-current repository snapshot | Gate-ineligible, or `config_error` when the selected mode requires current input. |
+| Failed analysis | `failed`; gate-ineligible and fail-closed, or `config_error` when the selected mode requires a successful current analysis. |
+| Unavailable analysis | `unavailable`; gate-ineligible and fail-closed, or `config_error` when the selected mode requires an available current analysis. |
+| Unsupported preview-language authority | Advisory only; it cannot gain blocking authority through projection. |
+| Explicit advisory mode | Never blocks, including for an otherwise complete route. |
+| Explicit calibrated blocking mode | Blocks only a complete, current, full-scope, policy-eligible decision. |
+
+This contract does not make the default-generated workflow blocking. It also
+does not populate a missing `GapRecord.seam_id`; the producer-owned identity
+carry-through is the next implementation slice under #1933. Until that slice
+lands, gap-ledger routes remain visibly `incomplete_repair_route` and the gate
+must not advertise them as blocking-capable.
+
 ### Human and check-summary projection
 
 `gate-decision.md` projects the same structured route for every blocking,
@@ -437,10 +493,13 @@ disclosed and fails closed; it is never treated as a complete causal comparison.
   the generated-CI `RIPR_GATE_MODE` / `RIPR_GATE_BASELINE` wiring,
   and `fixtures/boundary_gap/expected/calibrated-gate/`.
 - #1440 PR A owns the shared model and JSON contract; PR B projects that object
-  into human and CI summaries; the CLI dogfood receipt now proves the complete
-  failure surface for a supported threshold route. PR C remains open until a
-  real policy-eligible call-observation producer can drive the same round trip.
-  No slice adds a classifier.
+  into human and CI summaries. #1933 now sequences the remaining trust work:
+  B1 defines this repair-route eligibility contract, B2 carries producer-owned
+  seam identity through the gap ledger, and B3 enforces configured gate modes.
+  The CLI dogfood receipt proves the complete failure surface for a supported
+  threshold route, but does not make the gap-ledger path blocking. PR C remains
+  open until a real policy-eligible call-observation producer can drive the
+  same round trip. No slice adds a classifier.
 
 ## Metrics
 

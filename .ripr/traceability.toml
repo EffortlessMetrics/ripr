@@ -4889,6 +4889,8 @@ tests = [
   "crates/ripr/src/output/gate/repair_route.rs::tests::generic_gap_record_evidence_ids_do_not_become_seam_identity",
   "crates/ripr/src/output/gate/repair_route.rs::tests::blank_gap_record_commands_render_as_null_and_remain_missing",
   "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_is_advisory_only_and_renders_named_limitation",
+  "crates/ripr/src/output/gate/tests.rs::gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity",
+  "crates/ripr/src/output/gate/tests.rs::given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails_closed",
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_complete_repair_route_for_ci_summary",
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_incomplete_route_limitation_without_fabricated_command",
   "crates/ripr/src/output/gate/presentation.rs::tests::production_caller_target_markdown_preserves_explicit_location",
@@ -4906,7 +4908,8 @@ code = [
   "crates/ripr/src/output/gate/repair_route.rs",
   "crates/ripr/src/output/gate/presentation.rs",
   "xtask/src/main.rs",
-  "xtask/src/verification_contracts.rs"
+  "xtask/src/verification_contracts.rs",
+  ".allow/spec-system/slices/gate-repair-route-eligibility.v1.toml",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",
