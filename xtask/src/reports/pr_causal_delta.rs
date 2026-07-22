@@ -7,7 +7,10 @@
 //! causality from paths or line proximity.
 
 use super::write_parented_file;
-use crate::run::{capture_output_with_timeout, run_output_owned};
+use crate::run::{
+    capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
+    tool_build_timeout,
+};
 use ripr::domain::{
     AttributionBasis, CanonicalEvidenceState, ComparisonConfidence, ComparisonCoverage,
     DeltaAttribution, GapState, OracleStrength, compare_fixture_delta,
@@ -85,7 +88,12 @@ fn resolve_ripr_binary(repo: &Path) -> Result<String, String> {
         "ripr".to_string(),
         "--quiet".to_string(),
     ];
-    run_output_owned("cargo", &build_args)?;
+    run_output_owned_with_timeout(
+        "cargo",
+        &build_args,
+        tool_build_timeout()?,
+        "cargo build of the ripr binary for the canonical PR delta",
+    )?;
 
     let cwd = env::current_dir().map_err(|err| format!("resolve current directory: {err}"))?;
     let target_dir = match env::var_os("CARGO_TARGET_DIR") {

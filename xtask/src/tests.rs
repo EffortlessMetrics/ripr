@@ -8509,6 +8509,7 @@ fn routed_rust_workflow_contract_accepts_swarm_shape() {
 jobs:
   route:
     name: Route Ripr Rust Small
+    timeout-minutes: 10
     steps:
       - name: Select runner
         env:
@@ -8526,8 +8527,12 @@ jobs:
           reason=cpx42_idle
           reason=cx53_idle
           echo rust-medium rust-16gb rust-large
+  detect-docs-only:
+    name: Detect Docs-Only Surface
+    timeout-minutes: 10
   rust-cx43:
     if: needs.route.outputs.router_target == 'cx43'
+    timeout-minutes: 60
     outputs:
       scratch_status: ${{ steps.scratch.outputs.status }}
     env:
@@ -8543,6 +8548,7 @@ jobs:
         run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cpx42:
     if: needs.route.outputs.router_target == 'cpx42'
+    timeout-minutes: 60
     outputs:
       scratch_status: ${{ steps.scratch.outputs.status }}
     env:
@@ -8558,6 +8564,7 @@ jobs:
         run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
   rust-cx53:
     if: needs.route.outputs.router_target == 'cx53'
+    timeout-minutes: 60
     outputs:
       scratch_status: ${{ steps.scratch.outputs.status }}
     env:
@@ -8578,11 +8585,16 @@ jobs:
       needs.rust-cx43.outputs.scratch_status == 'tempfail' ||
       needs.rust-cpx42.outputs.scratch_status == 'tempfail' ||
       needs.rust-cx53.outputs.scratch_status == 'tempfail'
+    timeout-minutes: 90
     steps:
       - name: Proof route dry-run (advisory)
         run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+  docs-gate:
+    name: Ripr Docs Gate
+    timeout-minutes: 20
   result:
     name: Ripr Rust Small Result
+    timeout-minutes: 10
     env:
       DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
       CX43_SCRATCH_STATUS: ${{ needs.rust-cx43.outputs.scratch_status }}
@@ -8712,6 +8724,58 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
         violations
             .iter()
             .any(|violation| { violation.contains("must list only `Ripr Rust Small Result`") })
+    );
+    assert!(violations.iter().any(|violation| {
+        violation.contains("must set an explicit `timeout-minutes` job deadline")
+    }));
+}
+
+#[test]
+fn routed_rust_contract_catches_deadline_bypass_with_stray_occurrences() {
+    // #2230 review: a global `timeout-minutes:` occurrence count passes even
+    // when a named job lost its deadline but stray tokens (comments, other
+    // jobs, duplicates) keep the total at eight. The per-job check must fire
+    // on the job that lost its deadline.
+    let workflow = r#"
+name: Routed Rust Small
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+  detect-docs-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+  rust-cx43:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # timeout-minutes: 60 (stray occurrence in a comment)
+  rust-cpx42:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    timeout-minutes: 60
+  rust-cx53:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+  rust-github:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+  docs-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+  result:
+    runs-on: ubuntu-latest
+"#;
+    let violations = routed_rust_workflow_contract_violations(workflow, None, None);
+    assert!(
+        violations.iter().any(|violation| violation
+            .contains("job `result` must set an explicit `timeout-minutes` job deadline")),
+        "missing per-job deadline must fire even with 8 stray occurrences: {violations:?}"
+    );
+    assert!(
+        !violations
+            .iter()
+            .any(|violation| violation.contains("job `route` must set an explicit")),
+        "a job that kept its deadline must not be flagged: {violations:?}"
     );
 }
 

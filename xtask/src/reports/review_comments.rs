@@ -1,5 +1,8 @@
 use super::{ensure_parent_dir, write_parented_file};
-use crate::run::{capture_output_with_timeout, run_output_owned};
+use crate::run::{
+    capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
+    tool_build_timeout,
+};
 use crate::verification_contracts::validate_json_file_against_schema;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -472,7 +475,12 @@ fn run_ripr_review_comments(
                 "ripr".to_string(),
                 "--quiet".to_string(),
             ];
-            run_output_owned("cargo", &build_args)?;
+            run_output_owned_with_timeout(
+                "cargo",
+                &build_args,
+                tool_build_timeout()?,
+                "cargo build of the ripr binary for review-comments",
+            )?;
             built_ripr_binary_path(repo)?.display().to_string()
         }
     };

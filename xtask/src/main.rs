@@ -6549,6 +6549,41 @@ fn optional_policy_text(path: &str) -> Result<Option<String>, String> {
     }
 }
 
+/// Routed-rust jobs that must each carry an explicit `timeout-minutes`
+/// deadline (issue #2230).
+const ROUTED_RUST_DEADLINE_JOBS: [&str; 8] = [
+    "route",
+    "detect-docs-only",
+    "rust-cx43",
+    "rust-cpx42",
+    "rust-cx53",
+    "rust-github",
+    "docs-gate",
+    "result",
+];
+
+/// Whether the named job block in a workflow text sets `timeout-minutes`.
+/// Job keys are exactly two-space-indented `name:` lines under `jobs:`;
+/// anything deeper belongs to the current block.
+fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
+    let job_header = format!("{job}:");
+    let mut in_block = false;
+    for line in workflow.lines() {
+        let job_level_key = line.starts_with("  ")
+            && !line.starts_with("   ")
+            && line.trim_end().ends_with(':')
+            && !line.trim_start().starts_with('-');
+        if job_level_key {
+            in_block = line.trim() == job_header;
+            continue;
+        }
+        if in_block && !line.trim_start().starts_with('#') && line.contains("timeout-minutes:") {
+            return true;
+        }
+    }
+    false
+}
+
 fn routed_rust_workflow_contract_violations(
     workflow: &str,
     settings: Option<&str>,
@@ -6677,6 +6712,20 @@ fn routed_rust_workflow_contract_violations(
         violations.push(format!(
             ".github/workflows/routed-rust.yml must emit the advisory proof-route dry-run artifact (`cargo xtask proof route --base \"$BASE_SHA\" --head \"$HEAD_SHA\" || true`) on the PR-evidence path of all three self-hosted jobs and the hosted fallback; found {proof_route_dry_runs} occurrence(s)"
         ));
+    }
+
+    // Issue #2230 (PR #2228 hang): every routed-rust job carries an explicit
+    // job deadline so a hung step fails the job in bounded time instead of
+    // holding the required aggregate check open indefinitely. The check is
+    // anchored to each named job block, not a global occurrence count: a
+    // duplicate or stray `timeout-minutes:` token elsewhere cannot stand in
+    // for a job that lost its deadline.
+    for job in ROUTED_RUST_DEADLINE_JOBS {
+        if !routed_rust_job_block_has_deadline(workflow, job) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml job `{job}` must set an explicit `timeout-minutes` job deadline so a hung step fails in bounded time"
+            ));
+        }
     }
 
     if workflow.contains("repos/${REPOSITORY}/actions/runners")

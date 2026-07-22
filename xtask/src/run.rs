@@ -188,6 +188,86 @@ pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String,
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Default deadline for building the ripr binary inside PR-evidence commands.
+///
+/// The required Rust gates build the workspace before PR evidence runs, so
+/// this build is incremental in CI; fifteen minutes stays generous for a cold
+/// local build while still bounding a wedged toolchain (issue #2230).
+pub(crate) const DEFAULT_TOOL_BUILD_TIMEOUT_SECS: u64 = 900;
+
+/// Env override (seconds, positive integer) for the tool-build deadline.
+pub(crate) const TOOL_BUILD_TIMEOUT_ENV: &str = "RIPR_TOOL_BUILD_TIMEOUT_SECS";
+
+pub(crate) fn tool_build_timeout() -> Result<Duration, String> {
+    env_timeout_secs(TOOL_BUILD_TIMEOUT_ENV, DEFAULT_TOOL_BUILD_TIMEOUT_SECS)
+}
+
+pub(crate) fn env_timeout_secs(name: &str, default_secs: u64) -> Result<Duration, String> {
+    // A malformed override must fail fast, not silently fall back to the
+    // default: NotPresent means "no override", anything else is validated.
+    match std::env::var(name) {
+        Ok(value) => {
+            parse_env_timeout_secs(name, Some(&value), default_secs).map(Duration::from_secs)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(Duration::from_secs(default_secs)),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
+            "{name} must be valid UTF-8 text naming a positive integer"
+        )),
+    }
+}
+
+fn parse_env_timeout_secs(
+    name: &str,
+    value: Option<&str>,
+    default_secs: u64,
+) -> Result<u64, String> {
+    let Some(value) = value else {
+        return Ok(default_secs);
+    };
+    let parsed = value
+        .trim()
+        .parse::<u64>()
+        .map_err(|err| format!("{name} must be a positive integer: {err}"))?;
+    if parsed > 0 {
+        Ok(parsed)
+    } else {
+        Err(format!("{name} must be a positive integer"))
+    }
+}
+
+/// Like `run_output_owned`, but bounds the child with the shared
+/// timed-process machinery so a wedged build cannot hang the caller. A
+/// timeout is a named result: the child process tree is terminated and the
+/// error names the deadline and the calling context.
+pub(crate) fn run_output_owned_with_timeout(
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<String, String> {
+    let output = capture_output_with_timeout(program, args, &[], timeout, error_context)?;
+    if output.timed_out {
+        let seconds = timeout.as_secs();
+        return Err(format!(
+            "{error_context} timed out after {seconds} {}; the child process tree was terminated",
+            if seconds == 1 { "second" } else { "seconds" }
+        ));
+    }
+    let Some(status) = output.status else {
+        return Err(format!("{error_context} did not report a process status"));
+    };
+    if status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(format!(
+            "{program} {} failed with {status}\nstdout:\n{}\nstderr:\n{}",
+            args.join(" "),
+            output.stdout.trim(),
+            output.stderr.trim()
+        ))
+    }
+}
+
 pub(crate) fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)
@@ -676,9 +756,9 @@ mod tests {
     use super::{
         CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
         capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
-        read_stream_with_latency_progress, run, run_in_dir, run_output, run_output_optional,
-        run_output_owned, run_owned, spawn_stream_reader_channel, terminate_after_timeout,
-        timeout_was_enforced,
+        parse_env_timeout_secs, read_stream_with_latency_progress, run, run_in_dir, run_output,
+        run_output_optional, run_output_owned, run_output_owned_with_timeout, run_owned,
+        spawn_stream_reader_channel, terminate_after_timeout, timeout_was_enforced,
     };
     use crate::acquire_test_cwd_read_guard;
     use std::fs;
@@ -802,6 +882,78 @@ mod tests {
         if !empty.is_empty() {
             return Err(format!("failed optional output should be empty: {empty}"));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn run_output_owned_with_timeout_returns_stdout_on_success() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        let args = vec!["--version".to_string()];
+        let stdout = run_output_owned_with_timeout(
+            "rustc",
+            &args,
+            Duration::from_secs(30),
+            "rustc version",
+        )?;
+        if !stdout.contains("rustc") {
+            return Err(format!("rustc version output should name rustc: {stdout}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn run_output_owned_with_timeout_reports_named_timeout() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        let (program, args, _envs) = long_running_command()?;
+        let err = match run_output_owned_with_timeout(
+            &program,
+            &args,
+            Duration::from_secs(1),
+            "bounded build probe",
+        ) {
+            Ok(stdout) => {
+                return Err(format!(
+                    "long-running command should time out, got stdout: {stdout}"
+                ));
+            }
+            Err(err) => err,
+        };
+        for expected in [
+            "bounded build probe",
+            "timed out after 1 second;",
+            "process tree was terminated",
+        ] {
+            if !err.contains(expected) {
+                return Err(format!("timeout message should name {expected:?}: {err}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_env_timeout_secs_validates_values() -> Result<(), String> {
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", None, 900),
+            Ok(900)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("120"), 900),
+            Ok(120)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some(" 45 "), 900),
+            Ok(45)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("0"), 900),
+            Err("RIPR_TEST_TIMEOUT must be a positive integer".to_string())
+        );
+        let err = match parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("abc"), 900) {
+            Ok(value) => return Err(format!("invalid timeout should fail, got {value}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("RIPR_TEST_TIMEOUT"));
+        assert!(err.contains("positive integer"));
         Ok(())
     }
 

@@ -1,6 +1,9 @@
 use super::pr_causal_delta::write_canonical_delta;
 use super::write_parented_file;
-use crate::run::{capture_output_with_timeout, run_output_owned};
+use crate::run::{
+    capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
+    tool_build_timeout,
+};
 use serde_json::{Map, Value, json};
 use std::env;
 use std::ffi::OsStr;
@@ -299,7 +302,12 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
                 "ripr".to_string(),
                 "--quiet".to_string(),
             ];
-            run_output_owned("cargo", &build_args)?;
+            run_output_owned_with_timeout(
+                "cargo",
+                &build_args,
+                tool_build_timeout()?,
+                "cargo build of the ripr binary for PR evidence",
+            )?;
             built_ripr_binary_path(repo)?.display().to_string()
         }
     };

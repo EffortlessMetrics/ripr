@@ -22,6 +22,7 @@ jobs:
   route:
     name: Route Ripr Rust Small
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       router_target: ${{ steps.route.outputs.router_target }}
       router_reason: ${{ steps.route.outputs.router_reason }}
@@ -76,6 +77,7 @@ jobs:
   detect-docs-only:
     name: Detect Docs-Only Surface
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
@@ -112,6 +114,7 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -258,6 +261,7 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "8"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -405,6 +409,7 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -553,6 +558,7 @@ jobs:
       (needs.route.outputs.router_target == 'cpx42' && needs.rust-cpx42.outputs.scratch_status == 'tempfail') ||
       (needs.route.outputs.router_target == 'cx53' && needs.rust-cx53.outputs.scratch_status == 'tempfail'))
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -649,6 +655,7 @@ jobs:
     needs: [detect-docs-only]
     if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -679,6 +686,7 @@ jobs:
     needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53, rust-github, docs-gate]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Summarize routed result
         env:
