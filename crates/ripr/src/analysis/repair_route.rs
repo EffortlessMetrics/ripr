@@ -676,13 +676,29 @@ fn has_external_language_related_test(entry: &ClassifiedSeam) -> bool {
         test.file
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| {
-                matches!(
-                    extension.to_ascii_lowercase().as_str(),
-                    "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "rb" | "java"
-                )
-            })
+            .is_some_and(is_external_language_extension)
     })
+}
+
+fn is_external_language_extension(extension: &str) -> bool {
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "ts" | "tsx"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "py"
+            | "rb"
+            | "java"
+            | "c"
+            | "cc"
+            | "cpp"
+            | "cxx"
+            | "swift"
+            | "kt"
+            | "kts"
+    )
 }
 
 fn cross_language_surface_hint(entry: &ClassifiedSeam) -> bool {
@@ -727,38 +743,48 @@ fn path_has_cross_language_segment(file: &str) -> bool {
 }
 
 fn text_has_cross_language_marker(text: &str) -> bool {
-    [
+    const TOKEN_MARKERS: &[&str] = &[
         "from_js",
         "to_js",
         "jsvalue",
         "js_value",
-        "jsc::",
-        "javascriptcore",
         "napi",
         "wasm_bindgen",
-        "extern \"c\"",
         "extern_c",
         "no_mangle",
         "export_name",
         "ffi",
-        "binding",
         "pyo3",
-        "python",
         "node_api",
         "jni",
         "uniffi",
-        "cxx::bridge",
-    ]
-    .iter()
-    .any(|marker| text.contains(marker))
+    ];
+    let has_token_marker = text
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|token| !token.is_empty())
+        .any(|token| {
+            TOKEN_MARKERS.iter().any(|marker| {
+                token == *marker
+                    || token.starts_with(marker)
+                        && token.as_bytes().get(marker.len()) == Some(&b'_')
+            })
+        });
+
+    has_token_marker
+        || text.contains("jsc::")
+        || text.contains("javascriptcore")
+        || text.contains("extern \"c\"")
+        || text.contains("cxx::bridge")
+        || text.starts_with("python::")
+        || text.contains("::python::")
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ClassifiedSeam, RepairPacketIneligibility, discriminator_fact_matches,
-        is_safe_for_repair_packet, repair_packet_eligibility, repair_packet_queue_visible,
-        repair_projection_ready,
+        ClassifiedSeam, RepairPacketIneligibility, cross_language_oracle_visibility_unresolved,
+        discriminator_fact_matches, is_safe_for_repair_packet, repair_packet_eligibility,
+        repair_packet_queue_visible, repair_projection_ready,
     };
     use crate::analysis::seams::{
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
@@ -938,6 +964,166 @@ mod tests {
         );
         assert!(!is_safe_for_repair_packet(&entry));
         assert!(!repair_packet_queue_visible(&entry));
+        Ok(())
+    }
+
+    #[test]
+    fn external_language_test_extensions_cover_bridge_language_families() -> Result<(), String> {
+        for extension in [
+            "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "rb", "java", "c", "cc", "cpp", "cxx",
+            "swift", "kt", "kts",
+        ] {
+            let mut related_test = external_related_test();
+            related_test.file = PathBuf::from(format!("tests/bridge.{extension}"));
+            let entry = classified_with(
+                boundary_seam(),
+                SeamGripClass::WeaklyGripped,
+                vec![related_test],
+            );
+
+            assert!(
+                cross_language_oracle_visibility_unresolved(&entry),
+                "expected .{extension} related test to remain visible to the external-language gate"
+            );
+        }
+
+        for extension in ["rs", "txt"] {
+            let mut related_test = external_related_test();
+            related_test.file = PathBuf::from(format!("tests/bridge.{extension}"));
+            let entry = classified_with(
+                boundary_seam(),
+                SeamGripClass::WeaklyGripped,
+                vec![related_test],
+            );
+
+            assert!(
+                !cross_language_oracle_visibility_unresolved(&entry),
+                "did not expect .{extension} related test to trigger the external-language gate"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn generic_binding_and_python_words_do_not_hide_a_plain_rust_route() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/metrics.rs",
+            "metrics::python_binding_count",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "python_binding_count >= binding_total",
+            RequiredDiscriminator::BoundaryValue {
+                description: "python_binding_count >= binding_total".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let entry = classified_with(seam, SeamGripClass::WeaklyGripped, Vec::new());
+
+        assert!(!cross_language_oracle_visibility_unresolved(&entry));
+        Ok(())
+    }
+
+    #[test]
+    fn unqualified_python_identifier_does_not_hide_a_plain_rust_route() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/metrics.rs",
+            "metrics::python",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "value >= threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "value >= threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let entry = classified_with(seam, SeamGripClass::WeaklyGripped, Vec::new());
+
+        assert!(!cross_language_oracle_visibility_unresolved(&entry));
+        Ok(())
+    }
+
+    #[test]
+    fn snake_case_bridge_markers_keep_same_test_file_routes_fail_closed() -> Result<(), String> {
+        for owner in [
+            "metrics::ffi_read",
+            "metrics::pyo3_parse",
+            "metrics::napi_call",
+            "metrics::jni_handle",
+            "metrics::uniffi_parse",
+            "metrics::wasm_bindgen_bridge",
+        ] {
+            let seam = RepoSeam::new(
+                "src/metrics.rs",
+                owner,
+                SeamKind::PredicateBoundary,
+                42,
+                88,
+                "value >= discount_threshold",
+                RequiredDiscriminator::BoundaryValue {
+                    description: "value >= discount_threshold".to_string(),
+                },
+                ExpectedSink::ReturnValue,
+            );
+            let entry = classified_with(
+                seam,
+                SeamGripClass::WeaklyGripped,
+                vec![rust_related_test(RelationReason::SameTestFile)],
+            );
+
+            let eligibility = repair_packet_eligibility(&entry);
+            assert!(eligibility.readiness.is_repair_ready());
+            assert_eq!(
+                eligibility.ineligibility,
+                Some(RepairPacketIneligibility::CrossLanguageTestTargetUnresolved),
+                "expected {owner} to retain the fail-closed target limitation"
+            );
+            assert!(!eligibility.eligible());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn specialized_cross_language_markers_still_block_without_external_tests() -> Result<(), String>
+    {
+        let seam = RepoSeam::new(
+            "src/metrics.rs",
+            "metrics::from_js_boundary",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "from_js_boundary >= threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "from_js_boundary >= threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let entry = classified_with(seam, SeamGripClass::WeaklyGripped, Vec::new());
+
+        assert!(cross_language_oracle_visibility_unresolved(&entry));
+        Ok(())
+    }
+
+    #[test]
+    fn exact_python_namespace_marker_still_blocks_without_external_tests() -> Result<(), String> {
+        let seam = RepoSeam::new(
+            "src/metrics.rs",
+            "python::parse_record",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "record.value >= threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "record.value >= threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let entry = classified_with(seam, SeamGripClass::WeaklyGripped, Vec::new());
+
+        assert!(cross_language_oracle_visibility_unresolved(&entry));
         Ok(())
     }
 
