@@ -11,6 +11,9 @@ Linked issues:
 - [#2000](https://github.com/EffortlessMetrics/ripr-swarm/issues/2000) -
   resolve Git input authority once per refresh and reuse it across analysis
   and snapshot identity.
+- [#2261](https://github.com/EffortlessMetrics/ripr-swarm/issues/2261) -
+  amendment: the `loader_default` state carries the resolved default-base
+  SHA via an `analysis::diff` export.
 - [#1919](https://github.com/EffortlessMetrics/ripr-swarm/issues/1919) -
   repeated `rev-parse` of the same base ref per refresh (parent).
 - [#1968](https://github.com/EffortlessMetrics/ripr-swarm/issues/1968) -
@@ -36,8 +39,9 @@ Policy impact:
 - No new crates, binaries, dependencies, parsers, runtime executors, or LSP
   servers introduced by this spec. No new production process-spawn site:
   resolution runs through the existing allowlisted `analysis::diff` adapter
-  (`resolve_base_commit`). No Git fetch, pull, or network access is
-  introduced or implied.
+  (`resolve_base_commit`; the #2261 amendment adds
+  `resolve_default_base_commit` in the same adapter). No Git fetch, pull, or
+  network access is introduced or implied.
 
 ## Problem
 
@@ -63,10 +67,14 @@ once and carries the resulting typed record (`ResolvedGitInputs` in
 root:           effective workspace root the resolution ran against
 requested_base: base ref from repository config or session options
                 (None selects the diff loader's default-base authority)
-resolved_base:  requested base resolved to an exact commit, when a base was
-                requested and resolved (None otherwise; never fabricated)
+resolved_base:  requested base resolved to an exact commit, or the loader's
+                default base resolved to an exact commit when no base was
+                requested (#2261 amendment; None when nothing resolves —
+                never fabricated)
 resolution:     resolved | loader_default | unresolved
-resolution probe: git rev-parse --verify --quiet <base>^{commit}
+resolution probe: git rev-parse --verify --quiet <base>^{commit}; the
+                loader_default state probes through the loader's
+                default-base candidate search (symbolic-ref + rev-parse)
 resolver version: lsp-git-inputs-v1
 ```
 
@@ -106,11 +114,14 @@ Rules:
   resolution invalidates dedup.
 - `loader_default` is honest: when no base is requested, the diff loader's
   default-base candidate order (`analysis::diff`, RIPR-SPEC-0084) applies
-  inside the analysis run. The LSP record carries no resolved SHA for this
-  state because the loader's default-base resolution is internal to
-  `analysis::diff` and not observable from the LSP without a second,
-  redundant probe. Sharing that SHA with the identity requires an
-  `analysis::diff` export and is a named follow-up, not fabricated here.
+  inside the analysis run. Amendment (#2261): the record now resolves that
+  default base once per refresh through the `analysis::diff` export
+  `resolve_default_base_commit` — the same candidate order and probe shape
+  the loader itself uses — and carries the resolved commit, so default-base
+  workspaces dedup on the same commit authority as the explicit-base path.
+  A workspace with no resolvable default base fails closed with no resolved
+  commit; the analysis run reports the named default-base failure through
+  the unchanged `load_diff` error surface, and no SHA is fabricated.
 - Dirty tracked-worktree state does not participate in the record: the LSP
   diff path analyzes committed history (`base...HEAD`), and the
   RIPR-SPEC-0112 uncommitted-changes disclosure remains a CLI-only surface
@@ -123,8 +134,12 @@ Rules:
 ### Shared consumption and visibility
 
 - `LspAnalysisInputIdentity::from_refresh_inputs_with_git` consumes the
-  record's resolved base verbatim; the identity is byte-identical to the
-  pre-change resolution path for the same inputs.
+  record's resolved base verbatim; for a requested base the identity is
+  byte-identical to the pre-change resolution path for the same inputs. The
+  #2261 amendment intentionally changes the default-base identity by adding
+  the resolved default-base commit — the parity obligation for
+  default-base workspaces is that the record-consuming and compatibility
+  constructors stay byte-identical to each other.
 - The refresh-start phase-boundary log names the record
   (`git_input_resolution`, `requested_base`, `resolved_base`), and the
   workspace-status input authority projects the derived
@@ -140,6 +155,8 @@ Rules:
 
 - `ResolvedGitInputs`, `GitInputResolution`, and the single resolution site
   in `crates/ripr/src/lsp/git_inputs.rs`.
+- The combined default-base export `resolve_default_base_commit` in
+  `crates/ripr/src/analysis/diff/load.rs` (#2261 amendment).
 - The record-consuming identity constructor
   `LspAnalysisInputIdentity::from_refresh_inputs_with_git` and the derived
   `git_input_resolution` status label in
@@ -155,8 +172,6 @@ Rules:
 
 ## Non-Goals
 
-- Sharing the default-base SHA for the `loader_default` state (needs an
-  `analysis::diff` export; named follow-up).
 - HEAD/merge-base commit identity fields beyond what refresh consumers use
   today; the analyzed diff already binds `base...HEAD` at analysis time.
 - Git fetch, merge-compatibility assessment, diff-cache redesign, debounce
@@ -217,6 +232,19 @@ and the analysis reports the named base failure through the unchanged
 and no consumer retries or emits a conflicting error.
 ```
 
+### Default-base workspace carries the resolved default-base SHA (#2261)
+
+```text
+Given no baseRef is configured,
+when a refresh is accepted,
+then the record carries resolution: loader_default and the commit the
+  loader's default-base candidate order resolves, resolved exactly once,
+and the input identity is byte-identical to the legacy resolution path,
+and a moved default base changes the resolved commit, defeats dedup, and
+  starts new work,
+and a workspace with no resolvable default base carries no fabricated SHA.
+```
+
 ### Dirty tracked worktree
 
 ```text
@@ -235,16 +263,32 @@ and the CLI dirty-worktree disclosure semantics are unchanged.
   reports.
 - `crates/ripr/src/lsp/git_inputs.rs::tests::missing_ref_fails_closed_as_unresolved`
   — fail-closed unresolved state.
+- `crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_commit_returns_the_ref_and_its_commit`
+  — the #2261 combined export returns the loader's default base and its
+  exact commit, and fails closed when nothing resolves.
+- `crates/ripr/src/lsp/git_inputs.rs::tests::unrequested_base_resolves_the_loader_default_commit`
+  — the loader-default record carries the default-base commit (#2261).
+- `crates/ripr/src/lsp/git_inputs.rs::tests::unrequested_base_fails_closed_when_no_default_base_resolves`
+  — no fabricated SHA when no default base resolves (#2261).
 - `crates/ripr/src/lsp/git_inputs.rs::tests::governs_binds_record_to_root_and_requested_base`
   — reuse binding to root and requested base.
 - `crates/ripr/src/lsp/git_inputs.rs::tests::dirty_tracked_worktree_does_not_change_the_resolved_inputs`
   — dirty-worktree invariance.
 - `crates/ripr/src/lsp/input_identity.rs::tests::record_built_identity_matches_legacy_resolution_byte_for_byte`
   — byte-identical identity versus the pre-change resolution path.
+- `crates/ripr/src/lsp/input_identity.rs::tests::default_base_identity_matches_legacy_resolution_byte_for_byte`
+  — byte-identical default-base identity carrying the loader's resolved
+  default-base commit (#2261).
 - `crates/ripr/src/lsp/input_identity.rs::tests::status_payload_projects_loader_default_and_unresolved_labels`
   — derived status label vocabulary.
 - `crates/ripr/src/lsp/refresh_scheduler.rs::tests::accepted_refresh_resolves_git_inputs_once_and_shares_one_record`
   — one resolution per accepted refresh, shared with the identity.
+- `crates/ripr/src/lsp/refresh_scheduler.rs::tests::default_base_refresh_resolves_once_and_carries_the_loader_default_sha`
+  — one resolution per default-base accepted refresh, carrying the
+  default-base commit (#2261).
+- `crates/ripr/src/lsp/refresh_scheduler.rs::tests::default_base_dedup_shares_one_resolution_and_a_moved_default_base_invalidates`
+  — same-commit default-base refreshes share one resolution; a moved
+  default base forces a fresh resolution and defeats dedup (#2261).
 - `crates/ripr/src/lsp/refresh_scheduler.rs::tests::post_episode_request_resolves_fresh_and_observes_base_ref_movement`
   — base-ref movement invalidation.
 - `crates/ripr/src/lsp/refresh_scheduler.rs::tests::explicit_refresh_always_resolves_against_the_live_repository`
@@ -261,6 +305,9 @@ and the CLI dirty-worktree disclosure semantics are unchanged.
 
 ## Implementation Mapping
 
+- `crates/ripr/src/analysis/diff/load.rs` — `resolve_default_base_commit`,
+  the combined default-base + commit export consumed by the LSP record
+  (#2261 amendment).
 - `crates/ripr/src/lsp/git_inputs.rs` — the typed record, resolution
   states, the single resolution site, and the reuse-binding check.
 - `crates/ripr/src/lsp/input_identity.rs` —

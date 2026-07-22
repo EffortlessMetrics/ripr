@@ -23,7 +23,7 @@ mod workspace;
 
 pub(crate) use diff::{
     load_diff, load_diff_range, parse_unified_diff, resolve_base_commit,
-    working_tree_has_tracked_changes,
+    resolve_default_base_commit, working_tree_has_tracked_changes,
 };
 pub use language::{
     PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,

@@ -87,9 +87,11 @@ pub(super) struct RefreshTelemetrySnapshot {
     pub(super) latest_save_to_snapshot_ms: Option<u128>,
     pub(super) last_superseded_attempt_ms: Option<u128>,
     /// Fresh Git input resolutions performed for refresh requests (#2000,
-    /// RIPR-SPEC-0142). Every increment is at most one `git rev-parse`
-    /// probe; deduplicated in-episode requests and cache reuses do not
-    /// increment this, which is the subprocess saving.
+    /// RIPR-SPEC-0142). Every increment is one bounded resolution: a single
+    /// `git rev-parse` probe for a requested base, or the loader's
+    /// default-base candidate probe when no base was requested (#2261).
+    /// Deduplicated in-episode requests and cache reuses do not increment
+    /// this, which is the subprocess saving.
     pub(super) git_input_resolutions: u64,
 }
 
@@ -876,6 +878,139 @@ mod tests {
         }
         if scheduler.telemetry().git_input_resolutions != 1 {
             return Err("deduplicated request must not re-resolve Git inputs".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn default_base_refresh_resolves_once_and_carries_the_loader_default_sha() -> Result<(), String>
+    {
+        // #2261 (RIPR-SPEC-0142 amendment): a default-base workspace
+        // resolves the loader's default base exactly once per accepted
+        // refresh, and the identity consumes that one record.
+        let root = git_repo_root("scheduler-git-default-once")?;
+        // Pin the default branch name so the loader's default-base fallback
+        // resolves deterministically regardless of host git defaults.
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(None),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        if active.git_inputs.resolution()
+            != super::super::git_inputs::GitInputResolution::LoaderDefault
+        {
+            return Err("unrequested base must record the loader-default state".to_string());
+        }
+        let sha = active
+            .git_inputs
+            .resolved_base()
+            .ok_or_else(|| "loader-default resolution must produce a SHA".to_string())?;
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+            .map_err(|error| format!("fixture default base must resolve: {error}"))?;
+        if sha != expected {
+            return Err(format!(
+                "resolved base {sha} != loader default-base commit {expected}"
+            ));
+        }
+        if active.input_identity.resolved_base.as_deref() != Some(sha) {
+            return Err("identity must consume the request's one resolved base".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 1 {
+            return Err("one accepted refresh must resolve Git inputs once".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn default_base_dedup_shares_one_resolution_and_a_moved_default_base_invalidates()
+    -> Result<(), String> {
+        // #2261 (RIPR-SPEC-0142 amendment): two default-base refreshes over
+        // the same commit share one in-episode resolution, and a moved
+        // default base changes the resolved SHA, defeats dedup, and forces
+        // a fresh resolution — the same authority as the explicit-base path.
+        let root = git_repo_root("scheduler-git-default-move")?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(None),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        let first_sha = active
+            .git_inputs
+            .resolved_base()
+            .map(str::to_string)
+            .ok_or_else(|| "first resolution must produce a SHA".to_string())?;
+        // An equivalent in-episode request deduplicates without a fresh probe.
+        let deduplicated = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(None),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        if deduplicated != RefreshDecision::Deduplicated {
+            return Err("equivalent in-episode request should deduplicate".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 1 {
+            return Err("deduplicated request must not re-resolve Git inputs".to_string());
+        }
+        if scheduler.finish(&active, true).is_some() {
+            return Err("no request should remain".to_string());
+        }
+        // Same-SHA post-episode request: fresh resolution, identical
+        // identity, deduplicated against the completed refresh.
+        let repeat = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(None),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        if repeat != RefreshDecision::Deduplicated {
+            return Err("unchanged post-episode request should deduplicate".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 2 {
+            return Err("post-episode request must resolve fresh".to_string());
+        }
+        // Move the default base: the next post-episode request must observe
+        // the new commit and must not deduplicate against the stale identity.
+        commit_change(root.path(), "move default base")?;
+        let after_move = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(None),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        let RefreshDecision::Start(moved) = after_move else {
+            return Err("moved default base must invalidate reuse".to_string());
+        };
+        let moved_sha = moved
+            .git_inputs
+            .resolved_base()
+            .map(str::to_string)
+            .ok_or_else(|| "moved resolution must produce a SHA".to_string())?;
+        if moved_sha == first_sha {
+            return Err("moved default base must resolve to the new commit".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 3 {
+            return Err("moved default base must force a fresh resolution".to_string());
         }
         Ok(())
     }

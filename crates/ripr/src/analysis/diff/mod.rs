@@ -5,7 +5,7 @@ mod path;
 
 pub use load::{
     load_diff, load_diff_range, load_worktree_diff, resolve_base_commit,
-    working_tree_has_tracked_changes,
+    resolve_default_base_commit, working_tree_has_tracked_changes,
 };
 #[allow(
     unused_imports,

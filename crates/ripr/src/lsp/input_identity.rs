@@ -383,6 +383,67 @@ mod tests {
     }
 
     #[test]
+    fn default_base_identity_matches_legacy_resolution_byte_for_byte() -> Result<(), String> {
+        // #2261 (RIPR-SPEC-0142 amendment): with no requested base, the
+        // record-consuming constructor and the compatibility constructor
+        // produce byte-identical identities, and the identity carries the
+        // loader's resolved default-base commit.
+        let root = crate::lsp::tests::unique_lsp_test_root("input-identity-default-base-parity")?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
+        crate::lsp::tests::run_lsp_scope_git(
+            root.path(),
+            &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "pub fn gate() -> bool {\n    true\n}\n",
+        )
+        .map_err(|error| format!("write fixture: {error}"))?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+        // Pin the default branch name so the loader's default-base fallback
+        // resolves deterministically regardless of host git defaults.
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
+
+        let config = LspAnalysisConfig {
+            base_ref: None,
+            ..LspAnalysisConfig::default()
+        };
+        let record = crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None);
+        let via_record = LspAnalysisInputIdentity::from_refresh_inputs_with_git(
+            root.path().to_path_buf(),
+            1,
+            &config,
+            &record,
+        );
+        let via_legacy =
+            LspAnalysisInputIdentity::from_refresh_inputs(root.path().to_path_buf(), 1, &config);
+
+        let Some(resolved) = via_record.resolved_base.as_deref() else {
+            return Err("default-base fixture must produce a resolved base".to_string());
+        };
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+            .map_err(|error| format!("fixture default base must resolve: {error}"))?;
+        if resolved != expected {
+            return Err(format!(
+                "identity resolved base {resolved} != loader default-base commit {expected}"
+            ));
+        }
+        if via_record != via_legacy || via_record.stable_id() != via_legacy.stable_id() {
+            return Err(
+                "record-built default-base identity must be byte-identical to the legacy \
+                 resolution path"
+                    .to_string(),
+            );
+        }
+        if via_record.status_payload()["git_input_resolution"].as_str() != Some("loader_default") {
+            return Err("default-base identity must project the loader_default label".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn status_payload_projects_loader_default_and_unresolved_labels() {
         let mut unresolved = identity("workspace-root", [LanguageId::Rust]);
         unresolved.resolved_base = None;

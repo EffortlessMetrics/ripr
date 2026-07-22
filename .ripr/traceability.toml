@@ -7400,13 +7400,19 @@ id = "RIPR-SPEC-0142"
 name = "lsp git input authority — one resolution per refresh"
 spec = "docs/specs/RIPR-SPEC-0142-lsp-git-input-authority.md"
 tests = [
+  "crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_commit_returns_the_ref_and_its_commit",
   "crates/ripr/src/lsp/git_inputs.rs::tests::resolution_contract_names_the_probe_and_version",
   "crates/ripr/src/lsp/git_inputs.rs::tests::requested_base_resolves_once_to_the_same_commit_the_analysis_layer_reports",
   "crates/ripr/src/lsp/git_inputs.rs::tests::missing_ref_fails_closed_as_unresolved",
+  "crates/ripr/src/lsp/git_inputs.rs::tests::unrequested_base_resolves_the_loader_default_commit",
+  "crates/ripr/src/lsp/git_inputs.rs::tests::unrequested_base_fails_closed_when_no_default_base_resolves",
   "crates/ripr/src/lsp/git_inputs.rs::tests::dirty_tracked_worktree_does_not_change_the_resolved_inputs",
   "crates/ripr/src/lsp/input_identity.rs::tests::record_built_identity_matches_legacy_resolution_byte_for_byte",
+  "crates/ripr/src/lsp/input_identity.rs::tests::default_base_identity_matches_legacy_resolution_byte_for_byte",
   "crates/ripr/src/lsp/input_identity.rs::tests::status_payload_projects_loader_default_and_unresolved_labels",
   "crates/ripr/src/lsp/refresh_scheduler.rs::tests::accepted_refresh_resolves_git_inputs_once_and_shares_one_record",
+  "crates/ripr/src/lsp/refresh_scheduler.rs::tests::default_base_refresh_resolves_once_and_carries_the_loader_default_sha",
+  "crates/ripr/src/lsp/refresh_scheduler.rs::tests::default_base_dedup_shares_one_resolution_and_a_moved_default_base_invalidates",
   "crates/ripr/src/lsp/refresh_scheduler.rs::tests::post_episode_request_resolves_fresh_and_observes_base_ref_movement",
   "crates/ripr/src/lsp/refresh_scheduler.rs::tests::explicit_refresh_always_resolves_against_the_live_repository",
   "crates/ripr/src/lsp/refresh_scheduler.rs::tests::base_configuration_change_is_not_governed_by_the_episode_record",
@@ -7416,6 +7422,7 @@ tests = [
 ]
 fixtures = []
 code = [
+  "crates/ripr/src/analysis/diff/load.rs",
   "crates/ripr/src/lsp/git_inputs.rs",
   "crates/ripr/src/lsp/input_identity.rs",
   "crates/ripr/src/lsp/refresh_scheduler.rs",

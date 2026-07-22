@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 
 /// The resolution probe behind every `Resolved`/`Unresolved` record. Named
 /// so status and spec language can point at one bounded command shape
-/// instead of an implied Git interaction.
+/// instead of an implied Git interaction. The `LoaderDefault` state probes
+/// through the `analysis::diff` default-base candidate search
+/// (`resolve_default_base_commit`), which is bounded by the same
+/// `rev-parse --verify` shape plus one `symbolic-ref` lookup.
 #[cfg(test)]
 pub(super) const RESOLUTION_COMMAND: &str = "git rev-parse --verify --quiet <base>^{commit}";
 
@@ -30,10 +33,13 @@ pub(super) enum GitInputResolution {
     Resolved,
     /// No base ref was requested: the diff loader's default-base authority
     /// (`analysis::diff` candidate order) applies inside the analysis run.
-    /// The record deliberately carries no resolved SHA for this state — the
-    /// loader's default-base resolution is internal to `analysis::diff` and
-    /// not observable from the LSP without a second, redundant probe, and
-    /// fabricating one would contradict the real-producers rule.
+    /// The record resolves that default base once here through
+    /// `analysis::resolve_default_base_commit` and carries its commit
+    /// (#2261, RIPR-SPEC-0142 amendment), so default-base workspaces dedup
+    /// on the same commit authority as the explicit-base path. A workspace
+    /// with no resolvable default base fails closed with no commit; the
+    /// analysis run reports the named default-base failure through the
+    /// unchanged `load_diff` error path.
     LoaderDefault,
     /// The requested base ref did not resolve to a commit (missing ref,
     /// non-commit target, or Git unavailable). Fail-closed: the analysis run
@@ -64,25 +70,39 @@ pub(super) struct ResolvedGitInputs {
     /// Requested base ref from repository config or session options.
     /// `None` selects the diff loader's default-base authority.
     requested_base: Option<String>,
-    /// The requested base resolved to an exact commit, when a base was
-    /// requested and resolved. This is the same value
-    /// `analysis::resolve_base_commit` computes; it is resolved once here
-    /// instead of once per identity construction.
+    /// The effective base resolved to an exact commit: the requested base
+    /// when one was requested and resolved, or the diff loader's default
+    /// base when none was requested and the workspace has a resolvable
+    /// default (#2261, RIPR-SPEC-0142 amendment). This is the same value
+    /// `analysis::resolve_base_commit` / `analysis::resolve_default_base_commit`
+    /// computes; it is resolved once here instead of once per identity
+    /// construction. `None` when nothing resolved — never fabricated.
     resolved_base: Option<String>,
     resolution: GitInputResolution,
 }
 
 impl ResolvedGitInputs {
     /// Resolve the Git inputs for one refresh request. This is the single
-    /// resolution site for the LSP refresh path: at most one
-    /// `git rev-parse` probe runs, and only when a base ref was requested.
+    /// resolution site for the LSP refresh path: one bounded probe runs per
+    /// call — a single `git rev-parse` for a requested base, or the loader's
+    /// default-base candidate probe when no base was requested.
     pub(super) fn resolve(root: &Path, requested_base: Option<&str>) -> Self {
-        let resolved_base =
-            requested_base.and_then(|base| crate::analysis::resolve_base_commit(root, Some(base)));
-        let resolution = match (requested_base, &resolved_base) {
-            (None, _) => GitInputResolution::LoaderDefault,
-            (Some(_), Some(_)) => GitInputResolution::Resolved,
-            (Some(_), None) => GitInputResolution::Unresolved,
+        let (resolved_base, resolution) = match requested_base {
+            Some(base) => {
+                let resolved = crate::analysis::resolve_base_commit(root, Some(base));
+                let resolution = if resolved.is_some() {
+                    GitInputResolution::Resolved
+                } else {
+                    GitInputResolution::Unresolved
+                };
+                (resolved, resolution)
+            }
+            None => {
+                let resolved = crate::analysis::resolve_default_base_commit(root)
+                    .ok()
+                    .map(|(_base, commit)| commit);
+                (resolved, GitInputResolution::LoaderDefault)
+            }
         };
         Self {
             root: root.to_path_buf(),
@@ -170,7 +190,35 @@ mod tests {
     }
 
     #[test]
-    fn unrequested_base_is_loader_default_without_a_probe() {
+    fn unrequested_base_resolves_the_loader_default_commit() -> Result<(), String> {
+        // #2261 (RIPR-SPEC-0142 amendment): the loader-default state carries
+        // the same commit the diff loader's default-base authority reports,
+        // resolved once here rather than inside identity construction.
+        let root = unique_lsp_test_root("git-inputs-loader-default")?;
+        init_repo(root.path())?;
+        // Pin the default branch name so the loader's default-base fallback
+        // resolves deterministically regardless of host git defaults.
+        run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
+        let record = ResolvedGitInputs::resolve(root.path(), None);
+        if record.resolution() != GitInputResolution::LoaderDefault {
+            return Err("unrequested base must record the loader-default state".to_string());
+        }
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+            .map_err(|error| format!("fixture default base must resolve: {error}"))?;
+        if record.resolved_base() != Some(expected.as_str()) {
+            return Err(format!(
+                "record {} != loader default-base commit {expected}",
+                record.resolved_base().unwrap_or("<none>")
+            ));
+        }
+        if record.requested_base().is_some() {
+            return Err("loader-default record must carry no requested base".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unrequested_base_fails_closed_when_no_default_base_resolves() {
         let record = ResolvedGitInputs::resolve(Path::new("/not-a-repo"), None);
         assert_eq!(record.resolution(), GitInputResolution::LoaderDefault);
         assert_eq!(record.resolved_base(), None);

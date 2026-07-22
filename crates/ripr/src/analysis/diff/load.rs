@@ -94,6 +94,29 @@ fn resolve_default_base(root: &Path) -> Result<String, String> {
     )
 }
 
+/// Resolve the diff loader's default base for `root` together with the
+/// commit it currently points at, in one authority call.
+///
+/// This is the export for consumers that need the loader's default-base
+/// decision *and* its commit identity without re-running the candidate
+/// search — the LSP refresh Git-input record (#2261, RIPR-SPEC-0142
+/// amendment) resolves the default base once per refresh through this helper
+/// so default-base workspaces dedup on the same commit authority as the
+/// explicit-base path. Returns `(effective base ref, resolved commit)`, or
+/// the same named, actionable error as the default-base candidate search
+/// when nothing resolves; an unresolvable workspace is never fabricated
+/// into an empty commit identity.
+pub fn resolve_default_base_commit(root: &Path) -> Result<(String, String), String> {
+    let base = resolve_default_base(root)?;
+    let commit = resolve_base_commit(root, Some(&base)).ok_or_else(|| {
+        format!(
+            "could not resolve a commit for the default base {base} (the analysis did not run). \
+             Pass `--base <ref>` to diff against a specific ref."
+        )
+    })?;
+    Ok((base, commit))
+}
+
 /// Run `git symbolic-ref --quiet <refname>` and return the target on success.
 /// Returns `None` when the ref does not exist or is not symbolic (exit ≠ 0).
 fn git_symbolic_ref_quiet(root: &Path, refname: &str) -> Option<String> {
@@ -461,6 +484,49 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_default_base_commit_returns_the_ref_and_its_commit() -> std::io::Result<()> {
+        // #2261 (RIPR-SPEC-0142 amendment): the combined export reports the
+        // same base the candidate search picks and the exact commit the
+        // analysis will diff against.
+        let dir = std::env::temp_dir().join("ripr-resolve-default-base-commit");
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let expected = String::from_utf8(
+            git_ref_output(&dir, "HEAD")
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "git HEAD was not resolved")
+                })?
+                .stdout,
+        )
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+        .trim()
+        .to_string();
+
+        let (base, commit) = resolve_default_base_commit(&dir).map_err(std::io::Error::other)?;
+        assert_eq!(base, "main", "expected the local main fallback");
+        assert_eq!(commit, expected, "expected HEAD's exact commit");
+
+        // A workspace with no resolvable default base fails closed with the
+        // named error instead of fabricating a commit identity. A repo whose
+        // only branch is neither main nor master has no candidate in the
+        // loader's default-base search order.
+        let bare = std::env::temp_dir().join("ripr-resolve-default-base-commit-empty");
+        let _ = fs::remove_dir_all(&bare);
+        init_git_repo(&bare, "trunk")?;
+        let err = resolve_default_base_commit(&bare)
+            .expect_err("expected a named error when no default base resolves");
+        assert!(
+            err.contains("could not resolve a default base"),
+            "expected the candidate-search error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&bare);
         Ok(())
     }
 
