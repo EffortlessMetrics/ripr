@@ -14,6 +14,7 @@
 use crate::config::{CONFIG_FILE_NAME, RiprConfig, load_for_root};
 use serde::Serialize;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 /// The single source of truth for which tools doctor probes for availability.
 /// Both the evaluation (which actually spawns each tool to check it) and the
@@ -21,6 +22,18 @@ use std::path::Path;
 /// the report) iterate this list, so there is exactly one place that names
 /// the probed tools.
 pub(crate) const DOCTOR_TOOLS: [&str; 3] = ["git", "cargo", "rustc"];
+
+/// How long a tool probe may run before it is terminated (#2183 review): a
+/// broken or malicious shim must not hang `ripr doctor` forever.
+///
+/// Residual, documented (#2183 review): the deadline terminates the spawned
+/// process itself, not a whole process tree. A shim that *detaches*
+/// (double-fork/setsid) work can leave that work running after the probe
+/// returns. Process-group termination needs either `unsafe` (forbidden in
+/// this crate) or a new dependency, and doctor returns bounded regardless —
+/// so the bounded-probe contract is honored while the detached-descendant
+/// case is accepted here rather than hidden.
+const DOCTOR_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The top-level doctor status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -246,13 +259,85 @@ pub(crate) fn evaluate_doctor_core_with_config(root: &Path) -> DoctorCoreEvaluat
 }
 
 /// Probe a single tool's availability via `<tool> --version`.
-pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
-    match std::process::Command::new(tool).arg("--version").output() {
+/// Probe a tool that must NOT load project configuration (#2183 review,
+/// CWE-829): `yarn --version` run in a repository checkout executes
+/// repo-controlled code when the repo pins `.yarnrc.yml`/`yarnPath`, so
+/// merely running `ripr doctor` in a hostile checkout would execute it.
+/// The probe runs from the OS temp dir with config resolution disabled.
+pub(crate) fn doctor_tool_check_isolated(tool: &str) -> (DoctorStatus, String) {
+    let mut command = doctor_tool_command(tool);
+    command.arg("--version");
+    command
+        .current_dir(std::env::temp_dir())
+        .env("YARN_IGNORE_PATH", "1");
+    match run_doctor_tool(command, DOCTOR_TOOL_TIMEOUT) {
         Ok(output) if output.status.success() => (
             DoctorStatus::Pass,
             String::from_utf8_lossy(&output.stdout).trim().to_string(),
         ),
+        Err(DoctorToolRunError::TimedOut) => (
+            DoctorStatus::Fail,
+            format!("{tool} timed out after {}s", DOCTOR_TOOL_TIMEOUT.as_secs()),
+        ),
         _ => (DoctorStatus::Fail, format!("{tool} not available")),
+    }
+}
+
+fn doctor_tool_command(tool: &str) -> std::process::Command {
+    std::process::Command::new(tool)
+}
+
+pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
+    let mut command = doctor_tool_command(tool);
+    command.arg("--version");
+    match run_doctor_tool(command, DOCTOR_TOOL_TIMEOUT) {
+        Ok(output) if output.status.success() => (
+            DoctorStatus::Pass,
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        ),
+        Err(DoctorToolRunError::TimedOut) => (
+            DoctorStatus::Fail,
+            format!("{tool} timed out after {}s", DOCTOR_TOOL_TIMEOUT.as_secs()),
+        ),
+        _ => (DoctorStatus::Fail, format!("{tool} not available")),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DoctorToolRunError {
+    Spawn,
+    Wait,
+    TimedOut,
+}
+
+fn run_doctor_tool(
+    mut command: std::process::Command,
+    timeout: Duration,
+) -> Result<std::process::Output, DoctorToolRunError> {
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().map_err(|_err| DoctorToolRunError::Spawn)?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return child
+                    .wait_with_output()
+                    .map_err(|_err| DoctorToolRunError::Wait);
+            }
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(DoctorToolRunError::TimedOut);
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(DoctorToolRunError::Wait);
+            }
+        }
     }
 }
 
@@ -453,6 +538,46 @@ mod tests {
     /// Deterministic missing-tool assertion: probing a guaranteed-absent
     /// absolute path must fail closed with actionable evidence, independent
     /// of what happens to be (or not be) on the host's PATH.
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_check_times_out_a_hanging_tool() -> Result<(), String> {
+        // #2183 review: a shim that blocks forever must not hang doctor;
+        // the probe terminates it at the deadline and names the timeout.
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-doctor-timeout-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let shim = dir.join("ripr-hanging-probe-tool");
+        std::fs::write(&shim, "#!/bin/sh\nsleep 60\n")
+            .map_err(|err| format!("write shim: {err}"))?;
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+                .map_err(|err| format!("chmod shim: {err}"))?;
+        }
+
+        let start = std::time::Instant::now();
+        let (status, evidence) = doctor_tool_check(shim.to_str().ok_or("shim path is not utf-8")?);
+        let elapsed = start.elapsed();
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        assert_eq!(status, DoctorStatus::Fail);
+        assert!(
+            evidence.contains("timed out"),
+            "expected a named timeout, got: {evidence}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(30),
+            "the 60s shim was not terminated: {elapsed:?}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn doctor_tool_check_fails_closed_for_guaranteed_missing_tool() {
         let missing = std::env::temp_dir().join(format!(
@@ -470,5 +595,20 @@ mod tests {
             evidence.ends_with("not available"),
             "unexpected evidence for missing tool: {evidence:?}"
         );
+    }
+
+    #[test]
+    fn doctor_tool_runner_times_out_and_reaps_child() -> Result<(), String> {
+        let mut command = doctor_tool_command(if cfg!(windows) { "powershell" } else { "sh" });
+        #[cfg(windows)]
+        command.args(["-NoProfile", "-Command", "Start-Sleep -Seconds 5"]);
+        #[cfg(not(windows))]
+        command.args(["-c", "sleep 5"]);
+
+        match run_doctor_tool(command, Duration::from_millis(20)) {
+            Err(DoctorToolRunError::TimedOut) => Ok(()),
+            Err(error) => Err(format!("expected timeout, got {error:?}")),
+            Ok(_) => Err("timed-out tool unexpectedly completed".into()),
+        }
     }
 }

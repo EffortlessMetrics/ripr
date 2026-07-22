@@ -275,8 +275,9 @@ struct PythonSourceLimitation {
 /// Detect the Python test framework for a workspace root (#2106), using
 /// the marker set the adapter's code-level detection implies:
 ///
-/// - pytest: `pytest.ini`, `pyproject.toml`, `conftest.py`, or a pytest
-///   section in `setup.cfg` / `tox.ini`;
+/// - pytest: `pytest.ini`, `conftest.py`, or a pytest section in
+///   `pyproject.toml` / `setup.cfg` / `tox.ini` (a bare pyproject.toml is
+///   PEP 517 packaging, not pytest evidence — #2183 review);
 /// - unittest: no config exists by design, so detection uses bounded code
 ///   evidence (`import unittest` in a `test_*.py` file at the root or in
 ///   `tests/` / `test/`), matching what the adapter detects from source.
@@ -285,8 +286,10 @@ struct PythonSourceLimitation {
 /// "not detected", never guess.
 pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> {
     if root.join("pytest.ini").exists()
-        || root.join("pyproject.toml").exists()
         || root.join("conftest.py").exists()
+        // A bare pyproject.toml is PEP 517 packaging, not pytest evidence
+        // (#2183 review); only an actual pytest section counts.
+        || ini_section_present(&root.join("pyproject.toml"), "[tool.pytest.ini_options]")
         || ini_section_present(&root.join("setup.cfg"), "[tool:pytest]")
         || ini_section_present(&root.join("tox.ini"), "[pytest]")
     {
