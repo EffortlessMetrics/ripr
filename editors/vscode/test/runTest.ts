@@ -1,6 +1,10 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { pathToFileURL } from 'url';
+import { DatabaseSync } from 'node:sqlite';
 import { runTests } from '@vscode/test-electron';
+
+const WORKSPACE_TRUST_STORAGE_KEY = 'content.trust.model.key';
 
 async function main() {
   try {
@@ -28,13 +32,14 @@ async function main() {
     fs.mkdirSync(cachePath, { recursive: true });
     fs.mkdirSync(extensionsPath, { recursive: true });
     fs.mkdirSync(userDataPath, { recursive: true });
+    seedTrustedWorkspaceProfile(userDataPath, workspacePath);
     const clipboardCapturePath = path.join(userDataPath, 'ripr-test-clipboard.txt');
     fs.rmSync(clipboardCapturePath, { force: true });
     process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;
 
     const launchArgs = [
-      '--disable-workspace-trust',
       workspacePath,
+      '--disable-workspace-trust',
       '--disable-extensions',
       '--extensions-dir',
       extensionsPath,
@@ -66,6 +71,41 @@ async function main() {
   } catch (err) {
     console.error('Failed to run tests:', err);
     process.exit(1);
+  }
+}
+
+function seedTrustedWorkspaceProfile(userDataPath: string, workspacePath: string): void {
+  // Workspace Trust is loaded from application storage before extension tests
+  // activate. The isolated Electron profile therefore needs the fixture URI in
+  // the same machine-scoped trust memento that VS Code writes through its UI.
+  // This keeps production trust checks intact while making the trusted-path E2E
+  // deterministic and independent of a developer's persisted profile.
+  const globalStoragePath = path.join(userDataPath, 'User', 'globalStorage');
+  fs.mkdirSync(globalStoragePath, { recursive: true });
+  const database = new DatabaseSync(path.join(globalStoragePath, 'state.vscdb'));
+  try {
+    database.exec(
+      'CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)'
+    );
+    const workspaceUrl = pathToFileURL(workspacePath);
+    const trustState = JSON.stringify({
+      uriTrustInfo: [
+        {
+          uri: {
+            $mid: 1,
+            scheme: workspaceUrl.protocol.slice(0, -1),
+            authority: workspaceUrl.host,
+            path: decodeURIComponent(workspaceUrl.pathname),
+          },
+          trusted: true,
+        },
+      ],
+    });
+    database
+      .prepare('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)')
+      .run(WORKSPACE_TRUST_STORAGE_KEY, trustState);
+  } finally {
+    database.close();
   }
 }
 
