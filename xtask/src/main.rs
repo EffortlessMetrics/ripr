@@ -106,7 +106,7 @@ pub(crate) fn acquire_test_cwd_read_guard() -> std::sync::RwLockReadGuard<'stati
 }
 
 #[derive(Debug)]
-struct GlobAllow {
+pub(crate) struct GlobAllow {
     glob: String,
 }
 
@@ -7107,52 +7107,6 @@ fn check_local_context_impl() -> Result<(), String> {
             rerun_command: "cargo xtask check-local-context",
             exception_template: Some(
                 "policy/local_context_allowlist.txt entry:\npath|pattern|max_count|reason",
-            ),
-        },
-        &violations,
-    )
-}
-
-fn check_file_policy_impl() -> Result<(), String> {
-    let allowlist = read_file_policy_allowlist("policy/non-rust-allowlist.toml")?;
-    let mut violations = Vec::new();
-
-    for path in collect_files(Path::new("."))? {
-        let normalized = normalize_path(&path);
-        if !is_file_policy_candidate(&normalized) {
-            continue;
-        }
-        if normalized.ends_with(".rs") {
-            continue;
-        }
-        if !matches_any_glob(&allowlist, &normalized) {
-            violations.push(format!(
-                "unapproved non-Rust programming/declarative file: {normalized}\n  preferred: implement automation in Rust/xtask or add a policy allowlist entry with owner and reason"
-            ));
-            continue;
-        }
-        if is_non_rust_programming_candidate(&normalized)
-            && non_rust_programming_retention_reason(&normalized).is_none()
-        {
-            violations.push(format!(
-                "non-Rust programming file lacks a keep-non-Rust retention rule: {normalized}\n  preferred: convert implementation/test automation to Rust/xtask unless the file is bound to an approved non-Rust runtime surface"
-            ));
-        }
-    }
-
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "file-policy.md",
-            check: "check-file-policy",
-            why_it_matters: "Rust and xtask are the default implementation surface so repo automation stays typed, tested, and reviewable.",
-            fix_kind: FixKind::PolicyExceptionRequired,
-            recommended_fixes: &[
-                "Move implementation or automation logic into Rust/xtask.",
-                "If the file belongs to an approved surface, add an allowlist entry with owner and reason.",
-            ],
-            rerun_command: "cargo xtask check-file-policy",
-            exception_template: Some(
-                "policy/non-rust-allowlist.toml entry:\n[[allow]]\nglob = \"path/**/*.ext\"\nkind = \"surface_kind\"\nowner = \"team/area\"\nsurface = \"docs|editor|fixtures|policy|rust|ci\"\nclassification = \"production|test|tooling|generated|config|docs|fixture|metadata\"\nreason = \"why this must remain non-Rust or declarative\"\ncovered_by = [\"cargo xtask check-file-policy\"]",
             ),
         },
         &violations,
@@ -70243,7 +70197,7 @@ fn read_glob_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
     Ok(allowed)
 }
 
-fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
+pub(crate) fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
     let entries = parse_file_policy_allowlist(path)?;
     Ok(entries
         .into_iter()
@@ -71004,7 +70958,7 @@ fn normalize_slashes(value: &str) -> String {
     value.replace('\\', "/")
 }
 
-fn is_file_policy_candidate(path: &str) -> bool {
+pub(crate) fn is_file_policy_candidate(path: &str) -> bool {
     let extensions = [
         ".bash", ".c", ".cjs", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".json", ".kt",
         ".lua", ".mjs", ".php", ".pl", ".ps1", ".py", ".rb", ".sh", ".swift", ".toml", ".ts",
@@ -71013,7 +70967,7 @@ fn is_file_policy_candidate(path: &str) -> bool {
     extensions.iter().any(|extension| path.ends_with(extension))
 }
 
-fn is_non_rust_programming_candidate(path: &str) -> bool {
+pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
     let extensions = [
         ".bash", ".c", ".cjs", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".kt", ".lua",
         ".mjs", ".php", ".pl", ".ps1", ".py", ".rb", ".sh", ".swift", ".ts", ".tsx", ".zsh",
@@ -71021,7 +70975,7 @@ fn is_non_rust_programming_candidate(path: &str) -> bool {
     extensions.iter().any(|extension| path.ends_with(extension))
 }
 
-fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
     if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
         return Some(
             "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",
@@ -71131,7 +71085,7 @@ fn shell_fetch_tool_name() -> &'static str {
     concat!("cu", "rl")
 }
 
-fn matches_any_glob(allowlist: &[GlobAllow], path: &str) -> bool {
+pub(crate) fn matches_any_glob(allowlist: &[GlobAllow], path: &str) -> bool {
     allowlist
         .iter()
         .any(|entry| glob_matches(&entry.glob, path))
