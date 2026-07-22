@@ -252,6 +252,17 @@ mod tests {
     }
 
     #[test]
+    fn gate_family_help_states_file_backed_output_discipline() {
+        assert!(GATE_HELP.contains("stdout contains human `Wrote ...` status lines"));
+        assert!(BASELINE_HELP.contains("ripr baseline create --from PATH"));
+        assert!(BASELINE_HELP.contains("--dry-run"));
+        assert!(BASELINE_HELP.contains("it prints the candidate JSON"));
+        assert!(BASELINE_HELP.contains("to stdout without"));
+        assert!(ZERO_HELP.contains("stdout contains human `Wrote ...`"));
+        assert!(ZERO_HELP.contains("status lines rather than the JSON report"));
+    }
+
+    #[test]
     fn command_specific_help_usage_lines_are_stable() {
         // Each subcommand help block leads with a one-line action-oriented opener,
         // followed by a blank line and the canonical `Usage: ripr <cmd>` line.

@@ -74,6 +74,10 @@ JSON and Markdown before returning a non-zero exit for `blocked` or
 `config_error` decisions. It does not post comments, edit source, generate
 tests, run mutation testing, upload SARIF, mutate GitHub state, or change
 generated workflow defaults.
+
+Output discipline: JSON and Markdown are written to `--out` and `--out-md`
+(with the documented defaults); stdout contains human `Wrote ...` status lines,
+not the JSON report. Capture the report files for machine consumers.
 "#;
 pub(super) const BASELINE_HELP: &str = r#"Create, diff, and shrink a reviewed baseline of acknowledged test gaps.
 
@@ -119,6 +123,11 @@ mode. `--remove-resolved` removes reviewed identities that are absent from the
 current gate-decision evidence, preserves malformed or ambiguous entries for
 manual review, and never adopts new current debt. Generated CI should not use
 this command to rewrite checked-in baselines automatically.
+
+Output discipline: report-producing subcommands write their JSON or Markdown
+files and print human `Wrote ...` status lines to stdout. `baseline create
+--dry-run` is the exception: it prints the candidate JSON to stdout without
+writing a file.
 "#;
 pub(super) const ZERO_HELP: &str = r#"Summarize current RIPR Zero progress over existing baselines and gate decisions.
 
@@ -140,6 +149,10 @@ optional calibration artifacts. It reports visible unresolved debt, baseline
 movement, metadata health, top debt areas, and bounded repair routes. It does
 not run analysis, mutate baselines, edit source, generate tests, call an LLM,
 run mutation testing, change gate policy, or make CI blocking by default.
+
+Output discipline: the JSON and Markdown reports are written to `--out` and
+`--out-md` (with the documented defaults); stdout contains human `Wrote ...`
+status lines rather than the JSON report.
 "#;
 pub(super) const POLICY_HELP: &str = r#"Summarize which RIPR policy posture is safe for the current repo.
 
