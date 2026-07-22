@@ -1,3 +1,4 @@
+use super::component_outcome::{AnalysisComponent, ComponentOutcome};
 use super::config::LspAnalysisConfig;
 use super::gap_artifacts::{
     GapArtifactKind, GapArtifactRejection, GapArtifactValidationContext, validate_gap_artifact,
@@ -472,6 +473,7 @@ pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &U
                 &snapshot.gap_artifacts,
                 snapshot.seams_deferred,
                 snapshot.partial_scope.is_some(),
+                &snapshot.component_outcomes,
             ),
             snapshot.base.as_deref().unwrap_or("no-base"),
             relative_uri.as_str(),
@@ -514,6 +516,7 @@ pub(super) fn complete_diagnostic_evidence_identity(snapshot: &AnalysisSnapshot)
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
             snapshot.partial_scope.is_some(),
+            &snapshot.component_outcomes,
         )
         .to_string(),
         snapshot
@@ -547,6 +550,7 @@ pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> Str
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
             snapshot.partial_scope.is_some(),
+            &snapshot.component_outcomes,
         )
         .to_string(),
         snapshot
@@ -712,12 +716,16 @@ pub(super) fn workspace_diagnostics_with_config(
     // files the review surface explicitly treats as out of scope (#2130).
     let (findings, out_of_scope_test_file_findings) =
         partition_out_of_scope_test_file_findings(&root, output.findings);
-    if out_of_scope_test_file_findings > 0 {
-        eprintln!(
-            "ripr lsp: {out_of_scope_test_file_findings} finding(s) anchored in non-production \
-             Rust paths are out of scope for LSP diagnostics and were not projected"
-        );
-    }
+
+    // Typed component-outcome authority (#1997, RIPR-SPEC-0141): every
+    // optional analysis component records one bounded outcome on the
+    // snapshot. The shared run status, `ripr/analysisStatus`, workspace
+    // status, progress ends, and the deduplicated `window/logMessage`
+    // warning all derive from these records, so no degradation is reported
+    // only through process stderr. The out-of-scope suppression above is
+    // disclosed typed via `out_of_scope_test_file_findings` on the snapshot
+    // and workspace status.
+    let mut component_outcomes = vec![ComponentOutcome::complete(AnalysisComponent::Diff)];
 
     // Validate gap artifacts first so we can determine run status before
     // assembling diagnostics. Run status governs severity downgrade/suppression
@@ -727,28 +735,32 @@ pub(super) fn workspace_diagnostics_with_config(
     // per-file spam. See RIPR-SPEC-0076 diagnostics policy.
     let gap_artifact_report =
         validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
-    let run_status = derive_run_status(
-        &findings,
-        &gap_artifact_report.rejections,
-        &gap_artifact_report.artifacts,
-        defer_seam_inventory,
-        partial_scope.is_some(),
-    );
-    let is_full_run = run_status == "full";
+    component_outcomes.push(cache_component_outcome(&gap_artifact_report.rejections));
+
     let (causal_projection, causal_projection_warning) = CausalDeltaArtifact::load_optional(&root);
     if let Some(warning) = causal_projection_warning {
-        eprintln!("ripr lsp: {warning}");
+        component_outcomes.push(ComponentOutcome::failed(
+            AnalysisComponent::CausalProjection,
+            "causal_projection_unusable",
+            warning,
+            true,
+            "run ripr check to regenerate the causal delta artifact",
+        ));
+    } else if causal_projection.is_some() {
+        component_outcomes.push(ComponentOutcome::complete(
+            AnalysisComponent::CausalProjection,
+        ));
     }
 
-    let mut grouped = finding_diagnostics_by_uri_with_profile(
-        &root,
-        &findings,
-        config.repo_config().severity(),
-        is_full_run,
-        config.diagnostic_profile,
-        causal_projection.as_ref(),
-        &config.position_encoding,
-    )?;
+    // Read, validate, and parse the gap decision ledger once per refresh so
+    // the typed component outcome and the diagnostic projection share one
+    // interpretation (#1939, #1997). An absent ledger is a normal state and
+    // records no outcome.
+    let (gap_ledger, gap_ledger_outcome) =
+        load_gap_ledger_records(&root, config.repo_config().languages().enabled());
+    if let Some(outcome) = gap_ledger_outcome {
+        component_outcomes.push(outcome);
+    }
 
     // Repo seam evidence diagnostics. Enabled by built-in defaults for the
     // saved-workspace editor model; explicit LSP options or repo policy can
@@ -766,79 +778,130 @@ pub(super) fn workspace_diagnostics_with_config(
     // diagnostics this refresh", not a hard failure. The opt-in
     // feature must not take down baseline Finding diagnostics if
     // some unrelated repo file confuses the walker. Caught by
-    // chatgpt-codex on PR #241.
+    // chatgpt-codex on PR #241. The typed component outcome degrades the
+    // shared run status to `limited` so the failure is visible on every
+    // status surface (#1997).
     //
     // Seam diagnostics severity policy: structural grip-class signals,
     // not gap-record repair packets — the WARNING/INFORMATION mapping
     // is owned by SeverityConfig. When run is not full, seam WARNINGs
     // downgrade to INFORMATION. The exception is documented here.
-    let classified_seams = if config.diagnostic_profile == LspDiagnosticProfile::Full
-        && !defer_seam_inventory
+    let seam_inventory_enabled = config.diagnostic_profile == LspDiagnosticProfile::Full
         && config.enable_seam_diagnostics
         && config
             .repo_config()
             .languages()
             .enabled()
-            .contains(&LanguageId::Rust)
-    {
-        match inventory_classified_seams_at_with_config(&root, config.repo_config()) {
-            Ok((seams, _)) => {
-                seams
-                    .into_iter()
-                    .filter(|entry| {
-                        // Drop entries that won't produce a published
-                        // diagnostic so `is_consistent` keeps counting
-                        // the snapshot accurately. URI-resolution
-                        // failures are silent here on purpose: they
-                        // are operational noise, not analysis errors.
-                        if diagnostic_severity_for_grip_class_with_config(
-                            entry.class,
-                            config.repo_config().severity(),
-                        )
-                        .is_none()
-                        {
-                            return false;
-                        }
-                        let path = absolute_seam_path(&root, &entry.seam);
-                        let Ok(uri) = file_uri_for_path(&path) else {
-                            return false;
-                        };
-                        if let Some(mut diagnostic) = diagnostic_for_classified_seam_with_causal(
-                            &root,
-                            entry,
-                            config.repo_config().severity(),
-                            causal_projection.as_ref(),
-                        ) {
-                            // Policy: limited/stale run downgrades seam WARNINGs to INFORMATION.
-                            if !is_full_run
-                                && diagnostic.severity == Some(DiagnosticSeverity::WARNING)
-                            {
-                                diagnostic.severity = Some(DiagnosticSeverity::INFORMATION);
-                            }
-                            grouped.entry(uri).or_default().push(diagnostic);
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .collect()
-            }
-            Err(err) => {
-                eprintln!("ripr lsp: seam diagnostics skipped this refresh: {err}");
-                Vec::new()
-            }
-        }
+            .contains(&LanguageId::Rust);
+    let (raw_seams, seam_outcome) = if defer_seam_inventory {
+        (
+            Vec::new(),
+            ComponentOutcome::deferred(
+                AnalysisComponent::SeamInventory,
+                "interactive_refresh_deferral",
+                "run ripr.refreshDiagnostics for the full seam inventory",
+            ),
+        )
+    } else if !seam_inventory_enabled {
+        (
+            Vec::new(),
+            ComponentOutcome::unavailable(
+                AnalysisComponent::SeamInventory,
+                "seam_diagnostics_not_enabled",
+            ),
+        )
     } else {
-        Vec::new()
+        match inventory_classified_seams_at_with_config(&root, config.repo_config()) {
+            Ok((seams, _)) => (
+                seams,
+                ComponentOutcome::complete(AnalysisComponent::SeamInventory),
+            ),
+            Err(err) => (
+                Vec::new(),
+                ComponentOutcome::failed(
+                    AnalysisComponent::SeamInventory,
+                    "seam_inventory_failed",
+                    format!("seam diagnostics skipped this refresh: {err}"),
+                    true,
+                    "retry ripr.refreshDiagnostics",
+                ),
+            ),
+        }
     };
+    component_outcomes.push(seam_outcome);
+
+    // The shared run status is derived once from the findings, gap-artifact
+    // state, scope, deferral, and the typed component outcomes (#1939,
+    // #1997). A degraded optional component makes the run `limited` — never
+    // a silent `full`.
+    let run_status = derive_run_status(
+        &findings,
+        &gap_artifact_report.rejections,
+        &gap_artifact_report.artifacts,
+        defer_seam_inventory,
+        partial_scope.is_some(),
+        &component_outcomes,
+    );
+    let is_full_run = run_status == "full";
+
+    let mut grouped = finding_diagnostics_by_uri_with_profile(
+        &root,
+        &findings,
+        config.repo_config().severity(),
+        is_full_run,
+        config.diagnostic_profile,
+        causal_projection.as_ref(),
+        &config.position_encoding,
+    )?;
+
+    let classified_seams = raw_seams
+        .into_iter()
+        .filter(|entry| {
+            // Drop entries that won't produce a published
+            // diagnostic so `is_consistent` keeps counting
+            // the snapshot accurately. URI-resolution
+            // failures are silent here on purpose: they
+            // are operational noise, not analysis errors.
+            if diagnostic_severity_for_grip_class_with_config(
+                entry.class,
+                config.repo_config().severity(),
+            )
+            .is_none()
+            {
+                return false;
+            }
+            let path = absolute_seam_path(&root, &entry.seam);
+            let Ok(uri) = file_uri_for_path(&path) else {
+                return false;
+            };
+            if let Some(mut diagnostic) = diagnostic_for_classified_seam_with_causal(
+                &root,
+                entry,
+                config.repo_config().severity(),
+                causal_projection.as_ref(),
+            ) {
+                // Policy: limited/stale run downgrades seam WARNINGs to INFORMATION.
+                if !is_full_run && diagnostic.severity == Some(DiagnosticSeverity::WARNING) {
+                    diagnostic.severity = Some(DiagnosticSeverity::INFORMATION);
+                }
+                grouped.entry(uri).or_default().push(diagnostic);
+                true
+            } else {
+                false
+            }
+        })
+        .collect();
 
     // Policy: gap-record diagnostics are suppressed entirely when run is not
     // "full" (stale/cache_limited/limited). The limited state is surfaced by
-    // `ripr.collectWorkspaceStatus`, not per-file spam.
-    if is_full_run {
+    // `ripr.collectWorkspaceStatus`, not per-file spam. The ledger was
+    // already read, validated, and parsed once above; a degraded ledger
+    // component means there are no records to project.
+    if is_full_run && let Some((ledger_path, records)) = &gap_ledger {
         append_gap_record_diagnostics_with_causal(
             &root,
-            config.repo_config().languages().enabled(),
+            ledger_path,
+            records,
             &mut grouped,
             causal_projection.as_ref(),
         );
@@ -869,6 +932,7 @@ pub(super) fn workspace_diagnostics_with_config(
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope,
+        component_outcomes,
         out_of_scope_test_file_findings,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
@@ -892,7 +956,10 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
 /// Shared run-status derivation from the raw ingredients. Both
 /// `backend::workspace_status_run_status` (for workspace status) and
 /// `diagnostics::snapshot_run_status` (for diagnostic severity) call
-/// this to avoid drift between the two surfaces (#1939).
+/// this to avoid drift between the two surfaces (#1939). The typed
+/// component outcomes (#1997, RIPR-SPEC-0141) are part of the same single
+/// derivation: a degraded optional component (`limited`/`failed`) makes the
+/// run `limited` — this is the ONLY run-status aggregation on the LSP path.
 ///
 /// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`,
 /// `"limited_partial_scope"`, or `"seams_deferred"`. `"seams_deferred"` is
@@ -907,6 +974,7 @@ pub(super) fn derive_run_status(
     gap_artifacts: &[super::gap_artifacts::ValidatedGapArtifact],
     defer_seam_inventory: bool,
     has_partial_scope: bool,
+    component_outcomes: &[ComponentOutcome],
 ) -> &'static str {
     if rejections
         .iter()
@@ -925,10 +993,119 @@ pub(super) fn derive_run_status(
     if has_static_limit {
         return "limited";
     }
+    if component_outcomes.iter().any(ComponentOutcome::is_degraded) {
+        return "limited";
+    }
     if defer_seam_inventory {
         return "seams_deferred";
     }
     "full"
+}
+
+/// The cache component outcome mirrors the gap-artifact rejection state one
+/// for one (#1997): rejections are a limited cache, not a silent skip.
+fn cache_component_outcome(rejections: &[GapArtifactRejection]) -> ComponentOutcome {
+    if rejections.is_empty() {
+        return ComponentOutcome::complete(AnalysisComponent::Cache);
+    }
+    let kinds = rejections
+        .iter()
+        .map(GapArtifactRejection::as_str)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join("|");
+    let kind = if rejections
+        .iter()
+        .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
+    {
+        "stale_artifact"
+    } else {
+        "gap_artifact_rejected"
+    };
+    ComponentOutcome::limited(
+        AnalysisComponent::Cache,
+        kind,
+        format!("gap artifact rejections: {kinds}"),
+        true,
+        "run ripr check to regenerate gap artifacts",
+    )
+}
+
+/// Read, validate, and parse the gap decision ledger once per refresh so the
+/// typed component outcome and the diagnostic projection share a single
+/// interpretation (#1939, #1997). Returns the parsed records when the ledger
+/// is usable plus the outcome to record on the snapshot; an absent ledger is
+/// a normal state and records no outcome.
+fn load_gap_ledger_records(
+    root: &Path,
+    enabled_languages: &[LanguageId],
+) -> (Option<(PathBuf, Vec<GapRecord>)>, Option<ComponentOutcome>) {
+    const RECOVERY: &str = "run ripr check to regenerate the gap decision ledger";
+    let failed = |kind: &'static str, message: String| {
+        (
+            None,
+            Some(ComponentOutcome::failed(
+                AnalysisComponent::GapLedger,
+                kind,
+                message,
+                true,
+                RECOVERY,
+            )),
+        )
+    };
+    let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let contents = match fs::read_to_string(&ledger_path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (None, None),
+        Err(err) => {
+            return failed(
+                "gap_ledger_read_failed",
+                format!("gap diagnostics skipped: read failed: {err}"),
+            );
+        }
+    };
+    let artifact = match serde_json::from_str::<serde_json::Value>(&contents) {
+        Ok(artifact) => artifact,
+        Err(err) => {
+            return failed(
+                "gap_ledger_parse_failed",
+                format!("gap diagnostics skipped: ledger parse failed: {err}"),
+            );
+        }
+    };
+    let context = GapArtifactValidationContext {
+        root,
+        enabled_languages,
+    };
+    match validate_gap_artifact(&artifact, &context) {
+        Ok(validated) if validated.kind == GapArtifactKind::GapDecisionLedger => {}
+        Ok(_) => {
+            return failed(
+                "gap_ledger_wrong_kind",
+                "gap diagnostics skipped: artifact is not a gap decision ledger".to_string(),
+            );
+        }
+        Err(rejection) => {
+            return failed(
+                rejection.as_str(),
+                format!(
+                    "gap diagnostics skipped: ledger rejected as {}",
+                    rejection.as_str()
+                ),
+            );
+        }
+    }
+    match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+        Ok(records) => (
+            Some((ledger_path, records)),
+            Some(ComponentOutcome::complete(AnalysisComponent::GapLedger)),
+        ),
+        Err(err) => failed(
+            "gap_records_parse_failed",
+            format!("gap diagnostics skipped: gap record parse failed: {err}"),
+        ),
+    }
 }
 
 /// Test-only re-export of `derive_run_status` so RIPR-SPEC-0105 control 4
@@ -940,7 +1117,7 @@ pub(super) fn snapshot_run_status_for_test(
     rejections: &[GapArtifactRejection],
     defer_seam_inventory: bool,
 ) -> &'static str {
-    derive_run_status(findings, rejections, &[], defer_seam_inventory, false)
+    derive_run_status(findings, rejections, &[], defer_seam_inventory, false, &[])
 }
 
 #[cfg(test)]
@@ -949,72 +1126,26 @@ fn append_gap_record_diagnostics(
     enabled_languages: &[LanguageId],
     grouped: &mut BTreeMap<Uri, Vec<Diagnostic>>,
 ) {
-    append_gap_record_diagnostics_with_causal(root, enabled_languages, grouped, None);
+    let (gap_ledger, _) = load_gap_ledger_records(root, enabled_languages);
+    if let Some((ledger_path, records)) = gap_ledger {
+        append_gap_record_diagnostics_with_causal(root, &ledger_path, &records, grouped, None);
+    }
 }
 
+/// Append gap-record diagnostics from an already loaded, validated, and
+/// parsed ledger. The ledger IO/validation lives in
+/// [`load_gap_ledger_records`] so this projection is pure and the typed
+/// component outcome is the single degradation authority (#1997).
 fn append_gap_record_diagnostics_with_causal(
     root: &Path,
-    enabled_languages: &[LanguageId],
+    ledger_path: &Path,
+    records: &[GapRecord],
     grouped: &mut BTreeMap<Uri, Vec<Diagnostic>>,
     causal_projection: Option<&CausalDeltaArtifact>,
 ) {
-    let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
-    let contents = match fs::read_to_string(&ledger_path) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
-        Err(err) => {
-            eprintln!(
-                "ripr lsp: gap diagnostics skipped: read {} failed: {err}",
-                ledger_path.display()
-            );
-            return;
-        }
-    };
-    let artifact = match serde_json::from_str::<serde_json::Value>(&contents) {
-        Ok(artifact) => artifact,
-        Err(err) => {
-            eprintln!(
-                "ripr lsp: gap diagnostics skipped: parse {} failed: {err}",
-                ledger_path.display()
-            );
-            return;
-        }
-    };
-    let context = GapArtifactValidationContext {
-        root,
-        enabled_languages,
-    };
-    match validate_gap_artifact(&artifact, &context) {
-        Ok(validated) if validated.kind == GapArtifactKind::GapDecisionLedger => {}
-        Ok(_) => {
-            eprintln!(
-                "ripr lsp: gap diagnostics skipped: {} is not a gap decision ledger",
-                ledger_path.display()
-            );
-            return;
-        }
-        Err(rejection) => {
-            eprintln!(
-                "ripr lsp: gap diagnostics skipped: {} rejected as {}",
-                ledger_path.display(),
-                rejection.as_str()
-            );
-            return;
-        }
-    }
-    let records = match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
-        Ok(records) => records,
-        Err(err) => {
-            eprintln!(
-                "ripr lsp: gap diagnostics skipped: parse {} failed: {err}",
-                ledger_path.display()
-            );
-            return;
-        }
-    };
-    for record in &records {
+    for record in records {
         let Some((uri, diagnostic)) =
-            diagnostic_for_gap_record_with_causal(root, &ledger_path, record, causal_projection)
+            diagnostic_for_gap_record_with_causal(root, ledger_path, record, causal_projection)
         else {
             continue;
         };
@@ -2107,6 +2238,111 @@ mod seam_diagnostic_tests {
     }
 
     #[test]
+    fn load_gap_ledger_records_types_every_failure_mode() -> Result<(), String> {
+        // RIPR-SPEC-0141 (#1997): the ledger is read, validated, and parsed
+        // once per refresh; every failure mode becomes a typed bounded
+        // component outcome instead of hidden stderr, and a usable ledger
+        // returns its records with a complete outcome.
+        let root = temp_gap_root()?;
+        let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+
+        // Absent ledger: a normal state that records no outcome.
+        let (records, outcome) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+        if records.is_some() || outcome.is_some() {
+            return Err("an absent ledger must record no outcome".to_string());
+        }
+
+        // Usable ledger: parsed records plus a complete outcome.
+        fs::write(
+            &ledger_path,
+            gap_ledger_json(vec![gap_record(true)]).to_string(),
+        )
+        .map_err(|err| format!("write ledger failed: {err}"))?;
+        let (records, outcome) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+        let Some((_, records)) = records else {
+            return Err("a usable ledger must return its records".to_string());
+        };
+        if records.len() != 1 {
+            return Err(format!("expected one gap record, got {}", records.len()));
+        }
+        let outcome =
+            outcome.ok_or_else(|| "a usable ledger must record an outcome".to_string())?;
+        if outcome.component != AnalysisComponent::GapLedger || outcome.state.as_str() != "complete"
+        {
+            return Err(format!(
+                "expected a complete gap_ledger outcome: {outcome:?}"
+            ));
+        }
+
+        // Malformed JSON: failed outcome with the parse kind, a bounded
+        // message, and the recovery route — no records.
+        fs::write(&ledger_path, "{not json")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        let (records, outcome) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+        let outcome =
+            outcome.ok_or_else(|| "a malformed ledger must record an outcome".to_string())?;
+        if records.is_some()
+            || outcome.state.as_str() != "failed"
+            || outcome.kind != Some("gap_ledger_parse_failed")
+            || outcome.message.is_none()
+            || outcome.recovery.is_none()
+            || !outcome.is_degraded()
+        {
+            return Err(format!("unexpected malformed-ledger outcome: {outcome:?}"));
+        }
+
+        // Wrong artifact kind at the ledger path.
+        let first_action = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "first_useful_action",
+            "root": ".",
+            "status": "actionable",
+            "selected": {
+                "seam_id": "seam:pricing",
+                "path": "src/pricing.rs"
+            },
+            "target": {
+                "file": "tests/pricing.rs",
+                "related_test": "tests/pricing.rs::handles_threshold"
+            },
+            "commands": {
+                "verify": "ripr agent verify --root . --json",
+                "receipt": "ripr agent receipt --root . --json"
+            }
+        });
+        fs::write(&ledger_path, first_action.to_string())
+            .map_err(|err| format!("write wrong-kind ledger failed: {err}"))?;
+        let (records, outcome) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+        let outcome =
+            outcome.ok_or_else(|| "a wrong-kind ledger must record an outcome".to_string())?;
+        if records.is_some()
+            || outcome.state.as_str() != "failed"
+            || outcome.kind != Some("gap_ledger_wrong_kind")
+        {
+            return Err(format!("unexpected wrong-kind ledger outcome: {outcome:?}"));
+        }
+
+        // A stale ledger surfaces the validation rejection code as the kind.
+        let mut stale = gap_ledger_json(vec![gap_record(true)]);
+        stale["status"] = serde_json::json!("stale");
+        fs::write(&ledger_path, stale.to_string())
+            .map_err(|err| format!("write stale ledger failed: {err}"))?;
+        let (records, outcome) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+        let outcome = outcome.ok_or_else(|| "a stale ledger must record an outcome".to_string())?;
+        if records.is_some()
+            || outcome.state.as_str() != "failed"
+            || outcome.kind != Some("stale_artifact")
+        {
+            return Err(format!("unexpected stale-ledger outcome: {outcome:?}"));
+        }
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn diagnostic_message_names_seam_kind_and_expression() -> Result<(), String> {
         let entry = classified(SeamGripClass::WeaklyGripped);
         let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
@@ -2627,7 +2863,7 @@ mod diagnostic_policy_tests {
         finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
 
         // Confirm run status is "limited" when finding has a static limit.
-        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false);
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false, &[]);
         if run_status != "limited" {
             return Err(format!(
                 "expected run_status=limited for finding with static_limit_kind, got {run_status}"
@@ -2671,7 +2907,7 @@ mod diagnostic_policy_tests {
     fn stale_run_suppresses_gap_record_diagnostics() -> Result<(), String> {
         // StaleArtifact rejection → run_status "stale" → not full → suppress gap records.
         let stale_rejections = vec![GapArtifactRejection::StaleArtifact];
-        let run_status = derive_run_status(&[], &stale_rejections, &[], false, false);
+        let run_status = derive_run_status(&[], &stale_rejections, &[], false, false, &[]);
         if run_status != "stale" {
             return Err(format!(
                 "expected run_status=stale for StaleArtifact rejection, got {run_status}"
@@ -2683,7 +2919,7 @@ mod diagnostic_policy_tests {
 
         // cache_limited rejection → also not full → suppress gap records.
         let cache_rejections = vec![GapArtifactRejection::WrongRoot("other-root".to_string())];
-        let run_status = derive_run_status(&[], &cache_rejections, &[], false, false);
+        let run_status = derive_run_status(&[], &cache_rejections, &[], false, false, &[]);
         if run_status != "cache_limited" {
             return Err(format!(
                 "expected run_status=cache_limited for non-stale rejection, got {run_status}"
@@ -2708,7 +2944,7 @@ mod diagnostic_policy_tests {
     // Stale/cache_limited rejections still dominate the partial state.
     #[test]
     fn partial_scope_run_status_is_limited_family_and_never_full() -> Result<(), String> {
-        let run_status = derive_run_status(&[], &[], &[], false, true);
+        let run_status = derive_run_status(&[], &[], &[], false, true, &[]);
         if run_status != "limited_partial_scope" {
             return Err(format!(
                 "expected run_status=limited_partial_scope for a partial partition, got {run_status}"
@@ -2723,7 +2959,7 @@ mod diagnostic_policy_tests {
         let mut finding = policy_finding();
         finding.static_limit_kind =
             Some(crate::domain::StaticLimitKind::RustTransitiveReachUnresolved);
-        let run_status = derive_run_status(&[finding], &[], &[], false, true);
+        let run_status = derive_run_status(&[finding], &[], &[], false, true, &[]);
         if run_status != "limited_partial_scope" {
             return Err(format!(
                 "partial scope must dominate per-finding static limitations, got {run_status}"
@@ -2737,6 +2973,7 @@ mod diagnostic_policy_tests {
             &[],
             false,
             true,
+            &[],
         );
         if stale != "stale" {
             return Err(format!("stale must dominate partial scope, got {stale}"));
@@ -2747,6 +2984,7 @@ mod diagnostic_policy_tests {
             &[],
             false,
             true,
+            &[],
         );
         if cache_limited != "cache_limited" {
             return Err(format!(
@@ -2758,6 +2996,72 @@ mod diagnostic_policy_tests {
         let would_emit_gap_records = run_status == "full";
         if would_emit_gap_records {
             return Err("gap records must not be emitted for a partial run".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn derive_run_status_marks_degraded_component_run_limited() -> Result<(), String> {
+        // RIPR-SPEC-0141 (#1997): a degraded optional component makes the
+        // shared run status `limited` — never a silent `full` — while the
+        // existing precedence (stale, cache_limited, partial scope, static
+        // limits) is unchanged.
+        let degraded = vec![ComponentOutcome::failed(
+            AnalysisComponent::SeamInventory,
+            "seam_inventory_failed",
+            "walk failed",
+            true,
+            "retry ripr.refreshDiagnostics",
+        )];
+        let run_status = derive_run_status(&[], &[], &[], false, false, &degraded);
+        if run_status != "limited" {
+            return Err(format!(
+                "expected run_status=limited for a degraded component, got {run_status}"
+            ));
+        }
+        // Degradation dominates the interactive deferral disclosure.
+        let run_status = derive_run_status(&[], &[], &[], true, false, &degraded);
+        if run_status != "limited" {
+            return Err(format!(
+                "degradation must dominate seams_deferred, got {run_status}"
+            ));
+        }
+        // Stale and cache_limited rejections still outrank component state.
+        let stale = derive_run_status(
+            &[],
+            &[GapArtifactRejection::StaleArtifact],
+            &[],
+            false,
+            false,
+            &degraded,
+        );
+        if stale != "stale" {
+            return Err(format!("stale must dominate degradation, got {stale}"));
+        }
+        // Non-degraded disclosed states never limit the run.
+        let disclosed = vec![
+            ComponentOutcome::complete(AnalysisComponent::Diff),
+            ComponentOutcome::deferred(
+                AnalysisComponent::SeamInventory,
+                "interactive_refresh_deferral",
+                "run ripr.refreshDiagnostics for the full seam inventory",
+            ),
+            ComponentOutcome::unavailable(
+                AnalysisComponent::SeamInventory,
+                "seam_diagnostics_not_enabled",
+            ),
+        ];
+        let run_status = derive_run_status(&[], &[], &[], false, false, &disclosed);
+        if run_status != "full" {
+            return Err(format!(
+                "complete/deferred/unavailable outcomes must keep a full run, got {run_status}"
+            ));
+        }
+        let run_status = derive_run_status(&[], &[], &[], true, false, &disclosed);
+        if run_status != "seams_deferred" {
+            return Err(format!(
+                "deferred seam inventory without degradation must stay seams_deferred, got {run_status}"
+            ));
         }
         Ok(())
     }
@@ -2999,6 +3303,7 @@ mod delivery_tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            component_outcomes: Vec::new(),
             out_of_scope_test_file_findings: 0,
         })
     }

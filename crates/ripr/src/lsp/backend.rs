@@ -134,6 +134,11 @@ pub(super) struct Backend {
     /// the visible lens view changed. `None` until the first commit.
     last_lens_view_identity: Mutex<Option<LensViewIdentity>>,
     dynamic_file_watch_registration: Mutex<bool>,
+    /// The degradation signature covered by the last `window/logMessage`
+    /// component warning (#1997, RIPR-SPEC-0141). Compared per committed
+    /// snapshot: a byte-identical repeated degradation warns once, a new
+    /// signature warns again, and a cleared signature logs one recovery line.
+    last_component_degradation: Mutex<Option<String>>,
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
@@ -193,6 +198,7 @@ impl Backend {
             code_lens_refresh_support: Mutex::new(false),
             last_lens_view_identity: Mutex::new(None),
             dynamic_file_watch_registration: Mutex::new(false),
+            last_component_degradation: Mutex::new(None),
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
             refresh_idle: Notify::new(),
@@ -655,6 +661,9 @@ impl Backend {
         // the commit consumes it; the refresh request below compares it
         // against the last requested view (#2032, RIPR-SPEC-0138).
         let lens_view = lens_view_identity(&snapshot);
+        // Retain the typed component outcomes for the deduplicated
+        // degradation warning emitted after a successful commit (#1997).
+        let component_outcomes = snapshot.component_outcomes.clone();
         let Some(quarantine_edges) =
             self.commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
         else {
@@ -696,6 +705,7 @@ impl Backend {
         }
         self.request_code_lens_refresh_if_view_changed(lens_view)
             .await;
+        self.log_component_degradations(&component_outcomes).await;
         self.log_refresh_completed(
             summary,
             published_uri_count,
@@ -1373,16 +1383,23 @@ impl Backend {
         let root = self.workspace_root_authority();
         let config = self.analysis_config();
         let configuration_failure = self.configuration_failure();
-        let snapshot_input = self
-            .latest_analysis
-            .lock()
-            .ok()
-            .and_then(|snapshot| {
-                snapshot
-                    .as_ref()
-                    .and_then(|value| value.input_identity.clone())
+        let snapshot_state = self.latest_analysis.lock().ok().and_then(|snapshot| {
+            snapshot.as_ref().map(|value| {
+                (
+                    value.input_identity.clone(),
+                    value
+                        .component_outcomes
+                        .iter()
+                        .map(|outcome| outcome.status_payload(value.input_identity_id().as_deref()))
+                        .collect::<Vec<_>>(),
+                )
             })
-            .map(|identity| identity.status_payload());
+        });
+        let (snapshot_identity, components) = match snapshot_state {
+            Some((identity, components)) => (identity, components),
+            None => (None, Vec::new()),
+        };
+        let snapshot_input = snapshot_identity.map(|identity| identity.status_payload());
         let current_input = match (
             health.current_input_identity.as_deref(),
             snapshot_input.as_ref(),
@@ -1466,6 +1483,10 @@ impl Backend {
             "last_success_input_identity": health.last_success_input_identity,
             "last_success_age_ms": last_success_age_ms,
             "run_status": health.run_status(),
+            // Typed bounded per-component outcomes for the committed snapshot
+            // (#1997, RIPR-SPEC-0141): the single typed authority for
+            // optional-component degradation. Empty until a snapshot commits.
+            "components": components,
             "diagnostic_profile": self
                 .analysis_config()
                 .map(|config| config.diagnostic_profile.as_str())
@@ -1751,6 +1772,12 @@ impl Backend {
     fn reset_health_for_input_change(&self) {
         if let Ok(mut failure) = self.configuration_failure.lock() {
             *failure = None;
+        }
+        // The degradation-dedup state belongs to the old input/root context
+        // (#1997 review): a signature suppressed there must re-warn once in
+        // the new context instead of staying silently suppressed.
+        if let Ok(mut last) = self.last_component_degradation.lock() {
+            *last = None;
         }
         if let Ok(mut health) = self.analysis_health.lock() {
             health.state = AnalysisAttemptState::Stopped;
@@ -2659,6 +2686,38 @@ impl Backend {
             )
             .await;
     }
+
+    /// Emit the deduplicated client-visible component-degradation warning for
+    /// one committed snapshot (#1997, RIPR-SPEC-0141). A byte-identical
+    /// repeated degradation warns once per distinct signature; a changed
+    /// signature warns again; a cleared signature logs one recovery line.
+    /// Routine partial evidence stays in this standard log channel —
+    /// `window/showMessage` remains reserved for reviewed hard failures.
+    async fn log_component_degradations(
+        &self,
+        outcomes: &[super::component_outcome::ComponentOutcome],
+    ) {
+        let signature = super::component_outcome::degradation_signature(outcomes);
+        let previous = {
+            let Ok(mut last) = self.last_component_degradation.lock() else {
+                return;
+            };
+            std::mem::replace(&mut *last, signature.clone())
+        };
+        if previous == signature {
+            return;
+        }
+        if let Some(message) = super::component_outcome::degradation_log_message(outcomes) {
+            self.client.log_message(MessageType::WARNING, message).await;
+        } else if previous.is_some() {
+            self.client
+                .log_message(
+                    MessageType::INFO,
+                    "ripr analysis recovered: all recorded analysis components are complete",
+                )
+                .await;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2721,35 +2780,10 @@ pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> S
 }
 
 fn bounded_failure_message(message: &str) -> String {
-    let normalized = message
-        .chars()
-        .map(|character| match character {
-            '\r' | '\n' | '\t' => ' ',
-            character => character,
-        })
-        .collect::<String>();
-    let path_safe = normalized
-        .split_whitespace()
-        .map(|token| {
-            if token.starts_with('/')
-                || token.starts_with('\\')
-                || token
-                    .as_bytes()
-                    .get(1)
-                    .is_some_and(|character| *character == b':')
-            {
-                "<path>"
-            } else {
-                token
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    let mut bounded = path_safe.chars().take(240).collect::<String>();
-    if path_safe.chars().count() > 240 {
-        bounded.push('…');
-    }
-    bounded
+    // Single-source bounding/redaction for LSP client-visible error text
+    // (#1997): the implementation lives in the component-outcome module so
+    // health failures and component outcomes are governed identically.
+    super::component_outcome::bounded_message(message)
 }
 
 fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
@@ -3711,7 +3745,7 @@ impl Backend {
             return Ok(None);
         }
         if params.command == COLLECT_CONTEXT_COMMAND {
-            return Ok(self.collect_context_packet(&params.arguments));
+            return Ok(self.collect_context_packet(&params.arguments).await);
         }
         if params.command == COLLECT_EVIDENCE_CONTEXT_COMMAND {
             return Ok(self.collect_evidence_context_packet(&params.arguments));
@@ -3731,7 +3765,7 @@ impl Backend {
         Ok(None)
     }
 
-    fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+    async fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
         let args = context_arguments(arguments)?;
         let snapshot = self.latest_analysis.lock().ok()?.clone()?;
         if let Some(gap_id) = args.get("gap_id").and_then(|v| v.as_str()) {
@@ -3742,7 +3776,14 @@ impl Backend {
             let (causal_projection, causal_projection_warning) =
                 crate::app::causal_projection::CausalDeltaArtifact::load_optional(&snapshot.root);
             if let Some(warning) = causal_projection_warning {
-                eprintln!("ripr lsp: {warning}");
+                // Client-visible warning, not hidden stderr (#1997): the
+                // bounded/redacted message goes to the standard log channel.
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        super::component_outcome::bounded_message(&warning),
+                    )
+                    .await;
             }
             let packet =
                 crate::output::agent_seam_packets::render_agent_seam_packets_json_with_causal(
@@ -4387,6 +4428,7 @@ fn workspace_status_run_status(snapshot: &AnalysisSnapshot) -> &'static str {
         &snapshot.gap_artifacts,
         snapshot.seams_deferred,
         snapshot.partial_scope.is_some(),
+        &snapshot.component_outcomes,
     )
 }
 
@@ -6551,6 +6593,7 @@ mod delivery_selection_parity_tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            component_outcomes: Vec::new(),
             out_of_scope_test_file_findings: 0,
         };
         WorkspaceDiagnostics { snapshot, batches }
@@ -6690,6 +6733,31 @@ mod delivery_selection_parity_tests {
         let mut sorted = ids.to_vec();
         sorted.sort();
         sorted
+    }
+
+    #[test]
+    fn input_change_reset_clears_component_degradation_dedup() -> Result<(), String> {
+        // #1997 review: the degradation-dedup state belongs to the old
+        // input/root context; a suppressed signature must re-warn once in the
+        // new context instead of staying silently suppressed.
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        {
+            let Ok(mut last) = backend.last_component_degradation.lock() else {
+                return Err("dedup lock poisoned".to_string());
+            };
+            *last = Some("seam_inventory=failed:seam_inventory_failed:walk failed".to_string());
+        }
+        backend.reset_health_for_input_change();
+        let cleared = backend
+            .last_component_degradation
+            .lock()
+            .map(|last| last.is_none())
+            .unwrap_or(false);
+        if !cleared {
+            return Err("input-change reset must clear the degradation dedup state".to_string());
+        }
+        Ok(())
     }
 
     #[test]

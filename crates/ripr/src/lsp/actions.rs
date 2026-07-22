@@ -1962,6 +1962,7 @@ mod tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            component_outcomes: Vec::new(),
             out_of_scope_test_file_findings: 0,
         }
     }

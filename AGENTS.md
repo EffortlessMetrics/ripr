@@ -65,7 +65,8 @@ The current internal shape is:
 - `cli`: command-line adapter (dispatch, help, doctor, parse)
 - `lsp`: experimental sidecar adapter (backend, diagnostics, hover, actions,
   capabilities, position encoding, diagnostic budget, refresh scheduler,
-  input identity, agent protocol)
+  input identity, agent protocol, typed component-outcome degradation
+  authority)
 - `agent`: repair-loop commands (loop commands, provenance)
 - `config`: `ripr.toml` loading, typed model, language detection
 

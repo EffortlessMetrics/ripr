@@ -1,3 +1,4 @@
+use super::component_outcome::ComponentOutcome;
 use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
 use super::input_identity::LspAnalysisInputIdentity;
 use super::uri::{file_uris_match, path_from_file_uri};
@@ -612,6 +613,14 @@ pub(super) struct AnalysisSnapshot {
     /// diagnostics like the other limited-family states; the result is never
     /// a gate, baseline, badge, or RIPR Zero input.
     pub(super) partial_scope: Option<crate::analysis::PartialDiffScope>,
+    /// Typed bounded per-component outcomes for this snapshot (#1997,
+    /// RIPR-SPEC-0141): the single typed authority for optional-component
+    /// degradation (seam inventory, gap ledger, causal projection, cache).
+    /// The shared run status, `ripr/analysisStatus`, workspace status,
+    /// progress ends, and the deduplicated `window/logMessage` degradation
+    /// warning all derive from these records — no degradation is reported
+    /// only through process stderr.
+    pub(super) component_outcomes: Vec<ComponentOutcome>,
     /// Count of diff-analysis findings the projection dropped because their
     /// anchor is a Rust path outside the production scope (the shared
     /// `workspace::is_production_rust_path` classifier: `tests/`,
@@ -1423,6 +1432,7 @@ mod tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            component_outcomes: Vec::new(),
             out_of_scope_test_file_findings: 0,
         };
 
@@ -1452,6 +1462,7 @@ mod tests {
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
+            component_outcomes: Vec::new(),
             out_of_scope_test_file_findings: 0,
         };
 

@@ -644,6 +644,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        component_outcomes: Vec::new(),
         out_of_scope_test_file_findings: 0,
     };
 
@@ -7920,6 +7921,7 @@ fn sample_analysis_snapshot(
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        component_outcomes: Vec::new(),
         out_of_scope_test_file_findings: 0,
     }
 }
@@ -11935,6 +11937,7 @@ fn quarantine_workspace_diagnostics(fixture: &QuarantineFixture) -> WorkspaceDia
         delivery_selection: None,
         seams_deferred: false,
         partial_scope: None,
+        component_outcomes: Vec::new(),
         out_of_scope_test_file_findings: 0,
     };
     WorkspaceDiagnostics {
@@ -13192,6 +13195,423 @@ fn framed_lsp_trace_initialize_trace_param_enables_tracing() -> Result<(), Strin
                 return Err("LSP server did not stop after exit notification".to_string());
             }
         }
+        Ok(())
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Typed component-outcome degradation (#1997, RIPR-SPEC-0141): no LSP
+// analysis degradation may be reported only through process stderr, and a
+// degraded optional component must surface typed on every status surface.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lsp_production_sources_have_no_stderr_degradation_fallback() -> Result<(), String> {
+    // Source-level guard: the production portion of every LSP source file
+    // must be free of `eprintln!`. Degradation is reported through the typed
+    // component outcomes on the snapshot plus `window/logMessage`, never
+    // through hidden process stderr.
+    let sources: [(&str, &str); 21] = [
+        ("lsp.rs", include_str!("../lsp.rs")),
+        ("actions.rs", include_str!("actions.rs")),
+        ("agent_protocol.rs", include_str!("agent_protocol.rs")),
+        ("backend.rs", include_str!("backend.rs")),
+        ("capabilities.rs", include_str!("capabilities.rs")),
+        ("component_outcome.rs", include_str!("component_outcome.rs")),
+        ("config.rs", include_str!("config.rs")),
+        ("diagnostic_budget.rs", include_str!("diagnostic_budget.rs")),
+        (
+            "diagnostic_catalog.rs",
+            include_str!("diagnostic_catalog.rs"),
+        ),
+        ("diagnostics.rs", include_str!("diagnostics.rs")),
+        ("gap_artifacts.rs", include_str!("gap_artifacts.rs")),
+        ("hover.rs", include_str!("hover.rs")),
+        ("input_identity.rs", include_str!("input_identity.rs")),
+        ("lens.rs", include_str!("lens.rs")),
+        ("payload_bounds.rs", include_str!("payload_bounds.rs")),
+        ("position.rs", include_str!("position.rs")),
+        ("progress.rs", include_str!("progress.rs")),
+        ("refresh_scheduler.rs", include_str!("refresh_scheduler.rs")),
+        ("state.rs", include_str!("state.rs")),
+        ("transport_bounds.rs", include_str!("transport_bounds.rs")),
+        ("uri.rs", include_str!("uri.rs")),
+    ];
+    for (name, source) in sources {
+        // Test-only code (everything from the first `#[cfg(test)]` onward)
+        // is excluded: test modules may print skip notices. No lsp source
+        // declares `#[cfg(test)]` items before its test module except
+        // diagnostics.rs test-only imports/helpers, which contain no
+        // stderr prints either; the whole-file check for those files would
+        // be equally clean, so the split is only a safety margin.
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        if production.contains("eprintln") {
+            return Err(format!(
+                "lsp/{name} writes to process stderr in production code; route degradation through the typed component outcomes (#1997)"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Recursively copy a fixture workspace into a writable temp root.
+fn copy_fixture_tree(source: &Path, target: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(target)
+        .map_err(|err| format!("create {} failed: {err}", target.display()))?;
+    let entries = std::fs::read_dir(source)
+        .map_err(|err| format!("read {} failed: {err}", source.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|err| format!("read dir entry failed: {err}"))?;
+        let name = entry.file_name();
+        if name == "target" || name == ".git" {
+            continue;
+        }
+        let from = entry.path();
+        let to = target.join(&name);
+        let file_type = entry
+            .file_type()
+            .map_err(|err| format!("inspect {} failed: {err}", from.display()))?;
+        if file_type.is_dir() {
+            copy_fixture_tree(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)
+                .map_err(|err| format!("copy {} failed: {err}", from.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Drive one explicit refresh over the wire, answering every
+/// `window/workDoneProgress/create` request, and collect all notifications
+/// emitted before the command response.
+async fn run_wire_refresh_collecting(
+    client_read: &mut tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    client_write: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    id: u64,
+) -> Result<Vec<serde_json::Value>, String> {
+    write_lsp_message(
+        client_write,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "workspace/executeCommand",
+            "params": {"command": REFRESH_COMMAND, "arguments": []}
+        }),
+    )
+    .await?;
+    let mut notifications = Vec::new();
+    tokio::time::timeout(Duration::from_mins(1), async {
+        loop {
+            let message = read_lsp_message(client_read).await?;
+            if message.get("id").and_then(serde_json::Value::as_u64) == Some(id)
+                && message.get("method").is_none()
+            {
+                if message.get("error").is_some() {
+                    return Err(format!("refresh command failed: {message}"));
+                }
+                return Ok::<(), String>(());
+            }
+            match message.get("method").and_then(serde_json::Value::as_str) {
+                Some("window/workDoneProgress/create") => {
+                    let request_id = message
+                        .get("id")
+                        .cloned()
+                        .ok_or_else(|| "create request carried no id".to_string())?;
+                    write_lsp_message(
+                        client_write,
+                        serde_json::json!({"jsonrpc": "2.0", "id": request_id, "result": null}),
+                    )
+                    .await?;
+                }
+                Some(_) => notifications.push(message),
+                None => {}
+            }
+        }
+    })
+    .await
+    .map_err(|_elapsed| "refresh timed out waiting for the command response".to_string())??;
+    Ok(notifications)
+}
+
+fn log_messages_of_type(notifications: &[serde_json::Value], message_type: u64) -> Vec<String> {
+    notifications
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("window/logMessage")
+                && message["params"]["type"].as_u64() == Some(message_type)
+        })
+        .filter_map(|message| message["params"]["message"].as_str().map(str::to_string))
+        .collect()
+}
+
+fn analysis_status_params(notifications: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    notifications
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("ripr/analysisStatus")
+        })
+        .map(|message| message["params"].clone())
+        .collect()
+}
+
+#[test]
+fn framed_lsp_component_degradation_is_typed_logged_and_recovers() -> Result<(), String> {
+    work_done_progress_runtime()?.block_on(async {
+        // A writable copy of the boundary_gap fixture with its own git HEAD:
+        // the on-disk fixture resolves `HEAD` through the enclosing
+        // repository, which a temp copy does not have.
+        let temp = unique_lsp_test_root("component-degradation")?;
+        let root = temp.path().join("workspace");
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+        copy_fixture_tree(&fixture, &root)?;
+        run_lsp_scope_git(&root, &["init", "-q"])?;
+        run_lsp_scope_git(&root, &["add", "-A"])?;
+        run_lsp_scope_git(
+            &root,
+            &[
+                "-c",
+                "user.email=ripr-test@example.com",
+                "-c",
+                "user.name=ripr-test",
+                "commit",
+                "-qm",
+                "fixture baseline",
+            ],
+        )?;
+
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (mut client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let root_uri = file_uri_for_path(&root)?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD",
+                        "checkMode": "instant",
+                        "diagnosticProfile": "full"
+                    },
+                    "capabilities": {
+                        "window": {"workDoneProgress": true}
+                    }
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        if initialize.get("error").is_some() {
+            return Err(format!("initialize failed: {initialize}"));
+        }
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await?;
+
+        // Refresh 1 (baseline): a clean run must not warn about degradation.
+        let baseline = run_wire_refresh_collecting(&mut client_read, &mut client_write, 2).await?;
+        let baseline_warnings = log_messages_of_type(&baseline, 2);
+        if baseline_warnings
+            .iter()
+            .any(|message| message.contains("ripr analysis limited"))
+        {
+            return Err(format!(
+                "a clean baseline run must not warn about degradation: {baseline_warnings:?}"
+            ));
+        }
+        let baseline_status = analysis_status_params(&baseline);
+        let Some(baseline_status) = baseline_status.last() else {
+            return Err("baseline refresh published no analysis status".to_string());
+        };
+        if baseline_status["run_status"].as_str() != Some("full") {
+            return Err(format!("baseline run must be full, got: {baseline_status}"));
+        }
+
+        // Plant a malformed causal delta artifact: the artifact exists but
+        // cannot be loaded, so the causal_projection component fails while
+        // diff and seam evidence remain usable.
+        let delta_path = root.join("target/ripr/pr/canonical-delta.json");
+        std::fs::create_dir_all(
+            delta_path
+                .parent()
+                .ok_or_else(|| "delta path must have a parent".to_string())?,
+        )
+        .map_err(|err| format!("create delta dir failed: {err}"))?;
+        std::fs::write(&delta_path, "{not json")
+            .map_err(|err| format!("write malformed delta failed: {err}"))?;
+
+        // Refresh 2 (degraded): typed status + one WARNING + limited progress
+        // + ordinary evidence still published.
+        let degraded = run_wire_refresh_collecting(&mut client_read, &mut client_write, 3).await?;
+        let degraded_status = analysis_status_params(&degraded);
+        let Some(status) = degraded_status.last() else {
+            return Err("degraded refresh published no analysis status".to_string());
+        };
+        if status["run_status"].as_str() != Some("limited") {
+            return Err(format!(
+                "a degraded component must make the run limited, got: {status}"
+            ));
+        }
+        let components = status["components"]
+            .as_array()
+            .ok_or_else(|| format!("status must expose typed components: {status}"))?;
+        let causal = components
+            .iter()
+            .find(|outcome| outcome["component"].as_str() == Some("causal_projection"));
+        let Some(causal) = causal else {
+            return Err(format!(
+                "components must include the causal_projection outcome: {components:?}"
+            ));
+        };
+        if causal["state"].as_str() != Some("failed")
+            || causal["kind"].as_str() != Some("causal_projection_unusable")
+            || causal["findings_trustworthy"].as_bool() != Some(true)
+            || causal["snapshot_identity"].is_null()
+        {
+            return Err(format!("unexpected causal_projection outcome: {causal}"));
+        }
+        let recovery = causal["recovery"].as_str().unwrap_or("");
+        if !recovery.contains("ripr check") {
+            return Err(format!(
+                "the degraded outcome must name a concrete recovery route: {causal}"
+            ));
+        }
+        let diff = components
+            .iter()
+            .find(|outcome| outcome["component"].as_str() == Some("diff"));
+        if diff.and_then(|outcome| outcome["state"].as_str()) != Some("complete") {
+            return Err(format!(
+                "ordinary diff findings must stay complete and disclosed: {components:?}"
+            ));
+        }
+        let warnings = log_messages_of_type(&degraded, 2);
+        let degradation_warnings = warnings
+            .iter()
+            .filter(|message| message.contains("causal_projection failed"))
+            .count();
+        if degradation_warnings != 1 {
+            return Err(format!(
+                "expected exactly one degradation warning, got {degradation_warnings}: {warnings:?}"
+            ));
+        }
+        if !warnings.iter().any(|message| {
+            message.contains("causal_projection failed") && message.contains("recovery:")
+        }) {
+            return Err(format!(
+                "the degradation warning must name the recovery route: {warnings:?}"
+            ));
+        }
+        let progress_end_limited = degraded.iter().any(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("$/progress")
+                && message["params"]["value"]["kind"].as_str() == Some("end")
+                && message["params"]["value"]["message"].as_str()
+                    == Some("analysis limited (run status: limited)")
+        });
+        if !progress_end_limited {
+            return Err(format!(
+                "progress must end limited for a degraded run: {degraded:?}"
+            ));
+        }
+        let published_evidence = degraded.iter().any(|message| {
+            message.get("method").and_then(serde_json::Value::as_str)
+                == Some("textDocument/publishDiagnostics")
+                && message["params"]["diagnostics"]
+                    .as_array()
+                    .is_some_and(|diagnostics| !diagnostics.is_empty())
+        });
+        if !published_evidence {
+            return Err(
+                "ordinary evidence must remain published under a degraded optional component"
+                    .to_string(),
+            );
+        }
+
+        // Refresh 3 (identical degradation): no repeated warning spam; the
+        // typed status still discloses the degradation.
+        let repeated = run_wire_refresh_collecting(&mut client_read, &mut client_write, 4).await?;
+        let repeated_warnings = log_messages_of_type(&repeated, 2)
+            .into_iter()
+            .filter(|message| message.contains("causal_projection failed"))
+            .count();
+        if repeated_warnings != 0 {
+            return Err("a byte-identical repeated degradation must not warn again".to_string());
+        }
+        let repeated_status = analysis_status_params(&repeated);
+        if repeated_status
+            .last()
+            .and_then(|status| status["run_status"].as_str())
+            != Some("limited")
+        {
+            return Err(format!(
+                "the repeated degradation must stay typed on status: {repeated_status:?}"
+            ));
+        }
+
+        // Refresh 4 (repaired): one INFO recovery line, full status restored.
+        std::fs::remove_file(&delta_path)
+            .map_err(|err| format!("remove malformed delta failed: {err}"))?;
+        let recovered = run_wire_refresh_collecting(&mut client_read, &mut client_write, 5).await?;
+        let recovery_infos = log_messages_of_type(&recovered, 3)
+            .into_iter()
+            .filter(|message| message.contains("recovered"))
+            .count();
+        if recovery_infos != 1 {
+            return Err(format!(
+                "recovery must log exactly one INFO line, got {recovery_infos}"
+            ));
+        }
+        let recovered_status = analysis_status_params(&recovered);
+        if recovered_status
+            .last()
+            .and_then(|status| status["run_status"].as_str())
+            != Some("full")
+        {
+            return Err(format!(
+                "the repaired refresh must restore a full run: {recovered_status:?}"
+            ));
+        }
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "id": 6, "method": "shutdown", "params": null}),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 6).await?;
+        if shutdown.get("error").is_some() {
+            return Err(format!("shutdown failed: {shutdown}"));
+        }
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        drop(temp);
         Ok(())
     })
 }

@@ -7355,3 +7355,34 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0141"
+name = "lsp typed component-outcome degradation model"
+spec = "docs/specs/RIPR-SPEC-0141-lsp-typed-component-degradation.md"
+tests = [
+  "crates/ripr/src/lsp/component_outcome.rs::tests::degraded_states_are_exactly_limited_and_failed",
+  "crates/ripr/src/lsp/component_outcome.rs::tests::failed_outcome_bounds_and_redacts_message",
+  "crates/ripr/src/lsp/component_outcome.rs::tests::status_payload_names_component_state_kind_and_recovery",
+  "crates/ripr/src/lsp/component_outcome.rs::tests::degradation_signature_is_none_without_degradation_and_stable_when_degraded",
+  "crates/ripr/src/lsp/component_outcome.rs::tests::degradation_log_message_names_component_and_recovery",
+  "crates/ripr/src/lsp/component_outcome.rs::tests::deferred_and_unavailable_states_have_distinct_strings",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::derive_run_status_marks_degraded_component_run_limited",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::load_gap_ledger_records_types_every_failure_mode",
+  "crates/ripr/src/lsp/tests.rs::lsp_production_sources_have_no_stderr_degradation_fallback",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_component_degradation_is_typed_logged_and_recovers",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/component_outcome.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/state.rs",
+  "crates/ripr/src/lsp/backend.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0141-lsp-typed-component-degradation.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

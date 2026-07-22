@@ -2,6 +2,7 @@ mod actions;
 mod agent_protocol;
 mod backend;
 mod capabilities;
+mod component_outcome;
 mod config;
 pub mod diagnostic_budget;
 mod diagnostic_catalog;
