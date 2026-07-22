@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -30,7 +30,7 @@ jobs:
       # Cache the ub-review source build so subsequent runs skip the ~12 min
       # cargo recompile. Keyed on the action SHA so a new pin invalidates.
       # Cuts repeat runs from ~14 min to ~2-3 min (ub-review #728).
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: ". -> target/ub-review-build"
           key: ub-review-a1e64c65e39aadf341f4e5cb14094b9a87f592ad
@@ -55,7 +55,7 @@ jobs:
 
       - name: Upload ub-review artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ub-review-${{ github.event.pull_request.number || github.run_id }}
           path: target/ub-review
