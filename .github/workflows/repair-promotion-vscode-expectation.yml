@@ -1,0 +1,84 @@
+name: Repair promotion VS Code expectation
+
+on:
+  pull_request:
+    types: [synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'promote/0.10.1-swarm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: promote/0.10.1-swarm
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dcba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: dtolnay/rust-toolchain@f133eefe930d61f0d9371efd474daf0125ed3dd1
+        with:
+          toolchain: 1.95.0
+      - name: Correct the untrusted-workspace setup contract
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('editors/vscode/test/suite/extension.test.ts')
+          text = path.read_text(encoding='utf-8')
+          old = """    await withControllerTestContext({
+              workspaceTrusted: false
+            }, async (context) => {
+              await context.controller.start();
+              const report = await diagnoseSetupReport(context);
+              assertReportIncludes(report, [
+                'Workspace trust state: workspace_untrusted',
+                'ripr server state: ripr_version_ok (ripr 0.8.0-test)'
+              ]);"""
+          new = """    await withControllerTestContext({
+              workspaceTrusted: false
+            }, async (context) => {
+              await context.controller.start();
+              const report = await diagnoseSetupReport(context);
+              assertReportIncludes(report, [
+                'Workspace trust state: workspace_untrusted',
+                'ripr server state: ripr_missing',
+                'Server: not resolved'
+              ]);"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale untrusted block, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: npm ci
+      - name: Compile extension and tests
+        working-directory: editors/vscode
+        run: npm run compile
+      - name: Package extension
+        working-directory: editors/vscode
+        run: npm run package
+      - name: Build local ripr server
+        run: cargo build -p ripr
+      - name: Install Electron test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Run real extension-host tests
+        working-directory: editors/vscode
+        env:
+          RIPR_TEST_SERVER_PATH: ${{ github.workspace }}/target/debug/ripr
+        run: xvfb-run -a npm run test:e2e
+      - name: Commit the verified correction
+        run: |
+          rm .github/workflows/repair-promotion-vscode-expectation.yml
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add editors/vscode/test/suite/extension.test.ts .github/workflows/repair-promotion-vscode-expectation.yml
+          git commit -m "test(vscode): keep untrusted setup fail-closed"
+          git push origin HEAD:promote/0.10.1-swarm
