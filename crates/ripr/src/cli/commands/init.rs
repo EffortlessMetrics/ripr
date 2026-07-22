@@ -726,16 +726,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
-          configured_languages="$(
-            ripr doctor --root . 2>/dev/null \
-              | sed -n 's/^- Enabled languages: //p' \
-              | tail -n 1 \
-              || true
-          )"
           preview_languages="$(
-            printf '%s\n' "$configured_languages" \
-              | tr ',' '\n' \
-              | sed 's/^ *//; s/ *$//' \
+            ripr doctor --root . --json 2>/dev/null \
+              | jq -r '.languages[]?' 2>/dev/null \
               | sed -n '/^typescript$/p; /^python$/p' \
               | sort -u \
               | tr '\n' ' ' \
@@ -743,7 +736,15 @@ jobs:
               || true
           )"
           if [ -z "$preview_languages" ]; then
-            echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            # Empty can mean "none configured" OR "doctor --json failed"
+            # (#2182 review): doctor always emits at least the default
+            # language, so an empty result is a detection failure. Say so
+            # instead of asserting none are configured.
+            if ripr doctor --root . --json > /dev/null 2>&1; then
+              echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            else
+              echo 'Language detection via `ripr doctor --json` failed; preview promotion packets were not generated. Run ripr doctor locally for the underlying error.'
+            fi
             exit 0
           fi
           for language in $preview_languages; do
@@ -1207,9 +1208,8 @@ jobs:
             fi
             echo
             configured_languages="$(
-              ripr doctor --root . 2>/dev/null \
-                | sed -n 's/^- Enabled languages: //p' \
-                | tail -n 1 \
+              ripr doctor --root . --json 2>/dev/null \
+                | jq -r '.languages | join(",")' 2>/dev/null \
                 || true
             )"
             if [ -z "$configured_languages" ]; then

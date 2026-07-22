@@ -63,6 +63,10 @@ pub(crate) struct DoctorReport {
     pub(crate) status: DoctorStatus,
     pub(crate) checks: Vec<DoctorCheck>,
     pub(crate) sections: Vec<DoctorSection>,
+    /// Enabled language wire strings from the effective config (#2072):
+    /// the typed surface the generated CI consumes instead of parsing the
+    /// human "Enabled languages:" line.
+    pub(crate) languages: Vec<String>,
 }
 
 impl DoctorReport {
@@ -76,6 +80,7 @@ impl DoctorReport {
             status: DoctorStatus::Pass,
             checks: Vec::new(),
             sections: Vec::new(),
+            languages: Vec::new(),
         }
     }
 
@@ -227,6 +232,16 @@ pub(crate) fn evaluate_doctor_core_with_config(root: &Path) -> DoctorCoreEvaluat
         let (status, evidence) = doctor_tool_check(tool);
         report.add_check(&format!("tool_{tool}"), status, Some(evidence));
     }
+    // Typed language surface for generated CI (#2072): mirror exactly the
+    // effective enabled set the human projection prints.
+    if let Ok(config) = &config {
+        report.languages = config
+            .languages()
+            .enabled()
+            .iter()
+            .map(|language| language.as_str().to_string())
+            .collect();
+    }
     DoctorCoreEvaluation { report, config }
 }
 
@@ -317,6 +332,46 @@ mod tests {
         let text = report.render_text();
         assert!(text.contains("✓ config"));
         assert!(text.contains("✓ doctor checks passed"));
+    }
+
+    #[test]
+    fn doctor_json_carries_enabled_languages() -> Result<(), String> {
+        // #2072: generated CI consumes the typed languages surface.
+        // Hermetic: a temp root with a configured enabled list, so the
+        // test proves config propagation, not just built-in defaults
+        // (#2182 review).
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root =
+            std::env::temp_dir().join(format!("ripr-doctor-lang-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname = \"probe\"\n")
+            .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join(crate::config::CONFIG_FILE_NAME),
+            "[languages]\nenabled = [\"rust\", \"python\"]\n",
+        )
+        .map_err(|err| format!("write config: {err}"))?;
+
+        let report = evaluate_doctor_core(&root);
+        let json = report.render_json()?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).map_err(|e| format!("invalid JSON: {e}"))?;
+        let languages = parsed["languages"]
+            .as_array()
+            .ok_or_else(|| "languages must be an array".to_string())?;
+        assert!(
+            languages.iter().any(|language| language == "rust"),
+            "configured set must include rust: {languages:?}"
+        );
+        assert!(
+            languages.iter().any(|language| language == "python"),
+            "configured set must include python: {languages:?}"
+        );
+        Ok(())
     }
 
     #[test]
