@@ -27,8 +27,10 @@ use super::seam_cache::CLASSIFIED_SEAM_CACHE_STORE_LIMIT;
 #[cfg(test)]
 use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CacheLoad, CachedSeamLimitInfo, FileFactCacheStats, RepoSeamFactCache, WorkspaceState,
+    CacheLoad, CachedSeamLimitInfo, FileFactCacheStats, RepoCorpusFingerprintCache,
+    RepoSeamCacheKey, RepoSeamFactCache, WorkspaceKeyContext, WorkspaceState,
     classified_seam_cache_store_limit, compact_classified_seam_cache_store_limit,
+    corpus_fingerprint,
 };
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
@@ -153,8 +155,52 @@ pub(crate) fn inventory_classified_seams_at_with_config(
 ) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
     let total_started = Instant::now();
     let cache = RepoSeamFactCache::at(root);
+    let store_limit = classified_seam_cache_store_limit()?;
     let collect_started = Instant::now();
-    let state = match collect_workspace_state(root, config) {
+    let (rust_files, fingerprint) = match scan_corpus_fingerprint(root) {
+        Ok(scan) => scan,
+        Err(err) => {
+            trace_latency_phase(
+                "collect_workspace_state",
+                "error",
+                collect_started.elapsed(),
+            );
+            trace_latency_phase("total", "error", total_started.elapsed());
+            return Err(err);
+        }
+    };
+    let inputs = workspace_key_inputs(root, config);
+
+    // Stat-only fast path (issue #2108): when the corpus fingerprint store
+    // holds a mapping for the current (path, mtime, size, ctime on unix)
+    // signature, the cache key is rebuilt without reading any file contents.
+    if let Some(key) = fingerprint_cached_workspace_key(root, &inputs, fingerprint.as_deref()) {
+        trace_latency_phase(
+            "collect_workspace_state",
+            "fingerprint",
+            collect_started.elapsed(),
+        );
+        let cache_started = Instant::now();
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((cached, cached_limit_info)) => {
+                trace_latency_phase("cache_load", "hit", cache_started.elapsed());
+                trace_latency_phase("total", "cache_hit", total_started.elapsed());
+                // Preserve the run_status from the original run: a capped run
+                // stored its SeamLimitInfo in the envelope; a complete run
+                // stored None.
+                return Ok((cached, cached_limit_info.map(SeamLimitInfo::from)));
+            }
+            CacheLoad::Miss => {
+                trace_latency_phase("cache_load", "miss", cache_started.elapsed());
+            }
+            CacheLoad::CorruptIgnored { reason } => {
+                trace_latency_phase("cache_load", "corrupt_ignored", cache_started.elapsed());
+                eprintln!("ripr: repo seam cache entry ignored ({reason})");
+            }
+        }
+    }
+
+    let state = match collect_workspace_state_from_files(root, config, rust_files) {
         Ok(state) => {
             trace_latency_phase("collect_workspace_state", "ok", collect_started.elapsed());
             state
@@ -170,9 +216,9 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     };
     let key = state.cache_key();
+    store_corpus_fingerprint_mapping(&state, fingerprint, &key);
     // NOTE: the seam-limit key is baked into `key.filename()`, so a capped run
     // and an unbounded run never share a cache file — no fast-path bypass needed.
-    let store_limit = classified_seam_cache_store_limit()?;
     let cache_started = Instant::now();
     trace_latency_phase(
         "cache_load",
@@ -251,7 +297,17 @@ pub(crate) fn workspace_cache_key_at_with_config(
     root: &Path,
     config: &RiprConfig,
 ) -> Result<super::seam_cache::RepoSeamCacheKey, String> {
-    Ok(collect_workspace_state(root, config)?.cache_key())
+    let (rust_files, fingerprint) = scan_corpus_fingerprint(root)?;
+    let inputs = workspace_key_inputs(root, config);
+    // Fingerprint fast path (issue #2108): a stored mapping yields the
+    // byte-identical key without reading any file contents.
+    if let Some(key) = fingerprint_cached_workspace_key(root, &inputs, fingerprint.as_deref()) {
+        return Ok(key);
+    }
+    let state = collect_workspace_state_from_files(root, config, rust_files)?;
+    let key = state.cache_key();
+    store_corpus_fingerprint_mapping(&state, fingerprint, &key);
+    Ok(key)
 }
 
 fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
@@ -372,8 +428,36 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     let total_started = Instant::now();
     let store_limit = compact_classified_seam_cache_store_limit()?;
     let cache = RepoSeamFactCache::at_compact_classified(root);
-    let state = collect_workspace_state(root, config)?;
+    let (rust_files, fingerprint) = scan_corpus_fingerprint(root)?;
+    let inputs = workspace_key_inputs(root, config);
+
+    // Stat-only fast path (issue #2108): rebuild the byte-identical cache
+    // key from the corpus fingerprint store when the signature is unchanged.
+    if let Some(key) = fingerprint_cached_workspace_key(root, &inputs, fingerprint.as_deref()) {
+        let cache_started = Instant::now();
+        match cache.load_classified_seams(&key) {
+            CacheLoad::Hit((cached, _limit_info)) => {
+                trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
+                trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
+                return Ok(cached);
+            }
+            CacheLoad::Miss => {
+                trace_latency_phase("compact_cache_load", "miss", cache_started.elapsed());
+            }
+            CacheLoad::CorruptIgnored { reason } => {
+                trace_latency_phase(
+                    "compact_cache_load",
+                    "corrupt_ignored",
+                    cache_started.elapsed(),
+                );
+                eprintln!("ripr: compact repo seam cache entry ignored ({reason})");
+            }
+        }
+    }
+
+    let state = collect_workspace_state_from_files(root, config, rust_files)?;
     let key = state.cache_key();
+    store_corpus_fingerprint_mapping(&state, fingerprint, &key);
     let cache_started = Instant::now();
     match cache.load_classified_seams(&key) {
         CacheLoad::Hit((cached, _limit_info)) => {
@@ -964,6 +1048,17 @@ fn collect_workspace_state(
     config: &RiprConfig,
 ) -> Result<OwnedWorkspaceState, String> {
     let rust_files = workspace::discover_rust_files(root)?;
+    collect_workspace_state_from_files(root, config, rust_files)
+}
+
+/// Read the contents of a pre-discovered corpus file list. Callers that
+/// already ran discovery for the corpus fingerprint scan (issue #2108)
+/// pass the list through so the directory walk is not repeated.
+fn collect_workspace_state_from_files(
+    root: &Path,
+    config: &RiprConfig,
+    rust_files: Vec<PathBuf>,
+) -> Result<OwnedWorkspaceState, String> {
     let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(rust_files.len());
     for path in rust_files {
         cancellation::checkpoint()?;
@@ -978,6 +1073,90 @@ fn collect_workspace_state(
         test_intent_text: read_optional(&root.join(".ripr").join("test_intent.toml")),
         suppressions_text: read_optional(&root.join(config.suppressions().path())),
     })
+}
+
+/// Discover the corpus and compute its stat-only fingerprint in one pass
+/// (issue #2108). The fingerprint is `None` when any file cannot be
+/// stat'd; callers then fall back to the always-correct content read.
+fn scan_corpus_fingerprint(root: &Path) -> Result<(Vec<PathBuf>, Option<String>), String> {
+    let rust_files = workspace::discover_rust_files(root)?;
+    let fingerprint = corpus_fingerprint(root, &rust_files);
+    Ok((rust_files, fingerprint))
+}
+
+/// Cache-key inputs other than the corpus content hash, in owned form so
+/// the fingerprint fast path can build a key without holding file bytes.
+struct WorkspaceKeyInputs {
+    cfg_features: Option<String>,
+    config_text: Option<String>,
+    test_intent_text: Option<String>,
+    suppressions_text: Option<String>,
+}
+
+fn workspace_key_inputs(root: &Path, config: &RiprConfig) -> WorkspaceKeyInputs {
+    WorkspaceKeyInputs {
+        cfg_features: std::env::var("RIPR_CFG_FEATURES").ok(),
+        config_text: config.source_text().map(str::to_string),
+        test_intent_text: read_optional(&root.join(".ripr").join("test_intent.toml")),
+        suppressions_text: read_optional(&root.join(config.suppressions().path())),
+    }
+}
+
+impl WorkspaceKeyInputs {
+    fn cache_key(&self, root: &Path, files_content_hash: String) -> RepoSeamCacheKey {
+        WorkspaceKeyContext {
+            workspace_root: root,
+            cfg_features: self.cfg_features.as_deref(),
+            config_text: self.config_text.as_deref(),
+            test_intent_text: self.test_intent_text.as_deref(),
+            suppressions_text: self.suppressions_text.as_deref(),
+        }
+        .cache_key(files_content_hash)
+    }
+}
+
+/// Resolve the workspace cache key from the corpus fingerprint store
+/// (issue #2108). Returns `Some(key)` only when the store holds a mapping
+/// for the corpus's current stat-only signature; that key is byte-identical
+/// to the key a full content read would compute, so a cache hit through it
+/// is exactly as authoritative as one through the read-everything path.
+fn fingerprint_cached_workspace_key(
+    root: &Path,
+    inputs: &WorkspaceKeyInputs,
+    fingerprint: Option<&str>,
+) -> Option<RepoSeamCacheKey> {
+    let stored_hash = RepoCorpusFingerprintCache::at(root).lookup(root, fingerprint?)?;
+    Some(inputs.cache_key(root, stored_hash))
+}
+
+/// Persist `fingerprint -> files_content_hash` after a full content read
+/// (issue #2108). The mapping is stored only when the corpus signature is
+/// identical before and after the read, so a fingerprint can never be
+/// paired with a hash derived from a corpus with a *different* signature.
+/// Best-effort: a store failure degrades the next run to the old
+/// read-everything path and is logged, never fatal.
+fn store_corpus_fingerprint_mapping(
+    state: &OwnedWorkspaceState,
+    pre_read_fingerprint: Option<String>,
+    key: &RepoSeamCacheKey,
+) {
+    let Some(fingerprint) = pre_read_fingerprint else {
+        return;
+    };
+    let paths: Vec<PathBuf> = state.files.iter().map(|(path, _)| path.clone()).collect();
+    let post_read = corpus_fingerprint(&state.workspace_root, &paths);
+    if post_read.as_deref() != Some(fingerprint.as_str()) {
+        // The corpus changed while it was being read; the signature no
+        // longer describes the hashed bytes, so storing would be dishonest.
+        return;
+    }
+    if let Err(reason) = RepoCorpusFingerprintCache::at(&state.workspace_root).store(
+        &state.workspace_root,
+        &fingerprint,
+        &key.files_content_hash,
+    ) {
+        eprintln!("ripr: corpus fingerprint cache store ignored ({reason})");
+    }
 }
 
 fn read_optional(path: &Path) -> Option<String> {
@@ -1513,6 +1692,30 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         std::fs::write(path, content).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
+    /// Rewrite `path` with identical content until the inode change time
+    /// advances, so ctime-based assertions hold on filesystems with coarse
+    /// timestamp granularity. Bounded so a filesystem that never bumps
+    /// ctime fails the test loudly instead of hanging.
+    #[cfg(unix)]
+    fn wait_for_ctime_tick(path: &Path) -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+        let reference = std::fs::metadata(path)
+            .map(|m| (m.ctime(), m.ctime_nsec()))
+            .map_err(|err| format!("stat ctime: {err}"))?;
+        let content = std::fs::read(path).map_err(|err| format!("read for tick: {err}"))?;
+        for _ in 0..1_000 {
+            std::fs::write(path, &content).map_err(|err| format!("tick rewrite: {err}"))?;
+            let current = std::fs::metadata(path)
+                .map(|m| (m.ctime(), m.ctime_nsec()))
+                .map_err(|err| format!("stat ctime: {err}"))?;
+            if current != reference {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        Err("filesystem ctime never advanced; ctime assertions cannot run here".to_string())
+    }
+
     fn cache_dir_under(root: &Path) -> PathBuf {
         root.join("target")
             .join("ripr")
@@ -2039,6 +2242,345 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 "warm path should return cached (empty) seams, got {} seams",
                 warm.len()
             ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn given_preserved_signature_when_content_is_swapped_then_stored_hash_is_reused()
+    -> Result<(), String> {
+        // Pins the issue #2108 fast path on non-unix platforms: when every
+        // file keeps its (path, mtime, size) signature, the warm run must
+        // rebuild the byte-identical cache key from the fingerprint store
+        // WITHOUT re-reading file contents. Proof: the bytes on disk are
+        // swapped for different same-length content (so any content read
+        // would produce a different key), yet the run still hits the cache
+        // entry written under the original content's key. On unix this
+        // scenario invalidates via ctime instead — see the unix-gated
+        // companion test below.
+        let root = make_tempdir("fingerprint-warm-hit")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        // Cold pass: classifies the seam, writes the seam cache entry and
+        // the corpus fingerprint mapping.
+        let cold = inventory_classified_seams_at(&root)?;
+        if cold.is_empty() {
+            return Err("cold path should classify at least one seam from foo.rs".into());
+        }
+
+        // Doctor the cache entry so a hit is observable: if the warm path
+        // returns `[]`, it read the cache; if it recomputes, it returns
+        // the real (non-empty) classification.
+        let entries = list_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        // Swap the bytes for same-length different content and restore the
+        // original mtime, keeping the (path, mtime, size) signature intact.
+        let original_mtime = std::fs::metadata(root.join("src/foo.rs"))
+            .and_then(|metadata| metadata.modified())
+            .map_err(|err| format!("stat mtime: {err}"))?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount <= threshold }\n",
+        )?;
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("src/foo.rs"))
+            .map_err(|err| format!("open for set_modified: {err}"))?;
+        file.set_modified(original_mtime)
+            .map_err(|err| format!("set_modified: {err}"))?;
+
+        let warm = inventory_classified_seams_at(&root)?;
+        if !warm.is_empty() {
+            return Err(format!(
+                "fingerprint hit should reuse the stored hash and return the cached (empty) seams without re-reading the corpus, got {} seams",
+                warm.len()
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// Unix companion to the test above (codex P2 on #2175): the same
+    /// mtime-preserving rewrite bumps the inode change time, so the
+    /// fingerprint changes, the doctored cache entry under the old key is
+    /// NOT served, and the rerun recomputes from the swapped content.
+    #[cfg(unix)]
+    #[test]
+    fn given_mtime_preserving_rewrite_when_inventory_reruns_then_ctime_invalidates_mapping()
+    -> Result<(), String> {
+        let root = make_tempdir("fingerprint-ctime-invalidate")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let cold = inventory_classified_seams_at(&root)?;
+        if cold.is_empty() {
+            return Err("cold path should classify at least one seam from foo.rs".into());
+        }
+        let cold_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+
+        // Doctor the cache entry so serving it would be observable.
+        let entries = list_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        // Same-size rewrite with the mtime explicitly restored — what
+        // `rsync -a` / `cp --preserve=timestamps` do. On unix the ctime
+        // still bumps, so the fingerprint must invalidate. The tick wait
+        // (identical bytes, so content is untouched) guarantees the fs
+        // timestamp clock has advanced even on coarse-granularity
+        // filesystems.
+        let original_mtime = std::fs::metadata(root.join("src/foo.rs"))
+            .and_then(|metadata| metadata.modified())
+            .map_err(|err| format!("stat mtime: {err}"))?;
+        wait_for_ctime_tick(&root.join("src/foo.rs"))?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount <= threshold }\n",
+        )?;
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("src/foo.rs"))
+            .map_err(|err| format!("open for set_modified: {err}"))?;
+        file.set_modified(original_mtime)
+            .map_err(|err| format!("set_modified: {err}"))?;
+
+        let rerun = inventory_classified_seams_at(&root)?;
+        if rerun.is_empty() {
+            return Err(
+                "mtime-preserving rewrite must invalidate the fingerprint via ctime and recompute"
+                    .into(),
+            );
+        }
+        let new_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+        if new_key == cold_key {
+            return Err(
+                "mtime-preserving rewrite must produce a new cache key on unix (ctime changed)"
+                    .into(),
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_content_change_with_mtime_bump_when_inventory_reruns_then_recomputes_and_refreshes_mapping()
+    -> Result<(), String> {
+        // A content change that also bumps the mtime must invalidate the
+        // fingerprint mapping: the rerun recomputes (the doctored cache
+        // entry under the old key is NOT served) and stores a fresh
+        // fingerprint mapping for the new signature.
+        let root = make_tempdir("fingerprint-mtime-bump")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let cold = inventory_classified_seams_at(&root)?;
+        if cold.is_empty() {
+            return Err("cold path should classify at least one seam from foo.rs".into());
+        }
+        let cold_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+
+        // Doctor the old entry so serving it would be observable.
+        let entries = list_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        // Change the content and force a distinct mtime so the new
+        // signature cannot collide with the old one through mtime
+        // granularity.
+        let original_mtime = std::fs::metadata(root.join("src/foo.rs"))
+            .and_then(|metadata| metadata.modified())
+            .map_err(|err| format!("stat mtime: {err}"))?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount <= threshold }\n",
+        )?;
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("src/foo.rs"))
+            .map_err(|err| format!("open for set_modified: {err}"))?;
+        file.set_modified(original_mtime + Duration::from_secs(2))
+            .map_err(|err| format!("set_modified: {err}"))?;
+
+        let rerun = inventory_classified_seams_at(&root)?;
+        if rerun.is_empty() {
+            return Err(
+                "mtime-bumped content change must invalidate the fingerprint mapping and recompute"
+                    .into(),
+            );
+        }
+
+        let new_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+        if new_key == cold_key {
+            return Err("content change with mtime bump must produce a new cache key".into());
+        }
+        let new_fingerprint = corpus_fingerprint(&root, &[PathBuf::from("src/foo.rs")])
+            .ok_or("fingerprint should compute for the changed corpus")?;
+        let stored = RepoCorpusFingerprintCache::at(&root).lookup(&root, &new_fingerprint);
+        if stored.as_deref() != Some(new_key.files_content_hash.as_str()) {
+            return Err(format!(
+                "rerun should store the new fingerprint mapping, got {stored:?}"
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_size_change_with_preserved_mtime_when_key_is_resolved_then_key_changes()
+    -> Result<(), String> {
+        // A size change alone (mtime preserved) must invalidate the
+        // fingerprint, so the resolved key reflects the new content.
+        let root = make_tempdir("fingerprint-size-change")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+        let cold_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+
+        let original_mtime = std::fs::metadata(root.join("src/foo.rs"))
+            .and_then(|metadata| metadata.modified())
+            .map_err(|err| format!("stat mtime: {err}"))?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold || amount < 0 }\n",
+        )?;
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("src/foo.rs"))
+            .map_err(|err| format!("open for set_modified: {err}"))?;
+        file.set_modified(original_mtime)
+            .map_err(|err| format!("set_modified: {err}"))?;
+
+        let new_key = workspace_cache_key_at_with_config(&root, &RiprConfig::default())?;
+        if new_key == cold_key {
+            return Err(
+                "size change with preserved mtime must invalidate the fingerprint and change the key"
+                    .into(),
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_changed_signature_during_read_when_mapping_store_runs_then_nothing_is_stored()
+    -> Result<(), String> {
+        // The store guard: if the corpus signature changed between the
+        // pre-read fingerprint and the end of the content read, the
+        // mapping must NOT be stored — a fingerprint may never be paired
+        // with a hash derived from a differently-signed corpus.
+        let root = make_tempdir("fingerprint-guard")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+        let (rust_files, pre_fingerprint) = scan_corpus_fingerprint(&root)?;
+        let state = collect_workspace_state_from_files(&root, &RiprConfig::default(), rust_files)?;
+        let key = state.cache_key();
+
+        // Simulate a mid-read corpus change: the hashed file itself has a
+        // new signature at store time, so the pre-read fingerprint no
+        // longer describes the state of the corpus on disk.
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold || amount < 0 }\n",
+        )?;
+
+        store_corpus_fingerprint_mapping(&state, pre_fingerprint.clone(), &key);
+        let fingerprint = pre_fingerprint.ok_or("pre-read fingerprint should compute")?;
+        let stored = RepoCorpusFingerprintCache::at(&root).lookup(&root, &fingerprint);
+        if stored.is_some() {
+            return Err(format!(
+                "mapping must not be stored when the signature changed during the read, got {stored:?}"
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_fingerprint_store_unwritable_when_inventory_runs_then_analysis_still_returns()
+    -> Result<(), String> {
+        // The fingerprint layer is best-effort: when its directory cannot
+        // be created (a file sits at its path), lookup misses and store
+        // fails, but analysis must proceed exactly as before.
+        let root = make_tempdir("fingerprint-storefail")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+        let blocker = root
+            .join("target")
+            .join("ripr")
+            .join("cache")
+            .join("repo-corpus-fingerprint");
+        write_file(&blocker, "not a directory")?;
+
+        let result = inventory_classified_seams_at(&root)?;
+        if result.is_empty() {
+            return Err(
+                "inventory should return real seams even when the fingerprint cache is unwritable"
+                    .into(),
+            );
         }
 
         let _ = std::fs::remove_dir_all(&root);
