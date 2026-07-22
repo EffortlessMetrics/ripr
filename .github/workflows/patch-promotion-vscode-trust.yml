@@ -1,16 +1,15 @@
 name: Patch promotion VS Code trust harness
 
 on:
-  push:
-    branches:
-      - promote/0.10.1-swarm
+  pull_request:
+    types: [synchronize]
 
 permissions:
   contents: write
 
 jobs:
   patch-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.ref == 'promote/0.10.1-swarm' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
