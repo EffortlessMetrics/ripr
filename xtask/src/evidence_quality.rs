@@ -1403,7 +1403,7 @@ fn scorecard_work_queue_repair_text(
             format!(
                 "Audit work queue ranks `{evidence_class}` because `{category}` dominates its named static limitations."
             ),
-            "Use the named repair route fixture-first; do not count the limitation as user test debt until the analyzer support is proven." // ripr-allow: static-language: verbatim move from allowlisted main.rs (#2119 slice 6); rewording this output string is a separate output-contract change
+            "Use the named repair route fixture-first; do not count the limitation as user test debt until the analyzer support is demonstrated."
                 .to_string(),
         );
     }

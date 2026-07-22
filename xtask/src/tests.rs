@@ -28807,7 +28807,7 @@ fn lane1_static_limitation_backlog_specializes_same_file_affinity_unlock_conditi
 
     assert!(unlock.contains("bounded production call graph"));
     assert!(unlock.contains("keep the limitation non-actionable"));
-    assert!(unlock.contains("direct or helper owner call is proven"));
+    assert!(unlock.contains("direct or helper owner call is demonstrated"));
 
     let generic_unlock = crate::static_limitation_unlock_condition(
         "activation_owner_call_absent_affinity_only",

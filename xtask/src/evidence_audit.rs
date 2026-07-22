@@ -3645,14 +3645,14 @@ pub(crate) fn static_limitation_unlock_condition(
         && subroute.starts_with("same_test_file_call_presence_")
     {
         return format!(
-            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is proven" // ripr-allow: static-language: verbatim move from allowlisted main.rs (#2119 slice 5); rewording this output string is a separate output-contract change
+            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is demonstrated"
         );
     }
     if category == "activation_owner_call_absent_same_file_only"
         && subroute.starts_with("same_file_only_call_presence_")
     {
         return format!(
-            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is proven" // ripr-allow: static-language: verbatim move from allowlisted main.rs (#2119 slice 5); rewording this output string is a separate output-contract change
+            "implement `{repair_route}` by tracing same-file related-test calls through a bounded production call graph; keep the limitation non-actionable until a direct or helper owner call is demonstrated"
         );
     }
 
