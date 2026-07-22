@@ -565,8 +565,10 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::doctor_human_projection_fails_for_missing_root",
   "crates/ripr/src/cli/commands.rs::tests::doctor_json_flag_accepts_explicit_root",
   "crates/ripr/src/output/doctor.rs::tests::render_text_names_checks_without_evidence_and_passes",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_timeout_evidence_preserves_fractional_durations",
   "crates/ripr/src/output/doctor.rs::tests::config_check_redacts_source_excerpt_from_malformed_toml",
-  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_fails_closed_for_guaranteed_missing_tool"
+  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_fails_closed_for_guaranteed_missing_tool",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_times_out_a_hanging_tool_100_times"
 ]
 fixtures = []
 code = [

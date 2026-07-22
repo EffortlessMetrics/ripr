@@ -288,18 +288,30 @@ fn doctor_tool_command(tool: &str) -> std::process::Command {
 }
 
 pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
+    doctor_tool_check_with_timeout(tool, DOCTOR_TOOL_TIMEOUT)
+}
+
+fn doctor_tool_check_with_timeout(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
     let mut command = doctor_tool_command(tool);
     command.arg("--version");
-    match run_doctor_tool(command, DOCTOR_TOOL_TIMEOUT) {
+    match run_doctor_tool(command, timeout) {
         Ok(output) if output.status.success() => (
             DoctorStatus::Pass,
             String::from_utf8_lossy(&output.stdout).trim().to_string(),
         ),
-        Err(DoctorToolRunError::TimedOut) => (
-            DoctorStatus::Fail,
-            format!("{tool} timed out after {}s", DOCTOR_TOOL_TIMEOUT.as_secs()),
-        ),
+        Err(DoctorToolRunError::TimedOut) => {
+            (DoctorStatus::Fail, doctor_timeout_evidence(tool, timeout))
+        }
         _ => (DoctorStatus::Fail, format!("{tool} not available")),
+    }
+}
+
+fn doctor_timeout_evidence(tool: &str, timeout: Duration) -> String {
+    let milliseconds = timeout.as_millis();
+    if milliseconds < 1_000 || !milliseconds.is_multiple_of(1_000) {
+        format!("{tool} timed out after {milliseconds}ms")
+    } else {
+        format!("{tool} timed out after {}s", timeout.as_secs())
     }
 }
 
@@ -353,6 +365,9 @@ pub(crate) fn doctor_report_result(report: &DoctorReport) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn unique_test_dir(label: &str) -> std::path::PathBuf {
         let stamp = std::time::SystemTime::now()
@@ -360,8 +375,9 @@ mod tests {
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
         std::env::temp_dir().join(format!(
-            "ripr-output-doctor-{label}-{}-{stamp}",
-            std::process::id()
+            "ripr-output-doctor-{label}-{}-{stamp}-{}",
+            std::process::id(),
+            TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
         ))
     }
 
@@ -417,6 +433,22 @@ mod tests {
         let text = report.render_text();
         assert!(text.contains("✓ config"));
         assert!(text.contains("✓ doctor checks passed"));
+    }
+
+    #[test]
+    fn doctor_timeout_evidence_preserves_fractional_durations() {
+        assert_eq!(
+            doctor_timeout_evidence("probe", std::time::Duration::from_millis(250)),
+            "probe timed out after 250ms"
+        );
+        assert_eq!(
+            doctor_timeout_evidence("probe", std::time::Duration::from_millis(1_500)),
+            "probe timed out after 1500ms"
+        );
+        assert_eq!(
+            doctor_timeout_evidence("probe", std::time::Duration::from_secs(5)),
+            "probe timed out after 5s"
+        );
     }
 
     #[test]
@@ -540,41 +572,59 @@ mod tests {
     /// of what happens to be (or not be) on the host's PATH.
     #[cfg(unix)]
     #[test]
-    fn doctor_tool_check_times_out_a_hanging_tool() -> Result<(), String> {
+    fn doctor_tool_check_times_out_a_hanging_tool_100_times() -> Result<(), String> {
         // #2183 review: a shim that blocks forever must not hang doctor;
-        // the probe terminates it at the deadline and names the timeout.
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "ripr-doctor-timeout-{}-{stamp}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
-        let shim = dir.join("ripr-hanging-probe-tool");
-        std::fs::write(&shim, "#!/bin/sh\nsleep 60\n")
-            .map_err(|err| format!("write shim: {err}"))?;
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
-                .map_err(|err| format!("chmod shim: {err}"))?;
+        // the probe terminates it at the deadline and names the timeout. Run
+        // the materialization and probe repeatedly to catch visibility and
+        // cleanup races under full-suite parallelism.
+        for attempt in 0..100 {
+            let dir = unique_test_dir("timeout");
+            std::fs::create_dir(&dir).map_err(|err| format!("create dir: {err}"))?;
+            let shim = dir.join("ripr-hanging-probe-tool");
+            {
+                use std::io::Write;
+                use std::os::unix::fs::PermissionsExt;
+
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&shim)
+                    .map_err(|err| format!("create shim: {err}"))?;
+                let sleep = ["/usr/bin/sleep", "/bin/sleep"]
+                    .into_iter()
+                    .find(|candidate| std::path::Path::new(candidate).is_file())
+                    .ok_or("no portable Unix sleep utility found")?;
+                let script = format!("#!/bin/sh\nexec {sleep} 60\n");
+                file.write_all(script.as_bytes())
+                    .map_err(|err| format!("write shim: {err}"))?;
+                file.set_permissions(std::fs::Permissions::from_mode(0o755))
+                    .map_err(|err| format!("chmod shim: {err}"))?;
+                file.sync_all().map_err(|err| format!("sync shim: {err}"))?;
+            }
+
+            let start = std::time::Instant::now();
+            let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
+            let (status, evidence) =
+                doctor_tool_check_with_timeout(shim_text, std::time::Duration::from_millis(250));
+            let elapsed = start.elapsed();
+
+            std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+            if status != DoctorStatus::Fail {
+                return Err(format!(
+                    "attempt {attempt}: hanging tool unexpectedly passed"
+                ));
+            }
+            if evidence != format!("{shim_text} timed out after 250ms") {
+                return Err(format!(
+                    "attempt {attempt}: expected a 250ms timeout, got: {evidence}"
+                ));
+            }
+            if elapsed >= std::time::Duration::from_secs(30) {
+                return Err(format!(
+                    "attempt {attempt}: hanging tool was not terminated: {elapsed:?}"
+                ));
+            }
         }
-
-        let start = std::time::Instant::now();
-        let (status, evidence) = doctor_tool_check(shim.to_str().ok_or("shim path is not utf-8")?);
-        let elapsed = start.elapsed();
-
-        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
-        assert_eq!(status, DoctorStatus::Fail);
-        assert!(
-            evidence.contains("timed out"),
-            "expected a named timeout, got: {evidence}"
-        );
-        assert!(
-            elapsed < std::time::Duration::from_secs(30),
-            "the 60s shim was not terminated: {elapsed:?}"
-        );
         Ok(())
     }
 
