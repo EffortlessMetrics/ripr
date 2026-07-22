@@ -38,13 +38,13 @@ async function main() {
     process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;
 
     const launchArgs = [
-      workspacePath,
       '--disable-workspace-trust',
       '--disable-extensions',
       '--extensions-dir',
       extensionsPath,
       '--user-data-dir',
       userDataPath,
+      workspacePath,
     ];
     const testServerPath = process.env.RIPR_TEST_SERVER_PATH;
     if (testServerPath) {
