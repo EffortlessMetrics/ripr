@@ -51,6 +51,16 @@ pub(super) fn gate_repair_route_is_complete(candidate: &GateCandidate) -> bool {
     missing_route_fields(candidate).is_empty()
 }
 
+// NOTE (RIPR-SPEC-0087 §8, issue #2028): this 12-field completeness predicate
+// is intentionally NOT the safe-for-repair-packet flip. The single authority
+// for that flip is `analysis::repair_route::repair_packet_eligibility` over a
+// `ClassifiedSeam`; the gate consumes `GateCandidate` facts projected from
+// review cards and `GapRecord`s (a different input shape) and only decides
+// whether a bounded repair route can be rendered complete. The GapRecord arm
+// of that projection is itself gated by the shared
+// `validate_agent_gap_record_packet` validator upstream. If a ClassifiedSeam
+// ever becomes available here, delegate to the authority instead of extending
+// this field list.
 fn missing_route_fields(candidate: &GateCandidate) -> Vec<String> {
     let facts = &candidate.route_facts;
     let mut missing = Vec::new();

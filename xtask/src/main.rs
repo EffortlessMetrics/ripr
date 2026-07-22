@@ -29305,6 +29305,24 @@ fn check_architecture() -> Result<(), String> {
         }
     }
 
+    // RIPR-SPEC-0087 §8 (issue #2028): repair-packet authority coupling guard.
+    for file in &files {
+        if !file.starts_with("crates/ripr/src/") || !file.ends_with(".rs") {
+            continue;
+        }
+        if file == REPAIR_PACKET_AUTHORITY_PATH
+            || REPAIR_PACKET_AUTHORITY_COMPAT_PATHS.contains(&file.as_str())
+        {
+            continue;
+        }
+        let text = read_text_lossy(Path::new(file))?;
+        if let Some(forbidden) = repair_packet_authority_forbidden_call(file, &text) {
+            violations.push(format!(
+                "{file} calls readiness internal `{forbidden}` outside the producer-owned repair-packet authority\n  reason: RIPR-SPEC-0087 §8 (issue #2028): `repair_packet_eligibility` / `is_safe_for_repair_packet` in analysis/repair_route.rs is the single authority for the safe-for-repair-packet flip; route the decision through it or declare a compatibility exemption"
+            ));
+        }
+    }
+
     finish_policy_report(
         PolicyReportSpec {
             report_file: "architecture.md",
@@ -29322,6 +29340,144 @@ fn check_architecture() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+/// RIPR-SPEC-0087 §8 (issue #2028): the producer-owned repair-packet
+/// eligibility authority. Production code outside this module must route the
+/// safe-for-repair-packet decision through `repair_packet_eligibility` /
+/// `is_safe_for_repair_packet` instead of calling readiness internals.
+const REPAIR_PACKET_AUTHORITY_PATH: &str = "crates/ripr/src/analysis/repair_route.rs";
+/// Declared compatibility consumers that legitimately read readiness
+/// internals: the evidence-record renderer (the PR 1 re-export site for the
+/// cross-language helpers) and the targeted-rerun parity comparison, which
+/// diffs producer readiness structs field by field.
+const REPAIR_PACKET_AUTHORITY_COMPAT_PATHS: [&str; 2] = [
+    "crates/ripr/src/output/evidence_record.rs",
+    "crates/ripr/src/cli/rerun.rs",
+];
+const REPAIR_PACKET_AUTHORITY_FORBIDDEN_CALLS: [&str; 2] =
+    ["repair_projection_ready", "repair_route_readiness"];
+
+fn repair_packet_authority_forbidden_call(file: &str, text: &str) -> Option<&'static str> {
+    if !file.starts_with("crates/ripr/src/") || !file.ends_with(".rs") {
+        return None;
+    }
+    if file == REPAIR_PACKET_AUTHORITY_PATH || REPAIR_PACKET_AUTHORITY_COMPAT_PATHS.contains(&file)
+    {
+        return None;
+    }
+    REPAIR_PACKET_AUTHORITY_FORBIDDEN_CALLS
+        .into_iter()
+        .find(|forbidden| contains_call(text, forbidden))
+}
+
+/// True when `text` contains a call to `name`: the identifier followed by
+/// optional whitespace and `(`. Matching the bare identifier plus a paren
+/// scan (instead of the literal `name(`) keeps `name (args)` and line-break
+/// splits before the call paren from evading the guard. Field mentions
+/// (`name: value`), re-exports (`use ...::name;`), and prose without a call
+/// paren do not match.
+fn contains_call(text: &str, name: &str) -> bool {
+    text.match_indices(name).any(|(start, _)| {
+        let bounded_left = start == 0
+            || text[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|c| !c.is_alphanumeric() && c != '_');
+        let calls = text[start + name.len()..]
+            .chars()
+            .find(|c| !c.is_whitespace())
+            == Some('(');
+        bounded_left && calls
+    })
+}
+
+#[cfg(test)]
+mod repair_packet_authority_guard_tests {
+    use super::repair_packet_authority_forbidden_call;
+
+    #[test]
+    fn guard_fires_on_readiness_internal_call_outside_authority() -> Result<(), String> {
+        let text = "use crate::analysis::repair_route::repair_projection_ready;\n\
+                    fn brief(entry: &ClassifiedSeam) -> bool { repair_projection_ready(entry) }";
+        let fired = repair_packet_authority_forbidden_call("crates/ripr/src/lsp/actions.rs", text)
+            .ok_or_else(|| "guard did not fire on a direct readiness call".to_string())?;
+        assert_eq!(fired, "repair_projection_ready");
+        Ok(())
+    }
+
+    #[test]
+    fn guard_fires_on_repair_route_readiness_call_outside_authority() -> Result<(), String> {
+        let text = "let readiness = repair_route_readiness(entry);";
+        let fired = repair_packet_authority_forbidden_call("crates/ripr/src/lsp/backend.rs", text)
+            .ok_or_else(|| "guard did not fire on a readiness-struct call".to_string())?;
+        assert_eq!(fired, "repair_route_readiness");
+        Ok(())
+    }
+
+    #[test]
+    fn guard_fires_on_whitespace_separated_call_forms() -> Result<(), String> {
+        for text in [
+            "let readiness = repair_route_readiness (entry);",
+            "let readiness = repair_route_readiness\n    (entry);",
+            "let ready = repair_projection_ready\t(entry);",
+        ] {
+            if repair_packet_authority_forbidden_call("crates/ripr/src/lsp/backend.rs", text)
+                .is_none()
+            {
+                return Err(format!(
+                    "guard did not fire on whitespace-separated call: {text:?}"
+                ));
+            }
+        }
+        // A longer identifier that merely ends with a forbidden name is not a
+        // call to the readiness internal.
+        let lookalike = "let readiness = my_repair_route_readiness_helper(entry);";
+        if repair_packet_authority_forbidden_call("crates/ripr/src/lsp/backend.rs", lookalike)
+            .is_some()
+        {
+            return Err("guard fired on a lookalike identifier".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn guard_skips_authority_and_declared_compat_paths() -> Result<(), String> {
+        let text = "let readiness = repair_route_readiness(entry); repair_projection_ready(entry);";
+        for file in [
+            "crates/ripr/src/analysis/repair_route.rs",
+            "crates/ripr/src/output/evidence_record.rs",
+            "crates/ripr/src/cli/rerun.rs",
+        ] {
+            if let Some(forbidden) = repair_packet_authority_forbidden_call(file, text) {
+                return Err(format!("guard fired on exempt path {file}: {forbidden}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn guard_ignores_non_call_mentions_and_out_of_scope_paths() -> Result<(), String> {
+        // Field names, re-exports, and prose mentions are not calls.
+        let text = "repair_route_readiness: readiness,\n\
+                    pub(crate) use crate::analysis::repair_route::repair_route_readiness;\n\
+                    // repair_projection_ready is the authority-internal helper";
+        if repair_packet_authority_forbidden_call("crates/ripr/src/app.rs", text).is_some() {
+            return Err("guard fired on non-call mentions".to_string());
+        }
+        let call = "repair_projection_ready(entry)";
+        if repair_packet_authority_forbidden_call("xtask/src/main.rs", call).is_some() {
+            return Err("guard fired outside crates/ripr/src".to_string());
+        }
+        // The authority surface itself is the sanctioned route.
+        let sanctioned = "repair_packet_eligibility(entry).eligible()";
+        if repair_packet_authority_forbidden_call("crates/ripr/src/lsp/actions.rs", sanctioned)
+            .is_some()
+        {
+            return Err("guard fired on the sanctioned authority route".to_string());
+        }
+        Ok(())
+    }
 }
 
 fn check_public_api() -> Result<(), String> {

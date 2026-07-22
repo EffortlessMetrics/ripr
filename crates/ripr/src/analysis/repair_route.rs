@@ -101,10 +101,6 @@ impl RepairRouteReadiness {
     }
 }
 
-pub(crate) fn repair_projection_ready(entry: &ClassifiedSeam) -> bool {
-    repair_route_readiness(entry).is_repair_ready()
-}
-
 /// Typed reason a seam is not eligible for a repair packet. The flip is
 /// fail-closed: any state not explicitly mapped to eligible is ineligible,
 /// and the first failing gate (in the fixed order below) is the reason.
@@ -784,7 +780,7 @@ mod tests {
     use super::{
         ClassifiedSeam, RepairPacketIneligibility, cross_language_oracle_visibility_unresolved,
         discriminator_fact_matches, is_safe_for_repair_packet, repair_packet_eligibility,
-        repair_packet_queue_visible, repair_projection_ready,
+        repair_packet_queue_visible,
     };
     use crate::analysis::seams::{
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
@@ -892,7 +888,7 @@ mod tests {
         assert!(eligibility.eligible());
         assert_eq!(eligibility.ineligibility, None);
         assert!(is_safe_for_repair_packet(&entry));
-        assert!(repair_projection_ready(&entry));
+        assert!(eligibility.readiness.is_repair_ready());
         assert!(repair_packet_queue_visible(&entry));
         Ok(())
     }

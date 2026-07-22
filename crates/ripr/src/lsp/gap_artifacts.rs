@@ -445,6 +445,9 @@ fn validate_actionable_gaps(
 
         if packet_is_actionable(packet) {
             has_actionable_packet = true;
+            // canonical_gap_id stays ahead of identity/projection checks so a
+            // missing id reports its own message; the shared render-field
+            // contract below re-covers it for the command-time consumer.
             require_actionable_packet_string(
                 packet,
                 &["canonical_gap_id"],
@@ -455,12 +458,8 @@ fn validate_actionable_gaps(
                     .ok_or(GapArtifactRejection::MissingIdentity)?,
             );
             validate_actionable_packet_projection_fields(packet)?;
+            require_actionable_packet_render_fields(packet)?;
             require_actionable_packet_repair_route(packet)?;
-            require_actionable_packet_string(
-                packet,
-                &["repair_kind"],
-                "actionable packet must carry repair_kind",
-            )?;
             require_actionable_packet_string(
                 packet,
                 &["target_test_type"],
@@ -478,11 +477,6 @@ fn validate_actionable_gaps(
             )?;
             require_actionable_packet_string(
                 packet,
-                &["verify_command"],
-                "actionable packet must carry verify_command",
-            )?;
-            require_actionable_packet_string(
-                packet,
                 &["confidence_basis"],
                 "actionable packet must carry confidence_basis",
             )?;
@@ -491,27 +485,7 @@ fn validate_actionable_gaps(
                 &["receipt_command_or_path"],
                 "actionable packet must carry receipt_command_or_path",
             )?;
-            require_actionable_packet_string(
-                packet,
-                &["receipt_command"],
-                "actionable packet must carry receipt_command",
-            )?;
             require_actionable_packet_typed_related_target(packet)?;
-            require_actionable_packet_array(
-                packet,
-                &["must_not_change"],
-                "actionable packet must carry must_not_change",
-            )?;
-            require_actionable_packet_array(
-                packet,
-                &["allowed_edit_surface"],
-                "actionable packet must carry allowed_edit_surface",
-            )?;
-            require_actionable_packet_raw_evidence_refs(
-                packet,
-                &["raw_evidence_refs"],
-                "actionable packet must carry raw_evidence_refs",
-            )?;
         } else {
             if packet_is_no_action(packet) {
                 no_action_packets += 1;
@@ -652,6 +626,53 @@ fn validate_actionable_packet_projection_fields(
             "actionable packet must not carry projection_exclusion_reasons",
         ));
     }
+    Ok(())
+}
+
+/// The actionable-packet render-field contract: the single ordered list of
+/// fields a consumer needs to render a repair packet from an actionable-gaps
+/// packet (RIPR-SPEC-0087 §8, issue #2028). The ingest boundary
+/// (`validate_actionable_gaps`) and the command-time repair-packet renderer
+/// (`lsp::backend`) both enforce exactly this set so the field list exists
+/// once; neither may re-walk packet fields on its own.
+pub(super) fn require_actionable_packet_render_fields(
+    packet: &Value,
+) -> Result<(), GapArtifactRejection> {
+    require_actionable_packet_string(
+        packet,
+        &["canonical_gap_id"],
+        "actionable packet must carry canonical_gap_id",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["repair_kind"],
+        "actionable packet must carry repair_kind",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["verify_command"],
+        "actionable packet must carry verify_command",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["receipt_command"],
+        "actionable packet must carry receipt_command",
+    )?;
+    require_actionable_packet_array(
+        packet,
+        &["must_not_change"],
+        "actionable packet must carry must_not_change",
+    )?;
+    require_actionable_packet_array(
+        packet,
+        &["allowed_edit_surface"],
+        "actionable packet must carry allowed_edit_surface",
+    )?;
+    require_actionable_packet_raw_evidence_refs(
+        packet,
+        &["raw_evidence_refs"],
+        "actionable packet must carry raw_evidence_refs",
+    )?;
     Ok(())
 }
 

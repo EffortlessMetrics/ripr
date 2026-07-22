@@ -5265,6 +5265,20 @@ fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>)
 }
 
 fn validate_and_render_actionable_gap_packet(packet: &serde_json::Value) -> Option<LSPAny> {
+    use super::gap_artifacts::{GapArtifactRejection, require_actionable_packet_render_fields};
+
+    // The render-field contract is owned by the ingest boundary
+    // (`lsp::gap_artifacts::require_actionable_packet_render_fields`,
+    // RIPR-SPEC-0087 §8); this command-time re-check calls the same shared
+    // validator instead of re-walking packet fields.
+    if let Err(rejection) = require_actionable_packet_render_fields(packet) {
+        let reason = match rejection {
+            GapArtifactRejection::MalformedArtifact(message) => message.to_string(),
+            other => other.as_str().to_string(),
+        };
+        return Some(repair_packet_sentinel(&reason));
+    }
+
     let str_field = |key: &str| -> Option<String> {
         packet
             .get(key)
@@ -5274,37 +5288,27 @@ fn validate_and_render_actionable_gap_packet(packet: &serde_json::Value) -> Opti
             .map(ToOwned::to_owned)
     };
 
-    let canonical_gap_id = match str_field("canonical_gap_id") {
-        Some(v) => v,
-        None => {
-            return Some(repair_packet_sentinel(
-                "actionable packet is missing canonical_gap_id",
-            ));
-        }
+    // The shared validator above has already established that these fields
+    // are present and well-formed; the let-else fallbacks are defensive only.
+    let Some(canonical_gap_id) = str_field("canonical_gap_id") else {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing canonical_gap_id",
+        ));
     };
-    let repair_kind = match str_field("repair_kind") {
-        Some(v) => v,
-        None => {
-            return Some(repair_packet_sentinel(
-                "actionable packet is missing repair_kind",
-            ));
-        }
+    let Some(repair_kind) = str_field("repair_kind") else {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing repair_kind",
+        ));
     };
-    let verify_command = match str_field("verify_command") {
-        Some(v) => v,
-        None => {
-            return Some(repair_packet_sentinel(
-                "actionable packet is missing verify_command",
-            ));
-        }
+    let Some(verify_command) = str_field("verify_command") else {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing verify_command",
+        ));
     };
-    let receipt_command = match str_field("receipt_command") {
-        Some(v) => v,
-        None => {
-            return Some(repair_packet_sentinel(
-                "actionable packet is missing receipt_command",
-            ));
-        }
+    let Some(receipt_command) = str_field("receipt_command") else {
+        return Some(repair_packet_sentinel(
+            "actionable packet is missing receipt_command",
+        ));
     };
 
     let allowed_edit_surface: Vec<serde_json::Value> = packet
@@ -5312,33 +5316,18 @@ fn validate_and_render_actionable_gap_packet(packet: &serde_json::Value) -> Opti
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    if allowed_edit_surface.is_empty() {
-        return Some(repair_packet_sentinel(
-            "actionable packet is missing allowed_edit_surface",
-        ));
-    }
 
     let must_not_change: Vec<serde_json::Value> = packet
         .get("must_not_change")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    if must_not_change.is_empty() {
-        return Some(repair_packet_sentinel(
-            "actionable packet is missing must_not_change",
-        ));
-    }
 
     let raw_evidence_refs: Vec<serde_json::Value> = packet
         .get("raw_evidence_refs")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    if raw_evidence_refs.is_empty() {
-        return Some(repair_packet_sentinel(
-            "actionable packet is missing raw_evidence_refs",
-        ));
-    }
 
     let confidence = packet
         .get("confidence_basis")

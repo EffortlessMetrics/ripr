@@ -9,14 +9,16 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::repair_route::repair_projection_ready;
+use crate::analysis::repair_route::{
+    cross_language_test_target_unresolved, repair_packet_eligibility,
+};
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::domain::OracleStrength;
 use crate::lsp::gap_artifacts::command_specs_for_projection;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
-use crate::output::evidence_record::cross_language_test_target_unresolved;
+use crate::output::evidence_record::CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -174,7 +176,13 @@ fn push_seam_actions(
     if cross_language_test_target_unresolved(context.seam) {
         return;
     }
-    if repair_projection_ready(context.seam)
+    // The targeted-test brief is the editor's repair-packet surface, so the
+    // flip routes through the single producer-owned authority
+    // (`repair_packet_eligibility`, RIPR-SPEC-0087 §8) instead of hand-conjoining
+    // readiness and cross-language predicates. The remaining guard is content
+    // availability (a concrete assertion template or related test), not a
+    // readiness predicate.
+    if repair_packet_eligibility(context.seam).eligible()
         && (suggested_assertion.is_some() || related_test.is_some())
     {
         actions.push(copy_targeted_test_brief_action(
@@ -1305,8 +1313,14 @@ fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
     Some(target)
 }
 
+/// Whether a gap diagnostic carries the producer-owned cross-language
+/// test-target limitation. The category string is emitted by the producer
+/// authority (`analysis::repair_route::cross_language_test_target_unresolved`
+/// via `output::evidence_record` / ledger adapters); the LSP consumes the
+/// emitted category across the artifact shapes it ingests and does not
+/// re-derive the predicate — no `ClassifiedSeam` exists for ledger gaps.
 fn gap_cross_language_target_unresolved(data: &Value) -> bool {
-    const CATEGORY: &str = "cross_language_target_unresolved";
+    const CATEGORY: &str = CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY;
     string_at(data, &["static_limit_kind"]) == Some(CATEGORY)
         || string_at(data, &["static_limit_category"]) == Some(CATEGORY)
         || value_at(data, &["projection_exclusion_reasons"])

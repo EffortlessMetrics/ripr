@@ -5544,7 +5544,17 @@ tests = [
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_repair_packet_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_fixture_synthesizes_receipt_write_for_packet",
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids",
-  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_typescript_preview_fixture_matches_expected_receipts"
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_typescript_preview_fixture_matches_expected_receipts",
+  # §8 producer-owned repair-packet authority (issue #2028) — consumer routing nets
+  "crates/ripr/src/lsp/tests.rs::seam_code_actions_fail_closed_for_cross_language_target_unresolved",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_incomplete_gap_returns_sentinel",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_complete_gap_returns_full_packet",
+  # §8.3 coupling guard (fires / exempts / ignores)
+  "xtask/src/main.rs::repair_packet_authority_guard_tests::guard_fires_on_readiness_internal_call_outside_authority",
+  "xtask/src/main.rs::repair_packet_authority_guard_tests::guard_fires_on_repair_route_readiness_call_outside_authority",
+  "xtask/src/main.rs::repair_packet_authority_guard_tests::guard_skips_authority_and_declared_compat_paths",
+  "xtask/src/main.rs::repair_packet_authority_guard_tests::guard_ignores_non_call_mentions_and_out_of_scope_paths"
 ]
 fixtures = [
   # Complete-contract fixture (flips repair_packet_ready: true)
@@ -5561,7 +5571,13 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/output/typescript_packet_projection.rs",
-  "crates/ripr/src/output/preview_actionability.rs"
+  "crates/ripr/src/output/preview_actionability.rs",
+  # §8 consumer routing (issue #2028)
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+  "crates/ripr/src/output/gate/repair_route.rs",
+  "xtask/src/main.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md",
