@@ -1017,6 +1017,30 @@ fn command_specs_from_value(
     Ok((verify, receipt))
 }
 
+/// Return only the typed routes already validated from the matched snapshot
+/// artifact. Request-side diagnostic data is never authoritative here.
+pub(super) fn command_specs_for_projection(artifact: &ValidatedGapArtifact) -> Option<Value> {
+    let verify = &artifact.verify_command_specs;
+    let receipt = &artifact.receipt_command_specs;
+    validate_typed_command_specs(verify, crate::domain::CommandRole::Verify).ok()?;
+    validate_typed_command_specs(receipt, crate::domain::CommandRole::Receipt).ok()?;
+    if verify.is_empty() || receipt.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "verify": command_spec_collection_value(verify),
+        "receipt": command_spec_collection_value(receipt),
+    }))
+}
+
+fn command_spec_collection_value(specs: &[CommandSpec]) -> Value {
+    if specs.len() == 1 {
+        serde_json::json!(specs[0])
+    } else {
+        serde_json::json!(specs)
+    }
+}
+
 fn parse_command_spec_collection(
     value: Option<&Value>,
     field: &'static str,
@@ -1936,6 +1960,70 @@ mod tests {
                 if message == "command_specs must be an object"
         ) {
             return Err(format!("unexpected rejection: {rejection:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_command_specs_are_safe_for_action_projection() -> Result<(), String> {
+        let artifact = actionable_gaps_report();
+        let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|error| format!("producer specs were rejected: {error:?}"))?;
+        let projected = command_specs_for_projection(&validated)
+            .ok_or_else(|| "producer specs were omitted".to_string())?;
+        if projected["verify"]["command_id"] != "ripr:agent:verify"
+            || projected["receipt"]["command_id"] != "ripr:agent:receipt"
+        {
+            return Err(format!("unexpected projected specs: {projected}"));
+        }
+
+        let mut multiple = validated.clone();
+        let verify_spec = multiple
+            .verify_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "validated artifact omitted verify command spec".to_string())?;
+        let receipt_spec = multiple
+            .receipt_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "validated artifact omitted receipt command spec".to_string())?;
+        multiple.verify_command_specs.push(verify_spec);
+        multiple.receipt_command_specs.push(receipt_spec);
+        let projected_multiple = command_specs_for_projection(&multiple)
+            .ok_or_else(|| "multiple producer specs were omitted".to_string())?;
+        if !projected_multiple["verify"].is_array() || !projected_multiple["receipt"].is_array() {
+            return Err(format!(
+                "multiple producer specs were not arrays: {projected_multiple}"
+            ));
+        }
+
+        let mut empty = validated.clone();
+        empty.verify_command_specs.clear();
+        empty.receipt_command_specs.clear();
+        if command_specs_for_projection(&empty).is_some() {
+            return Err("empty producer specs were projected".to_string());
+        }
+
+        let mut invalid = validated.clone();
+        invalid
+            .verify_command_specs
+            .first_mut()
+            .ok_or_else(|| "validated artifact omitted verify command spec".to_string())?
+            .program
+            .clear();
+        if command_specs_for_projection(&invalid).is_some() {
+            return Err("invalid producer spec was projected".to_string());
+        }
+
+        let mut mismatched = validated;
+        mismatched
+            .receipt_command_specs
+            .first_mut()
+            .ok_or_else(|| "validated artifact omitted receipt command spec".to_string())?
+            .role = crate::domain::CommandRole::Verify;
+        if command_specs_for_projection(&mismatched).is_some() {
+            return Err("role-mismatched producer spec was projected".to_string());
         }
         Ok(())
     }

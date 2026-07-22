@@ -2405,7 +2405,22 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
     )
     .map_err(|err| format!("write related test failed: {err}"))?;
     let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
-    let diagnostic = gap_action_diagnostic();
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["command_specs"] = serde_json::json!({
+        "verify": crate::agent::command_specs::agent_verify_command_spec(
+            ".", "before.json", "after.json", None,
+        ),
+        "receipt": crate::agent::command_specs::agent_receipt_command_spec(
+            ".", "verify.json", "seam-a", Some("receipt.json"),
+        ),
+    });
+    data["command_specs"]["verify"]["program"] = serde_json::json!("cargo");
+    data["command_specs"]["verify"]["args"] = serde_json::json!(["test", "untrusted"]);
+    data["command_specs"]["receipt"]["program"] = serde_json::json!("python");
     let mut snapshot = sample_analysis_snapshot(
         root.path().to_path_buf(),
         uri.clone(),
@@ -2457,6 +2472,18 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         commands[0].2[0]["receipt_command"],
         "ripr agent receipt --root . --json"
     );
+    assert_eq!(
+        commands[0].2[0]["command_specs"]["verify"]["command_id"],
+        "ripr:agent:verify"
+    );
+    assert_eq!(
+        commands[0].2[0]["command_specs"]["receipt"]["command_id"],
+        "ripr:agent:receipt"
+    );
+    assert_eq!(
+        commands[0].2[0]["command_specs"]["verify"]["program"],
+        "ripr"
+    );
     let packet = commands[0].2[0]["packet"]
         .as_str()
         .ok_or_else(|| "missing first repair packet text".to_string())?;
@@ -2496,6 +2523,14 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
         "target/ripr/reports/gap-decision-ledger.json"
     );
     assert_eq!(commands[2].2[0]["label"], "gap_repair_packet");
+    assert_eq!(
+        commands[2].2[0]["command_specs"]["verify"]["execution_mode"],
+        "direct"
+    );
+    assert_eq!(
+        commands[2].2[0]["command_specs"]["receipt"]["program"],
+        "ripr"
+    );
     assert_eq!(commands[2].2[0]["canonical_gap_id"], "gap:py:pricing");
     assert_eq!(
         commands[2].2[0]["repair_route"]["related_test"],
@@ -2845,6 +2880,114 @@ fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(
         "test_calculate_discount_threshold_boundary"
     );
     Ok(())
+}
+
+#[test]
+fn gap_code_actions_omit_partial_or_invalid_typed_specs() -> Result<(), String> {
+    let mut missing_verify = validated_gap_artifact();
+    missing_verify.verify_command_specs.clear();
+    assert_gap_action_specs_omitted(missing_verify, "missing verify")?;
+
+    let mut missing_receipt = validated_gap_artifact();
+    missing_receipt.receipt_command_specs.clear();
+    assert_gap_action_specs_omitted(missing_receipt, "missing receipt")?;
+
+    let mut malformed = validated_gap_artifact();
+    malformed
+        .verify_command_specs
+        .first_mut()
+        .ok_or_else(|| "validated fixture omitted verify spec".to_string())?
+        .program
+        .clear();
+    assert_gap_actions_refresh_only(malformed, "malformed verify")?;
+
+    let mut role_mismatch = validated_gap_artifact();
+    role_mismatch
+        .verify_command_specs
+        .first_mut()
+        .ok_or_else(|| "validated fixture omitted verify spec".to_string())?
+        .role = crate::domain::CommandRole::Receipt;
+    assert_gap_actions_refresh_only(role_mismatch, "role-mismatched verify")?;
+    Ok(())
+}
+
+fn assert_gap_action_specs_omitted(
+    artifact: ValidatedGapArtifact,
+    case: &str,
+) -> Result<(), String> {
+    let commands = gap_action_commands_for_artifact(artifact, case)?;
+    for index in [0, 1, 2] {
+        let (label, target) = commands
+            .get(index)
+            .and_then(|(title, _, arguments)| arguments.first().map(|target| (title, target)))
+            .ok_or_else(|| format!("{case}: missing repair action {index}"))?;
+        if target.get("command_specs").is_some() {
+            return Err(format!(
+                "{case}: action {} projected typed specs without a complete valid pair: {target}",
+                label
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn assert_gap_actions_refresh_only(
+    artifact: ValidatedGapArtifact,
+    case: &str,
+) -> Result<(), String> {
+    let commands = gap_action_commands_for_artifact(artifact, case)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "{case}: invalid typed specs must fail closed to refresh-only actions"
+    );
+    Ok(())
+}
+
+fn gap_action_commands_for_artifact(
+    artifact: ValidatedGapArtifact,
+    case: &str,
+) -> Result<Vec<(String, String, Vec<serde_json::Value>)>, String> {
+    let root = unique_lsp_test_root("gap-actions-invalid-specs")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| format!("{case}: missing diagnostic data"))?;
+    data["command_specs"] = serde_json::json!({
+        "verify": crate::agent::command_specs::agent_verify_command_spec(
+            ".", "diagnostic-before.json", "diagnostic-after.json", None,
+        ),
+        "receipt": crate::agent::command_specs::agent_receipt_command_spec(
+            ".", "diagnostic-verify.json", "diagnostic-seam", Some("diagnostic-receipt.json"),
+        ),
+    });
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![artifact];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    code_action_commands(&actions)
 }
 
 #[test]
@@ -6258,8 +6401,18 @@ fn validated_gap_artifact() -> ValidatedGapArtifact {
         related_paths: vec!["tests/test_pricing.py".to_string()],
         verify_commands: vec!["ripr agent verify --root . --json".to_string()],
         receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
-        verify_command_specs: Vec::new(),
-        receipt_command_specs: Vec::new(),
+        verify_command_specs: vec![crate::agent::command_specs::agent_verify_command_spec(
+            ".",
+            "before.json",
+            "after.json",
+            None,
+        )],
+        receipt_command_specs: vec![crate::agent::command_specs::agent_receipt_command_spec(
+            ".",
+            "verify.json",
+            "seam-a",
+            Some("receipt.json"),
+        )],
         static_limit_kinds: vec!["missing_import_graph".to_string()],
         has_text_static_limit: false,
     }

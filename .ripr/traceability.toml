@@ -4119,6 +4119,7 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/lsp/gap_artifacts.rs",
+  "crates/ripr/src/lsp/actions.rs",
   "editors/vscode/package.json",
   "editors/vscode/src/extension.ts",
   "editors/vscode/src/client.ts",
@@ -6413,6 +6414,11 @@ name = "assurance state vocabulary"
 spec = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
 tests = [
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::typed_command_specs_are_validated_before_projection",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::producer_command_specs_are_safe_for_action_projection",
+  "crates/ripr/src/lsp/actions.rs::tests::gap_repair_packet_projects_only_validated_command_specs",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid",
+  "crates/ripr/src/agent/command_specs.rs::tests::typed_agent_routes_preserve_argv_and_disclose_shell_redirection",
+  "crates/ripr/src/agent/command_specs.rs::tests::typed_route_recovery_rejects_arbitrary_test_commands",
   "crates/ripr/src/domain/command_spec.rs::tests::invalid_paths_and_program_values_fail_closed",
   "crates/ripr/src/domain/command_spec.rs::tests::shell_and_manual_modes_remain_explicit",
   "crates/ripr/src/domain/command_spec.rs::tests::mismatched_authority_is_rejected",
@@ -6425,12 +6431,14 @@ code = [
   "crates/ripr/src/agent/command_specs.rs",
   "crates/ripr/src/domain/command_spec.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
+  "crates/ripr/src/lsp/actions.rs",
   "crates/ripr/src/output/first_useful_action/model.rs",
   "crates/ripr/src/output/first_useful_action.rs",
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/gap_decision_ledger.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
   ".allow/spec-system/slices/command-spec-route-population.v1.toml",
+  ".allow/spec-system/slices/command-spec-action-projection.v1.toml",
   ".allow/spec-system/slices/typed-command-spec.v1.toml",
 ]
 outputs = [
@@ -6446,6 +6454,9 @@ outputs = [
 metrics = [
   "repair_assurance_vocabulary_closed",
   "repair_assurance_static_only_disclosure",
+  "command_spec_projection_accepted_routes",
+  "command_spec_projection_omitted_fail_closed",
+  "command_spec_projection_multi_route_arrays",
 ]
 
 [[behavior]]
