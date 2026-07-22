@@ -67,6 +67,7 @@ pub mod app;
 // Kept public for compatibility with existing embedders.
 #[doc(hidden)]
 pub mod cli;
+mod command_spec_digest;
 pub(crate) mod config;
 // Kept public for compatibility; prefer the crate-root domain type re-exports
 // for new integrations.

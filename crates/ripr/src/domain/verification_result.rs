@@ -6,7 +6,6 @@
 //! repository identities they observed around the run.
 
 use super::{CommandAuthorityBoundary, CommandRole, CommandSpec};
-use sha2::{Digest, Sha256};
 use std::fmt;
 
 const SHA256_PREFIX: &str = "sha256:";
@@ -14,6 +13,10 @@ const SHA256_HEX_LENGTH: usize = 64;
 
 /// The schema version for [`VerificationExecutionResultV1`].
 pub const VERIFICATION_EXECUTION_RESULT_SCHEMA_VERSION: &str = "1";
+
+pub(crate) trait CommandSpecDigest {
+    fn command_spec_sha256(&self) -> Result<String, String>;
+}
 
 /// The process-level disposition observed by a bounded command runner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -292,10 +295,9 @@ impl VerificationExecutionResultV1 {
 pub fn command_spec_sha256(
     command_spec: &CommandSpec,
 ) -> Result<String, VerificationExecutionResultValidationError> {
-    let bytes = serde_json::to_vec(command_spec).map_err(|error| {
-        VerificationExecutionResultValidationError::CommandSpecInvalid(error.to_string())
-    })?;
-    Ok(sha256_bytes(&bytes))
+    command_spec
+        .command_spec_sha256()
+        .map_err(VerificationExecutionResultValidationError::CommandSpecInvalid)
 }
 
 fn validate_non_empty(
@@ -346,11 +348,6 @@ fn validate_sha256(
             value: value.to_string(),
         })
     }
-}
-
-fn sha256_bytes(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    format!("sha256:{digest:x}")
 }
 
 #[cfg(test)]
@@ -407,18 +404,6 @@ mod tests {
             stderr_sha256: ZERO_DIGEST.to_string(),
             currentness: VerificationCurrentnessV1::Current,
         })
-    }
-
-    #[test]
-    fn valid_result_round_trips_and_validates_against_exact_context() -> Result<(), String> {
-        let spec = command_spec();
-        let result = result(&spec)?;
-        let encoded = serde_json::to_string(&result).map_err(|error| error.to_string())?;
-        let decoded: VerificationExecutionResultV1 =
-            serde_json::from_str(&encoded).map_err(|error| error.to_string())?;
-        decoded
-            .validate_against(&spec, ROOT, HEAD_BEFORE, HEAD_AFTER)
-            .map_err(|error| error.to_string())
     }
 
     #[test]

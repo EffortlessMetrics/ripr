@@ -50,6 +50,7 @@ pub use probe::{
 pub use summary::{LanguageFileCount, Summary};
 pub use support::{ProbeId, SourceLocation, SymbolId};
 pub use test_evidence_summary::{TestEvidenceEntry, TestEvidenceSummary};
+pub(crate) use verification_result::CommandSpecDigest;
 pub use verification_result::{
     VERIFICATION_EXECUTION_RESULT_SCHEMA_VERSION, VerificationCurrentnessV1,
     VerificationExecutionResultV1, VerificationExecutionResultValidationError,
