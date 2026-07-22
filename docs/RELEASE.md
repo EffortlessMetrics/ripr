@@ -2,6 +2,56 @@
 
 This document is the release checklist for publishing `ripr`.
 
+## Release identity (read this first)
+
+Two repositories, two different authorities (#24, #2025):
+
+```text
+ripr-swarm              = development trunk and no-publish rehearsal authority
+EffortlessMetrics/ripr  = public release and distribution authority
+```
+
+- Public tags and GitHub Releases (v0.8.0 and later) live **only** in
+  `EffortlessMetrics/ripr`. Do not create mirror tags in ripr-swarm for a
+  public release; temporary mirror tags once created were removed (see the
+  corrections on #1947 and #1959).
+- A swarm `CHANGELOG.md` entry may describe a published release; it must not
+  imply the corresponding public tag lives in this repository.
+- Swarm rehearsal (proof packs, manifest generation, smoke) is a separate
+  state from source publication (#1882): rehearsal artifacts are local
+  evidence, never release proof, and "zero swarm tag-trigger runs" means
+  rehearsal stayed read-only, not that a public release is missing.
+
+For every public version claim, record the boundary explicitly:
+`rehearsal | promoted | tagged | published`, with the source SHA, the public
+tag/release URL in `EffortlessMetrics/ripr`, and the promotion evidence.
+
+## Checking release state (audit contract)
+
+Any release or status audit must name the repository it queries and fail
+closed on ambiguity — never silently query the current checkout for public
+release state:
+
+```bash
+# Public releases and tags (authoritative):
+gh release list --repo EffortlessMetrics/ripr --limit 5
+gh api repos/EffortlessMetrics/ripr/tags --paginate -q '.[].name'
+
+# Swarm side (development/rehearsal only — mirror tags must not exist):
+gh api repos/EffortlessMetrics/ripr-swarm/tags --paginate -q '.[].name'
+```
+
+- A public tag existing in the source repo but not in swarm is the expected
+  state, not a defect.
+- A swarm rehearsal without a public release is rehearsal, not a release.
+- A changelog version without a source release is an unpublished draft, and
+  is named that way (the 0.8.0/0.9.0/0.10.0 swarm drafts are working drafts,
+  not published releases).
+- The VS Code downloader and default install documentation resolve release
+  assets from `EffortlessMetrics/ripr` only
+  (`editors/vscode/src/downloader.ts` builds URLs against that repository).
+
+
 Run the [Release copy checklist](RELEASE_COPY_CHECKLIST.md) before finalizing
 the GitHub Release body, triggering `publish-extension.yml`, or running
 `cargo publish`. It captures the public-surface rules (release body vs.
@@ -149,9 +199,13 @@ target/ripr/install-smoke-cratesio/bin/ripr agent verify --root . --before fixtu
 target/ripr/install-smoke-cratesio/bin/ripr agent receipt --root . --verify-json target/ripr/install-smoke-cratesio/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/install-smoke-cratesio/agent/agent-receipt.json
 ```
 
-Tag the release:
+Tag the release — in a checkout of the **source** repository
+(`EffortlessMetrics/ripr`), never in ripr-swarm (#2025):
 
 ```bash
+# Run inside an EffortlessMetrics/ripr checkout; fetch AND push URLs must be that repo.
+git remote get-url origin        # expect github.com/EffortlessMetrics/ripr(.git)?
+git remote get-url --push origin # pushurl must also resolve to EffortlessMetrics/ripr (#2193 review)
 git tag v0.8.0
 git push origin v0.8.0
 ```
@@ -173,7 +227,9 @@ analysis, default blocking, or stable preview-language gate authority.
 ## Recovery
 
 If a release workflow fails after the tag has been pushed, prefer
-fix-forward over retagging. The tag is the release-prep snapshot; the
+fix-forward over retagging. Workflow reruns (`gh workflow run ...`) also
+belong to the source repository: run them with `--repo EffortlessMetrics/ripr`
+from anywhere else, or from a source checkout. The tag is the release-prep snapshot; the
 release workflows can be rerun against `main` (or any commit that contains
 the fix) using `workflow_dispatch`, and uploaded assets attach to the
 existing GitHub Release rather than replacing it.
