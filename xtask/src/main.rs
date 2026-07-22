@@ -47804,9 +47804,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
+    let gate_binary = ripr_fixture_binary()?;
     let gate_runs = dogfood_gate_adoption_scenarios()
         .into_iter()
-        .map(|scenario| dogfood_gate_adoption_run(&scenario))
+        .map(|scenario| dogfood_gate_adoption_run_with_binary(&scenario, &gate_binary))
         .collect::<Result<Vec<_>, _>>()?;
     let first_action_runs = dogfood_first_action_scenarios()
         .into_iter()
@@ -48104,7 +48105,19 @@ fn dogfood_gate_adoption_scenarios() -> Vec<DogfoodGateScenario> {
     ]
 }
 
+#[cfg(test)]
 fn dogfood_gate_adoption_run(scenario: &DogfoodGateScenario) -> Result<DogfoodGateRun, String> {
+    // Direct test callers must refresh the binary so gate receipts cannot
+    // validate a stale artifact left by an earlier build.
+    run("cargo", &["build", "-p", "ripr"])?;
+    let binary = ripr_fixture_binary()?;
+    dogfood_gate_adoption_run_with_binary(scenario, &binary)
+}
+
+fn dogfood_gate_adoption_run_with_binary(
+    scenario: &DogfoodGateScenario,
+    binary: &str,
+) -> Result<DogfoodGateRun, String> {
     let started = Instant::now();
     let actual_dir = Path::new("target")
         .join("ripr")
@@ -48122,7 +48135,7 @@ fn dogfood_gate_adoption_run(scenario: &DogfoodGateScenario) -> Result<DogfoodGa
     let markdown_path = actual_dir.join("gate-decision.md");
     let args = dogfood_gate_adoption_args(scenario, &json_path, &markdown_path);
     let args_ref = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let output = capture_output("cargo", &args_ref, "cargo run -p ripr -- gate evaluate")?;
+    let output = capture_output(binary, &args_ref, "ripr gate evaluate (dogfood)")?;
     let exit_success = output.status.success();
     let mut errors = Vec::new();
 
@@ -48242,10 +48255,6 @@ fn dogfood_gate_adoption_args(
     markdown_path: &Path,
 ) -> Vec<String> {
     let mut args = vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--".to_string(),
         "gate".to_string(),
         "evaluate".to_string(),
         "--root".to_string(),
