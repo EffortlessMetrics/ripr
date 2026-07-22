@@ -314,27 +314,6 @@ mod tests {
     }
 
     #[test]
-    fn language_metadata_serde_uses_documented_wire_casing() -> Result<(), serde_json::Error> {
-        assert_eq!(
-            serde_json::to_string(&LanguageId::TypeScript)?,
-            "\"typescript\""
-        );
-        assert_eq!(
-            serde_json::to_string(&LanguageStatus::Preview)?,
-            "\"preview\""
-        );
-        assert_eq!(
-            serde_json::to_string(&OwnerKind::ClassMethod)?,
-            "\"class_method\""
-        );
-        assert_eq!(
-            serde_json::to_string(&StaticLimitKind::MissingImportGraph)?,
-            "\"missing_import_graph\""
-        );
-        Ok(())
-    }
-
-    #[test]
     fn owner_kind_wire_strings_are_stable() {
         assert_eq!(OwnerKind::Function.as_str(), "function");
         assert_eq!(OwnerKind::Method.as_str(), "method");

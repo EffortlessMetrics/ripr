@@ -93,6 +93,38 @@ fn artifact_round_trip_preserves_full_fidelity_findings() -> Result<(), String> 
 }
 
 #[test]
+fn language_metadata_serde_uses_documented_wire_casing() -> Result<(), String> {
+    // Enum-level pin for the same wire vocabulary (kept out of
+    // domain/language.rs: the domain layer must not reference serde_json —
+    // policy/architecture.txt).
+    use crate::domain::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
+    for (json, expected) in [
+        (
+            serde_json::to_string(&LanguageId::TypeScript),
+            "\"typescript\"",
+        ),
+        (
+            serde_json::to_string(&LanguageStatus::Preview),
+            "\"preview\"",
+        ),
+        (
+            serde_json::to_string(&OwnerKind::ClassMethod),
+            "\"class_method\"",
+        ),
+        (
+            serde_json::to_string(&StaticLimitKind::MissingImportGraph),
+            "\"missing_import_graph\"",
+        ),
+    ] {
+        let json = json.map_err(|err| format!("serialize failed: {err}"))?;
+        if json != expected {
+            return Err(format!("wire casing must be {expected}, got {json}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn artifact_wire_form_uses_documented_snake_case_vocabulary() -> Result<(), String> {
     // The envelope is a wire contract: the domain enums it serializes must
     // use the same lowercase/snake_case spellings OUTPUT_SCHEMA.md

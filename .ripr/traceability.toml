@@ -7308,7 +7308,7 @@ spec = "docs/specs/RIPR-SPEC-0140-check-artifact-reuse.md"
 tests = [
   "crates/ripr/src/app/check_artifact/tests.rs::artifact_round_trip_preserves_full_fidelity_findings",
   "crates/ripr/src/app/check_artifact/tests.rs::artifact_wire_form_uses_documented_snake_case_vocabulary",
-  "crates/ripr/src/domain/language.rs::tests::language_metadata_serde_uses_documented_wire_casing",
+  "crates/ripr/src/app/check_artifact/tests.rs::language_metadata_serde_uses_documented_wire_casing",
   "crates/ripr/src/app/check_artifact/tests.rs::explain_from_artifact_is_byte_identical_to_fresh_explain",
   "crates/ripr/src/app/check_artifact/tests.rs::context_from_artifact_is_byte_identical_to_fresh_context",
   "crates/ripr/src/app/check_artifact/tests.rs::context_from_artifact_honors_max_related_tests_beyond_json_render_cap",
