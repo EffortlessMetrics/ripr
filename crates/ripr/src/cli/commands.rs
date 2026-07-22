@@ -3,12 +3,6 @@ use crate::app::agent_brief::{
     AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
-use crate::cli::agent::{
-    AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
-    AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions, AgentVerifyOptions,
-    parse_agent_args,
-};
-use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_mode};
@@ -21,21 +15,23 @@ use crate::output;
 use std::path::{Path, PathBuf};
 
 use crate::cli::commands_agent_support::{
-    agent_brief_lines_from_diff, agent_brief_owners_for_lines, build_agent_receipt_provenance,
-    read_agent_verify_snapshot, resolve_agent_brief_working_set,
-    validate_agent_receipt_verify_path, validate_agent_verify_snapshot_path,
+    agent_brief_lines_from_diff, agent_brief_owners_for_lines,
 };
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
+#[path = "commands/agent.rs"]
+mod agent;
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
 #[path = "commands/agent_gap_packet.rs"]
 mod agent_gap_packet;
 #[path = "commands/cache.rs"]
 mod cache_command;
+#[path = "commands/context.rs"]
+mod context;
 #[path = "commands/policy.rs"]
 mod policy_commands;
 #[path = "commands/receipt.rs"]
@@ -43,7 +39,8 @@ mod receipt_command;
 #[path = "commands/swarm/mod.rs"]
 mod swarm_command;
 
-use agent_gap_packet::render_agent_packet_from_gap_ledger;
+pub(super) use agent::agent;
+pub(super) use context::context;
 #[cfg(test)]
 use policy_commands::{
     parse_policy_history_options, parse_policy_operations_options,
@@ -56,32 +53,6 @@ use policy_commands::{
     policy_readiness, policy_suppression_health, policy_waiver_aging,
 };
 
-pub(super) fn agent(args: &[String]) -> Result<(), String> {
-    let command = parse_agent_args(args)?;
-    if let Some(result) = agent_dispatch::run_agent_help_command(&command) {
-        return result;
-    }
-
-    match command {
-        AgentCommand::Start(options) => run_agent_start(options),
-        AgentCommand::Brief(options) => run_agent_brief(options),
-        AgentCommand::Packet(options) => run_agent_packet(options),
-        AgentCommand::Verify(options) => run_agent_verify(options),
-        AgentCommand::Receipt(options) => run_agent_receipt(options),
-        AgentCommand::Status(options) => run_agent_status(options),
-        AgentCommand::ReviewSummary(options) => run_agent_review_summary(options),
-        help_command @ (AgentCommand::Help
-        | AgentCommand::StartHelp
-        | AgentCommand::BriefHelp
-        | AgentCommand::PacketHelp
-        | AgentCommand::VerifyHelp
-        | AgentCommand::ReceiptHelp
-        | AgentCommand::StatusHelp
-        | AgentCommand::ReviewSummaryHelp) => agent_dispatch::run_agent_help_command(&help_command)
-            .unwrap_or_else(|| Err("agent help command was not dispatched".to_string())),
-    }
-}
-
 pub(super) fn receipt(args: &[String]) -> Result<(), String> {
     receipt_command::run_receipt(args)
 }
@@ -92,256 +63,6 @@ pub(super) fn swarm(args: &[String]) -> Result<(), String> {
 
 pub(super) fn cache(args: &[String]) -> Result<(), String> {
     cache_command::run(args)
-}
-
-fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent start")?;
-    let (input, config) = load_root_input_and_config(&options.root)?;
-
-    let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
-    let (classified, _) =
-        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
-    let selection = select_agent_brief_seams(
-        &classified,
-        &working_set,
-        1,
-        AgentBriefPolicy::from_config(&config),
-    );
-    if selection.top_seams.is_empty() {
-        return Err(format!(
-            "agent start seam_id {} was not found or is hidden by config",
-            options.seam_id
-        ));
-    }
-
-    let out_dir = resolve_agent_start_out_dir(&input.root, &options.out_dir);
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|err| format!("create {} failed: {err}", out_dir.display()))?;
-
-    let agent_brief_json = output::agent_brief::render_agent_brief_json(
-        &input.root,
-        &input.mode,
-        &config,
-        &working_set,
-        &selection,
-    )?;
-    let agent_brief_path = out_dir.join("agent-brief.json");
-    write_text_file(&agent_brief_path, &agent_brief_json)?;
-
-    let manifest = app::agent_workflow::build_agent_workflow_manifest(
-        &input.root,
-        &options.root,
-        &input.mode,
-        &options.out_dir,
-        &options.seam_id,
-        &agent_brief_json,
-    )?;
-    let workflow_json = output::agent_workflow::render_agent_workflow_json(&manifest)?;
-    let commands_md = output::agent_workflow::render_agent_workflow_commands_md(&manifest);
-    let workflow_path = out_dir.join("workflow.json");
-    let commands_path = out_dir.join("commands.md");
-    write_text_file(&workflow_path, &workflow_json)?;
-    write_text_file(&commands_path, &commands_md)?;
-
-    println!("Wrote {}", workflow_path.display());
-    println!("Wrote {}", commands_path.display());
-    println!("Wrote {}", agent_brief_path.display());
-    if let Some(next) = manifest.missing_inputs.first() {
-        println!("Next: {}", next.command);
-    }
-    Ok(())
-}
-
-fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent brief")?;
-    let (input, config) = load_root_input_and_config(&options.root)?;
-
-    let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
-    let (classified, _) =
-        analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
-    let selection = select_agent_brief_seams(
-        &classified,
-        &working_set,
-        options.max_seams,
-        AgentBriefPolicy::from_config(&config),
-    );
-    let rendered = output::agent_brief::render_agent_brief_json(
-        &input.root,
-        &input.mode,
-        &config,
-        &working_set,
-        &selection,
-    )?;
-    println!("{rendered}");
-    Ok(())
-}
-
-fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent packet")?;
-
-    if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
-        let rendered = render_agent_packet_from_gap_ledger(&options.root, gap_ledger, gap_id)?;
-        print!("{rendered}");
-        return Ok(());
-    }
-
-    let seam_id = options.seam_id.as_deref().ok_or_else(|| {
-        "agent packet requires --seam-id or --gap-ledger with --gap-id".to_string()
-    })?;
-    let config = load_for_root(&options.root)?;
-    let (classified, _) =
-        analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
-    let entry = classified
-        .iter()
-        .find(|entry| entry.seam.id().as_str() == seam_id)
-        .ok_or_else(|| format!("agent packet seam_id {seam_id} was not found"))?;
-
-    let policy = AgentBriefPolicy::from_config(&config);
-    if let Some(reason) = policy.omission_reason_for_class(entry.class) {
-        return Err(format!("agent packet seam_id {seam_id} {reason}"));
-    }
-
-    let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
-    print!("{rendered}");
-    Ok(())
-}
-
-fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
-    let before_path =
-        validate_agent_verify_snapshot_path(&options.root, &options.before, "--before")?;
-    let after_path = validate_agent_verify_snapshot_path(&options.root, &options.after, "--after")?;
-    let before_json = read_agent_verify_snapshot(&before_path, "before")?;
-    let after_json = read_agent_verify_snapshot(&after_path, "after")?;
-    let before_identity = crate::agent::artifact::validate_repo_exposure_artifact(
-        &options.root,
-        &before_json,
-        "before",
-    )?;
-    let after_identity = crate::agent::artifact::validate_repo_exposure_artifact(
-        &options.root,
-        &after_json,
-        "after",
-    )?;
-    if before_identity.base_revision != after_identity.base_revision {
-        return Err(format!(
-            "agent verify artifacts are incomparable: base revisions differ ({:?} vs {:?})",
-            before_identity.base_revision, after_identity.base_revision
-        ));
-    }
-    if before_identity.input_identity != after_identity.input_identity {
-        return Err(
-            "agent verify artifacts are incomparable: analysis input identities differ".to_string(),
-        );
-    }
-    let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
-        (
-            crate::agent::artifact::ArtifactCurrentness::Current,
-            crate::agent::artifact::ArtifactCurrentness::Current,
-        ) => "current",
-        (
-            crate::agent::artifact::ArtifactCurrentness::Historical,
-            crate::agent::artifact::ArtifactCurrentness::Historical,
-        ) => "historical_noncurrent",
-        _ => "dirty_worktree",
-    };
-    let report = output::outcome::targeted_test_outcome_report_from_json(
-        &before_json,
-        &after_json,
-        output::outcome::display_path(&options.before),
-        output::outcome::display_path(&options.after),
-    )?;
-    let rendered = output::outcome::render_agent_verify_json_with_currentness(
-        &report,
-        Some(artifact_currentness),
-    )?;
-    print!("{rendered}");
-    Ok(())
-}
-
-fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent receipt")?;
-
-    let verify_path = validate_agent_receipt_verify_path(&options.root, &options.verify_json)?;
-    let verify_json = std::fs::read_to_string(&verify_path).map_err(|err| {
-        format!(
-            "read agent receipt verify JSON {} failed: {err}",
-            output::outcome::display_path(&verify_path)
-        )
-    })?;
-    let input_paths = output::agent_receipt::agent_receipt_input_paths(&verify_json)?;
-    let provenance = build_agent_receipt_provenance(
-        &options.root,
-        &options.verify_json,
-        &verify_path,
-        &input_paths,
-    )?;
-    let rendered = output::agent_receipt::render_agent_receipt_json(
-        &verify_json,
-        output::outcome::display_path(&options.verify_json),
-        &options.seam_id,
-        options.test_changed.as_deref(),
-        &options.commands_run,
-        provenance,
-    )?;
-
-    match options.out {
-        Some(path) => {
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, rendered).map_err(|err| {
-                format!(
-                    "write {} failed: {err}",
-                    output::outcome::display_path(&path)
-                )
-            })
-        }
-        None => {
-            print!("{rendered}");
-            Ok(())
-        }
-    }
-}
-
-fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent status")?;
-
-    let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
-    if options.json {
-        let rendered = app::agent_status::render_agent_status_json(&report)?;
-        print!("{rendered}");
-    } else {
-        let rendered = app::agent_status::render_agent_status_markdown(&report);
-        print!("{rendered}");
-    }
-    Ok(())
-}
-
-fn run_agent_review_summary(options: AgentReviewSummaryOptions) -> Result<(), String> {
-    ensure_command_root(&options.root, "agent review-summary")?;
-
-    let report =
-        app::agent_review_summary::build_agent_review_summary_report(&options.root, &options.root);
-    if options.json {
-        let rendered = app::agent_review_summary::render_agent_review_summary_json(&report)?;
-        print!("{rendered}");
-    } else {
-        let rendered = app::agent_review_summary::render_agent_review_summary_markdown(&report);
-        print!("{rendered}");
-    }
-    Ok(())
-}
-
-fn resolve_agent_start_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
-    if out_dir.is_absolute() {
-        out_dir.to_path_buf()
-    } else {
-        root.join(out_dir)
-    }
 }
 
 fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
@@ -3446,102 +3167,6 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn context(args: &[String]) -> Result<(), String> {
-    let mut input = CheckInput {
-        format: OutputFormat::Json,
-        ..CheckInput::default()
-    };
-    let mut explicit = CheckInputExplicit::default();
-    let mut selector: Option<String> = None;
-    let mut max_tests = crate::config::DEFAULT_CONTEXT_RELATED_TESTS;
-    let mut explicit_max_tests = false;
-    // RIPR-SPEC-0140: `--from` loads a previously written check artifact
-    // instead of re-running the pipeline. Scope flags passed alongside it
-    // are assertions verified against the recording, not overrides.
-    // `--mode` and `--no-unchanged-tests` feed the identity recomputation:
-    // an artifact recorded with non-default values is only consumable when
-    // the same values resolve here (flag or config).
-    let mut from_artifact: Option<PathBuf> = None;
-    let mut base_explicitly_provided = false;
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--root" => {
-                i += 1;
-                input.root = PathBuf::from(expect_value(args, i, "--root")?);
-            }
-            "--base" => {
-                i += 1;
-                input.base = Some(expect_value(args, i, "--base")?.to_string());
-                base_explicitly_provided = true;
-            }
-            "--diff" => {
-                i += 1;
-                input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
-            }
-            "--from" => {
-                i += 1;
-                from_artifact = Some(PathBuf::from(expect_value(args, i, "--from")?));
-            }
-            "--mode" => {
-                i += 1;
-                input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
-                explicit.mode = true;
-            }
-            "--no-unchanged-tests" => {
-                input.include_unchanged_tests = false;
-                explicit.include_unchanged_tests = true;
-            }
-            "--at" => {
-                i += 1;
-                selector = Some(expect_value(args, i, "--at")?.to_string());
-            }
-            "--finding" => {
-                i += 1;
-                selector = Some(expect_value(args, i, "--finding")?.to_string());
-            }
-            "--max-related-tests" => {
-                i += 1;
-                max_tests = expect_value(args, i, "--max-related-tests")?
-                    .parse::<usize>()
-                    .map_err(|err| format!("invalid --max-related-tests: {err}"))?;
-                explicit_max_tests = true;
-            }
-            "--json" => input.format = OutputFormat::Json,
-            "--help" | "-h" => {
-                help::print_context_help();
-                return Ok(());
-            }
-            other => return Err(format!("unexpected context argument {other:?}")),
-        }
-        i += 1;
-    }
-    let selector = selector.ok_or_else(|| "missing --at or --finding selector".to_string())?;
-    let config = load_for_root(&input.root)?;
-    apply_to_check_input(&mut input, &config, explicit);
-    if !explicit_max_tests {
-        max_tests = config.reports().max_related_tests();
-    }
-    let asserted_base = if base_explicitly_provided {
-        input.base.clone()
-    } else {
-        None
-    };
-    let rendered = match from_artifact.as_deref() {
-        Some(artifact_path) => app::collect_context_from_artifact(
-            input,
-            &selector,
-            max_tests,
-            &config,
-            artifact_path,
-            asserted_base.as_deref(),
-        )?,
-        None => app::collect_context_with_config(input, &selector, max_tests, &config)?,
-    };
-    println!("{rendered}");
-    Ok(())
-}
-
 pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     let mut json_output = false;
     let mut root_args: Vec<&str> = Vec::new();
@@ -4577,11 +4202,6 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::agent_brief::AgentBriefLine;
-    use crate::cli::agent::AgentBriefWorkingSet;
-    use crate::cli::commands_agent_support::{
-        normalize_agent_brief_path, resolve_agent_brief_working_set,
-    };
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -7542,250 +7162,6 @@ language = "rust"
     }
 
     #[test]
-    fn agent_rejects_unknown_subcommands() {
-        assert_eq!(
-            agent(&args(&["unknown"])),
-            Err(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_start_rejects_missing_root_before_analysis() {
-        assert_eq!(
-            agent(&args(&[
-                "start",
-                "--root",
-                "target/ripr/missing-agent-start-root",
-                "--seam-id",
-                "f3c9e4d21a0b7c88",
-            ])),
-            Err(
-                "agent start root target/ripr/missing-agent-start-root is not a directory"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_status_rejects_missing_root_before_reading_artifacts() {
-        assert_eq!(
-            agent(&args(&[
-                "status",
-                "--root",
-                "target/ripr/missing-agent-status-root",
-                "--json",
-            ])),
-            Err(
-                "agent status root target/ripr/missing-agent-status-root is not a directory"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_review_summary_rejects_missing_root_before_reading_artifacts() {
-        assert_eq!(
-            agent(&args(&[
-                "review-summary",
-                "--root",
-                "target/ripr/missing-agent-review-summary-root",
-                "--json",
-            ])),
-            Err(
-                "agent review-summary root target/ripr/missing-agent-review-summary-root is not a directory"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_packet_rejects_missing_root_before_analysis() {
-        assert_eq!(
-            agent(&args(&[
-                "packet",
-                "--root",
-                "target/ripr/missing-agent-packet-root",
-                "--seam-id",
-                "f3c9e4d21a0b7c88",
-                "--json",
-            ])),
-            Err(
-                "agent packet root target/ripr/missing-agent-packet-root is not a directory"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_verify_reports_read_failures() -> Result<(), String> {
-        let dir = unique_command_test_dir("agent-verify-read");
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
-        let before = dir.join("before.json");
-        std::fs::write(&before, outcome_before_json())
-            .map_err(|err| format!("write before snapshot: {err}"))?;
-
-        let missing_before = agent(&args(&[
-            "verify",
-            "--root",
-            &dir.display().to_string(),
-            "--before",
-            &dir.join("missing-before.json").display().to_string(),
-            "--after",
-            &dir.join("missing-after.json").display().to_string(),
-            "--json",
-        ]));
-        assert!(
-            matches!(missing_before, Err(message) if message.contains("canonicalize agent verify --before"))
-        );
-
-        let missing_after = agent(&args(&[
-            "verify",
-            "--root",
-            &dir.display().to_string(),
-            "--before",
-            &before.display().to_string(),
-            "--after",
-            &dir.join("missing-after.json").display().to_string(),
-            "--json",
-        ]));
-        assert!(
-            matches!(missing_after, Err(message) if message.contains("canonicalize agent verify --after"))
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        Ok(())
-    }
-
-    #[test]
-    fn agent_verify_rejects_snapshots_outside_root() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-verify-root");
-        let outside = unique_command_test_dir("agent-verify-outside");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root dir: {err}"))?;
-        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside dir: {err}"))?;
-        let before = outside.join("before.json");
-        let after = root.join("after.json");
-        std::fs::write(&before, outcome_before_json())
-            .map_err(|err| format!("write before snapshot: {err}"))?;
-        std::fs::write(&after, outcome_after_json())
-            .map_err(|err| format!("write after snapshot: {err}"))?;
-
-        let result = agent(&args(&[
-            "verify",
-            "--root",
-            &root.display().to_string(),
-            "--before",
-            &before.display().to_string(),
-            "--after",
-            &after.display().to_string(),
-            "--json",
-        ]));
-
-        assert!(matches!(result, Err(message) if message.contains("must stay under root")));
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&outside);
-        Ok(())
-    }
-
-    #[test]
-    fn agent_receipt_reports_read_failures() -> Result<(), String> {
-        let dir = unique_command_test_dir("agent-receipt-read");
-        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
-
-        let missing = agent(&args(&[
-            "receipt",
-            "--root",
-            &dir.display().to_string(),
-            "--verify-json",
-            &dir.join("missing-agent-verify.json").display().to_string(),
-            "--seam-id",
-            "seam-a",
-            "--json",
-        ]));
-        assert!(
-            matches!(missing, Err(message) if message.contains("canonicalize agent receipt --verify-json"))
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        Ok(())
-    }
-
-    #[test]
-    fn agent_receipt_rejects_verify_json_outside_root() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-receipt-root");
-        let outside = unique_command_test_dir("agent-receipt-outside");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root dir: {err}"))?;
-        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside dir: {err}"))?;
-        let verify = outside.join("agent-verify.json");
-        std::fs::write(&verify, "{}").map_err(|err| format!("write verify JSON: {err}"))?;
-
-        let result = agent(&args(&[
-            "receipt",
-            "--root",
-            &root.display().to_string(),
-            "--verify-json",
-            &verify.display().to_string(),
-            "--seam-id",
-            "seam-a",
-            "--json",
-        ]));
-
-        assert!(matches!(result, Err(message) if message.contains("must stay under root")));
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::remove_dir_all(&outside);
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_rejects_missing_root_before_analysis() {
-        assert_eq!(
-            agent(&args(&[
-                "brief",
-                "--root",
-                "target/ripr/missing-agent-brief-root",
-                "--diff",
-                "change.diff",
-                "--json",
-            ])),
-            Err(
-                "agent brief root target/ripr/missing-agent-brief-root is not a directory"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn agent_brief_diff_lines_are_normalized_to_requested_root() {
-        let diff = "diff --git a/crates/ripr/examples/sample/src/lib.rs b/crates/ripr/examples/sample/src/lib.rs\n--- a/crates/ripr/examples/sample/src/lib.rs\n+++ b/crates/ripr/examples/sample/src/lib.rs\n@@ -8,1 +8,1 @@\n-old\n+new\n";
-        let lines = agent_brief_lines_from_diff(Path::new("crates/ripr/examples/sample"), diff);
-
-        assert_eq!(
-            lines,
-            vec![AgentBriefLine::new(PathBuf::from("src/lib.rs"), 8)]
-        );
-    }
-
-    #[test]
-    fn agent_brief_owner_lines_are_resolved_from_changed_lines() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-brief-owner-lines");
-        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
-        std::fs::write(
-            root.join("src/lib.rs"),
-            "pub fn discounted_total(amount: i32) -> i32 {\n    let discount = 10;\n    amount - discount\n}\n",
-        )
-        .map_err(|err| format!("write src/lib.rs: {err}"))?;
-        let lines = vec![AgentBriefLine::new(PathBuf::from("src/lib.rs"), 3)];
-
-        let owners = agent_brief_owners_for_lines(&root, &lines);
-
-        assert_eq!(owners.len(), 1);
-        assert_eq!(owners[0].line, 3);
-        assert!(owners[0].owner.ends_with("discounted_total"));
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
     fn language_runtime_probes_follow_detected_languages() -> Result<(), String> {
         // #2071: rust-only roots get no probes; a python root with pytest
         // markers gets python3 + pytest; a bun workspace adds bun.
@@ -7922,138 +7298,6 @@ language = "rust"
     }
 
     #[test]
-    fn agent_brief_owner_lines_are_best_effort_for_missing_files() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-brief-owner-missing");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        let lines = vec![AgentBriefLine::new(PathBuf::from("src/missing.rs"), 3)];
-
-        let owners = agent_brief_owners_for_lines(&root, &lines);
-
-        assert!(owners.is_empty());
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_normalizes_absolute_diff_paths_against_relative_root() -> Result<(), String> {
-        let root = unique_repo_relative_test_dir("agent-brief-normalize");
-        let src = root.join("src");
-        std::fs::create_dir_all(&src).map_err(|err| format!("create src dir: {err}"))?;
-        let absolute_file = std::env::current_dir()
-            .map_err(|err| format!("read current dir: {err}"))?
-            .join(&root)
-            .join("src/lib.rs");
-
-        assert_eq!(
-            normalize_agent_brief_path(&root, &absolute_file),
-            PathBuf::from("src/lib.rs")
-        );
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_files_reject_parent_dir_escape() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-brief-files-escape");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-
-        let result = resolve_agent_brief_working_set(
-            &root,
-            &AgentBriefWorkingSet::Files(vec![PathBuf::from("../../secret")]),
-        );
-
-        let Err(message) = result else {
-            return Err("expected a confinement error, got Ok".to_string());
-        };
-        assert!(
-            message.contains("must stay under root"),
-            "unexpected error: {message}"
-        );
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_files_reject_absolute_path_outside_root() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-brief-files-abs");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        let outside = unique_command_test_dir("agent-brief-files-outside");
-
-        let result = resolve_agent_brief_working_set(
-            &root,
-            &AgentBriefWorkingSet::Files(vec![outside.join("secret.rs")]),
-        );
-
-        let Err(message) = result else {
-            return Err("expected a confinement error, got Ok".to_string());
-        };
-        assert!(
-            message.contains("must stay under root"),
-            "unexpected error: {message}"
-        );
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_files_accept_relative_and_absolute_under_root() -> Result<(), String> {
-        let root = unique_repo_relative_test_dir("agent-brief-files-ok");
-        let src = root.join("src");
-        std::fs::create_dir_all(&src).map_err(|err| format!("create src dir: {err}"))?;
-        let absolute_under_root = std::env::current_dir()
-            .map_err(|err| format!("read current dir: {err}"))?
-            .join(&root)
-            .join("src/lib.rs");
-
-        let resolved = resolve_agent_brief_working_set(
-            &root,
-            &AgentBriefWorkingSet::Files(vec![PathBuf::from("src/lib.rs"), absolute_under_root]),
-        );
-
-        let Ok(resolved) = resolved else {
-            return Err(format!("expected confinement to accept, got {resolved:?}"));
-        };
-        // Output contract: both spellings resolve to the same confined
-        // repo-relative path — not merely any non-empty path (#2100 review).
-        assert_eq!(
-            resolved.files,
-            vec![PathBuf::from("src/lib.rs"), PathBuf::from("src/lib.rs")]
-        );
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn agent_brief_diff_path_must_stay_under_root() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-brief-root");
-        let outside = unique_command_test_dir("agent-brief-outside");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside: {err}"))?;
-        let outside_diff = outside.join("change.diff");
-        std::fs::write(&outside_diff, "diff --git a/src/lib.rs b/src/lib.rs\n")
-            .map_err(|err| format!("write outside diff: {err}"))?;
-
-        let result = resolve_agent_brief_working_set(
-            &root,
-            &AgentBriefWorkingSet::Diff(outside_diff.clone()),
-        );
-        let err = match result {
-            Ok(_) => return Err("outside diff path should be rejected".to_string()),
-            Err(err) => err,
-        };
-
-        assert!(
-            err.contains("must stay under root"),
-            "unexpected error: {err}"
-        );
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
-        std::fs::remove_dir_all(&outside).map_err(|err| format!("remove outside: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
     fn calibrate_command_writes_json_file() -> Result<(), String> {
         let dir = unique_command_test_dir("calibrate");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
@@ -8107,19 +7351,6 @@ language = "rust"
         assert!(combined.contains("outcomes"));
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
-    }
-
-    #[test]
-    fn context_rejects_invalid_max_related_tests() {
-        let result = context(&args(&[
-            "--at",
-            "probe:file.rs:1:predicate",
-            "--max-related-tests",
-            "many",
-        ]));
-        assert!(
-            matches!(result, Err(message) if message.starts_with("invalid --max-related-tests:"))
-        );
     }
 
     #[test]
@@ -9960,38 +9191,6 @@ language = "rust"
     }
 
     #[test]
-    fn context_requires_selector() {
-        assert_eq!(
-            context(&args(&[])),
-            Err("missing --at or --finding selector".to_string())
-        );
-    }
-
-    #[test]
-    fn context_rejects_unknown_argument() {
-        assert_eq!(
-            context(&args(&["--unknown", "value"])),
-            Err("unexpected context argument \"--unknown\"".to_string())
-        );
-    }
-
-    #[test]
-    fn context_requires_values_for_value_flags() {
-        assert_eq!(
-            context(&args(&["--at"])),
-            Err("missing value for --at".to_string())
-        );
-        assert_eq!(
-            context(&args(&["--finding"])),
-            Err("missing value for --finding".to_string())
-        );
-        assert_eq!(
-            context(&args(&["--root"])),
-            Err("missing value for --root".to_string())
-        );
-    }
-
-    #[test]
     fn lsp_accepts_stdio_flag() {
         // lsp function doesn't reject --stdio, it just processes it
         assert_eq!(lsp(&args(&["--stdio"])), Ok(()));
@@ -10002,7 +9201,7 @@ language = "rust"
         assert_eq!(lsp(&args(&["-V"])), Ok(()));
     }
 
-    fn outcome_before_json() -> &'static str {
+    pub(super) fn outcome_before_json() -> &'static str {
         r#"{
   "schema_version": "0.2",
   "scope": "repo",
@@ -10025,7 +9224,7 @@ language = "rust"
 }"#
     }
 
-    fn outcome_after_json() -> &'static str {
+    pub(super) fn outcome_after_json() -> &'static str {
         r#"{
   "schema_version": "0.2",
   "scope": "repo",
