@@ -53,7 +53,7 @@ callee = "expect"
 
 [[allow]]
 id = "panic-0005"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -68,7 +68,7 @@ receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 id = "panic-0006"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -82,7 +82,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0007"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -96,7 +96,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0008"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -110,7 +110,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0009"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -124,7 +124,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0010"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -138,7 +138,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0011"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -152,7 +152,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0012"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: panic findings collection validation"
@@ -166,7 +166,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0015"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 allowlist parser validation"
@@ -180,7 +180,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0016"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.1 backward compatibility validation"
@@ -194,7 +194,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0017"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 missing fields validation"
@@ -511,7 +511,7 @@ receiver_fingerprint = "std::env::set_current_dir(old)"
 
 [[allow]]
 id = "panic-0035"
-path = "xtask/src/tests.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
