@@ -279,6 +279,7 @@ pub(crate) fn doctor_tool_check_isolated(tool: &str) -> (DoctorStatus, String) {
             DoctorStatus::Fail,
             format!("{tool} timed out after {}s", DOCTOR_TOOL_TIMEOUT.as_secs()),
         ),
+        Err(DoctorToolRunError::Spawn(kind)) => doctor_spawn_failure(tool, kind).into_public(),
         _ => (DoctorStatus::Fail, format!("{tool} not available")),
     }
 }
@@ -292,18 +293,77 @@ pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
 }
 
 fn doctor_tool_check_with_timeout(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
+    doctor_tool_check_with_timeout_result(tool, timeout).into_public()
+}
+
+fn doctor_tool_check_with_timeout_result(tool: &str, timeout: Duration) -> DoctorToolCheckResult {
     let mut command = doctor_tool_command(tool);
     command.arg("--version");
     match run_doctor_tool(command, timeout) {
-        Ok(output) if output.status.success() => (
-            DoctorStatus::Pass,
-            String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        ),
-        Err(DoctorToolRunError::TimedOut) => {
-            (DoctorStatus::Fail, doctor_timeout_evidence(tool, timeout))
+        Ok(output) if output.status.success() => {
+            DoctorToolCheckResult::pass(String::from_utf8_lossy(&output.stdout).trim().to_string())
         }
-        _ => (DoctorStatus::Fail, format!("{tool} not available")),
+        Err(DoctorToolRunError::TimedOut) => {
+            DoctorToolCheckResult::failure(doctor_timeout_evidence(tool, timeout))
+        }
+        Err(DoctorToolRunError::Spawn(kind)) => doctor_spawn_failure(tool, kind),
+        _ => DoctorToolCheckResult::failure(format!("{tool} not available")),
     }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct DoctorToolCheckResult {
+    status: DoctorStatus,
+    evidence: String,
+    retryable_launch_failure: bool,
+}
+
+impl DoctorToolCheckResult {
+    fn pass(evidence: String) -> Self {
+        Self {
+            status: DoctorStatus::Pass,
+            evidence,
+            retryable_launch_failure: false,
+        }
+    }
+
+    fn failure(evidence: String) -> Self {
+        Self {
+            status: DoctorStatus::Fail,
+            evidence,
+            retryable_launch_failure: false,
+        }
+    }
+
+    fn into_public(self) -> (DoctorStatus, String) {
+        (self.status, self.evidence)
+    }
+}
+
+fn doctor_spawn_failure(tool: &str, kind: std::io::ErrorKind) -> DoctorToolCheckResult {
+    DoctorToolCheckResult {
+        status: DoctorStatus::Fail,
+        evidence: if kind == std::io::ErrorKind::NotFound {
+            format!("{tool} not available")
+        } else {
+            format!("{tool} could not be launched: {kind:?}")
+        },
+        retryable_launch_failure: doctor_spawn_failure_is_retryable(kind),
+    }
+}
+
+fn doctor_spawn_failure_is_retryable(kind: std::io::ErrorKind) -> bool {
+    // The transient launch-failure class (#2242): resource exhaustion or
+    // exec races under load. Observed in the wild as both WouldBlock and
+    // ExecutableFileBusy under full-suite parallelism. NotFound (missing
+    // tool) and PermissionDenied (not executable) are persistent and must
+    // fail immediately.
+    matches!(
+        kind,
+        std::io::ErrorKind::WouldBlock
+            | std::io::ErrorKind::ExecutableFileBusy
+            | std::io::ErrorKind::OutOfMemory
+    )
 }
 
 fn doctor_timeout_evidence(tool: &str, timeout: Duration) -> String {
@@ -317,7 +377,7 @@ fn doctor_timeout_evidence(tool: &str, timeout: Duration) -> String {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DoctorToolRunError {
-    Spawn,
+    Spawn(std::io::ErrorKind),
     Wait,
     TimedOut,
 }
@@ -329,7 +389,9 @@ fn run_doctor_tool(
     command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = command.spawn().map_err(|_err| DoctorToolRunError::Spawn)?;
+    let mut child = command
+        .spawn()
+        .map_err(|err| DoctorToolRunError::Spawn(err.kind()))?;
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -604,8 +666,22 @@ mod tests {
 
             let start = std::time::Instant::now();
             let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
-            let (status, evidence) =
-                doctor_tool_check_with_timeout(shim_text, std::time::Duration::from_millis(250));
+            // #2242: a transient spawn failure under full-suite load
+            // (resource exhaustion) is named `could not be launched` — retry
+            // only that transient class, never a real timeout result.
+            let mut launch_attempt = 0usize;
+            let (status, evidence) = loop {
+                launch_attempt += 1;
+                let outcome = doctor_tool_check_with_timeout_result(
+                    shim_text,
+                    std::time::Duration::from_millis(250),
+                );
+                let retryable_launch_failure = outcome.retryable_launch_failure;
+                let result = outcome.into_public();
+                if launch_attempt >= 3 || !retryable_launch_failure {
+                    break result;
+                }
+            };
             let elapsed = start.elapsed();
 
             std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
@@ -623,6 +699,39 @@ mod tests {
                 return Err(format!(
                     "attempt {attempt}: hanging tool was not terminated: {elapsed:?}"
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_check_names_non_missing_launch_failure() -> Result<(), String> {
+        let dir = unique_test_dir("launch-failure");
+        std::fs::create_dir(&dir).map_err(|err| format!("create directory tool: {err}"))?;
+        let tool = dir.to_str().ok_or("directory path is not utf-8")?;
+        let (status, evidence) = doctor_tool_check(tool);
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove directory tool: {err}"))?;
+        if status != DoctorStatus::Fail {
+            return Err("directory tool unexpectedly passed".to_string());
+        }
+        if !evidence.contains("could not be launched") {
+            return Err(format!("launch failure was misclassified: {evidence}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_spawn_failure_retry_policy_covers_transient_kinds() -> Result<(), String> {
+        for (kind, expected) in [
+            (std::io::ErrorKind::WouldBlock, true),
+            (std::io::ErrorKind::ExecutableFileBusy, true),
+            (std::io::ErrorKind::OutOfMemory, true),
+            (std::io::ErrorKind::PermissionDenied, false),
+            (std::io::ErrorKind::NotFound, false),
+        ] {
+            if doctor_spawn_failure_is_retryable(kind) != expected {
+                return Err(format!("unexpected retry policy for {kind:?}"));
             }
         }
         Ok(())

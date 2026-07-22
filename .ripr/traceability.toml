@@ -567,6 +567,8 @@ tests = [
   "crates/ripr/src/output/doctor.rs::tests::render_text_names_checks_without_evidence_and_passes",
   "crates/ripr/src/output/doctor.rs::tests::doctor_timeout_evidence_preserves_fractional_durations",
   "crates/ripr/src/output/doctor.rs::tests::config_check_redacts_source_excerpt_from_malformed_toml",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_names_non_missing_launch_failure",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_spawn_failure_retry_policy_covers_transient_kinds",
   "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_fails_closed_for_guaranteed_missing_tool",
   "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_times_out_a_hanging_tool_100_times"
 ]
