@@ -204,6 +204,21 @@ different IDs. Strong, opaque, intentional, and suppressed seams keep
 `canonical_gap_id: null` because they are not actionable canonical behavioral
 debt under this record.
 
+### Serialization grammar
+
+The serialized `canonical_gap_id` is a `gap`-prefixed, colon-delimited,
+content-addressed identifier. The Rust producer emits `gap:<fp16>` (16
+lowercase hexadecimal characters of the content hash, e.g.
+`gap:67fc764ba37d77bd`). Language and projection adapters prepend a family
+segment under the same grammar — for example `gap:perl:<fp16>` and
+`gap:typescript:<family>:<fp8>` — and ledger or agent adapters may wrap a
+supplied identity with a scope prefix (for example
+`gap:repo:<canonical_gap_id>`). Every form stays `gap`-prefixed and
+colon-delimited, and the identity never embeds line numbers or
+session-local locators. Consumers MUST treat the identifier as opaque:
+parse nothing out of it beyond the `gap` prefix, and compare it only as a
+whole string.
+
 ## Related-Test Ranking
 
 The record copies ranked related-test evidence from repo exposure. Ranking is

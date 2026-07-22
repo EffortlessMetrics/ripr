@@ -184,9 +184,11 @@ never reaches `evidence_improved` or `resolved`.
 
 A receipt MUST bind to a `canonical_gap_id`. The `canonical_gap_id` is
 the stable identifier for the gap as emitted by `ripr` in the gap
-decision ledger and repair packets (format:
-`<crate>_<module>_<gap_kind>_<fp8>`). It MUST NOT be a
-line-keyed or session-local identifier.
+decision ledger and repair packets. Its serialization grammar is defined
+by RIPR-SPEC-0021 (Canonical Gap Identity): a `gap`-prefixed,
+colon-delimited, content-addressed identifier such as
+`gap:67fc764ba37d77bd` or `gap:typescript:<family>:<fp8>`. It MUST NOT
+be a line-keyed or session-local identifier.
 
 A receipt SHOULD carry a `packet_id`. The `packet_id` is the
 identifier of the specific repair packet the agent acted on. When a
