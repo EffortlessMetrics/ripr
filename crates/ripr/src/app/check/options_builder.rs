@@ -2,7 +2,7 @@ use super::CheckInput;
 use crate::analysis::AnalysisOptions;
 use crate::config::RiprConfig;
 
-pub(super) fn analysis_options_from_input_and_config(
+pub(crate) fn analysis_options_from_input_and_config(
     input: &CheckInput,
     config: &RiprConfig,
 ) -> AnalysisOptions {

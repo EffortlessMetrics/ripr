@@ -9,7 +9,7 @@ use crate::domain::Summary;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-mod options_builder;
+pub(crate) mod options_builder;
 mod output_builder;
 
 /// Runs the end-to-end static exposure analysis for a workspace.
@@ -220,7 +220,7 @@ fn root_relative_finding_path(root: &Path, file: &Path) -> String {
 /// mode (post perl-lsp-swarm #3294). The canonical producer is
 /// `perl-ripr-facts`; `perllsp`/`perl-lsp` are accepted for backward
 /// compatibility (they must be wrappers over the same batch exporter).
-fn is_managed_perl_producer(producer: &str) -> bool {
+pub(crate) fn is_managed_perl_producer(producer: &str) -> bool {
     matches!(producer, "perl-ripr-facts" | "perllsp" | "perl-lsp")
 }
 

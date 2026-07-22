@@ -494,3 +494,296 @@ pub(crate) struct CheckInputExplicit {
     pub(crate) mode: bool,
     pub(crate) include_unchanged_tests: bool,
 }
+
+/// Version of the check-artifact config-identity contract (RIPR-SPEC-0140).
+///
+/// Any PR that adds a finding-affecting `ripr.toml` field must classify it in
+/// [`RiprConfig::check_artifact_identity_fields`] and bump this version in the
+/// same PR. The classification is closed: the field enumerator destructures
+/// every config struct without `..`, so an unclassified field fails to
+/// compile, and a unit test pins the resulting role of every field.
+pub(crate) const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 1;
+
+/// How one `ripr.toml` field participates in the check-artifact identity gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConfigIdentityRole {
+    /// Finding-affecting: the canonical value is hashed into the config
+    /// identity, so a changed value fails artifact reuse closed.
+    FindingAffecting,
+    /// Finding-affecting but already recorded elsewhere in the artifact
+    /// identity (resolved mode, enabled languages, or a `CheckInput`
+    /// analysis option); hashing it again would be redundant.
+    CapturedElsewhere,
+    /// Excluded from the identity: render-only, LSP-only, loader container
+    /// metadata, or not consumed by the diff-check analysis pipeline.
+    Excluded,
+}
+
+/// One classified config field in the check-artifact identity contract.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ConfigIdentityField {
+    /// Dotted field path as written in `ripr.toml` (or the loader container).
+    pub(crate) name: &'static str,
+    pub(crate) role: ConfigIdentityRole,
+    /// Canonical normalized value with defaults materialized. Present only
+    /// for [`ConfigIdentityRole::FindingAffecting`] fields.
+    pub(crate) value: Option<String>,
+    /// Where the field is captured instead, or why it is excluded.
+    pub(crate) note: &'static str,
+}
+
+impl RiprConfig {
+    /// Classify every `ripr.toml` config field for the check-artifact
+    /// identity gate (RIPR-SPEC-0140).
+    ///
+    /// This is the closed allowlist: each struct is destructured WITHOUT a
+    /// `..` rest pattern, so adding a field to any config type fails
+    /// compilation here until the author explicitly classifies the new field.
+    /// Render-only knobs (severity display, reports, output format) are
+    /// excluded and honored fresh at render time by the consuming command.
+    pub(crate) fn check_artifact_identity_fields(&self) -> Vec<ConfigIdentityField> {
+        let RiprConfig {
+            analysis,
+            oracles,
+            severity,
+            lsp,
+            reports,
+            suppressions,
+            languages,
+            profiles,
+            typescript,
+            perl,
+            source_path: _,
+            source_text: _,
+        } = self;
+        let AnalysisConfig {
+            mode: _,
+            include_unchanged_tests: _,
+        } = analysis;
+        let OraclePolicy {
+            snapshot_strength,
+            mock_expectation_strength,
+            broad_error_strength,
+        } = oracles;
+        let SeverityConfig { findings, seams } = severity;
+        let FindingSeverityConfig {
+            exposed: _,
+            weakly_exposed: _,
+            reachable_unrevealed: _,
+            no_static_path: _,
+            infection_unknown: _,
+            propagation_unknown: _,
+            static_unknown: _,
+        } = findings;
+        let SeamSeverityConfig {
+            strongly_gripped: _,
+            weakly_gripped: _,
+            ungripped: _,
+            reachable_unrevealed: _,
+            activation_unknown: _,
+            propagation_unknown: _,
+            observation_unknown: _,
+            discrimination_unknown: _,
+            opaque: _,
+            intentional: _,
+            suppressed: _,
+        } = seams;
+        let LspConfig {
+            seam_diagnostics: _,
+            diagnostic_profile: _,
+        } = lsp;
+        let ReportsConfig {
+            max_related_tests: _,
+        } = reports;
+        let SuppressionsConfig { path: _ } = suppressions;
+        let LanguagesConfig { enabled: _ } = languages;
+        let ProfilesConfig { bun_ub } = profiles;
+        let TypescriptConfig {
+            resolve_tsconfig_paths,
+        } = typescript;
+        let PerlConfig {
+            producer,
+            executable,
+            timeout_ms,
+            cache_dir,
+        } = perl;
+        let mut fields = vec![
+            ConfigIdentityField {
+                name: "analysis.mode",
+                role: ConfigIdentityRole::CapturedElsewhere,
+                value: None,
+                note: "resolved into the artifact identity `mode` via CheckInput",
+            },
+            ConfigIdentityField {
+                name: "analysis.include_unchanged_tests",
+                role: ConfigIdentityRole::CapturedElsewhere,
+                value: None,
+                note: "resolved into the artifact identity analysis input options via CheckInput",
+            },
+            ConfigIdentityField {
+                name: "oracles.snapshot_strength",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(snapshot_strength.as_str().to_string()),
+                note: "oracle strength policy changes classification evidence",
+            },
+            ConfigIdentityField {
+                name: "oracles.mock_expectation_strength",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(mock_expectation_strength.as_str().to_string()),
+                note: "oracle strength policy changes classification evidence",
+            },
+            ConfigIdentityField {
+                name: "oracles.broad_error_strength",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(broad_error_strength.as_str().to_string()),
+                note: "oracle strength policy changes classification evidence",
+            },
+        ];
+        for name in [
+            "severity.findings.exposed",
+            "severity.findings.weakly_exposed",
+            "severity.findings.reachable_unrevealed",
+            "severity.findings.no_static_path",
+            "severity.findings.infection_unknown",
+            "severity.findings.propagation_unknown",
+            "severity.findings.static_unknown",
+            "severity.seams.strongly_gripped",
+            "severity.seams.weakly_gripped",
+            "severity.seams.ungripped",
+            "severity.seams.reachable_unrevealed",
+            "severity.seams.activation_unknown",
+            "severity.seams.propagation_unknown",
+            "severity.seams.observation_unknown",
+            "severity.seams.discrimination_unknown",
+            "severity.seams.opaque",
+            "severity.seams.intentional",
+            "severity.seams.suppressed",
+        ] {
+            fields.push(ConfigIdentityField {
+                name,
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "render-only severity display; honored fresh at render time",
+            });
+        }
+        fields.extend([
+            ConfigIdentityField {
+                name: "lsp.seam_diagnostics",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "LSP-only; the CLI diff-check pipeline does not read it",
+            },
+            ConfigIdentityField {
+                name: "lsp.diagnostic_profile",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "LSP-only; the CLI has no diagnostic profile surface",
+            },
+            ConfigIdentityField {
+                name: "reports.max_related_tests",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "render-only context packet bound; honored fresh at render time",
+            },
+            ConfigIdentityField {
+                name: "suppressions.path",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "marks check summary suppression only; the artifact carries the finding set, which suppression does not mutate",
+            },
+            ConfigIdentityField {
+                name: "languages.enabled",
+                role: ConfigIdentityRole::CapturedElsewhere,
+                value: None,
+                note: "recorded as the artifact identity `enabled_languages` (resolved, including the explicit --perl-facts opt-in)",
+            },
+        ]);
+        match bun_ub {
+            Some(profile) => {
+                let BunUbProfileConfig {
+                    test_roots: _,
+                    bridge_hints: _,
+                } = profile;
+                fields.push(ConfigIdentityField {
+                    name: "profiles.bun_ub.test_roots",
+                    role: ConfigIdentityRole::Excluded,
+                    value: None,
+                    note: "not consumed by the diff-check analysis pipeline (doctor reporting only)",
+                });
+                fields.push(ConfigIdentityField {
+                    name: "profiles.bun_ub.bridge_hints",
+                    role: ConfigIdentityRole::Excluded,
+                    value: None,
+                    note: "not consumed by the diff-check analysis pipeline (doctor reporting only)",
+                });
+            }
+            None => {
+                fields.push(ConfigIdentityField {
+                    name: "profiles.bun_ub",
+                    role: ConfigIdentityRole::Excluded,
+                    value: None,
+                    note: "not consumed by the diff-check analysis pipeline (doctor reporting only)",
+                });
+            }
+        }
+        fields.extend([
+            ConfigIdentityField {
+                name: "typescript.resolve_tsconfig_paths",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(resolve_tsconfig_paths.to_string()),
+                note: "flows into AnalysisOptions for the TypeScript adapter",
+            },
+            ConfigIdentityField {
+                name: "perl.producer",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(producer.clone().unwrap_or_else(|| "none".to_string())),
+                note: "managed producer mode changes whether a Perl fact packet is produced",
+            },
+            ConfigIdentityField {
+                name: "perl.executable",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(
+                    executable
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_else(|| "none".to_string()),
+                ),
+                note: "which producer binary generates the Perl fact packet",
+            },
+            ConfigIdentityField {
+                name: "perl.timeout_ms",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(if *timeout_ms == 0 {
+                    30_000_u64.to_string()
+                } else {
+                    timeout_ms.to_string()
+                }),
+                note: "producer timeout changes whether a Perl fact packet is produced",
+            },
+            ConfigIdentityField {
+                name: "perl.cache_dir",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(
+                    cache_dir
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_else(|| "none".to_string()),
+                ),
+                note: "where the managed Perl fact packet is written and read",
+            },
+            ConfigIdentityField {
+                name: "source_path",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "loader container metadata, not a ripr.toml field",
+            },
+            ConfigIdentityField {
+                name: "source_text",
+                role: ConfigIdentityRole::Excluded,
+                value: None,
+                note: "loader container metadata, not a ripr.toml field",
+            },
+        ]);
+        fields
+    }
+}

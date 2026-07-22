@@ -15,8 +15,8 @@ mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig,
-    SeverityConfig, TypescriptConfig,
+    CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
+    LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -143,6 +143,22 @@ pub(crate) fn config_fingerprint(source_text: &str) -> String {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     format!("fnv1a64:{hash:016x}")
+}
+
+/// Canonical analysis-config identity for the check-artifact identity gate
+/// (RIPR-SPEC-0140): the finding-affecting allowlist fields, canonically
+/// serialized (field name, normalized value, defaults materialized), sorted,
+/// and hashed. Render-only knobs are excluded by the allowlist and are
+/// honored fresh at render time by the consuming command.
+pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String {
+    let mut pairs = config
+        .check_artifact_identity_fields()
+        .into_iter()
+        .filter(|field| field.role == ConfigIdentityRole::FindingAffecting)
+        .map(|field| format!("{}={}", field.name, field.value.clone().unwrap_or_default()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    config_fingerprint(&pairs.join("\n"))
 }
 
 pub(crate) fn apply_to_check_input(

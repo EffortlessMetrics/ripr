@@ -806,3 +806,143 @@ fn oracle_policy_rewrites_configurable_oracle_strengths() {
         OracleStrength::Strong
     );
 }
+
+// ── Check-artifact config identity (RIPR-SPEC-0140) ──
+
+/// The closed config-identity contract: every `ripr.toml` field is
+/// classified exactly once. The producer
+/// (`RiprConfig::check_artifact_identity_fields`) destructures every config
+/// struct without a `..` rest pattern, so an unclassified new field fails
+/// compilation; this test pins the classification itself so a silent
+/// re-classification fails CI.
+#[test]
+fn check_artifact_identity_fields_classify_every_config_field() -> Result<(), String> {
+    let fields = RiprConfig::default().check_artifact_identity_fields();
+    let mut actual = fields
+        .iter()
+        .map(|field| (field.name, field.role))
+        .collect::<Vec<_>>();
+    actual.sort_by(|left, right| left.0.cmp(right.0));
+
+    let finding_affecting = [
+        "oracles.broad_error_strength",
+        "oracles.mock_expectation_strength",
+        "oracles.snapshot_strength",
+        "perl.cache_dir",
+        "perl.executable",
+        "perl.producer",
+        "perl.timeout_ms",
+        "typescript.resolve_tsconfig_paths",
+    ];
+    let captured_elsewhere = [
+        "analysis.include_unchanged_tests",
+        "analysis.mode",
+        "languages.enabled",
+    ];
+    let mut expected = finding_affecting
+        .iter()
+        .map(|name| (*name, ConfigIdentityRole::FindingAffecting))
+        .chain(
+            captured_elsewhere
+                .iter()
+                .map(|name| (*name, ConfigIdentityRole::CapturedElsewhere)),
+        )
+        .collect::<Vec<_>>();
+    for name in [
+        "severity.findings.exposed",
+        "severity.findings.weakly_exposed",
+        "severity.findings.reachable_unrevealed",
+        "severity.findings.no_static_path",
+        "severity.findings.infection_unknown",
+        "severity.findings.propagation_unknown",
+        "severity.findings.static_unknown",
+        "severity.seams.strongly_gripped",
+        "severity.seams.weakly_gripped",
+        "severity.seams.ungripped",
+        "severity.seams.reachable_unrevealed",
+        "severity.seams.activation_unknown",
+        "severity.seams.propagation_unknown",
+        "severity.seams.observation_unknown",
+        "severity.seams.discrimination_unknown",
+        "severity.seams.opaque",
+        "severity.seams.intentional",
+        "severity.seams.suppressed",
+        "lsp.seam_diagnostics",
+        "lsp.diagnostic_profile",
+        "reports.max_related_tests",
+        "suppressions.path",
+        "profiles.bun_ub",
+        "source_path",
+        "source_text",
+    ] {
+        expected.push((name, ConfigIdentityRole::Excluded));
+    }
+    expected.sort_by(|left, right| left.0.cmp(right.0));
+
+    if actual != expected {
+        return Err(format!(
+            "config identity classification drifted\nexpected: {expected:?}\nactual:   {actual:?}"
+        ));
+    }
+
+    // Every finding-affecting field carries a canonical value; every other
+    // field names where it is captured or why it is excluded.
+    for field in &fields {
+        match field.role {
+            ConfigIdentityRole::FindingAffecting => {
+                if field.value.is_none() {
+                    return Err(format!(
+                        "finding-affecting field {} has no canonical value",
+                        field.name
+                    ));
+                }
+            }
+            _ => {
+                if field.note.is_empty() {
+                    return Err(format!(
+                        "field {} has no capture/exclusion note",
+                        field.name
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn check_artifact_config_identity_hash_tracks_finding_affecting_fields_only() -> Result<(), String>
+{
+    let base = RiprConfig::default();
+    let base_hash = check_artifact_config_identity_hash(&base);
+
+    // A finding-affecting change (oracle policy) changes the identity.
+    let oracles_changed = tests_only_parse("[oracles]\nsnapshot_strength = \"strong\"\n")?;
+    if check_artifact_config_identity_hash(&oracles_changed) == base_hash {
+        return Err("oracle policy change must change the config identity".to_string());
+    }
+
+    // A finding-affecting change (TypeScript adapter option) changes it too.
+    let ts_changed = tests_only_parse("[typescript]\nresolve_tsconfig_paths = true\n")?;
+    if check_artifact_config_identity_hash(&ts_changed) == base_hash {
+        return Err(
+            "typescript.resolve_tsconfig_paths change must change the config identity".to_string(),
+        );
+    }
+
+    // A render-only change (severity display) does NOT change the identity:
+    // render-time knobs are honored fresh by the consuming command.
+    let severity_changed = tests_only_parse("[severity.findings]\nexposed = \"warning\"\n")?;
+    if check_artifact_config_identity_hash(&severity_changed) != base_hash {
+        return Err("severity display is render-only and must not change the identity".to_string());
+    }
+
+    // A render-only change (reports bound) does NOT change it either.
+    let reports_changed = tests_only_parse("[reports]\nmax_related_tests = 9\n")?;
+    if check_artifact_config_identity_hash(&reports_changed) != base_hash {
+        return Err(
+            "reports.max_related_tests is render-only and must not change the identity".to_string(),
+        );
+    }
+    Ok(())
+}

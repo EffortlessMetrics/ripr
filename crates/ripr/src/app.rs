@@ -6,6 +6,7 @@ pub(crate) mod agent_workflow;
 pub(crate) mod annotations;
 pub(crate) mod causal_projection;
 mod check;
+pub(crate) mod check_artifact;
 mod context;
 mod explain;
 pub(crate) mod impacted_evidence;
@@ -28,12 +29,12 @@ pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 pub(crate) use check::{
     check_workspace_repo_with_config, check_workspace_with_config,
-    check_workspace_worktree_with_config,
+    check_workspace_worktree_with_config, is_managed_perl_producer,
 };
-pub(crate) use context::collect_context_with_config;
 pub use context::{collect_context, collect_context_with_input};
-pub(crate) use explain::explain_finding_with_config;
+pub(crate) use context::{collect_context_from_artifact, collect_context_with_config};
 pub use explain::{explain_finding, explain_finding_with_input};
+pub(crate) use explain::{explain_finding_from_artifact, explain_finding_with_config};
 
 use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;

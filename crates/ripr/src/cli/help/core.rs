@@ -132,6 +132,19 @@ Options:
                            unsuppressed findings only. Relative PATH
                            resolves against --root; a missing or malformed
                            policy fails the run.
+  --write-artifact PATH    Write a full-fidelity check artifact (schema
+                           ripr-check-artifact-v1) for later
+                           `ripr explain --from PATH` /
+                           `ripr context --from PATH` reuse. The artifact
+                           records the complete finding set plus the input
+                           identity (diff bytes hash, root, mode, languages,
+                           analysis options, config identity, analyzer
+                           version). It is a local, disposable derivative:
+                           never a gate, badge, or proof input. Diff-scoped
+                           findings runs only; not supported for repo-scoped
+                           formats, --gap-ledger, --worktree, or managed
+                           [perl] producer packet generation (pass
+                           --perl-facts PATH explicitly instead).
 
 Environment variables:
   RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
@@ -168,6 +181,7 @@ Examples:
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
   ripr check --base origin/main --json --suppression-policy policy/ripr-suppressions.toml
+  ripr check --diff d.patch --write-artifact target/ripr/last-check.json
 "#;
 pub(super) const DIFF_HELP: &str = r#"Analyze the changed surface first and report full-repo context as an explicit bounded state.
 
@@ -189,11 +203,42 @@ or turn the full-repo limitation into a success state.
 "#;
 pub(super) const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
 
-Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>
+Usage: ripr explain [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] <finding-id|file:line>
+
+Options:
+  --from PATH  Load findings from a check artifact written by
+               `ripr check --write-artifact PATH` instead of re-running the
+               analysis. The artifact's recorded diff source is re-resolved
+               and its identity is re-verified; any mismatch (diff, root,
+               mode, languages, analysis options, config identity, or
+               analyzer version) fails closed with a typed error naming the
+               mismatched fields. --diff/--base passed alongside --from are
+               assertions verified against the recording, not overrides.
+  --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
+               With --from, this feeds the identity recomputation: an
+               artifact written with a non-default --mode is consumable only
+               when the same mode resolves here (flag or ripr.toml).
+  --no-unchanged-tests
+               Limit the index to changed Rust files. With --from, an
+               artifact written with this flag is consumable only when the
+               same setting resolves here (flag or ripr.toml).
 "#;
 pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
 
-Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
+Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] --at <finding-id|file:line> [--max-related-tests N] [--json]
+
+Options:
+  --from PATH  Load findings from a check artifact written by
+               `ripr check --write-artifact PATH` instead of re-running the
+               analysis (same fail-closed identity gate as explain --from).
+               --max-related-tests is a render-time knob honored fresh,
+               including beyond the check --json render cap.
+  --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
+               With --from, this feeds the identity recomputation (see
+               `ripr explain --help`).
+  --no-unchanged-tests
+               Limit the index to changed Rust files. With --from, feeds
+               the identity recomputation (see `ripr explain --help`).
 "#;
 pub(super) const DOCTOR_HELP: &str = r#"Diagnose the local ripr setup (Rust toolchain, workspace, paths).
 

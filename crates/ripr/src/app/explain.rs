@@ -36,6 +36,32 @@ pub(crate) fn explain_finding_with_config(
     }
 }
 
+/// Like [`explain_finding_with_config`] but loads the finding set from a
+/// previously written check artifact (`--from`, RIPR-SPEC-0140) instead of
+/// re-running the pipeline. The artifact identity gate is fail-closed; on a
+/// verified hit, selection and rendering are identical to the fresh path, so
+/// the rendered output is byte-identical to a recomputed run given the same
+/// render options. `asserted_base` is an explicitly passed `--base`, verified
+/// against the recording rather than used as an override.
+pub(crate) fn explain_finding_from_artifact(
+    input: CheckInput,
+    selector: &str,
+    config: &RiprConfig,
+    artifact_path: &Path,
+    asserted_base: Option<&str>,
+) -> Result<String, String> {
+    let findings = super::check_artifact::load_findings_for_reuse(
+        artifact_path,
+        &input,
+        config,
+        asserted_base,
+    )?;
+    match select_finding(&findings, selector) {
+        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
+        None => Err(format!("no finding matched {selector:?}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

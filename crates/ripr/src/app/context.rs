@@ -51,6 +51,36 @@ pub(crate) fn collect_context_with_config(
     }
 }
 
+/// Like [`collect_context_with_config`] but loads the finding set from a
+/// previously written check artifact (`--from`, RIPR-SPEC-0140) instead of
+/// re-running the pipeline. The artifact identity gate is fail-closed; on a
+/// verified hit, selection and rendering are identical to the fresh path.
+/// `max_related_tests` is a render-time knob: it is not part of the artifact
+/// identity and is honored fresh, including beyond the `check --json`
+/// render cap, because the artifact stores the uncapped related-tests list.
+pub(crate) fn collect_context_from_artifact(
+    input: CheckInput,
+    selector: &str,
+    max_related_tests: usize,
+    config: &RiprConfig,
+    artifact_path: &Path,
+    asserted_base: Option<&str>,
+) -> Result<String, String> {
+    let findings = super::check_artifact::load_findings_for_reuse(
+        artifact_path,
+        &input,
+        config,
+        asserted_base,
+    )?;
+    match select_finding(&findings, selector) {
+        Some(finding) => Ok(output::json::render_context_packet(
+            finding,
+            max_related_tests,
+        )),
+        None => Err(format!("no finding matched {selector:?}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

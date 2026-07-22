@@ -5115,6 +5115,407 @@ fn explain_unknown_probe_fails_with_clear_error() {
     assert!(stderr.contains("no finding matched"));
 }
 
+// -------- check-artifact reuse smoke (RIPR-SPEC-0140, #2107) --------
+
+/// End-to-end three-step flow: `check --write-artifact` once, then
+/// `explain --from` and `context --from` reuse the recorded findings with
+/// no scope flags. Reused output must be byte-identical to the fresh
+/// recompute flow (the core reuse proof).
+#[test]
+fn check_write_artifact_then_explain_and_context_reuse_byte_identical() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let dir = unique_temp_workspace("check-artifact-reuse");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let artifact = dir.join("last-check.json");
+    let artifact_arg = artifact.display().to_string();
+    let selector = "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250";
+
+    let result = (|| {
+        let check = run_ripr(&[
+            "check",
+            "--root",
+            &root,
+            "--diff",
+            &diff,
+            "--json",
+            "--write-artifact",
+            &artifact_arg,
+        ]);
+        assert_success(&check);
+        let artifact_text = std::fs::read_to_string(&artifact)
+            .map_err(|err| format!("artifact was not written: {err}"))?;
+        assert!(artifact_text.contains("\"ripr-check-artifact-v1\""));
+        assert!(artifact_text.contains("\"identity\""));
+        assert!(artifact_text.contains("\"diff_bytes_hash\""));
+
+        let fresh_explain = run_ripr(&["explain", "--root", &root, "--diff", &diff, selector]);
+        assert_success(&fresh_explain);
+        let reused_explain = run_ripr(&[
+            "explain",
+            "--root",
+            &root,
+            "--from",
+            &artifact_arg,
+            selector,
+        ]);
+        assert_success(&reused_explain);
+        assert_eq!(
+            fresh_explain.stdout, reused_explain.stdout,
+            "explain --from output must be byte-identical to the fresh run"
+        );
+
+        let fresh_context = run_ripr(&[
+            "context", "--root", &root, "--diff", &diff, "--at", selector, "--json",
+        ]);
+        assert_success(&fresh_context);
+        let reused_context = run_ripr(&[
+            "context",
+            "--root",
+            &root,
+            "--from",
+            &artifact_arg,
+            "--at",
+            selector,
+        ]);
+        assert_success(&reused_context);
+        assert_eq!(
+            fresh_context.stdout, reused_context.stdout,
+            "context --from output must be byte-identical to the fresh run"
+        );
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+/// Every identity mismatch class fails closed with a typed error naming the
+/// mismatched field — never a silent recompute.
+#[test]
+fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let dir = unique_temp_workspace("check-artifact-tamper");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let artifact = dir.join("last-check.json");
+    let artifact_arg = artifact.display().to_string();
+    let selector = "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250";
+
+    let result = (|| {
+        let check = run_ripr(&[
+            "check",
+            "--root",
+            &root,
+            "--diff",
+            &diff,
+            "--write-artifact",
+            &artifact_arg,
+        ]);
+        assert_success(&check);
+        let original = std::fs::read_to_string(&artifact)
+            .map_err(|err| format!("artifact was not written: {err}"))?;
+
+        // Mode mismatch (tampered recording).
+        let tampered = original.replace("\"mode\": \"draft\"", "\"mode\": \"ready\"");
+        std::fs::write(&artifact, &tampered).map_err(|err| format!("write: {err}"))?;
+        let output = run_ripr(&[
+            "explain",
+            "--root",
+            &root,
+            "--from",
+            &artifact_arg,
+            selector,
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("cannot be reused")
+                && stderr.contains("identity mismatch")
+                && stderr.contains("mode"),
+            "mode mismatch must be named:\n{stderr}"
+        );
+
+        // Unsupported schema version.
+        let stale = original.replace("ripr-check-artifact-v1", "ripr-check-artifact-v0");
+        std::fs::write(&artifact, &stale).map_err(|err| format!("write: {err}"))?;
+        let output = run_ripr(&[
+            "explain",
+            "--root",
+            &root,
+            "--from",
+            &artifact_arg,
+            selector,
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("unsupported schema_version"),
+            "schema mismatch must be named:\n{stderr}"
+        );
+
+        // A scope flag passed alongside --from is an assertion, not an
+        // override: a different --diff than the recording fails closed.
+        std::fs::write(&artifact, &original).map_err(|err| format!("write: {err}"))?;
+        let other_diff = dir.join("other.diff");
+        std::fs::copy(sample_diff(), &other_diff).map_err(|err| format!("copy: {err}"))?;
+        let other_diff_arg = other_diff.display().to_string();
+        let output = run_ripr(&[
+            "explain",
+            "--root",
+            &root,
+            "--from",
+            &artifact_arg,
+            "--diff",
+            &other_diff_arg,
+            selector,
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("asserted scope does not match") && stderr.contains("diff_source"),
+            "asserted --diff mismatch must be named:\n{stderr}"
+        );
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+/// `--write-artifact` fails closed with a named limitation for run shapes
+/// that have no re-resolvable diff-scoped finding set.
+#[test]
+fn check_write_artifact_rejects_unsupported_run_shapes() {
+    let root = workspace_root().display().to_string();
+    let dir = unique_temp_workspace("check-artifact-reject");
+    let artifact = dir.join("last-check.json");
+    let artifact_arg = artifact.display().to_string();
+
+    let worktree = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--worktree",
+        "--write-artifact",
+        &artifact_arg,
+    ]);
+    assert_failure(&worktree);
+    let stderr = String::from_utf8_lossy(&worktree.stderr);
+    assert!(
+        stderr.contains("not yet supported for --worktree"),
+        "worktree limitation must be named:\n{stderr}"
+    );
+
+    let repo_scoped = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--format",
+        "repo-seams-json",
+        "--write-artifact",
+        &artifact_arg,
+    ]);
+    assert_failure(&repo_scoped);
+    let stderr = String::from_utf8_lossy(&repo_scoped.stderr);
+    assert!(
+        stderr.contains("repo-scoped"),
+        "repo-scope limitation must be named:\n{stderr}"
+    );
+}
+
+/// An artifact written with a CLI-only non-default `--mode` is consumable
+/// when the same flag is passed on the reuse side (byte-identical), and
+/// fails closed naming `mode` when it is not.
+#[test]
+fn explain_from_consumes_artifact_written_with_non_default_mode() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let dir = unique_temp_workspace("check-artifact-mode");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let artifact = dir.join("ready.json");
+    let artifact_arg = artifact.display().to_string();
+    let selector = "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250";
+
+    let check = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--mode",
+        "ready",
+        "--write-artifact",
+        &artifact_arg,
+    ]);
+    assert_success(&check);
+
+    let fresh = run_ripr(&[
+        "explain", "--root", &root, "--diff", &diff, "--mode", "ready", selector,
+    ]);
+    assert_success(&fresh);
+    let reused = run_ripr(&[
+        "explain",
+        "--root",
+        &root,
+        "--from",
+        &artifact_arg,
+        "--mode",
+        "ready",
+        selector,
+    ]);
+    assert_success(&reused);
+    assert_eq!(
+        fresh.stdout, reused.stdout,
+        "explain --from --mode ready must be byte-identical to the fresh ready run"
+    );
+
+    let without_flag = run_ripr(&[
+        "explain",
+        "--root",
+        &root,
+        "--from",
+        &artifact_arg,
+        selector,
+    ]);
+    assert_failure(&without_flag);
+    let stderr = String::from_utf8_lossy(&without_flag.stderr);
+    assert!(
+        stderr.contains("cannot be reused")
+            && stderr.contains("identity mismatch")
+            && stderr.contains("mode"),
+        "mode mismatch must be named:\n{stderr}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// An artifact written with `--no-unchanged-tests` is consumable with the
+/// same flag (byte-identical) and fails closed naming
+/// `analysis_options.include_unchanged_tests` without it.
+#[test]
+fn context_from_consumes_artifact_written_with_no_unchanged_tests() -> Result<(), String> {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let dir = unique_temp_workspace("check-artifact-unchanged");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let artifact = dir.join("no-unchanged.json");
+    let artifact_arg = artifact.display().to_string();
+    let selector = "probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250";
+
+    let check = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--no-unchanged-tests",
+        "--write-artifact",
+        &artifact_arg,
+    ]);
+    assert_success(&check);
+
+    let fresh = run_ripr(&[
+        "context",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--no-unchanged-tests",
+        "--at",
+        selector,
+    ]);
+    assert_success(&fresh);
+    let reused = run_ripr(&[
+        "context",
+        "--root",
+        &root,
+        "--from",
+        &artifact_arg,
+        "--no-unchanged-tests",
+        "--at",
+        selector,
+    ]);
+    assert_success(&reused);
+    assert_eq!(
+        fresh.stdout, reused.stdout,
+        "context --from --no-unchanged-tests must be byte-identical to the fresh run"
+    );
+
+    let without_flag = run_ripr(&[
+        "context",
+        "--root",
+        &root,
+        "--from",
+        &artifact_arg,
+        "--at",
+        selector,
+    ]);
+    assert_failure(&without_flag);
+    let stderr = String::from_utf8_lossy(&without_flag.stderr);
+    assert!(
+        stderr.contains("cannot be reused")
+            && stderr.contains("identity mismatch")
+            && stderr.contains("analysis_options.include_unchanged_tests"),
+        "include_unchanged_tests mismatch must be named:\n{stderr}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// Managed `[perl] producer` packet generation cannot join the recorded
+/// identity (the packet is generated inside the analysis run), so
+/// `--write-artifact` fails closed with a named limitation. No producer
+/// process is spawned: the rejection happens before analysis.
+#[test]
+fn check_write_artifact_rejects_managed_perl_producer() -> Result<(), String> {
+    let dir = unique_temp_workspace("check-artifact-producer");
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+    let result = (|| {
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("mkdir: {err}"))?;
+        std::fs::create_dir_all(dir.join("tests")).map_err(|err| format!("mkdir: {err}"))?;
+        std::fs::copy(sample.join("example.diff"), dir.join("example.diff"))
+            .map_err(|err| format!("copy: {err}"))?;
+        std::fs::copy(sample.join("src/lib.rs"), dir.join("src/lib.rs"))
+            .map_err(|err| format!("copy: {err}"))?;
+        std::fs::copy(
+            sample.join("tests/pricing.rs"),
+            dir.join("tests/pricing.rs"),
+        )
+        .map_err(|err| format!("copy: {err}"))?;
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[perl]\nproducer = \"perl-ripr-facts\"\n",
+        )
+        .map_err(|err| format!("write config: {err}"))?;
+
+        let root = dir.display().to_string();
+        let diff = dir.join("example.diff").display().to_string();
+        let artifact = dir.join("a.json");
+        let artifact_arg = artifact.display().to_string();
+        let output = run_ripr(&[
+            "check",
+            "--root",
+            &root,
+            "--diff",
+            &diff,
+            "--write-artifact",
+            &artifact_arg,
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("producer packet generation") && stderr.contains("--perl-facts"),
+            "managed producer limitation must be named:\n{stderr}"
+        );
+        assert!(
+            !artifact.exists(),
+            "no artifact may be written for the rejected run shape"
+        );
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 // -------- suppressions/v1 smoke --------
 
 fn fixture_test_efficiency_with_actionable_test() -> &'static str {

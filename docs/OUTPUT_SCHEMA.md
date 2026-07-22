@@ -375,6 +375,66 @@ Field contract:
   unobserved report/config labels, observed schema labels, cross-file flow
   unknown limitations, and opaque lookup limitations.
 
+## Check Artifact
+
+`ripr check --write-artifact <path>` writes a full-fidelity check artifact
+(RIPR-SPEC-0140) for later `ripr explain --from <path>` /
+`ripr context --from <path>` reuse. This is a separate envelope from
+`check --json`: the findings JSON above is a one-way, lossy render
+projection and is not a reuse source. The artifact is a local, disposable
+derivative of one check run — it must never feed a support-tier row, gate,
+badge, or proof route, and it is not portable between machines.
+
+Envelope (`schema_version = "ripr-check-artifact-v1"`):
+
+```json
+{
+  "schema_version": "ripr-check-artifact-v1",
+  "tool": "ripr",
+  "analyzer_version": "0.10.0",
+  "identity": {
+    "diff_source": { "diff_file": { "path": "/abs/path/to/example.diff" } },
+    "diff_bytes_hash": "fnv1a64:0123456789abcdef",
+    "root": "/abs/path/to/workspace",
+    "mode": "draft",
+    "enabled_languages": ["rust"],
+    "analysis_options": {
+      "include_unchanged_tests": true,
+      "perl_facts_path": null,
+      "perl_facts_content_hash": null
+    },
+    "config_identity_version": 1,
+    "config_identity_hash": "fnv1a64:fedcba9876543210"
+  },
+  "findings": [ /* complete Finding set, full fidelity */ ]
+}
+```
+
+- `diff_source` is `{"diff_file": {"path": ...}}` (a canonicalized `--diff`
+  path) or `{"base_head": {"base": ..., "head": "HEAD"}}`. At reuse time the
+  recorded source is re-resolved: a recorded `--diff` path is re-read, a
+  recorded base/head pair is re-resolved through git, and the bytes are
+  re-hashed against `diff_bytes_hash`.
+- `findings` serializes the complete `Finding` set with serde: uncapped
+  `related_tests` (no 8-entry render cap), always-present probe `owner`,
+  and no render-time severity projection.
+- The identity gate is fail-closed: any mismatch on `diff_bytes_hash`,
+  `root`, `mode`, `enabled_languages`, `analysis_options.*`,
+  `config_identity_version`, `config_identity_hash`, or `analyzer_version`
+  is a typed error naming every mismatched field. Scope flags passed
+  alongside `--from` (`--diff`, `--base`) are assertions verified against
+  the recording, never overrides. There is no silent recompute fallback.
+- `config_identity_hash` covers a closed, versioned allowlist of
+  finding-affecting `ripr.toml` fields (`oracles.*`,
+  `typescript.resolve_tsconfig_paths`, `perl.*`), canonically serialized
+  with defaults materialized. Render-only knobs (severity display,
+  `reports.max_related_tests`) are excluded and honored fresh at render
+  time. Adding a finding-affecting config field requires extending the
+  allowlist and bumping `config_identity_version` in the same PR.
+- Writes are atomic: uniquely named temp file in the destination
+  directory, flush + fsync, rename; temp files are unlinked on failure;
+  last writer wins on a repeated write to the same path.
+
 ## Finding
 
 The `id` field is content-addressed: `probe:<sanitized_path>:<family>:<fp8>[.<n>]` where `<fp8>` is the first 8 hex chars of SHA-256 over `path\0family\0owner\0expression\0`. This means a suppression tracks the code, not the line — the same expression moved to a new line keeps its id (suppression follows it), while changed code at a spot gets a new id (stale suppression invalidates). The `line` field in the `probe` object still gives locality for display.

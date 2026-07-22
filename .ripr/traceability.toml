@@ -7300,3 +7300,58 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0140"
+name = "check-artifact reuse for explain/context"
+spec = "docs/specs/RIPR-SPEC-0140-check-artifact-reuse.md"
+tests = [
+  "crates/ripr/src/app/check_artifact/tests.rs::artifact_round_trip_preserves_full_fidelity_findings",
+  "crates/ripr/src/app/check_artifact/tests.rs::artifact_wire_form_uses_documented_snake_case_vocabulary",
+  "crates/ripr/src/domain/language.rs::tests::language_metadata_serde_uses_documented_wire_casing",
+  "crates/ripr/src/app/check_artifact/tests.rs::explain_from_artifact_is_byte_identical_to_fresh_explain",
+  "crates/ripr/src/app/check_artifact/tests.rs::context_from_artifact_is_byte_identical_to_fresh_context",
+  "crates/ripr/src/app/check_artifact/tests.rs::context_from_artifact_honors_max_related_tests_beyond_json_render_cap",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_mode_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_root_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_include_unchanged_tests_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_diff_bytes_change",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_when_recorded_diff_source_is_missing",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_config_identity_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_analyzer_version_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_enabled_languages_mismatch",
+  "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_wrong_schema_version_and_malformed_input",
+  "crates/ripr/src/app/check_artifact/tests.rs::scope_flags_passed_alongside_from_are_assertions",
+  "crates/ripr/src/app/check_artifact/tests.rs::perl_facts_packet_content_is_part_of_the_identity",
+  "crates/ripr/src/app/check_artifact/tests.rs::repeated_write_replaces_artifact_atomically",
+  "crates/ripr/src/app/check_artifact/tests.rs::concurrent_writers_never_leave_a_torn_artifact",
+  "crates/ripr/src/config/tests.rs::check_artifact_identity_fields_classify_every_config_field",
+  "crates/ripr/src/config/tests.rs::check_artifact_config_identity_hash_tracks_finding_affecting_fields_only",
+  "crates/ripr/tests/cli_smoke.rs::check_write_artifact_then_explain_and_context_reuse_byte_identical",
+  "crates/ripr/tests/cli_smoke.rs::explain_from_fails_closed_on_tampered_identity",
+  "crates/ripr/tests/cli_smoke.rs::check_write_artifact_rejects_unsupported_run_shapes",
+  "crates/ripr/tests/cli_smoke.rs::explain_from_consumes_artifact_written_with_non_default_mode",
+  "crates/ripr/tests/cli_smoke.rs::context_from_consumes_artifact_written_with_no_unchanged_tests",
+  "crates/ripr/tests/cli_smoke.rs::check_write_artifact_rejects_managed_perl_producer",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app/check_artifact.rs",
+  "crates/ripr/src/app/explain.rs",
+  "crates/ripr/src/app/context.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help/core.rs",
+  "crates/ripr/src/config/model.rs",
+  "crates/ripr/src/config.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/domain/classification.rs",
+  "crates/ripr/src/domain/language.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0140-check-artifact-reuse.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

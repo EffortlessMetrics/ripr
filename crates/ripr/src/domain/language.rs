@@ -12,7 +12,8 @@
 /// JavaScript is implemented by the TypeScript-family adapter and remains
 /// separately labeled in output. Adding a new variant here is a deliberate
 /// contract change and must update RIPR-SPEC-0026.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LanguageId {
     Rust,
     TypeScript,
@@ -62,7 +63,8 @@ impl LanguageId {
 /// vocabulary. TypeScript and Python adapters land as `Preview` per
 /// RIPR-SPEC-0026. The wire field is omitted entirely for Rust per the
 /// spec; preview adapters set `Preview`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LanguageStatus {
     Stable,
     Preview,
@@ -84,7 +86,8 @@ impl LanguageStatus {
 /// These labels are additive optional finding metadata per RIPR-SPEC-0026.
 /// They let preview adapters identify the syntactic owner that received a
 /// changed line without forcing downstream consumers to parse evidence text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OwnerKind {
     Function,
     Method,
@@ -114,7 +117,8 @@ impl OwnerKind {
 /// These labels are additive optional finding metadata per RIPR-SPEC-0026.
 /// They give downstream consumers a typed discriminator for display and
 /// reporting without parsing human evidence text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StaticLimitKind {
     DynamicDispatch,
     Metaprogramming,
@@ -307,6 +311,27 @@ mod tests {
     fn language_status_wire_strings_are_stable() {
         assert_eq!(LanguageStatus::Stable.as_str(), "stable");
         assert_eq!(LanguageStatus::Preview.as_str(), "preview");
+    }
+
+    #[test]
+    fn language_metadata_serde_uses_documented_wire_casing() -> Result<(), serde_json::Error> {
+        assert_eq!(
+            serde_json::to_string(&LanguageId::TypeScript)?,
+            "\"typescript\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LanguageStatus::Preview)?,
+            "\"preview\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OwnerKind::ClassMethod)?,
+            "\"class_method\""
+        );
+        assert_eq!(
+            serde_json::to_string(&StaticLimitKind::MissingImportGraph)?,
+            "\"missing_import_graph\""
+        );
+        Ok(())
     }
 
     #[test]
