@@ -97,14 +97,20 @@ Only a later explicitly governed execution slice may turn
 `verification_command_available` into an execution state. No packet, receipt
 request, JSON field, or editor action automatically runs a command.
 
-An execution result records the declared command identity, root and revision
-before/after the run, process disposition, exit status, bounded stdout/stderr
-commitments, an immutable command-spec digest, and currentness.
+`VerificationExecutionResultV1` records the declared command identity, root and
+revision before/after the run, process disposition, exit status, bounded
+stdout/stderr commitments, an immutable command-spec digest, and currentness.
+The accepted process dispositions are `completed`, `failed_to_start`,
+`cancelled`, `timed_out`, and `output_limit_exceeded`. A completed result must
+carry an exit status; every other disposition must omit it. `current` and
+`dirty_worktree` require the before and after HEADs to be equal.
 `verification_executed_pass` means only that the declared command completed
 with the producer-defined passing disposition. It does not mean that the
 static gap closed or that the repository is correct. A future runner must
 reject a result whose command-spec digest, root, or revision does not match the
-declared execution context.
+declared execution context. The typed domain validator introduced by the
+verification-result slice performs those checks; it does not execute a
+command.
 
 ### Receipt issuance
 
@@ -147,6 +153,7 @@ negative controls for:
 - improved static movement with a failed command;
 - unavailable verification;
 - cancellation or timeout;
+- a typed timeout result carrying its command and provenance commitments;
 - malformed or unsupported `CommandSpecV1`;
 - wrong repository root;
 - fabricated result input; and
@@ -177,7 +184,7 @@ disclosed as unavailable. It cannot become a passing current receipt.
 ## Required Evidence
 
 - `schemas/ripr/repair-assurance.schema.json` closes the V1 envelope,
-  `CommandSpecV1`, and execution-result vocabulary.
+  `CommandSpecV1`, and `VerificationExecutionResultV1` vocabulary.
 - `fixtures/assurance_vocabulary/assurance/corpus.json` contains positive and
   negative controls for every required assurance boundary.
 - The regular `assurance_vocabulary` analyzer fixture proves this design-only
@@ -187,7 +194,7 @@ disclosed as unavailable. It cannot become a passing current receipt.
 
 ## Non-Goals
 
-- implementing command execution;
+- executing a command;
 - changing the current `agent verify` or `agent receipt` producer;
 - adding signatures, remote attestation, or a policy gate;
 - claiming test adequacy, correctness, merge approval, or runtime mutation;
@@ -196,9 +203,10 @@ disclosed as unavailable. It cannot become a passing current receipt.
 
 ## Claim boundary
 
-This slice makes assurance vocabulary and migration boundaries durable. It
-does not make command execution, receipt provenance, gate blocking, runtime
-mutation confirmation, or proof authority available.
+This slice makes assurance vocabulary and the typed verification-result
+validation boundary durable. It does not make command execution, receipt
+provenance, gate blocking, runtime mutation confirmation, or proof authority
+available.
 
 ## Test Mapping
 
@@ -220,6 +228,10 @@ mutation confirmation, or proof authority available.
   redirection is `shell_required`, while receipt `--out` is direct argv.
 - `crates/ripr/src/lsp/gap_artifacts.rs` validates projected typed specs and
   rejects malformed or role-mismatched route payloads before editor use.
+- `crates/ripr/src/domain/verification_result.rs` owns
+  `VerificationExecutionResultV1`, command-spec digest binding, and exact
+  root/HEAD/currentness validation. It is a consumer validation seam, not a
+  process runner.
 - `.allow/spec-system/slices/command-spec-route-population.v1.toml` records the
   PR-local claim boundary and return conditions for #1755.
 - `.allow/spec-system/slices/typed-command-spec.v1.toml` records the PR-local
@@ -232,7 +244,8 @@ mutation confirmation, or proof authority available.
 ## Metrics
 
 - `repair_assurance_vocabulary_closed`;
-- `repair_assurance_static_only_disclosure`.
+- `repair_assurance_static_only_disclosure`;
+- `verification_execution_result_provenance_validated`.
 
 ## Proof
 
@@ -243,6 +256,7 @@ cargo xtask check-doc-index
 cargo xtask check-doc-artifacts
 cargo xtask check-fixture-contracts
 cargo xtask check-output-contracts
+cargo test -p ripr domain::verification_result --lib
 cargo xtask check-command-catalog
 git diff --check
 ```

@@ -95,7 +95,7 @@
           },
           "then": {
             "properties": {
-              "command_spec": { "$ref": "#/$defs/command_spec" },
+              "command_spec": { "$ref": "#/$defs/verification_command_spec" },
               "result": { "type": "null" }
             }
           }
@@ -110,7 +110,7 @@
           },
           "then": {
             "properties": {
-              "command_spec": { "$ref": "#/$defs/command_spec" },
+              "command_spec": { "$ref": "#/$defs/verification_command_spec" },
               "result": { "$ref": "#/$defs/execution_result" }
             }
           }
@@ -121,8 +121,7 @@
               "state": {
                 "enum": [
                   "verification_not_run",
-                  "verification_unavailable",
-                  "verification_cancelled_or_timed_out"
+                  "verification_unavailable"
                 ]
               }
             }
@@ -133,6 +132,41 @@
               "result": { "type": "null" }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": { "const": "verification_cancelled_or_timed_out" }
+            }
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "command_spec": { "type": "null" },
+                  "result": { "type": "null" }
+                }
+              },
+              {
+                "required": ["command_spec", "result"],
+                "properties": {
+                  "command_spec": { "$ref": "#/$defs/verification_command_spec" },
+                  "result": {
+                    "allOf": [
+                      { "$ref": "#/$defs/execution_result" },
+                      {
+                        "properties": {
+                          "process_disposition": {
+                            "enum": ["cancelled", "timed_out", "output_limit_exceeded"]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
         }
       ]
     },
@@ -141,52 +175,123 @@
       "additionalProperties": false,
       "required": [
         "schema_version",
+        "command_id",
+        "role",
+        "execution_mode",
         "program",
         "args",
         "working_directory",
+        "env_set",
+        "env_passthrough",
         "timeout_ms",
+        "stdin",
         "cancellation",
         "network",
         "environment",
         "expected_result_parser",
+        "expected_exit_codes",
+        "expected_writes",
         "cost_class",
+        "platforms",
+        "authority_boundary",
         "human_display"
       ],
       "properties": {
         "schema_version": { "const": "1" },
+        "command_id": { "type": "string", "minLength": 1 },
+        "role": {
+          "enum": ["verify", "receipt", "regeneration", "inspection", "targeted_rerun"]
+        },
+        "execution_mode": { "enum": ["direct", "shell_required", "manual"] },
         "program": { "type": "string", "minLength": 1 },
         "args": { "type": "array", "items": { "type": "string" } },
         "working_directory": {
           "type": "string",
           "pattern": "^(?![^\\\\/]+:)(?![\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$"
         },
+        "env_set": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "env_passthrough": { "type": "array", "items": { "type": "string" } },
         "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 3600000 },
         "cancellation": { "enum": ["allowed", "not_allowed"] },
-        "network": { "enum": ["disabled", "declared", "unrestricted"] },
+        "stdin": { "enum": ["null", "declared"] },
+        "network": { "enum": ["forbidden", "not_required", "declared", "unrestricted"] },
         "environment": { "enum": ["clean", "declared", "inherited"] },
         "expected_result_parser": { "enum": ["exit_code", "declared_json", "declared_text"] },
-        "cost_class": { "enum": ["cheap", "normal", "expensive"] },
+        "expected_exit_codes": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+        "expected_writes": { "type": "array", "items": { "type": "string" } },
+        "cost_class": {
+          "enum": [
+            "unknown",
+            "pilot",
+            "check",
+            "projection_only",
+            "bounded_static_analysis",
+            "full_repo_analysis",
+            "compile_or_test",
+            "runtime_mutation_or_import"
+          ]
+        },
+        "platforms": { "type": "array", "items": { "enum": ["linux", "macos", "windows"] }, "minItems": 1 },
+        "authority_boundary": {
+          "enum": [
+            "verification_route_only",
+            "receipt_route_only",
+            "regeneration_route_only",
+            "inspection_route_only",
+            "targeted_rerun_route_only"
+          ]
+        },
         "human_display": { "type": "string", "minLength": 1, "maxLength": 512 }
       }
+    },
+    "verification_command_spec": {
+      "allOf": [
+        { "$ref": "#/$defs/command_spec" },
+        {
+          "type": "object",
+          "required": ["role", "authority_boundary"],
+          "properties": {
+            "role": { "const": "verify" },
+            "authority_boundary": { "const": "verification_route_only" }
+          }
+        }
+      ]
     },
     "execution_result": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "schema_version",
         "root_identity",
         "head_before",
         "head_after",
         "command_spec_sha256",
+        "process_disposition",
         "exit_status",
         "stdout_sha256",
         "stderr_sha256",
         "currentness"
       ],
       "properties": {
+        "schema_version": { "const": "1" },
         "root_identity": { "type": "string", "minLength": 1 },
         "head_before": { "type": "string", "minLength": 1 },
         "head_after": { "type": "string", "minLength": 1 },
         "command_spec_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "process_disposition": {
+          "enum": ["completed", "failed_to_start", "cancelled", "timed_out", "output_limit_exceeded"]
+        },
         "exit_status": { "type": ["integer", "null"] },
         "stdout_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "stderr_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },

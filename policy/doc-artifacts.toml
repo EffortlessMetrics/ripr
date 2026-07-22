@@ -649,7 +649,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
 status = "accepted"
 owner = "product-swarm"
-standalone_reason = "Issue #1978 contract slice: separates static movement, explicit command execution, receipt issuance, and externally supplied runtime mutation evidence; adds a closed design-only schema and adversarial fixture corpus without implementing execution, receipt binding, gate authority, or support promotion."
+standalone_reason = "Issue #1978/#1979 contract slice: separates static movement, explicit command execution, receipt issuance, and externally supplied runtime mutation evidence; adds the typed VerificationExecutionResultV1 validation boundary and adversarial fixture corpus without implementing command execution, receipt binding, gate authority, or support promotion."
 
 [[artifact]]
 id = "RIPR-ADR-0021"

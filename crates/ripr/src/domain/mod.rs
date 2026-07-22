@@ -12,6 +12,7 @@ mod probe;
 mod summary;
 mod support;
 mod test_evidence_summary;
+mod verification_result;
 
 pub use candidate_relation::CandidateRelation;
 pub use causal_delta::{
@@ -49,3 +50,8 @@ pub use probe::{
 pub use summary::{LanguageFileCount, Summary};
 pub use support::{ProbeId, SourceLocation, SymbolId};
 pub use test_evidence_summary::{TestEvidenceEntry, TestEvidenceSummary};
+pub use verification_result::{
+    VERIFICATION_EXECUTION_RESULT_SCHEMA_VERSION, VerificationCurrentnessV1,
+    VerificationExecutionResultV1, VerificationExecutionResultValidationError,
+    VerificationProcessDispositionV1, command_spec_sha256,
+};

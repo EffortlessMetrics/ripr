@@ -16,8 +16,10 @@ cargo xtask fixtures assurance_vocabulary
 ```
 
 The assurance corpus is inspected against
-`schemas/ripr/repair-assurance.schema.json` by the future verification/receipt
-slice. This PR does not execute any command from the corpus.
+`schemas/ripr/repair-assurance.schema.json` by the assurance contract checks.
+The typed `VerificationExecutionResultV1` validator covers the command-spec,
+root, HEAD, disposition, and commitment boundaries; this PR does not execute
+any command from the corpus.
 
 ## Then
 

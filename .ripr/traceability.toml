@@ -6426,6 +6426,11 @@ tests = [
   "crates/ripr/src/domain/command_spec.rs::tests::invalid_paths_and_program_values_fail_closed",
   "crates/ripr/src/domain/command_spec.rs::tests::shell_and_manual_modes_remain_explicit",
   "crates/ripr/src/domain/command_spec.rs::tests::mismatched_authority_is_rejected",
+  "crates/ripr/src/domain/verification_result.rs::tests::valid_result_round_trips_and_validates_against_exact_context",
+  "crates/ripr/src/domain/verification_result.rs::tests::wrong_root_and_command_digest_fail_closed",
+  "crates/ripr/src/domain/verification_result.rs::tests::malformed_commitments_and_heads_fail_closed",
+  "crates/ripr/src/domain/verification_result.rs::tests::impossible_process_and_currentness_states_fail_closed",
+  "crates/ripr/src/domain/verification_result.rs::tests::command_spec_digest_is_pinned_to_serialized_field_order",
 ]
 fixtures = [
   "fixtures/assurance_vocabulary",
@@ -6434,6 +6439,7 @@ fixtures = [
 code = [
   "crates/ripr/src/agent/command_specs.rs",
   "crates/ripr/src/domain/command_spec.rs",
+  "crates/ripr/src/domain/verification_result.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
   "crates/ripr/src/lsp/actions.rs",
   "crates/ripr/src/output/first_useful_action/model.rs",
@@ -6444,6 +6450,7 @@ code = [
   ".allow/spec-system/slices/command-spec-route-population.v1.toml",
   ".allow/spec-system/slices/command-spec-action-projection.v1.toml",
   ".allow/spec-system/slices/typed-command-spec.v1.toml",
+  ".allow/spec-system/slices/verification-execution-result.v1.toml",
 ]
 outputs = [
   "schemas/ripr/repair-assurance.schema.json",
@@ -6461,6 +6468,7 @@ metrics = [
   "command_spec_projection_accepted_routes",
   "command_spec_projection_omitted_fail_closed",
   "command_spec_projection_multi_route_arrays",
+  "verification_execution_result_provenance_validated",
 ]
 
 [[behavior]]
