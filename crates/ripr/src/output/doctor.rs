@@ -668,7 +668,10 @@ mod tests {
             let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
             // #2242: a transient spawn failure under full-suite load
             // (resource exhaustion) is named `could not be launched` — retry
-            // only that transient class, never a real timeout result.
+            // only that transient class, never a real timeout result. A
+            // brief backoff between attempts lets an exec race (observed as
+            // ExecutableFileBusy right after the shim write) clear; an
+            // immediate retry loop fails the same way three times in a row.
             let mut launch_attempt = 0usize;
             let (status, evidence) = loop {
                 launch_attempt += 1;
@@ -681,6 +684,7 @@ mod tests {
                 if launch_attempt >= 3 || !retryable_launch_failure {
                     break result;
                 }
+                std::thread::sleep(std::time::Duration::from_millis(25));
             };
             let elapsed = start.elapsed();
 
