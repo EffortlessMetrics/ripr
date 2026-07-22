@@ -1,0 +1,79 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/assertion_shaped_control_production_owner/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:e177493b",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:e177493b",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/assertion_shaped_control_production_owner/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= 100"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: discounted_total_at_boundary"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Tests have literals [90], but no detected value matches changed boundary [100]"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: discounted_total_at_boundary", "infection weak: Tests have literals [90], but no detected value matches changed boundary [100]", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: amount - 10 (line 3)", "related test tests/pricing.rs:8 discounted_total_at_boundary uses strong exact value oracle: assert_eq!(discounted_total(boundary_amount()), 90);", "observed assertion argument value 90 at line 9"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: discounted_total_at_boundary", "Strong oracle found: exact value or pattern assertion", "Tests have literals [90], but no detected value matches changed boundary [100]"],
+      "missing": ["No detected boundary input for the changed predicate"],
+      "assertion_texts": {
+        "9": "assert_eq!(discounted_total(boundary_amount()), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 9,
+            "value": "90",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 9,
+          "value": "90",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "discounted_total_at_boundary",
+          "file": "tests/pricing.rs",
+          "line": 8,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(boundary_amount()), 90);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust"
+    }
+  ]
+}

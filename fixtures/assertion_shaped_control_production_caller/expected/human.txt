@@ -1,0 +1,24 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/assertion_shaped_control_production_caller/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/assertion_shaped_control_production_caller/input/src/lib.rs:8
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Changed behavior: let clamped = if value >= 0 { value } else { 0 };
+  Missing discriminator: No clear propagation path from changed behavior to an observable sink
+  Related test: tests/scores.rs:4 validate_score_accepts_in_range_values
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values
+    - infection weak: Tests have literals [50], but no detected value matches changed boundary [0]
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

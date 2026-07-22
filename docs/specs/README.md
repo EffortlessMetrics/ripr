@@ -142,3 +142,4 @@ observable behavior.
 | [RIPR-SPEC-0130](RIPR-SPEC-0130-ripr-authority-map.md) | proposed | RIPR source-of-truth authority map: canonical paths for every artifact category, plus a legacy-dialect conformance fixture |
 | [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | proposed | Versioned, capability-only riprAgent protocol, DTO envelopes, closed vocabularies, schemas, and recovery rules |
 | [RIPR-SPEC-0132](RIPR-SPEC-0132-spec-v2-runtime-promotion.md) | proposed | First RIPR-SPEC v2 requirement and spec/governance runtime-promotion boundary |
+| [RIPR-SPEC-0133](RIPR-SPEC-0133-assertion-shaped-owner-guidance.md) | accepted | Assertion-shaped owner guidance: when the changed owner is an assert*/expect-dominated helper with no non-test callers, reframe `recommended_next_step` for oracles (class unchanged) plus an `owner_shape` evidence disclosure line (#2131) |

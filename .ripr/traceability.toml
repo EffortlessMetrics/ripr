@@ -6988,3 +6988,36 @@ metrics = [
   "spec_v2_requirement_blocks",
   "spec_v2_slices_total",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0133"
+name = "assertion-shaped owner guidance"
+spec = "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md"
+tests = [
+  "crates/ripr/src/analysis/classify/decision.rs::tests::recommended_next_step_reframes_guidance_for_assertion_shaped_owners",
+  "crates/ripr/src/analysis/classify/decision.rs::tests::assertion_shaped_guidance_states_the_rule_and_avoids_test_of_test_advice",
+  "crates/ripr/src/analysis/classifier.rs::tests::given_assertion_shaped_owner_when_classifying_then_guidance_is_reframed_not_reclassified",
+  "crates/ripr/src/analysis/classifier.rs::tests::given_assertion_heavy_owner_with_production_caller_when_classifying_then_guidance_is_standard",
+]
+fixtures = [
+  "fixtures/assertion_shaped_oracle_test_file",
+  "fixtures/assertion_shaped_oracle_cfg_test",
+  "fixtures/assertion_shaped_control_production_owner",
+  "fixtures/assertion_shaped_control_production_caller",
+]
+code = [
+  "crates/ripr/src/domain/classification.rs",
+  "crates/ripr/src/domain/mod.rs",
+  "crates/ripr/src/analysis/classify/owner_shape.rs",
+  "crates/ripr/src/analysis/classify/decision.rs",
+  "crates/ripr/src/analysis/classify/context.rs",
+  "crates/ripr/src/analysis/classifier.rs",
+  "crates/ripr/src/analysis/classifier/finding.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

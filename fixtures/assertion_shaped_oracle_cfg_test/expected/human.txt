@@ -1,0 +1,24 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/assertion_shaped_oracle_cfg_test/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/assertion_shaped_oracle_cfg_test/input/src/lib.rs:12
+  Static exposure: weakly_exposed (warning, confidence 0.66)
+  Changed behavior: normalized.len() > path.len()
+  Missing discriminator: Missing discriminator value: normalized.len() == path.len()
+  Related test: src/lib.rs:23 normalized_paths_have_native_separators
+  Next step: The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it), so exact-equality advice for code under test may not ap…
+  Evidence:
+    - reach yes: Related tests appear to reach assert_normalized_paths_have_no_separators: normalized_paths_have_native_separators
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 7 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

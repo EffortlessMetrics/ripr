@@ -626,3 +626,11 @@ path = "docs/proposals/RIPR-PROP-0019-partial-diff-scope-contract.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Partial diff-scope contract for #1918/#1999: deterministic whole-file partition selection, separate partial budget beside the hard analysis-cost guards, lower-bound uninspected accounting, gate/baseline/badge/Zero ineligibility, and partition identity for comparable runs."
+
+[[artifact]]
+id = "RIPR-SPEC-0133"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Issue #2131 guidance coherence fix: detect assertion-shaped owners (body dominated by assert*/expect calls, no non-test callers; fail-closed on unrecognized statements and bare-name caller collisions) and reframe recommended_next_step for oracles instead of code under test; class never changes; additive owner_shape evidence line only (no schema_version bump, no version bump); 4 new fixtures, zero pre-existing golden drift; no repair_packet_ready impact."

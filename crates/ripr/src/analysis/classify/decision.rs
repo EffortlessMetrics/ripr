@@ -201,7 +201,14 @@ fn contains_macro_invocation(expression: &str) -> bool {
 pub(in crate::analysis) fn recommended_next_step(
     probe: &Probe,
     class: &ExposureClass,
+    owner_assertion_shaped: bool,
 ) -> Option<String> {
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle, not the code
+    // under test, so the standard code-under-test advice is incoherent for it.
+    // The exposure class is unchanged; only the guidance is reframed.
+    if owner_assertion_shaped {
+        return assertion_shaped_next_step(class);
+    }
     match class {
         ExposureClass::Exposed => None,
         ExposureClass::WeaklyExposed => {
@@ -211,6 +218,32 @@ pub(in crate::analysis) fn recommended_next_step(
         ExposureClass::NoStaticPath => Some(crate::domain::NO_STATIC_PATH_NEXT_STEP.to_string()),
         ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
         ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
+    }
+}
+
+/// Guidance for an assertion-shaped owner, phrased for oracles rather than for
+/// code under test. `PropagationUnknown`/`StaticUnknown` keep the escalation
+/// text: "escalate to real mutation testing" is coherent for an oracle (the
+/// helper and the code it checks can both be mutation-tested). `Exposed`
+/// stays `None` — a finding that does not need a next step does not get one.
+fn assertion_shaped_next_step(class: &ExposureClass) -> Option<String> {
+    match class {
+        ExposureClass::Exposed => None,
+        ExposureClass::WeaklyExposed => {
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP.to_string())
+        }
+        ExposureClass::ReachableUnrevealed => {
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP.to_string())
+        }
+        ExposureClass::NoStaticPath => {
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP.to_string())
+        }
+        ExposureClass::InfectionUnknown => {
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP.to_string())
+        }
+        ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some(
+            "Escalate to real mutation testing or deep static analysis for this probe.".to_string(),
+        ),
     }
 }
 
@@ -292,6 +325,7 @@ mod tests {
         let side_effect = recommended_next_step(
             &probe(ProbeFamily::SideEffect, "client.send(value)"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             side_effect.as_deref(),
@@ -303,6 +337,7 @@ mod tests {
         let match_arm = recommended_next_step(
             &probe(ProbeFamily::MatchArm, "None => 0"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             match_arm.as_deref(),
@@ -315,6 +350,7 @@ mod tests {
         let predicate = recommended_next_step(
             &probe(ProbeFamily::Predicate, "value >= threshold"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             predicate.as_deref(),
@@ -326,6 +362,7 @@ mod tests {
         let error_path = recommended_next_step(
             &probe(ProbeFamily::ErrorPath, "Err(AppError::Denied)"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             error_path.as_deref(),
@@ -335,6 +372,7 @@ mod tests {
         let return_value = recommended_next_step(
             &probe(ProbeFamily::ReturnValue, "count + 1"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             return_value.as_deref(),
@@ -342,6 +380,68 @@ mod tests {
                 "Replace broad assertions with exact equality or a property that constrains the changed returned value."
             )
         );
+    }
+
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle. Guidance is
+    // reframed for every class; the class itself is untouched (classification
+    // happens in `classify`, upstream of this fn).
+    #[test]
+    fn recommended_next_step_reframes_guidance_for_assertion_shaped_owners() {
+        let return_value = probe(ProbeFamily::ReturnValue, "count + 1");
+
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::Exposed, true),
+            None
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::WeaklyExposed, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::ReachableUnrevealed, true)
+                .as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::NoStaticPath, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::InfectionUnknown, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP)
+        );
+        // Escalation text is coherent for an oracle and stays unchanged.
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::PropagationUnknown, true)
+                .as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::StaticUnknown, true).as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+    }
+
+    // RIPR-SPEC-0133: the reframed guidance must state the detection rule in
+    // one sentence and must not ask for a test of the oracle itself.
+    #[test]
+    fn assertion_shaped_guidance_states_the_rule_and_avoids_test_of_test_advice() {
+        let reason = crate::domain::ASSERTION_SHAPED_OWNER_REASON;
+        for guidance in [
+            crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP,
+        ] {
+            assert!(
+                guidance.contains(reason),
+                "guidance must embed the one-sentence rule `{reason}`; got: {guidance}"
+            );
+            assert!(
+                !guidance.contains("co-located test"),
+                "guidance must not ask for a test that observes the oracle; got: {guidance}"
+            );
+        }
     }
 
     // RIPR-SPEC-0109 control (a): genuine all-Yes/Medium exposure must not be

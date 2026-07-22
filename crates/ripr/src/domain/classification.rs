@@ -8,6 +8,37 @@ A test may already exercise it through macros, helper-call chains, or integratio
 ripr's static model does not yet trace. If none does, add a co-located test that reaches and \
 observes the changed behavior so a discriminator exists.";
 
+/// RIPR-SPEC-0133: shared one-sentence reason an owner counts as an
+/// assertion-shaped oracle. Kept in `domain/` so the detector
+/// (`analysis::classify::owner_shape`), the `Finding.evidence` disclosure line,
+/// and the guidance strings below state the rule identically (a unit test pins
+/// each guidance string to contain this clause).
+pub(crate) const ASSERTION_SHAPED_OWNER_REASON: &str =
+    "its body is dominated by assert*/expect calls and nothing outside tests calls it";
+
+/// RIPR-SPEC-0133: per-class `recommended_next_step` text when the changed
+/// owner is itself an assertion-shaped helper (an oracle), so the standard
+/// code-under-test advice would ask for a test of the test. The exposure class
+/// is unchanged; only the guidance is reframed for oracle-shaped owners. Each
+/// string embeds `ASSERTION_SHAPED_OWNER_REASON` verbatim so the rule is
+/// explainable in one sentence in output.
+pub(crate) const ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP: &str = "The changed owner is itself an assertion helper (its body is dominated by assert*/expect calls and \
+nothing outside tests calls it), so a test that observes it would be a test of the oracle. Sharpen its \
+assertions, or exercise it indirectly through the code it checks.";
+
+pub(crate) const ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP: &str = "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing \
+outside tests calls it), so exact-equality advice for code under test may not apply — boolean invariants \
+have no exact equality. Tighten the loosest assertion in this helper: a sharper predicate, an exact \
+expected value where one exists, or a case the current assertions would not flag.";
+
+pub(crate) const ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP: &str = "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing \
+outside tests calls it); it is the observation, not the code under observation. Ensure at least one test \
+calls this helper over inputs that exercise the changed check.";
+
+pub(crate) const ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP: &str = "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing \
+outside tests calls it); there is no fixture/builder for ripr.toml to describe. Add a boundary or \
+negative-path case for the code this helper checks.";
+
 /// RIPR-SPEC-0115: stable leading phrase of the transitive-reach *witness*
 /// pointer. The producer (`analysis::classify::transitive_reach`) begins the
 /// pointer with this phrase, and the human renderer (`output::human`) recognizes

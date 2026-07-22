@@ -3,6 +3,7 @@ mod context;
 mod decision;
 mod flow;
 mod infection;
+mod owner_shape;
 mod reach;
 mod related_tests;
 mod reveal;
@@ -17,6 +18,7 @@ pub(in crate::analysis) use decision::{
 };
 pub(in crate::analysis) use flow::{local_flow_sinks, propagation_evidence};
 pub(in crate::analysis) use infection::infection_evidence;
+pub(in crate::analysis) use owner_shape::is_assertion_shaped_owner;
 pub(in crate::analysis) use reach::reach_evidence;
 pub(in crate::analysis) use related_tests::find_related_tests;
 pub(in crate::analysis) use reveal::reveal_evidence_with_expression;
