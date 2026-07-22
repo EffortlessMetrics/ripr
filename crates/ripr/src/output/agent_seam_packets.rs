@@ -17,6 +17,7 @@
 //! repo-exposure report's 0.1, because the packet is a separate
 //! contract aimed at coding agents rather than reviewers.
 
+use crate::agent::command_specs::agent_command_spec_from_display;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::repair_route::{
     NewTestKind, RepairTargetSelection, cross_language_test_target_unresolved,
@@ -201,6 +202,7 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
     let receipt_status = receipt_status_for_gap_record(record);
     let must_not_change = gap_record_packet_do_not_do(record);
     let missing_discriminator = missing_discriminator_for_gap_route(route);
+    let command_specs = gap_record_command_specs_json(record);
     let authority_boundary = if record.authority_boundary.trim().is_empty() {
         "Agent packets are advisory; configured gate-decision artifacts remain pass/fail authority."
             .to_string()
@@ -237,6 +239,7 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "verification_commands": &record.verification_commands,
         "verify_command": &verify_command,
         "receipt_command": record.receipt_command.as_deref(),
+        "command_specs": command_specs,
         "receipt_status": receipt_status,
         "source_artifact": gap_ledger_path,
         "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
@@ -279,6 +282,7 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "verification_commands": &record.verification_commands,
         "verify_command": &verify_command,
         "receipt_command": record.receipt_command.as_deref(),
+        "command_specs": command_specs,
         "receipt_status": receipt_status,
         "must_not_change": must_not_change,
         "stop_conditions": &stop_conditions,
@@ -313,6 +317,23 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         .map_err(|err| format!("render agent gap packet JSON failed: {err}"))?;
     rendered.push('\n');
     Ok(rendered)
+}
+
+fn gap_record_command_specs_json(record: &GapRecord) -> serde_json::Value {
+    let verify = record
+        .verification_commands
+        .iter()
+        .filter_map(|command| agent_command_spec_from_display(command))
+        .collect::<Vec<_>>();
+    let receipt = record
+        .receipt_command
+        .iter()
+        .filter_map(|command| agent_command_spec_from_display(command))
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "verify": verify,
+        "receipt": receipt,
+    })
 }
 
 /// Render a deterministic queue over explicit GapRecords that are already

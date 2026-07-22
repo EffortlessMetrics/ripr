@@ -44,7 +44,87 @@
     "context_packet": "ripr agent packet --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --json",
     "after_snapshot": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
     "verify": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
-    "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
+    "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+    "command_specs": {
+      "verify": {
+        "schema_version": "1",
+        "command_id": "ripr:agent:verify",
+        "role": "verify",
+        "execution_mode": "direct",
+        "program": "ripr",
+        "args": [
+          "agent",
+          "verify",
+          "--root",
+          "fixtures/boundary_gap/input",
+          "--before",
+          "target/ripr/workflow/before.repo-exposure.json",
+          "--after",
+          "target/ripr/workflow/after.repo-exposure.json",
+          "--json"
+        ],
+        "working_directory": ".",
+        "env_set": [],
+        "env_passthrough": [],
+        "environment": "clean",
+        "stdin": "null",
+        "timeout_ms": 120000,
+        "cancellation": "allowed",
+        "network": "forbidden",
+        "expected_result_parser": "declared_json",
+        "expected_exit_codes": [
+          0
+        ],
+        "expected_writes": [],
+        "cost_class": "unknown",
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ],
+        "human_display": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+        "authority_boundary": "verification_route_only"
+      },
+      "receipt": {
+        "schema_version": "1",
+        "command_id": "ripr:agent:receipt",
+        "role": "receipt",
+        "execution_mode": "direct",
+        "program": "ripr",
+        "args": [
+          "agent",
+          "receipt",
+          "--root",
+          "fixtures/boundary_gap/input",
+          "--verify-json",
+          "target/ripr/workflow/agent-verify.json",
+          "--seam-id",
+          "67fc764ba37d77bd",
+          "--json"
+        ],
+        "working_directory": ".",
+        "env_set": [],
+        "env_passthrough": [],
+        "environment": "clean",
+        "stdin": "null",
+        "timeout_ms": 120000,
+        "cancellation": "allowed",
+        "network": "forbidden",
+        "expected_result_parser": "declared_json",
+        "expected_exit_codes": [
+          0
+        ],
+        "expected_writes": [],
+        "cost_class": "unknown",
+        "platforms": [
+          "linux",
+          "macos",
+          "windows"
+        ],
+        "human_display": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+        "authority_boundary": "receipt_route_only"
+      }
+    }
   },
   "evidence": {
     "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",

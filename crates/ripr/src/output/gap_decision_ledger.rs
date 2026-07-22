@@ -1,3 +1,4 @@
+use crate::agent::command_specs::agent_command_spec_from_display;
 use crate::agent::loop_commands::shell_arg;
 use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
@@ -264,6 +265,11 @@ pub(crate) fn build_gap_decision_ledger_report(
 pub(crate) fn render_gap_decision_ledger_json(
     report: &GapDecisionLedgerReport,
 ) -> Result<String, String> {
+    let records = report
+        .records
+        .iter()
+        .map(gap_record_json_value)
+        .collect::<Result<Vec<_>, _>>()?;
     #[derive(Serialize)]
     struct JsonReport<'a> {
         schema_version: &'static str,
@@ -274,7 +280,7 @@ pub(crate) fn render_gap_decision_ledger_json(
         generated_at: &'a str,
         inputs: &'a GapDecisionLedgerInputs,
         summary: &'a GapDecisionLedgerSummary,
-        records: &'a [GapRecord],
+        records: &'a [Value],
         warnings: &'a [String],
         limits: &'a [String],
     }
@@ -288,11 +294,38 @@ pub(crate) fn render_gap_decision_ledger_json(
         generated_at: &report.generated_at,
         inputs: &report.inputs,
         summary: &report.summary,
-        records: &report.records,
+        records: &records,
         warnings: &report.warnings,
         limits: &report.limits,
     })
     .map_err(|err| format!("serialize gap decision ledger JSON failed: {err}"))
+}
+
+fn gap_record_json_value(record: &GapRecord) -> Result<Value, String> {
+    let mut value = serde_json::to_value(record)
+        .map_err(|err| format!("serialize gap record JSON failed: {err}"))?;
+    let verify = record
+        .verification_commands
+        .iter()
+        .filter_map(|command| agent_command_spec_from_display(command))
+        .collect::<Vec<_>>();
+    let receipt = record
+        .receipt_command
+        .iter()
+        .filter_map(|command| agent_command_spec_from_display(command))
+        .collect::<Vec<_>>();
+    if (!verify.is_empty() || !receipt.is_empty())
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "command_specs".to_string(),
+            serde_json::json!({
+                "verify": verify,
+                "receipt": receipt,
+            }),
+        );
+    }
+    Ok(value)
 }
 
 pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerReport) -> String {

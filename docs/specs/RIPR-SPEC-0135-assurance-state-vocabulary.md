@@ -18,6 +18,8 @@ Linked issues:
   explicit command execution and provenance-bound result slice.
 - [#1754](https://github.com/EffortlessMetrics/ripr-swarm/issues/1754) - typed
   command-spec domain contract and additive migration scaffold.
+- [#1755](https://github.com/EffortlessMetrics/ripr-swarm/issues/1755) - populate
+  typed specs for canonical verification and receipt routes.
 - [#1941](https://github.com/EffortlessMetrics/ripr-swarm/issues/1941) - repair
   verification and receipt trust boundary.
 
@@ -212,9 +214,14 @@ mutation confirmation, or proof authority available.
 - `schemas/ripr/repair-assurance.schema.json` owns the design-only machine
   contract.
 - `crates/ripr/src/domain/command_spec.rs` owns the additive typed
-  `CommandSpec` domain shape and fail-closed field validation. The current
-  LSP artifact model stores empty typed collections alongside legacy command
-  strings; no producer route is populated by this slice.
+  `CommandSpec` domain shape and fail-closed field validation.
+- `crates/ripr/src/agent/command_specs.rs` owns canonical verify/receipt route
+  population. Legacy display strings remain unchanged; verify output
+  redirection is `shell_required`, while receipt `--out` is direct argv.
+- `crates/ripr/src/lsp/gap_artifacts.rs` validates projected typed specs and
+  rejects malformed or role-mismatched route payloads before editor use.
+- `.allow/spec-system/slices/command-spec-route-population.v1.toml` records the
+  PR-local claim boundary and return conditions for #1755.
 - `.allow/spec-system/slices/typed-command-spec.v1.toml` records the PR-local
   claim boundary and return conditions for #1754.
 - `docs/OUTPUT_SCHEMA.md` owns compatibility wording for current static

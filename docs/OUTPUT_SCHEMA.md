@@ -2521,6 +2521,14 @@ Field contract:
   assessed from canonical evidence rather than raw findings. Downstream
   surfaces should render this canonical item before treating raw findings as
   separate work.
+- `seams[].evidence_record.canonical_item.command_specs` - additive typed
+  descriptions for the canonical `verify_command` and `receipt_command` when
+  RIPR owns those routes. Each spec carries ordered argv, policies, expected
+  writes, and an authority boundary. A verify command that writes through shell
+  redirection is marked `execution_mode: "shell_required"`; receipt `--out`
+  is represented as direct argv. These descriptions are not execution
+  permission, and arbitrary preview test commands remain legacy advisory text
+  until their producer supplies an executable boundary.
 - `seams[].evidence_record.canonical_item.primary_anchor` - preferred
   placement hint for downstream surfaces when the canonical item has a safe
   source location. It is `null` only when RIPR cannot safely name a placement.
@@ -3758,6 +3766,13 @@ fields plus a receipt command or path; otherwise the stable
 `projection_exclusion_reasons[]` values explain why an otherwise useful agent
 packet is not yet a public badge item. This does not change committed badge
 endpoint semantics.
+Canonical evidence-record items carry additive `command_specs.verify` and
+`command_specs.receipt` `CommandSpec` objects when RIPR owns those routes.
+GapRecord-derived gap-ledger and agent-packet queue projections currently carry
+arrays of those objects when multiple legacy route strings are present. LSP
+gap-artifact validation accepts the object form and this compatibility array
+form, but rejects non-object `command_specs` containers, malformed specs, and
+role-mismatched specs before projection.
 
 ## RIPR Swarm Plan
 

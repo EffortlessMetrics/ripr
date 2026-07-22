@@ -101,6 +101,8 @@ name = "fixture laboratory"
 spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
 tests = [
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::typed_command_specs_are_validated_before_projection",
+  "crates/ripr/src/agent/command_specs.rs::tests::typed_agent_routes_preserve_argv_and_disclose_shell_redirection",
+  "crates/ripr/src/agent/command_specs.rs::tests::typed_route_recovery_rejects_arbitrary_test_commands",
   "crates/ripr/src/domain/command_spec.rs::tests::invalid_paths_and_program_values_fail_closed",
   "crates/ripr/src/domain/command_spec.rs::tests::shell_and_manual_modes_remain_explicit",
   "crates/ripr/src/domain/command_spec.rs::tests::mismatched_authority_is_rejected",
@@ -6420,13 +6422,22 @@ fixtures = [
   "fixtures/assurance_vocabulary/assurance/corpus.json",
 ]
 code = [
+  "crates/ripr/src/agent/command_specs.rs",
   "crates/ripr/src/domain/command_spec.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
+  "crates/ripr/src/output/first_useful_action/model.rs",
+  "crates/ripr/src/output/first_useful_action.rs",
+  "crates/ripr/src/output/evidence_record.rs",
+  "crates/ripr/src/output/gap_decision_ledger.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  ".allow/spec-system/slices/command-spec-route-population.v1.toml",
   ".allow/spec-system/slices/typed-command-spec.v1.toml",
 ]
 outputs = [
   "schemas/ripr/repair-assurance.schema.json",
   "docs/OUTPUT_SCHEMA.md",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json",
   "docs/adr/0021-static-and-executed-assurance-axes.md",
   "docs/specs/README.md",
   "docs/adr/README.md",

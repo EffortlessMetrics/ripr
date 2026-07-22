@@ -21,6 +21,7 @@ pub(crate) use crate::analysis::repair_route::{
 };
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelationReason, oracle_semantics_for};
+use crate::domain::CommandSpec;
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for_entry,
@@ -109,6 +110,8 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
     pub(crate) receipt_command: Option<String>,
+    pub(crate) verify_command_spec: Option<CommandSpec>,
+    pub(crate) receipt_command_spec: Option<CommandSpec>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
 }
 
@@ -582,6 +585,18 @@ fn canonical_item_for(
             }),
         verify_command: recommendation.verify_command.clone(),
         receipt_command: canonical_receipt_command_for(entry, gap_state),
+        verify_command_spec: recommendation
+            .verify_command
+            .as_deref()
+            .and_then(crate::agent::command_specs::agent_command_spec_from_display),
+        receipt_command_spec: (gap_state == "actionable").then(|| {
+            crate::agent::command_specs::agent_receipt_command_spec(
+                ".",
+                WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                entry.seam.id().as_str(),
+                Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            )
+        }),
         confidence: alignment_confidence_for(gap_state, static_limitations),
     }
 }
@@ -1434,6 +1449,10 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
             .map_or(Value::Null, alignment_related_test_json),
         "verify_command": item.verify_command.as_deref(),
         "receipt_command": item.receipt_command.as_deref(),
+        "command_specs": {
+            "verify": item.verify_command_spec.as_ref(),
+            "receipt": item.receipt_command_spec.as_ref(),
+        },
         "confidence": {
             "basis": item.confidence.basis.as_str(),
             "notes": item

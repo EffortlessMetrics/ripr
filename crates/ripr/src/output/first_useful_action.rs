@@ -1,3 +1,4 @@
+use crate::agent::command_specs;
 use crate::agent::loop_commands;
 use serde_json::Value;
 
@@ -12,7 +13,8 @@ mod tests;
 pub(crate) use json::render_first_useful_action_json;
 pub(crate) use markdown::render_first_useful_action_markdown;
 use model::{
-    ActionCommands, ActionEvidence, ActionFallback, ActionInputs, ActionSelected, ActionTarget,
+    ActionCommandSpecs, ActionCommands, ActionEvidence, ActionFallback, ActionInputs,
+    ActionSelected, ActionTarget,
 };
 pub(crate) use model::{FirstUsefulActionInput, FirstUsefulActionReport};
 use parsing::{ParsedSources, parse_sources};
@@ -1101,6 +1103,20 @@ fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Acti
             &seam_id,
             None,
         )),
+        command_specs: Some(ActionCommandSpecs {
+            verify: Some(command_specs::agent_verify_command_spec(
+                &input.root,
+                loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                None,
+            )),
+            receipt: Some(command_specs::agent_receipt_command_spec(
+                &input.root,
+                loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                &seam_id,
+                None,
+            )),
+        }),
         assistant_proof: None,
         status: None,
     }
