@@ -33,28 +33,16 @@ jobs:
 
           path = Path('editors/vscode/test/suite/extension.test.ts')
           text = path.read_text(encoding='utf-8')
-          old = """    await withControllerTestContext({
-              workspaceTrusted: false
-            }, async (context) => {
-              await context.controller.start();
-              const report = await diagnoseSetupReport(context);
-              assertReportIncludes(report, [
-                'Workspace trust state: workspace_untrusted',
-                'ripr server state: ripr_version_ok (ripr 0.8.0-test)'
-              ]);"""
-          new = """    await withControllerTestContext({
-              workspaceTrusted: false
-            }, async (context) => {
-              await context.controller.start();
-              const report = await diagnoseSetupReport(context);
-              assertReportIncludes(report, [
-                'Workspace trust state: workspace_untrusted',
-                'ripr server state: ripr_missing',
-                'Server: not resolved'
-              ]);"""
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one stale untrusted block, found {text.count(old)}')
-          path.write_text(text.replace(old, new), encoding='utf-8')
+          anchor = 'workspaceTrusted: false'
+          start = text.index(anchor)
+          end = min(len(text), start + 1200)
+          window = text[start:end]
+          old = "'ripr server state: ripr_version_ok (ripr 0.8.0-test)'"
+          new = "'ripr server state: ripr_missing',\n        'Server: not resolved'"
+          if window.count(old) != 1:
+              raise SystemExit(f'expected one stale server-state assertion after {anchor}, found {window.count(old)}')
+          window = window.replace(old, new)
+          path.write_text(text[:start] + window + text[end:], encoding='utf-8')
       - name: Install extension dependencies
         working-directory: editors/vscode
         run: npm ci
