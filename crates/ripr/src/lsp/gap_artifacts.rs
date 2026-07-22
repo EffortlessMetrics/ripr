@@ -1,4 +1,4 @@
-use crate::domain::{LanguageId, LanguageStatus, StaticLimitKind};
+use crate::domain::{CommandSpec, LanguageId, LanguageStatus, StaticLimitKind};
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT;
 use serde_json::Value;
@@ -25,6 +25,8 @@ pub(super) struct ValidatedGapArtifact {
     pub(super) related_paths: Vec<String>,
     pub(super) verify_commands: Vec<String>,
     pub(super) receipt_commands: Vec<String>,
+    pub(super) verify_command_specs: Vec<CommandSpec>,
+    pub(super) receipt_command_specs: Vec<CommandSpec>,
     pub(super) static_limit_kinds: Vec<String>,
     pub(super) has_text_static_limit: bool,
 }
@@ -103,6 +105,11 @@ impl ValidatedGapArtifact {
             .iter()
             .chain(self.receipt_commands.iter())
             .all(|command| !command.trim().is_empty());
+        let typed_command_specs_are_valid = self
+            .verify_command_specs
+            .iter()
+            .chain(self.receipt_command_specs.iter())
+            .all(|command| command.validate().is_ok());
         let static_limits_are_structured_or_text = self
             .static_limit_kinds
             .iter()
@@ -117,6 +124,7 @@ impl ValidatedGapArtifact {
             && gap_state_is_present_or_deferred
             && path_payloads_are_present
             && command_payloads_are_present
+            && typed_command_specs_are_valid
             && static_limits_are_structured_or_text
     }
 
@@ -281,6 +289,8 @@ fn validate_first_useful_action(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -371,6 +381,8 @@ fn validate_gap_decision_ledger(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -540,6 +552,8 @@ fn validate_actionable_gaps(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -928,6 +942,8 @@ fn validate_evidence_record(
         related_paths,
         verify_commands,
         receipt_commands: Vec::new(),
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -958,6 +974,8 @@ fn validate_agent_receipt(
         related_paths,
         verify_commands: Vec::new(),
         receipt_commands: Vec::new(),
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -1685,6 +1703,60 @@ mod tests {
                 .iter()
                 .any(|path| path == "tests/pricing.rs::below_threshold_has_no_discount")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn typed_command_specs_are_validated_before_projection() -> Result<(), String> {
+        let command: CommandSpec = serde_json::from_value(json!({
+            "schema_version": "1",
+            "command_id": "cmd:verify:pricing",
+            "role": "verify",
+            "execution_mode": "direct",
+            "program": "cargo",
+            "args": ["test", "-p", "pricing"],
+            "working_directory": ".",
+            "env_set": [],
+            "env_passthrough": [],
+            "environment": "declared",
+            "stdin": "null",
+            "timeout_ms": 120000,
+            "cancellation": "allowed",
+            "network": "forbidden",
+            "expected_result_parser": "exit_code",
+            "expected_exit_codes": [0],
+            "expected_writes": ["target/**"],
+            "cost_class": "compile_or_test",
+            "platforms": ["linux"],
+            "human_display": "cargo test -p pricing",
+            "authority_boundary": "verification_route_only"
+        }))
+        .map_err(|error| error.to_string())?;
+        command.validate().map_err(|error| error.to_string())?;
+        let encoded = serde_json::to_value(&command).map_err(|error| error.to_string())?;
+        let decoded: CommandSpec =
+            serde_json::from_value(encoded).map_err(|error| error.to_string())?;
+        if decoded != command {
+            return Err("typed command spec changed during JSON round trip".to_string());
+        }
+        if decoded.args.get(2).map(String::as_str) != Some("pricing") {
+            return Err("argument boundary was not preserved".to_string());
+        }
+
+        let artifact = actionable_gaps_report();
+        let mut valid = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|error| format!("{error:?}"))?;
+        valid.verify_command_specs = vec![command.clone()];
+        if !valid.is_safe_projection_input() {
+            return Err("valid typed command spec was rejected".to_string());
+        }
+
+        let mut invalid_command = command;
+        invalid_command.program.clear();
+        valid.receipt_command_specs = vec![invalid_command];
+        if valid.is_safe_projection_input() {
+            return Err("invalid typed command spec was accepted".to_string());
+        }
         Ok(())
     }
 

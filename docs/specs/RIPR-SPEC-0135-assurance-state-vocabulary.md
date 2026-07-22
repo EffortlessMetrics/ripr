@@ -16,6 +16,8 @@ Linked issues:
   the assurance vocabulary before adding command execution.
 - [#1979](https://github.com/EffortlessMetrics/ripr-swarm/issues/1979) - future
   explicit command execution and provenance-bound result slice.
+- [#1754](https://github.com/EffortlessMetrics/ripr-swarm/issues/1754) - typed
+  command-spec domain contract and additive migration scaffold.
 - [#1941](https://github.com/EffortlessMetrics/ripr-swarm/issues/1941) - repair
   verification and receipt trust boundary.
 
@@ -209,6 +211,12 @@ mutation confirmation, or proof authority available.
 
 - `schemas/ripr/repair-assurance.schema.json` owns the design-only machine
   contract.
+- `crates/ripr/src/domain/command_spec.rs` owns the additive typed
+  `CommandSpec` domain shape and fail-closed field validation. The current
+  LSP artifact model stores empty typed collections alongside legacy command
+  strings; no producer route is populated by this slice.
+- `.allow/spec-system/slices/typed-command-spec.v1.toml` records the PR-local
+  claim boundary and return conditions for #1754.
 - `docs/OUTPUT_SCHEMA.md` owns compatibility wording for current static
   `agent verify` and `agent receipt` surfaces.
 - A future command runner and receipt issuer under #1979/#1941 must implement

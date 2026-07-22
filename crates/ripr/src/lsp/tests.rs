@@ -2162,6 +2162,8 @@ fn refresh_completion_log_message_counts_gap_artifact_state() -> Result<(), Stri
         related_paths: vec!["tests/test_pricing.py".to_string()],
         verify_commands: vec!["ripr agent verify --root . --json".to_string()],
         receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: vec!["missing_import_graph".to_string()],
         has_text_static_limit: false,
     });
@@ -5228,6 +5230,8 @@ fn validated_gap_artifact() -> ValidatedGapArtifact {
         related_paths: vec!["tests/test_pricing.py".to_string()],
         verify_commands: vec!["ripr agent verify --root . --json".to_string()],
         receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: vec!["missing_import_graph".to_string()],
         has_text_static_limit: false,
     }
@@ -7328,6 +7332,8 @@ fn execute_command_collect_workspace_status_with_actionable_gap_and_rejection_re
                 related_paths: vec!["src/pricing.rs".to_string()],
                 verify_commands: vec!["ripr agent verify --root . --json".to_string()],
                 receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+                verify_command_specs: Vec::new(),
+                receipt_command_specs: Vec::new(),
                 static_limit_kinds: Vec::new(),
                 has_text_static_limit: false,
             });

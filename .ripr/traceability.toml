@@ -99,7 +99,12 @@ metrics = [
 id = "RIPR-SPEC-0002"
 name = "fixture laboratory"
 spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
-tests = []
+tests = [
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::typed_command_specs_are_validated_before_projection",
+  "crates/ripr/src/domain/command_spec.rs::tests::invalid_paths_and_program_values_fail_closed",
+  "crates/ripr/src/domain/command_spec.rs::tests::shell_and_manual_modes_remain_explicit",
+  "crates/ripr/src/domain/command_spec.rs::tests::mismatched_authority_is_rejected",
+]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/boundary_gap_multiline_assert",
@@ -6402,12 +6407,21 @@ metrics = [
 id = "RIPR-SPEC-0135"
 name = "assurance state vocabulary"
 spec = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
-tests = []
+tests = [
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::typed_command_specs_are_validated_before_projection",
+  "crates/ripr/src/domain/command_spec.rs::tests::invalid_paths_and_program_values_fail_closed",
+  "crates/ripr/src/domain/command_spec.rs::tests::shell_and_manual_modes_remain_explicit",
+  "crates/ripr/src/domain/command_spec.rs::tests::mismatched_authority_is_rejected",
+]
 fixtures = [
   "fixtures/assurance_vocabulary",
   "fixtures/assurance_vocabulary/assurance/corpus.json",
 ]
-code = []
+code = [
+  "crates/ripr/src/domain/command_spec.rs",
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+  ".allow/spec-system/slices/typed-command-spec.v1.toml",
+]
 outputs = [
   "schemas/ripr/repair-assurance.schema.json",
   "docs/OUTPUT_SCHEMA.md",
