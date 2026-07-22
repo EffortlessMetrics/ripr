@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   RiprClientController,
   RiprAgentLoopCommandTarget,
+  RiprClientRuntime,
   RiprContextTarget,
   RiprRelatedTestTarget,
   RiprSuggestedAssertionTarget,
@@ -43,6 +44,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel('ripr');
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   controller = new RiprClientController(context, output, undefined, status);
+  injectTrustedExtensionHostRuntime(controller, context);
 
   context.subscriptions.push(
     output,
@@ -214,6 +216,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   await startServerOnce(controller);
+}
+
+function injectTrustedExtensionHostRuntime(
+  currentController: RiprClientController,
+  context: vscode.ExtensionContext
+): void {
+  if (
+    context.extensionMode !== vscode.ExtensionMode.Test ||
+    process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED !== '1'
+  ) {
+    return;
+  }
+
+  // VS Code loads Workspace Trust before the extension-host test suite can
+  // seed or change it. Override only the trust predicate in explicit test
+  // mode; installed/development extensions continue to use
+  // vscode.workspace.isTrusted and retain the production no-launch boundary.
+  const runtime = (currentController as unknown as { runtime: RiprClientRuntime }).runtime;
+  runtime.isWorkspaceTrusted = () => true;
 }
 
 export async function deactivate(): Promise<void> {
