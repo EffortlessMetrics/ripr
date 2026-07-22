@@ -5486,6 +5486,10 @@ fn check_pr_report_body() -> String {
 }
 
 pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
+    // Build once per invocation (#2110): every scenario then invokes the
+    // fresh worktree binary directly instead of paying `cargo run` + link
+    // check per scenario.
+    run("cargo", &["build", "-p", "ripr"])?;
     let fixture_dirs = fixture_dirs()?;
     let selected = match name {
         Some(value) => vec![fixture_dir_for_name(value)?],
@@ -5994,16 +5998,29 @@ enum FixtureCheckFormat {
     HumanFull,
 }
 
+/// The worktree-absolute debug binary, built once per fixtures/dogfood
+/// run (#2110): each scenario previously paid a `cargo run` spawn plus
+/// link check; the absolute path keeps a long `../` from resolving to a
+/// stale binary in the enclosing checkout.
+fn ripr_fixture_binary() -> Result<String, String> {
+    // ripr_debug_binary() honors CARGO_TARGET_DIR (#2176 review): the
+    // routed CI jobs set it, so `cargo build` writes there.
+    let binary = ripr_debug_binary();
+    if !binary.exists() {
+        run("cargo", &["build", "-p", "ripr"])?;
+    }
+    std::path::absolute(&binary)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|err| format!("resolve {} failed: {err}", binary.display()))
+}
+
 fn run_fixture_check(
     root: &str,
     diff_file: &str,
     format: FixtureCheckFormat,
 ) -> Result<String, String> {
+    let binary = ripr_fixture_binary()?;
     let mut args = vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--".to_string(),
         "check".to_string(),
         "--root".to_string(),
         root.to_string(),
@@ -6020,7 +6037,7 @@ fn run_fixture_check(
             args.push("human-full".to_string());
         }
     }
-    run_output_owned("cargo", &args)
+    run_output_owned(&binary, &args)
 }
 
 fn fixture_golden_comparisons(
@@ -42902,11 +42919,15 @@ fn repo_exposure_latency_timeout_ms() -> u64 {
 }
 
 fn ripr_debug_binary() -> PathBuf {
+    ripr_debug_binary_in(std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from))
+}
+
+fn ripr_debug_binary_in(target_dir: Option<PathBuf>) -> PathBuf {
     let binary_name = format!("ripr{}", std::env::consts::EXE_SUFFIX);
-    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target"));
-    target_dir.join("debug").join(binary_name)
+    target_dir
+        .unwrap_or_else(|| PathBuf::from("target"))
+        .join("debug")
+        .join(binary_name)
 }
 
 fn repo_exposure_latency_run(
@@ -47940,6 +47961,8 @@ fn extract_json_warnings(json: &str) -> Vec<String> {
 }
 
 pub(crate) fn dogfood_impl() -> Result<(), String> {
+    // Same shared-binary build as fixtures_impl (#2110).
+    run("cargo", &["build", "-p", "ripr"])?;
     let runs = dogfood_scenarios()
         .into_iter()
         .map(|scenario| dogfood_run(&scenario))
@@ -81517,6 +81540,20 @@ TypeScript repair packet (advisory)
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn ripr_debug_binary_honors_cargo_target_dir() {
+        // #2176 review: with CARGO_TARGET_DIR set (as routed CI does), the
+        // binary must resolve under it, never a hardcoded target/debug.
+        let path = super::ripr_debug_binary_in(Some(PathBuf::from("/mnt/ci-scratch/target/run-1")));
+        let text = path.to_string_lossy().replace('\\', "/");
+        assert!(text.starts_with("/mnt/ci-scratch/target/run-1/debug/ripr"));
+        let default = super::ripr_debug_binary_in(None);
+        assert!(
+            default
+                .ends_with(format!("target/debug/ripr{}", std::env::consts::EXE_SUFFIX).as_str())
+        );
     }
 
     #[test]
