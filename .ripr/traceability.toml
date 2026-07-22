@@ -7135,3 +7135,28 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0137"
+name = "lsp protocol tracing"
+spec = "docs/specs/RIPR-SPEC-0137-lsp-protocol-tracing.md"
+tests = [
+  "crates/ripr/src/lsp/tests.rs::lsp_trace_set_trace_updates_state_and_rejects_unknown_values",
+  "crates/ripr/src/lsp/tests.rs::lsp_trace_initialize_honors_client_trace_value",
+  "crates/ripr/src/lsp/tests.rs::lsp_trace_toggle_leaves_status_identity_and_revision_untouched",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_trace_lifecycle_and_redaction",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_trace_initialize_trace_param_enables_tracing",
+  "crates/ripr/src/lsp/tests.rs::serve_stdio_call_presence_observer",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0137-lsp-protocol-tracing.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

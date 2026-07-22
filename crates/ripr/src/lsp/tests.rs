@@ -35,7 +35,7 @@ use super::{
     COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
     COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
     COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
-    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND, build_service,
 };
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
@@ -61,7 +61,7 @@ use tower_lsp_server::ls_types::{
     HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString,
     PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TraceValue,
     VersionedTextDocumentIdentifier, WindowClientCapabilities, WorkspaceDiagnosticParams,
     WorkspaceFolder,
 };
@@ -694,8 +694,12 @@ fn serve_stdio_call_presence_observer() -> Result<(), String> {
         "serve_stdio should serve the stdio transport with the reviewed default transport bounds (#2034)"
     );
     assert!(
-        serve_streams.contains("LspService::new(|client| Backend::new(client, root.clone()))"),
-        "serve_streams should construct the LSP service with the resolved workspace root"
+        serve_streams.contains("build_service(root.clone())"),
+        "serve_streams should construct the LSP service with the resolved workspace root through the shared constructor"
+    );
+    assert!(
+        source.contains(".custom_method(\"$/setTrace\", Backend::set_trace)"),
+        "build_service should register the standard $/setTrace trace lifecycle notification (#2035, RIPR-SPEC-0137)"
     );
     assert!(
         serve_streams.contains("bounds.wrap(stdin, stdout)"),
@@ -11033,4 +11037,534 @@ async fn externally_changed_disk_content_does_not_falsely_clear_quarantine() -> 
         ));
     }
     Ok(())
+}
+
+// ---- RIPR-SPEC-0137: redacted protocol tracing ($/setTrace, $/logTrace) ----
+
+/// `$ /logTrace` params collected from framed messages (method key without a
+/// space, per the standard).
+fn log_trace_params(messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    messages
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("$/logTrace")
+        })
+        .filter_map(|message| message.get("params").cloned())
+        .collect()
+}
+
+/// Read until the response for `id`, then drain a bounded window for trailing
+/// notifications. Server-originated notifications (e.g. the `$/logTrace` for
+/// the response itself) are flushed through the client socket independently
+/// of the direct response write, so either can reach the wire first; the
+/// bounded drain makes trace assertions deterministic.
+async fn read_response_and_notifications<R>(
+    reader: &mut R,
+    id: u64,
+) -> Result<(serde_json::Value, Vec<serde_json::Value>), String>
+where
+    R: AsyncRead + Unpin,
+{
+    let (response, mut notifications) = read_lsp_response_with_notifications(reader, id).await?;
+    notifications.extend(read_lsp_messages_for(reader, Duration::from_millis(300)).await?);
+    Ok((response, notifications))
+}
+
+#[test]
+fn lsp_trace_set_trace_updates_state_and_rejects_unknown_values() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = build_service(PathBuf::from("."));
+        let backend = service.inner();
+        assert_eq!(backend.trace_level(), TraceValue::Off, "default is off");
+
+        backend
+            .set_trace(serde_json::json!({"value": "messages"}))
+            .await;
+        assert_eq!(backend.trace_level(), TraceValue::Messages);
+        backend
+            .set_trace(serde_json::json!({"value": "verbose"}))
+            .await;
+        assert_eq!(backend.trace_level(), TraceValue::Verbose);
+
+        // Unknown value: rejected without crashing; the state is kept.
+        backend
+            .set_trace(serde_json::json!({"value": "everything"}))
+            .await;
+        assert_eq!(
+            backend.trace_level(),
+            TraceValue::Verbose,
+            "an unknown trace value must not change the current state"
+        );
+        // Malformed params (missing `value`, non-object) are rejected the
+        // same way.
+        backend.set_trace(serde_json::json!({"level": "off"})).await;
+        assert_eq!(backend.trace_level(), TraceValue::Verbose);
+        backend.set_trace(serde_json::json!("verbose")).await;
+        assert_eq!(backend.trace_level(), TraceValue::Verbose);
+        backend.set_trace(serde_json::json!({"value": 3})).await;
+        assert_eq!(backend.trace_level(), TraceValue::Verbose);
+
+        backend.set_trace(serde_json::json!({"value": "off"})).await;
+        assert_eq!(backend.trace_level(), TraceValue::Off);
+        Ok(())
+    })
+}
+
+#[test]
+fn lsp_trace_initialize_honors_client_trace_value() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = build_service(PathBuf::from("."));
+        let backend = service.inner();
+        backend
+            .initialize(InitializeParams {
+                trace: Some(TraceValue::Verbose),
+                ..InitializeParams::default()
+            })
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        assert_eq!(
+            backend.trace_level(),
+            TraceValue::Verbose,
+            "initialize must honor the client-selected trace value"
+        );
+
+        let (service, _socket) = build_service(PathBuf::from("."));
+        let backend = service.inner();
+        backend
+            .initialize(InitializeParams::default())
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        assert_eq!(
+            backend.trace_level(),
+            TraceValue::Off,
+            "an omitted trace value leaves the default off"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn lsp_trace_toggle_leaves_status_identity_and_revision_untouched() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = build_service(PathBuf::from("."));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let status_params = || ExecuteCommandParams {
+            command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+
+        let before_status = backend
+            .execute_command(status_params())
+            .await
+            .map_err(|err| format!("workspace status failed: {err}"))?;
+        let before_revision = backend.workspace_revision();
+
+        backend
+            .set_trace(serde_json::json!({"value": "verbose"}))
+            .await;
+        assert_eq!(backend.trace_level(), TraceValue::Verbose);
+
+        let after_status = backend
+            .execute_command(status_params())
+            .await
+            .map_err(|err| format!("workspace status failed: {err}"))?;
+        let after_revision = backend.workspace_revision();
+
+        assert_eq!(
+            before_status, after_status,
+            "a trace toggle must not change the workspace status payload — this includes the \
+             input-identity and configuration_pull disclosure fields (#2031, #2035)"
+        );
+        assert_eq!(
+            before_revision, after_revision,
+            "a trace toggle must not advance the workspace revision (no analysis reschedule)"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn framed_lsp_trace_lifecycle_and_redaction() -> Result<(), String> {
+    const CANARY: &str = "RIPR_TRACE_CANARY_NEVER_EMIT_7f3a9c";
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        let invalid_root_parent = unique_lsp_test_root("framed-trace-root")?;
+        let invalid_root = invalid_root_parent.path().join("not-a-directory");
+        std::fs::write(&invalid_root, b"not a workspace directory")
+            .map_err(|err| format!("write invalid LSP root failed: {err}"))?;
+        let invalid_root_uri = file_uri_for_path(&invalid_root)?;
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = build_service(PathBuf::from("."));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+        let text_uri = "file:///workspace/src/lib.rs";
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": invalid_root_uri.as_str(),
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialize.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await?;
+
+        let hover = |id: u64| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "position": { "line": 0, "character": 4 }
+                }
+            })
+        };
+        let set_trace = |value: &str| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "$/setTrace",
+                "params": { "value": value }
+            })
+        };
+        let did_open = |version: u64, canary: &str| {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": text_uri,
+                        "languageId": "rust",
+                        "version": version,
+                        "text": format!("pub fn demo() -> bool {{ // {canary}\n    true\n}}\n")
+                    }
+                }
+            })
+        };
+
+        // 1. Off by default: no $/logTrace even for source-bearing traffic.
+        write_lsp_message(&mut client_write, did_open(1, CANARY)).await?;
+        write_lsp_message(&mut client_write, hover(2)).await?;
+        let (_response, notifications) =
+            read_response_and_notifications(&mut client_read, 2).await?;
+        assert!(
+            log_trace_params(&notifications).is_empty(),
+            "trace off must emit no $/logTrace, got {notifications:?}"
+        );
+
+        // 2. messages: method/direction/class only; the canary source text and
+        //    the document URI never enter the trace.
+        write_lsp_message(&mut client_write, set_trace("messages")).await?;
+        write_lsp_message(&mut client_write, did_open(2, CANARY)).await?;
+        write_lsp_message(&mut client_write, hover(3)).await?;
+        let (_response, notifications) =
+            read_response_and_notifications(&mut client_read, 3).await?;
+        let traces = log_trace_params(&notifications);
+        assert!(
+            traces.iter().any(|params| params["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("<- notification textDocument/didOpen"))),
+            "messages level must trace the inbound didOpen method name, got {traces:?}"
+        );
+        assert!(
+            traces.iter().any(|params| params["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("<- request textDocument/hover"))),
+            "messages level must trace the inbound hover request, got {traces:?}"
+        );
+        assert!(
+            traces.iter().any(|params| params["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("-> response textDocument/hover"))),
+            "messages level must trace the outbound hover response class, got {traces:?}"
+        );
+        assert!(
+            traces.iter().all(|params| params.get("verbose").is_none()),
+            "messages level must not add verbose detail, got {traces:?}"
+        );
+        // No recursion (RIPR-SPEC-0137): the `$/setTrace` that enabled this
+        // phase and any `$/logTrace` emission are never themselves traced.
+        assert!(
+            traces.iter().all(|params| params["message"]
+                .as_str()
+                .is_some_and(|message| !message.contains("$/setTrace")
+                    && !message.contains("$/logTrace"))),
+            "trace lifecycle notifications must never be traced: {traces:?}"
+        );
+        let rendered = traces
+            .iter()
+            .map(serde_json::Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !rendered.contains(CANARY),
+            "trace output must never contain source text (redaction discriminator): {rendered}"
+        );
+        assert!(
+            !rendered.contains("file://"),
+            "trace output must never contain document URIs or paths: {rendered}"
+        );
+
+        // 3. verbose: bounded numeric metadata added, still no payload content.
+        write_lsp_message(&mut client_write, set_trace("verbose")).await?;
+        write_lsp_message(&mut client_write, did_open(3, CANARY)).await?;
+        write_lsp_message(&mut client_write, hover(4)).await?;
+        let (_response, notifications) =
+            read_response_and_notifications(&mut client_read, 4).await?;
+        let traces = log_trace_params(&notifications);
+        assert!(
+            traces.iter().any(|params| {
+                params["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("<- request textDocument/hover"))
+                    && params["verbose"]
+                        .as_str()
+                        .is_some_and(|verbose| verbose.starts_with("params_bytes="))
+            }),
+            "verbose level must add a bounded params byte count, got {traces:?}"
+        );
+        assert!(
+            traces.iter().any(|params| {
+                params["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("-> response textDocument/hover"))
+                    && params["verbose"]
+                        .as_str()
+                        .is_some_and(|verbose| verbose.starts_with("outcome=ok response_bytes="))
+            }),
+            "verbose level must add the outcome class and a bounded response byte count, got {traces:?}"
+        );
+        let rendered = traces
+            .iter()
+            .map(serde_json::Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !rendered.contains(CANARY),
+            "verbose trace output must never contain source text: {rendered}"
+        );
+        assert!(
+            !rendered.contains("file://"),
+            "verbose trace output must never contain document URIs or paths: {rendered}"
+        );
+
+        // 4. Unknown value: rejected observably (tracing is on), state kept,
+        //    session alive — the next request is still answered and traces at
+        //    the previous level.
+        write_lsp_message(&mut client_write, set_trace("everything")).await?;
+        write_lsp_message(&mut client_write, hover(5)).await?;
+        let (response, notifications) =
+            read_response_and_notifications(&mut client_read, 5).await?;
+        assert!(
+            response.get("error").is_none(),
+            "session must stay alive after an unknown trace value: {response}"
+        );
+        let traces = log_trace_params(&notifications);
+        assert!(
+            traces.iter().any(|params| params["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("class=unknown_value"))),
+            "an unknown trace value must be rejected observably when tracing is on, got {traces:?}"
+        );
+        let hover_traces = traces
+            .iter()
+            .filter(|params| {
+                params["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("textDocument/hover"))
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !hover_traces.is_empty()
+                && hover_traces
+                    .iter()
+                    .all(|params| params["verbose"]
+                        .as_str()
+                        .is_some_and(|verbose| !verbose.is_empty())),
+            "the rejected $/setTrace must leave the previous verbose level in effect, got {traces:?}"
+        );
+
+        // 5. Back to off: tracing stops immediately. Drain after the
+        //    transition so a slow trailing verbose-phase emission cannot
+        //    leak into this phase's assertion window (tests-red-green
+        //    review): the emptiness assertion below covers only traffic
+        //    sent while off.
+        write_lsp_message(&mut client_write, set_trace("off")).await?;
+        let _stragglers = read_lsp_messages_for(&mut client_read, Duration::from_millis(150)).await?;
+        write_lsp_message(&mut client_write, hover(6)).await?;
+        let (_response, notifications) =
+            read_response_and_notifications(&mut client_read, 6).await?;
+        assert!(
+            log_trace_params(&notifications).is_empty(),
+            "trace off must stop emission immediately, got {notifications:?}"
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "id": 7, "method": "shutdown", "params": null}),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 7).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn framed_lsp_trace_initialize_trace_param_enables_tracing() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        let invalid_root_parent = unique_lsp_test_root("framed-trace-init-root")?;
+        let invalid_root = invalid_root_parent.path().join("not-a-directory");
+        std::fs::write(&invalid_root, b"not a workspace directory")
+            .map_err(|err| format!("write invalid LSP root failed: {err}"))?;
+        let invalid_root_uri = file_uri_for_path(&invalid_root)?;
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = build_service(PathBuf::from("."));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+        let text_uri = "file:///workspace/src/lib.rs";
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": invalid_root_uri.as_str(),
+                    "trace": "verbose",
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialize.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await?;
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "position": { "line": 0, "character": 4 }
+                }
+            }),
+        )
+        .await?;
+        let (_response, notifications) =
+            read_response_and_notifications(&mut client_read, 2).await?;
+        let traces = log_trace_params(&notifications);
+        assert!(
+            traces.iter().any(|params| {
+                params["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("<- request textDocument/hover"))
+                    && params["verbose"]
+                        .as_str()
+                        .is_some_and(|verbose| verbose.starts_with("params_bytes="))
+            }),
+            "the initialize trace param must enable verbose tracing without any $/setTrace, got {traces:?}"
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null}),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 3).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
 }

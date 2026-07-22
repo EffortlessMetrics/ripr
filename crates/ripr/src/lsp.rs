@@ -23,7 +23,7 @@ mod uri;
 use backend::Backend;
 pub use diagnostics::{DiagnosticBatch, workspace_diagnostic_batches};
 use tower_lsp_server::ls_types::{LSPAny, notification::Notification};
-use tower_lsp_server::{LspService, Server};
+use tower_lsp_server::{ClientSocket, LspService, Server};
 
 pub(super) struct AnalysisStatusNotification;
 
@@ -87,11 +87,24 @@ where
     O: tokio::io::AsyncWrite + Unpin,
 {
     let (stdin, stdout) = bounds.wrap(stdin, stdout);
-    let (service, socket) = LspService::new(|client| Backend::new(client, root.clone()));
+    let (service, socket) = build_service(root.clone());
 
     Server::new(stdin, stdout, socket)
         .concurrency_level(bounds.request_concurrency)
         .serve(service)
         .await;
     Ok(())
+}
+
+/// Builds the LSP service with the standard trace lifecycle registered
+/// (`$/setTrace`, #2035, RIPR-SPEC-0137). tower-lsp-server has no native
+/// `$/setTrace` handler — unregistered notifications are silently dropped —
+/// so the notification is registered as a custom method whose handler takes
+/// untyped params and validates them manually (a typed-params parse failure
+/// would be dropped silently). The framed duplex tests use this same
+/// constructor so the trace contract is exercised through the wire harness.
+fn build_service(root: std::path::PathBuf) -> (LspService<Backend>, ClientSocket) {
+    LspService::build(|client| Backend::new(client, root))
+        .custom_method("$/setTrace", Backend::set_trace)
+        .finish()
 }
