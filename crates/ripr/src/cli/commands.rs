@@ -5279,6 +5279,7 @@ mod tests {
         artifact_paths: &'a [&'a str],
         summary_sections: &'a [&'a str],
         non_blocking_steps: &'a [&'a str],
+        gate_conditional_steps: &'a [&'a str],
         optional_sarif_steps: &'a [&'a str],
         forbidden_fragments: &'a [&'a str],
     }
@@ -5435,8 +5436,6 @@ mod tests {
                 "Generate RIPR pilot packet",
                 "Prepare RIPR editor-agent artifacts",
                 "Generate RIPR agent loop artifacts",
-                "Render RIPR diff SARIF",
-                "Render RIPR repo seam SARIF",
                 "Render RIPR repo badge artifacts",
                 "Render RIPR operator cockpit",
                 "Render RIPR baseline debt delta",
@@ -5455,16 +5454,25 @@ mod tests {
                 "Render RIPR PR review front panel",
                 "Render RIPR report packet index",
                 "Render RIPR LLM work-loop summaries",
-                "Run RIPR PR guidance report",
                 "Capture existing RIPR inline comments",
                 "Plan RIPR inline comments",
                 "Publish RIPR inline comments",
                 "Capture RIPR gate labels",
                 "Emit RIPR PR guidance annotations",
+                "Check RIPR advisory artifacts",
                 "Add RIPR advisory summary",
                 "Upload RIPR report artifacts",
+                // Upload infra is not analysis authority (#2009 review): a
+                // CodeQL flake must not fail a gate the analysis passed.
                 "Upload RIPR diff findings",
                 "Upload RIPR repo seams",
+            ],
+            // Gate-critical analysis producers (#2009): advisory by default
+            // but blocking when the operator opted into a blocking gate.
+            gate_conditional_steps: &[
+                "Run RIPR PR guidance report",
+                "Render RIPR diff SARIF",
+                "Render RIPR repo seam SARIF",
             ],
             optional_sarif_steps: &[
                 "Render RIPR diff SARIF",
@@ -10653,6 +10661,21 @@ language = "rust"
                 "`{step}` must remain advisory/non-blocking"
             );
         }
+
+        for step in fixture.gate_conditional_steps {
+            let block = workflow_step(&workflow, step);
+            assert!(
+                block.contains(
+                    "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}"
+                ),
+                "`{step}` must be conditional on RIPR_GATE_MODE, not unconditionally advisory"
+            );
+        }
+
+        let artifact_check = workflow_step(&workflow, "Check RIPR advisory artifacts");
+        assert!(artifact_check.contains("::warning::"));
+        assert!(artifact_check.contains("target/ripr/reports/start-here.md"));
+        assert!(artifact_check.contains("gate-decision.json (RIPR_GATE_MODE is set)"));
 
         for step in fixture.optional_sarif_steps {
             let block = workflow_step(&workflow, step);

@@ -302,7 +302,10 @@ jobs:
 
       - name: Run RIPR PR guidance report
         if: github.event_name == 'pull_request'
-        continue-on-error: true
+        # Gate-critical producer (#2009): advisory by default, but a
+        # blocking RIPR_GATE_MODE must not green-on-error past the gate's
+        # own input.
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           mkdir -p target/ripr/review
           ripr review-comments \
@@ -428,7 +431,7 @@ jobs:
 
       - name: Render RIPR diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           ripr check \
             --root . \
@@ -438,7 +441,7 @@ jobs:
 
       - name: Render RIPR repo seam SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           mkdir -p target/ripr/reports
           ripr check \
@@ -2108,6 +2111,28 @@ jobs:
             echo "- No runtime mutation execution is performed by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Check RIPR advisory artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          # Green-with-missing-artifacts is a real failure mode (#2009):
+          # report it visibly without failing the advisory job.
+          missing=()
+          for artifact in target/ripr/reports/start-here.md target/ripr/reports/index.json; do
+            if [ ! -f "$artifact" ]; then
+              missing+=("$artifact")
+            fi
+          done
+          if [ "$RIPR_GATE_MODE" != '' ] && [ ! -f target/ripr/reports/gate-decision.json ] && [ -f target/ripr/review/comments.json ]; then
+            missing+=("target/ripr/reports/gate-decision.json (RIPR_GATE_MODE is set)")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo '::warning::Some RIPR advisory artifacts are missing (upstream step failed softly):'
+            for artifact in "${missing[@]}"; do
+              echo "  - $artifact"
+            done
+          fi
+
       - name: Upload RIPR report artifacts
         if: always()
         continue-on-error: true
@@ -2126,6 +2151,9 @@ jobs:
 
       - name: Upload RIPR diff findings
         if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        # Upload infra is not analysis authority (#2009 review): a CodeQL
+        # flake must not fail a gate the analysis passed. Renders (the
+        # analysis) stay gate-conditional; uploads stay advisory.
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
