@@ -77,10 +77,41 @@ impl LspAnalysisInputIdentity {
         }
     }
 
+    /// Compatibility constructor for test fixtures that do not own a
+    /// scheduler-resolved record. Production refresh construction goes
+    /// through [`Self::from_refresh_inputs_with_git`] with the scheduler's
+    /// one record.
+    #[cfg(test)]
     pub(super) fn from_refresh_inputs(
         effective_root: PathBuf,
         saved_workspace_revision: u64,
         config: &LspAnalysisConfig,
+    ) -> Self {
+        // Resolve the Git inputs once and delegate to the record-consuming
+        // constructor (#2000, RIPR-SPEC-0142) so this compatibility path and
+        // the scheduler path produce byte-identical identities.
+        let git_inputs = super::git_inputs::ResolvedGitInputs::resolve(
+            &effective_root,
+            config.base_ref.as_deref(),
+        );
+        Self::from_refresh_inputs_with_git(
+            effective_root,
+            saved_workspace_revision,
+            config,
+            &git_inputs,
+        )
+    }
+
+    /// Build the identity from the one typed Git-input record resolved for
+    /// the refresh request (#2000, RIPR-SPEC-0142). The record's resolved
+    /// base is consumed verbatim — this constructor never re-resolves — so
+    /// the identity, the scheduler dedup decision, and the committed
+    /// snapshot all share exactly one resolution per accepted refresh.
+    pub(super) fn from_refresh_inputs_with_git(
+        effective_root: PathBuf,
+        saved_workspace_revision: u64,
+        config: &LspAnalysisConfig,
+        git_inputs: &super::git_inputs::ResolvedGitInputs,
     ) -> Self {
         let enabled_languages = config.repo_config().languages().enabled();
         let (manifest_identity, lockfile_identity) =
@@ -104,10 +135,7 @@ impl LspAnalysisInputIdentity {
                     .map(crate::config::config_fingerprint),
                 session_options_identity,
                 requested_base: config.base_ref.clone(),
-                resolved_base: crate::analysis::resolve_base_commit(
-                    &effective_root,
-                    config.base_ref.as_deref(),
-                ),
+                resolved_base: git_inputs.resolved_base().map(str::to_string),
             },
             config.mode.clone(),
             config.diagnostic_profile.as_str(),
@@ -143,6 +171,21 @@ impl LspAnalysisInputIdentity {
         format!("input:{}", crate::config::config_fingerprint(&canonical))
     }
 
+    /// The Git input resolution state derived from the identity's own
+    /// requested/resolved base pair (#2000, RIPR-SPEC-0142). Pure projection
+    /// of existing identity fields — no additional resolution state is
+    /// stored on the identity.
+    fn git_input_resolution(&self) -> &'static str {
+        match (
+            self.requested_base.as_deref(),
+            self.resolved_base.as_deref(),
+        ) {
+            (None, _) => "loader_default",
+            (Some(_), Some(_)) => "resolved",
+            (Some(_), None) => "unresolved",
+        }
+    }
+
     /// Produce the bounded, producer-owned input view used by workspace
     /// status. This is metadata for lifecycle recovery, not a replacement for
     /// the opaque stable identity used by semantic consumers.
@@ -157,6 +200,7 @@ impl LspAnalysisInputIdentity {
             "session_options_identity": self.session_options_identity,
             "requested_base": self.requested_base,
             "resolved_base": self.resolved_base,
+            "git_input_resolution": self.git_input_resolution(),
             "mode": self.mode.as_str(),
             "profile": self.profile,
             "enabled_languages": self.enabled_languages,
@@ -290,6 +334,69 @@ mod tests {
         assert_ne!(changed_manifest, baseline);
         assert_ne!(changed_lockfile, baseline);
         assert_ne!(changed_analyzer_version, baseline);
+    }
+
+    #[test]
+    fn record_built_identity_matches_legacy_resolution_byte_for_byte() -> Result<(), String> {
+        let root = crate::lsp::tests::unique_lsp_test_root("input-identity-git-parity")?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
+        crate::lsp::tests::run_lsp_scope_git(
+            root.path(),
+            &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "pub fn gate() -> bool {\n    true\n}\n",
+        )
+        .map_err(|error| format!("write fixture: {error}"))?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+
+        let config = LspAnalysisConfig {
+            base_ref: Some("HEAD".to_string()),
+            ..LspAnalysisConfig::default()
+        };
+        let record = crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let via_record = LspAnalysisInputIdentity::from_refresh_inputs_with_git(
+            root.path().to_path_buf(),
+            1,
+            &config,
+            &record,
+        );
+        let via_legacy =
+            LspAnalysisInputIdentity::from_refresh_inputs(root.path().to_path_buf(), 1, &config);
+
+        if via_record.resolved_base.is_none() {
+            return Err("fixture must produce a resolved base".to_string());
+        }
+        if via_record != via_legacy || via_record.stable_id() != via_legacy.stable_id() {
+            return Err(
+                "record-built identity must be byte-identical to the legacy resolution path"
+                    .to_string(),
+            );
+        }
+        if via_record.status_payload()["git_input_resolution"].as_str() != Some("resolved") {
+            return Err("resolved identity must project the resolved label".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn status_payload_projects_loader_default_and_unresolved_labels() {
+        let mut unresolved = identity("workspace-root", [LanguageId::Rust]);
+        unresolved.resolved_base = None;
+        assert_eq!(
+            unresolved.status_payload()["git_input_resolution"].as_str(),
+            Some("unresolved")
+        );
+        let mut loader_default = identity("workspace-root", [LanguageId::Rust]);
+        loader_default.requested_base = None;
+        loader_default.resolved_base = None;
+        assert_eq!(
+            loader_default.status_payload()["git_input_resolution"].as_str(),
+            Some("loader_default")
+        );
     }
 
     #[test]

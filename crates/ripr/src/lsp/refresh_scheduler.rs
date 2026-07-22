@@ -86,6 +86,11 @@ pub(super) struct RefreshTelemetrySnapshot {
     pub(super) pending_queue_high_water: u64,
     pub(super) latest_save_to_snapshot_ms: Option<u128>,
     pub(super) last_superseded_attempt_ms: Option<u128>,
+    /// Fresh Git input resolutions performed for refresh requests (#2000,
+    /// RIPR-SPEC-0142). Every increment is at most one `git rev-parse`
+    /// probe; deduplicated in-episode requests and cache reuses do not
+    /// increment this, which is the subprocess saving.
+    pub(super) git_input_resolutions: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,6 +106,10 @@ pub(super) struct RefreshRequest {
     pub(super) generation: u64,
     pub(super) authority_epoch: u64,
     pub(super) input_identity: LspAnalysisInputIdentity,
+    /// The one typed Git-input record resolved for this request (#2000,
+    /// RIPR-SPEC-0142). Carried per generation so concurrently queued
+    /// requests can never mix Git input records.
+    pub(super) git_inputs: super::git_inputs::ResolvedGitInputs,
     pub(super) root: PathBuf,
     pub(super) config: LspAnalysisConfig,
     pub(super) workspace_revision: u64,
@@ -148,6 +157,14 @@ struct SchedulerState {
     stopping: bool,
     telemetry: RefreshTelemetrySnapshot,
     latest_save_requested_at: Option<Instant>,
+    /// Session cache for the refresh episode's Git input authority (#2000,
+    /// RIPR-SPEC-0142): the last resolved record plus the workspace revision
+    /// it was resolved for. Reused only while root, requested base, and
+    /// revision all match and the request is not an explicit refresh.
+    /// Cleared on input invalidation, stop, and when the scheduler returns
+    /// to idle, so any post-episode request resolves against the live
+    /// repository.
+    episode_git_inputs: Option<(u64, super::git_inputs::ResolvedGitInputs)>,
 }
 
 pub(super) struct RefreshScheduler {
@@ -192,14 +209,46 @@ impl RefreshScheduler {
             RefreshReason::ExplicitRefresh => state.telemetry.explicit_refresh_requests += 1,
         }
 
+        // Resolve the load-bearing Git inputs once for this request (#2000,
+        // RIPR-SPEC-0142). The input identity, the dedup decision, the
+        // committed snapshot, and the status projection all consume this one
+        // record; no consumer re-resolves. A request that lands inside an
+        // in-flight refresh episode with identical observable inputs (root,
+        // requested base, saved revision) reuses the episode record instead
+        // of spawning a redundant probe — this is the per-save `rev-parse`
+        // saving from #1919. Ref movement inside an in-flight episode is
+        // observed by the first post-episode request, which always resolves
+        // against the live repository (the episode cache clears at idle), and
+        // an explicit refresh always resolves fresh.
+        let episode_in_flight = state.active.is_some() || state.pending_latest.is_some();
+        let git_inputs = match reason {
+            RefreshReason::ExplicitRefresh => None,
+            _ if episode_in_flight => state
+                .episode_git_inputs
+                .as_ref()
+                .filter(|(revision, record)| {
+                    *revision == workspace_revision
+                        && record.governs(&root, config.base_ref.as_deref())
+                })
+                .map(|(_, record)| record.clone()),
+            _ => None,
+        }
+        .unwrap_or_else(|| {
+            let record =
+                super::git_inputs::ResolvedGitInputs::resolve(&root, config.base_ref.as_deref());
+            state.telemetry.git_input_resolutions += 1;
+            state.episode_git_inputs = Some((workspace_revision, record.clone()));
+            record
+        });
         let identity = RefreshInputIdentity {
             root: root.clone(),
             config: config.clone(),
             workspace_revision,
-            input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+            input_identity: LspAnalysisInputIdentity::from_refresh_inputs_with_git(
                 root.clone(),
                 workspace_revision,
                 &config,
+                &git_inputs,
             ),
         };
 
@@ -233,6 +282,7 @@ impl RefreshScheduler {
             generation: state.next_generation,
             authority_epoch,
             input_identity: identity.input_identity.clone(),
+            git_inputs,
             root,
             config,
             workspace_revision,
@@ -299,6 +349,10 @@ impl RefreshScheduler {
             state.last_completed = Some((request.identity(), request.scope));
         }
         state.active = None;
+        // Episode boundary (#2000): the scheduler is idle, so the next
+        // request must resolve Git inputs against the live repository rather
+        // than reuse this episode's record.
+        state.episode_git_inputs = None;
         None
     }
 
@@ -319,6 +373,7 @@ impl RefreshScheduler {
         }
         state.active = None;
         state.pending_latest = None;
+        state.episode_git_inputs = None;
         true
     }
 
@@ -335,6 +390,7 @@ impl RefreshScheduler {
             pending.cancellation.cancel(AnalysisAbortKind::Cancelled);
         }
         state.pending_latest = None;
+        state.episode_git_inputs = None;
     }
 
     /// Invalidate all work and completed-input identity without stopping the
@@ -355,6 +411,9 @@ impl RefreshScheduler {
         state.active = None;
         state.pending_latest = None;
         state.last_completed = None;
+        // Input invalidation also drops the episode Git input authority
+        // (#2000): the next request resolves against the live repository.
+        state.episode_git_inputs = None;
     }
 
     pub(super) fn is_current_generation(&self, generation: u64) -> bool {
@@ -739,6 +798,291 @@ mod tests {
             || telemetry.last_superseded_attempt_ms != Some(7)
         {
             return Err(format!("unexpected telemetry: {telemetry:?}"));
+        }
+        Ok(())
+    }
+
+    fn git_repo_root(tag: &str) -> Result<crate::lsp::tests::TempLspRoot, String> {
+        let root = crate::lsp::tests::unique_lsp_test_root(tag)?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
+        crate::lsp::tests::run_lsp_scope_git(
+            root.path(),
+            &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "pub fn gate() -> bool {\n    true\n}\n",
+        )
+        .map_err(|error| format!("write fixture: {error}"))?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+        Ok(root)
+    }
+
+    fn git_config(base: Option<&str>) -> LspAnalysisConfig {
+        let mut config = config();
+        config.base_ref = base.map(str::to_string);
+        config
+    }
+
+    fn commit_change(root: &std::path::Path, message: &str) -> Result<(), String> {
+        std::fs::write(
+            root.join("lib.rs"),
+            "pub fn gate() -> bool {\n    false\n}\n",
+        )
+        .map_err(|error| format!("write change: {error}"))?;
+        crate::lsp::tests::run_lsp_scope_git(root, &["add", "lib.rs"])?;
+        crate::lsp::tests::run_lsp_scope_git(root, &["commit", "-m", message])
+    }
+
+    #[test]
+    fn accepted_refresh_resolves_git_inputs_once_and_shares_one_record() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-once")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        if active.git_inputs.resolution() != super::super::git_inputs::GitInputResolution::Resolved
+        {
+            return Err("fixture base must resolve".to_string());
+        }
+        // The input identity consumes the same record: identical SHA, no
+        // second resolution.
+        if active.input_identity.resolved_base.as_deref() != active.git_inputs.resolved_base() {
+            return Err("identity must consume the request's one resolved base".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 1 {
+            return Err("one accepted refresh must resolve Git inputs once".to_string());
+        }
+        // An equivalent in-episode request deduplicates without a fresh probe.
+        let deduplicated = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        if deduplicated != RefreshDecision::Deduplicated {
+            return Err("equivalent in-episode request should deduplicate".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 1 {
+            return Err("deduplicated request must not re-resolve Git inputs".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn post_episode_request_resolves_fresh_and_observes_base_ref_movement() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-move")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        let first_sha = active
+            .git_inputs
+            .resolved_base()
+            .map(str::to_string)
+            .ok_or_else(|| "first resolution must produce a SHA".to_string())?;
+        if scheduler.finish(&active, true).is_some() {
+            return Err("no request should remain".to_string());
+        }
+        // Equivalent post-episode request: fresh resolution, same identity,
+        // deduplicated against the completed refresh.
+        let repeat = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        if repeat != RefreshDecision::Deduplicated {
+            return Err("unchanged post-episode request should deduplicate".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 2 {
+            return Err("post-episode request must resolve fresh".to_string());
+        }
+        // Move the base ref: the next post-episode request must observe the
+        // new commit and must not deduplicate against the stale identity.
+        commit_change(root.path(), "move base")?;
+        let after_move = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        );
+        let RefreshDecision::Start(moved) = after_move else {
+            return Err("moved base ref must invalidate reuse".to_string());
+        };
+        let moved_sha = moved
+            .git_inputs
+            .resolved_base()
+            .map(str::to_string)
+            .ok_or_else(|| "moved resolution must produce a SHA".to_string())?;
+        if moved_sha == first_sha {
+            return Err("moved base ref must resolve to the new commit".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_refresh_always_resolves_against_the_live_repository() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-explicit")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(_) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Full,
+            RefreshReason::ExplicitRefresh,
+        ) else {
+            return Err("explicit refresh should start".to_string());
+        };
+        let queued = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Full,
+            RefreshReason::ExplicitRefresh,
+        );
+        if !matches!(queued, RefreshDecision::Queued { .. }) {
+            return Err("explicit refresh bypasses dedup and queues".to_string());
+        }
+        if scheduler.telemetry().git_input_resolutions != 2 {
+            return Err("every explicit refresh resolves fresh".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn base_configuration_change_is_not_governed_by_the_episode_record() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-base-change")?;
+        commit_change(root.path(), "second commit")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        let queued = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD~1")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::ConfigReload,
+        );
+        let RefreshDecision::Queued { generation, .. } = queued else {
+            return Err("changed base configuration should queue new work".to_string());
+        };
+        if scheduler.telemetry().git_input_resolutions != 2 {
+            return Err("changed requested base must resolve fresh".to_string());
+        }
+        let Some(pending) = scheduler.pending_request(generation) else {
+            return Err("queued request should be inspectable".to_string());
+        };
+        // Concurrent queued requests cannot mix Git input records: each
+        // request carries the record resolved for its own inputs.
+        if pending.git_inputs.requested_base() != Some("HEAD~1")
+            || active.git_inputs.requested_base() != Some("HEAD")
+        {
+            return Err("each request must carry its own Git input record".to_string());
+        }
+        if pending.git_inputs.resolved_base() == active.git_inputs.resolved_base() {
+            return Err("distinct requested bases must resolve distinct commits".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn invalidate_input_drops_the_episode_git_record() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-invalidate")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("first request should start".to_string());
+        };
+        scheduler.invalidate_input();
+        let RefreshDecision::Start(_) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("HEAD")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("post-invalidation request should start".to_string());
+        };
+        let _ = active;
+        if scheduler.telemetry().git_input_resolutions != 2 {
+            return Err("input invalidation must force a fresh resolution".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unresolved_requested_base_is_typed_once_and_shared_with_identity() -> Result<(), String> {
+        let root = git_repo_root("scheduler-git-unresolved")?;
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = scheduler.request(
+            root.path().to_path_buf(),
+            git_config(Some("missing-ref")),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::DidSave,
+        ) else {
+            return Err("request should start even when the base is unresolvable".to_string());
+        };
+        if active.git_inputs.resolution()
+            != super::super::git_inputs::GitInputResolution::Unresolved
+        {
+            return Err("missing base ref must record the unresolved state".to_string());
+        }
+        if active.input_identity.resolved_base.is_some() {
+            return Err("unresolved base must not fabricate an identity SHA".to_string());
+        }
+        // The analysis path reports the named base failure through the
+        // unchanged load_diff error surface; the scheduler does not retry or
+        // synthesize a conflicting error.
+        let analysis_error = crate::analysis::load_diff(root.path(), Some("missing-ref"), None)
+            .err()
+            .ok_or_else(|| "analysis must fail closed on a missing base".to_string())?;
+        if !analysis_error.contains("missing-ref") {
+            return Err(format!(
+                "analysis error must name the ref: {analysis_error}"
+            ));
         }
         Ok(())
     }

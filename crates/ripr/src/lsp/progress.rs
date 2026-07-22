@@ -554,16 +554,22 @@ mod tests {
     }
 
     fn test_request(generation: u64) -> RefreshRequest {
+        let root = PathBuf::from("/workspace");
+        let config = LspAnalysisConfig::default();
         RefreshRequest {
             generation,
             authority_epoch: 0,
             input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
-                PathBuf::from("/workspace"),
+                root.clone(),
                 generation,
-                &LspAnalysisConfig::default(),
+                &config,
             ),
-            root: PathBuf::from("/workspace"),
-            config: LspAnalysisConfig::default(),
+            git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
+                &root,
+                config.base_ref.as_deref(),
+            ),
+            root,
+            config,
             workspace_revision: generation,
             scope: RefreshScope::Interactive,
             reason: RefreshReason::DidSave,

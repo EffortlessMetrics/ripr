@@ -8,6 +8,7 @@ pub mod diagnostic_budget;
 mod diagnostic_catalog;
 mod diagnostics;
 mod gap_artifacts;
+mod git_inputs;
 mod hover;
 mod input_identity;
 mod lens;

@@ -1293,6 +1293,168 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
 }
 
 #[test]
+fn framed_lsp_refresh_resolves_git_inputs_once_and_projects_the_record() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        // A real temp git repo so the refresh resolves the requested base
+        // through the one typed record (#2000, RIPR-SPEC-0142).
+        let root = unique_lsp_test_root("framed-git-input-authority")?;
+        init_lsp_test_scope_repo(root.path())?;
+        std::fs::write(
+            root.path().join("src/lib.rs"),
+            "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )
+        .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+        commit_lsp_test_scope_change(root.path(), "change production")?;
+        let expected_base = crate::analysis::resolve_base_commit(root.path(), Some("HEAD~1"))
+            .ok_or_else(|| "fixture HEAD~1 must resolve".to_string())?;
+        let root_uri = file_uri_for_path(root.path())?;
+
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD~1",
+                        "checkMode": "instant"
+                    },
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialize.get("error").is_none());
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, notifications) =
+            read_lsp_response_with_notifications(&mut client_read, 2).await?;
+        assert!(refresh.get("error").is_none());
+        let notification_messages = log_notification_messages(&notifications);
+        // The one accepted refresh resolved the requested base once and the
+        // phase-boundary log names the typed record the attempt consumes.
+        let expected_log = format!(
+            "git_input_resolution=resolved, requested_base=Some(\"HEAD~1\"), resolved_base=Some(\"{expected_base}\")"
+        );
+        assert!(
+            notification_messages
+                .iter()
+                .any(|message| message.contains(&expected_log)),
+            "expected refresh-start log to name the resolved record, got {notification_messages:?}"
+        );
+        // Exactly one refresh started: no consumer re-resolved and spawned a
+        // second attempt for the same request.
+        let started_count = notification_messages
+            .iter()
+            .filter(|message| message.contains("ripr analysis refresh started"))
+            .count();
+        assert_eq!(started_count, 1, "one accepted refresh, one resolution");
+
+        // The workspace status projects the same resolved inputs from the
+        // committed snapshot identity.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": COLLECT_WORKSPACE_STATUS_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let status = read_lsp_response(&mut client_read, 3).await?;
+        assert!(status.get("error").is_none());
+        let current = &status["result"]["analysis_status"]["input_authority"]["current"];
+        assert_eq!(
+            current["requested_base"].as_str(),
+            Some("HEAD~1"),
+            "status must project the requested base: {current}"
+        );
+        assert_eq!(
+            current["resolved_base"].as_str(),
+            Some(expected_base.as_str()),
+            "status must project the one resolved base: {current}"
+        );
+        assert_eq!(
+            current["git_input_resolution"].as_str(),
+            Some("resolved"),
+            "status must project the typed resolution: {current}"
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "shutdown",
+                "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 4).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "exit",
+                "params": null
+            }),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -4461,6 +4623,10 @@ fn stale_refresh_does_not_rollback_after_root_authority_transition() -> Result<(
                 1,
                 &LspAnalysisConfig::default(),
             ),
+            git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
+                Path::new("/workspace"),
+                None,
+            ),
             root: PathBuf::from("/workspace"),
             config: LspAnalysisConfig::default(),
             workspace_revision: 1,
@@ -7206,7 +7372,7 @@ fn write_lsp_scope_fixture(root: &Path) -> Result<(), String> {
     .map_err(|err| format!("write fixture test file failed: {err}"))
 }
 
-fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
+pub(crate) fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(root)
@@ -7990,12 +8156,12 @@ fn boundary_gap_fixture_root() -> PathBuf {
         .join("fixtures/boundary_gap/input")
 }
 
-struct TempLspRoot {
+pub(crate) struct TempLspRoot {
     path: PathBuf,
 }
 
 impl TempLspRoot {
-    fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 }
@@ -8006,7 +8172,7 @@ impl Drop for TempLspRoot {
     }
 }
 
-fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
+pub(crate) fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -9485,6 +9651,10 @@ fn failed_refresh_retains_last_snapshot_and_reports_stale_health() -> Result<(),
                 1,
                 &LspAnalysisConfig::default(),
             ),
+            git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
+                Path::new("/workspace"),
+                None,
+            ),
             root: PathBuf::from("/workspace"),
             config: LspAnalysisConfig::default(),
             workspace_revision: 1,
@@ -10150,6 +10320,10 @@ fn seed_successful_snapshot(backend: &Backend) -> Result<(), String> {
             PathBuf::from("/workspace"),
             1,
             &LspAnalysisConfig::default(),
+        ),
+        git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
+            Path::new("/workspace"),
+            None,
         ),
         root: PathBuf::from("/workspace"),
         config: LspAnalysisConfig::default(),

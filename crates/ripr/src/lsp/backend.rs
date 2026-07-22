@@ -366,7 +366,7 @@ impl Backend {
         }
         let enabled_languages = request.config.repo_config().languages().enabled().to_vec();
         let started = Instant::now();
-        self.log_refresh_started(generation).await;
+        self.log_refresh_started(request).await;
         let root = request.root.clone();
         let config = request.config.clone();
         let defer_seam_inventory = request.scope.defer_seam_inventory();
@@ -2627,11 +2627,21 @@ impl Backend {
             .await;
     }
 
-    async fn log_refresh_started(&self, generation: u64) {
+    async fn log_refresh_started(&self, request: &RefreshRequest) {
+        // Name the one Git-input record this attempt consumes (#2000,
+        // RIPR-SPEC-0142): the resolution state and requested/resolved base
+        // are visible at the phase boundary, and an unresolved base is
+        // observable before the analysis error path reports it.
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("ripr analysis refresh started: generation={generation}"),
+                format!(
+                    "ripr analysis refresh started: generation={}, git_input_resolution={}, requested_base={:?}, resolved_base={:?}",
+                    request.generation,
+                    request.git_inputs.resolution().as_str(),
+                    request.git_inputs.requested_base(),
+                    request.git_inputs.resolved_base(),
+                ),
             )
             .await;
     }
