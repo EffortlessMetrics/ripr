@@ -97,6 +97,20 @@ pub(crate) struct ReceiptCheckOptions {
 pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String> {
     validate_write_options(opts)?;
 
+    let repository_root = std::env::current_dir()
+        .map_err(|err| format!("resolve receipt repository root failed: {err}"))?;
+    let actual_head =
+        crate::agent::artifact::current_git_head(&repository_root).map_err(|err| {
+            format!("receipt requires a Git repository with a resolvable HEAD: {err}")
+        })?;
+    if let Some(declared_head) = opts.current_head.as_deref()
+        && !declared_head.eq_ignore_ascii_case(&actual_head)
+    {
+        return Err(format!(
+            "receipt --current-head `{declared_head}` does not match actual repository HEAD `{actual_head}`"
+        ));
+    }
+
     let packet_id_available = opts.packet_id.is_some();
     let packet_id_json = match &opts.packet_id {
         Some(id) => serde_json::Value::String(id.clone()),
@@ -114,7 +128,7 @@ pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String
         "packet_id_available": packet_id_available,
         "verify_command": opts.verify_command,
         "verify_status": opts.verify_status,
-        "current_head": opts.current_head.clone(),
+        "current_head": actual_head,
         "written_at": written_at,
         "limits_note": "Static evidence only. Receipt records what was run; does not certify semantic correctness."
     });
@@ -277,6 +291,7 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
         "canonical_gap_id",
         "verify_command",
         "verify_status",
+        "current_head",
         "written_at",
     ];
 
@@ -305,6 +320,19 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
             VALID_VERIFY_STATUSES.join(", ")
         ));
     }
+
+    let current_head = value["current_head"].as_str().ok_or_else(|| {
+        format!(
+            "receipt at {} is malformed: `current_head` must be a string",
+            path.display()
+        )
+    })?;
+    validate_current_head(current_head).map_err(|err| {
+        format!(
+            "receipt at {} is malformed: invalid `current_head`: {err}",
+            path.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -407,7 +435,9 @@ mod tests {
             packet_id: Some("packet-abc123".to_string()),
             verify_command: "cargo test -p ripr".to_string(),
             verify_status: "passed".to_string(),
-            current_head: Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            current_head: Some(crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?,
+            )?),
             out: None,
             json: true,
         };
@@ -428,7 +458,9 @@ mod tests {
         assert_eq!(value["verify_status"], "passed");
         assert_eq!(
             value["current_head"],
-            "0123456789abcdef0123456789abcdef01234567"
+            crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?
         );
         assert!(value["written_at"].as_str().unwrap_or("").contains('T'));
         assert!(
@@ -448,7 +480,12 @@ mod tests {
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
         assert_eq!(value["packet_id"], serde_json::Value::Null);
         assert_eq!(value["packet_id_available"], false);
-        assert_eq!(value["current_head"], serde_json::Value::Null);
+        assert_eq!(
+            value["current_head"],
+            crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?
+        );
         Ok(())
     }
 
@@ -523,6 +560,19 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn receipt_write_rejects_plausible_but_stale_current_head() -> Result<(), String> {
+        let mut opts = write_opts("gap:demo:aabbccdd", "passed");
+        opts.current_head = Some("0123456789abcdef0123456789abcdef01234567".to_string());
+        match write_receipt(&opts) {
+            Ok(_) => Err("write_receipt should reject a stale current head".to_string()),
+            Err(err) if err.contains("does not match actual repository HEAD") => Ok(()),
+            Err(err) => Err(format!(
+                "error should identify the HEAD mismatch, got: {err}"
+            )),
+        }
     }
 
     #[test]
@@ -682,6 +732,71 @@ mod tests {
     }
 
     #[test]
+    fn receipt_check_missing_current_head_exits_nonzero() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-check-missing-head-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+        let path = dir.join("missing_head.json");
+        let json = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt",
+            "canonical_gap_id": "gap:test:aabbccdd",
+            "verify_command": "cargo test",
+            "verify_status": "passed",
+            "written_at": "2026-06-11T00:00:00Z"
+        });
+        std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
+
+        let result = check_receipt(&ReceiptCheckOptions {
+            gap: None,
+            path: Some(path),
+            ledger: None,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => Err("check_receipt should reject a receipt without current_head".to_string()),
+            Err(err) if err.contains("current_head") => Ok(()),
+            Err(err) => Err(format!("error should mention current_head, got: {err}")),
+        }
+    }
+
+    #[test]
+    fn receipt_check_invalid_current_head_exits_nonzero() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-check-invalid-head-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+        let path = dir.join("invalid_head.json");
+        let json = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt",
+            "canonical_gap_id": "gap:test:aabbccdd",
+            "verify_command": "cargo test",
+            "verify_status": "passed",
+            "current_head": "not-a-sha",
+            "written_at": "2026-06-11T00:00:00Z"
+        });
+        std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
+
+        let result = check_receipt(&ReceiptCheckOptions {
+            gap: None,
+            path: Some(path),
+            ledger: None,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => Err("check_receipt should reject an invalid current_head".to_string()),
+            Err(err) if err.contains("current_head") => Ok(()),
+            Err(err) => Err(format!("error should mention current_head, got: {err}")),
+        }
+    }
+
+    #[test]
     fn receipt_check_invalid_status_in_file_exits_nonzero() -> Result<(), String> {
         let dir = std::env::temp_dir().join(format!(
             "ripr-receipt-check-bad-status-{}",
@@ -696,6 +811,7 @@ mod tests {
             "canonical_gap_id": "gap:test:aabbccdd",
             "verify_command": "cargo test",
             "verify_status": "invalid_status",
+            "current_head": "0123456789abcdef0123456789abcdef01234567",
             "written_at": "2026-06-11T00:00:00Z"
         });
         std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
@@ -753,6 +869,9 @@ mod tests {
             "canonical_gap_id": gap_id,
             "verify_command": "cargo test",
             "verify_status": "passed",
+            "current_head": crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?,
             "written_at": "2026-06-14T00:00:00Z"
         });
         std::fs::write(&path, json.to_string())

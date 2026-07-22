@@ -249,7 +249,7 @@ Usage: ripr receipt <subcommand>
 Subcommands:
   write    Author a receipt JSON for a completed repair attempt.
              Options:
-               --current-head <SHA>  Optional exact head SHA for review receipts.
+               --current-head <SHA>  Optional asserted HEAD; must match the actual repository HEAD.
   check    Structurally validate a receipt JSON file.
 
 The `ripr receipt write` command is the canonical receipt command.

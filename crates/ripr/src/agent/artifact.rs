@@ -341,6 +341,23 @@ fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
         .map_err(|err| format!("git {args:?} returned non-UTF-8 output: {err}"))
 }
 
+/// Resolve the commit that Git reports for a repository root.
+///
+/// This is intentionally a small shared adapter for provenance consumers. It
+/// does not make an artifact or receipt current by itself; callers must still
+/// compare the result with the identity they are validating.
+pub(crate) fn current_git_head(root: &Path) -> Result<String, String> {
+    let head = git_output(root, &["rev-parse", "HEAD"])?;
+    let head = head.trim();
+    if !is_full_sha(head) {
+        return Err(format!(
+            "git rev-parse HEAD in {} returned an invalid commit `{head}`",
+            root.display()
+        ));
+    }
+    Ok(head.to_string())
+}
+
 fn is_full_sha(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }

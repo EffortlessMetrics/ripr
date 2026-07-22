@@ -5531,6 +5531,11 @@ fn receipt_write_then_check_exits_zero() -> Result<(), Box<dyn std::error::Error
         value["packet_id_available"], false,
         "packet_id_available should be false"
     );
+    assert_eq!(
+        value["current_head"].as_str().unwrap_or("").len(),
+        40,
+        "current_head should be the observed Git SHA"
+    );
     assert!(
         value["written_at"].as_str().unwrap_or("").contains('T'),
         "written_at should be RFC3339"
@@ -5681,6 +5686,8 @@ fn receipt_check_orphan_exits_nonzero() -> Result<(), Box<dyn std::error::Error>
 
     // Write a receipt for a gap that will NOT appear in the ledger.
     let receipt_path = out_dir.join("receipt.json");
+    let current_head = run_command("git", Some(&workspace_root()), &["rev-parse", "HEAD"])?;
+    let current_head = String::from_utf8(current_head.stdout)?.trim().to_string();
     let receipt_json = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -5688,6 +5695,7 @@ fn receipt_check_orphan_exits_nonzero() -> Result<(), Box<dyn std::error::Error>
         "canonical_gap_id": "gap:orphan:aabbccdd",
         "verify_command": "cargo test",
         "verify_status": "passed",
+        "current_head": current_head,
         "written_at": "2026-06-14T00:00:00Z"
     });
     std::fs::write(&receipt_path, receipt_json.to_string())?;

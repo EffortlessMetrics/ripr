@@ -105,6 +105,27 @@ When `--gap` is provided without `--path`, `ripr receipt check`
 resolves the path from the canonical location
 `target/ripr/receipts/<canonical_gap_id>.json`.
 
+### Repository HEAD binding
+
+Every receipt written by `ripr receipt write` records the commit returned by
+`git rev-parse HEAD` for the process working directory in `current_head`.
+The field is populated even when `--current-head` is omitted. If a caller
+supplies `--current-head`, it is treated as an assertion and must match the
+actual repository HEAD; a plausible but stale SHA is rejected and no receipt
+is written. A write outside a Git repository, or against a repository without
+a resolvable HEAD, fails closed.
+
+`ripr receipt check` also requires `current_head` and validates it as a
+40-character hexadecimal SHA before reporting the receipt structurally valid.
+This is format/provenance validation only; the checker does not yet compare a
+transported receipt's head with a selected repository root.
+
+This is the first provenance floor for the receipt writer. It does not yet
+bind the receipt to an analysis artifact, configuration digest, executed
+command result, or a repository-root identity that can be checked after the
+receipt leaves the invoking process. Those follow-ups remain in #1941 and
+#1979.
+
 ### `canonical_receipt_command` field rule
 
 Every surface that emits a `receipt_command` field MUST emit the
@@ -223,6 +244,10 @@ no code changes.
 - Does not prove semantic correctness beyond the recorded verify
   command. A receipt records what was run; it does not certify
   the repair is complete or correct.
+- Does not make the free-form `--verify-command` an executed or
+  producer-authorized command. The current-head check binds only the
+  repository revision observed by the receipt writer; command execution and
+  result provenance remain separate contracts.
 - Does not use mutation-runtime vocabulary. The static-language
   constraint applies: the words `killed`, `survived`, `untested`,
   `proven`, and `adequate` are forbidden in receipt output.
