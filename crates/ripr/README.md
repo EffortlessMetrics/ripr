@@ -13,7 +13,7 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.8.x` line keeps the analyzer,
+This is the product repository for `ripr`. The `0.10.x` line keeps the analyzer,
 editor, CI, and agent loops aligned around static evidence, preview-language
 visibility, and repo-local operating packets for targeted tests.
 
