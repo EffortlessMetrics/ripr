@@ -3,6 +3,7 @@
     reason = "CLI smoke test: unwrap on Command::output() and CARGO_MANIFEST_DIR's parent chain is the canonical fail-fast pattern for binary integration tests; receipted via policy/no-panic-allowlist.toml entries for crates/ripr/tests/cli_smoke.rs."
 )]
 
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -102,6 +103,124 @@ fn assert_stdout_matches_fixture(
 
 fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
+}
+
+fn write_bound_repo_exposure_fixture(
+    root: &Path,
+    path: &Path,
+    seam_json: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let head = run_command("git", Some(root), &["rev-parse", "HEAD"])?;
+    let head = String::from_utf8(head.stdout)?.trim().to_string();
+    let root_identity = root.canonicalize()?.to_string_lossy().replace('\\', "/");
+    let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    let raw = format!(
+        r#"{{
+  "schema_version": "0.3",
+  "artifact": {{
+    "kind": "repo_exposure",
+    "schema_version": "1",
+    "canonicalization": "raw_json_placeholder_v1",
+    "producer": {{"tool": "ripr", "version": "0.10.0"}},
+    "repository": {{"root": "{root_identity}", "head": "{head}"}},
+    "analysis": {{"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": "clean"}},
+    "snapshot_identity": "snapshot:input:fixture",
+    "content_sha256": "{placeholder}"
+  }},
+  "scope": "repo",
+  "run_status": "complete",
+  "seams": [{seam_json}]
+}}"#
+    );
+    let mut hasher = Sha256::new();
+    hasher.update(raw.as_bytes());
+    let digest = hasher.finalize();
+    let digest = format!(
+        "sha256:{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    std::fs::write(path, raw.replace(placeholder, &digest))?;
+    Ok(())
+}
+
+fn init_git_fixture_repo(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::write(root.join("marker.txt"), "fixture\n")?;
+    run_git(root, &["init"])?;
+    run_git(root, &["add", "marker.txt"])?;
+    let commit = run_command(
+        "git",
+        Some(root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "fixture",
+        ],
+    )?;
+    assert!(commit.status.success(), "fixture commit failed: {commit:?}");
+    Ok(())
+}
+
+fn recommit_repo_exposure_json(mut raw: String) -> String {
+    let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    let key = "\"content_sha256\"";
+    if let Some(key_start) = raw.find(key) {
+        let value_search_start = key_start + key.len();
+        if let Some(value_offset) = raw[value_search_start..].find('"') {
+            let value_start = value_search_start + value_offset + 1;
+            if let Some(end_offset) = raw[value_start..].find('"') {
+                raw.replace_range(value_start..value_start + end_offset, placeholder);
+            }
+        }
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(raw.as_bytes());
+    let digest = hasher.finalize();
+    let digest = format!(
+        "sha256:{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    raw = raw.replace(placeholder, &digest);
+    raw
+}
+
+fn bind_repo_exposure_fixture_with_worktree(
+    root: &Path,
+    source: &Path,
+    destination: &Path,
+    worktree: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(source)?)?;
+    value["schema_version"] = serde_json::Value::String("0.3".to_string());
+    value["run_status"] = serde_json::Value::String("complete".to_string());
+    let head = run_command("git", Some(root), &["rev-parse", "HEAD"])?;
+    let head = String::from_utf8(head.stdout)?.trim().to_string();
+    let root_identity = root.canonicalize()?.to_string_lossy().replace('\\', "/");
+    let placeholder = serde_json::Value::String(
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+    );
+    value["artifact"] = serde_json::json!({
+        "kind": "repo_exposure",
+        "schema_version": "1",
+        "canonicalization": "raw_json_placeholder_v1",
+        "producer": {"tool": "ripr", "version": "0.10.0"},
+        "repository": {"root": root_identity, "head": head},
+        "analysis": {"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": worktree},
+        "snapshot_identity": "snapshot:input:fixture",
+        "content_sha256": placeholder,
+    });
+    let raw = serde_json::to_string_pretty(&value)?;
+    std::fs::write(destination, recommit_repo_exposure_json(raw))?;
+    Ok(())
 }
 
 fn normalize_generated_at(text: String) -> String {
@@ -1139,15 +1258,35 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
     ])?;
     assert_stdout_matches_fixture(&brief, &format!("{base}/agent-brief.json"))?;
 
+    let artifact_dir = workspace_root().join("target/ripr/test-agent-verify");
+    std::fs::create_dir_all(&artifact_dir)?;
+    let before_artifact = artifact_dir.join("before.repo-exposure.json");
+    let after_artifact = artifact_dir.join("after.repo-exposure.json");
+    bind_repo_exposure_fixture_with_worktree(
+        &workspace_root(),
+        &workspace_root()
+            .join("fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"),
+        &before_artifact,
+        "dirty",
+    )?;
+    bind_repo_exposure_fixture_with_worktree(
+        &workspace_root(),
+        &workspace_root()
+            .join("fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json"),
+        &after_artifact,
+        "dirty",
+    )?;
+    let before_artifact_path = "target/ripr/test-agent-verify/before.repo-exposure.json";
+    let after_artifact_path = "target/ripr/test-agent-verify/after.repo-exposure.json";
     let verify = run_ripr_in_workspace(&[
         "agent",
         "verify",
         "--root",
         ".",
         "--before",
-        "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+        before_artifact_path,
         "--after",
-        "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+        after_artifact_path,
         "--json",
     ])?;
     assert_stdout_matches_fixture(&verify, &format!("{base}/agent-verify.json"))?;
@@ -1180,6 +1319,7 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
         "agent receipt fixture drifted"
     );
     std::fs::remove_dir_all(out_dir)?;
+    std::fs::remove_dir_all(artifact_dir)?;
     Ok(())
 }
 
@@ -1550,15 +1690,13 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
 {
     let root = unique_temp_workspace("agent-verify");
     std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
     let before = root.join("before.repo-exposure.json");
     let after = root.join("after.repo-exposure.json");
-    std::fs::write(
+    write_bound_repo_exposure_fixture(
+        &root,
         &before,
         r#"{
-  "schema_version": "0.2",
-  "scope": "repo",
-  "seams": [
-    {
       "seam_id": "seam-a",
       "kind": "predicate_boundary",
       "file": "src/pricing.rs",
@@ -1567,17 +1705,12 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
       "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "weak"}],
       "observed_values": ["50"],
       "missing_discriminators": [{"value": "threshold equality", "reason": "not observed"}]
-    }
-  ]
-}"#,
+    }"#,
     )?;
-    std::fs::write(
+    write_bound_repo_exposure_fixture(
+        &root,
         &after,
         r#"{
-  "schema_version": "0.2",
-  "scope": "repo",
-  "seams": [
-    {
       "seam_id": "seam-a",
       "kind": "predicate_boundary",
       "file": "src/pricing.rs",
@@ -1586,9 +1719,7 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
       "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "strong"}],
       "observed_values": ["50", "100"],
       "missing_discriminators": []
-    }
-  ]
-}"#,
+    }"#,
     )?;
 
     let before_path = before.display().to_string();
@@ -1612,6 +1743,252 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
     assert!(stdout.contains(r#""change": "improved""#));
     assert!(stdout.contains(r#""seam_id": "seam-a""#));
     assert!(stdout.contains("missing discriminator no longer reported"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_tampered_committed_artifact() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-tampered");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    let mut tampered = std::fs::read_to_string(&before)?;
+    tampered.push(' ');
+    std::fs::write(&before, tampered)?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("content commitment mismatch"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_plausible_uncommitted_json() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-fabricated");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let fabricated =
+        r#"{"schema_version":"0.3","scope":"repo","run_status":"complete","seams":[]}"#;
+    std::fs::write(&before, fabricated)?;
+    std::fs::write(&after, fabricated)?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("canonical repo-exposure artifact"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-incomparable-input");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    let altered = std::fs::read_to_string(&after)?
+        .replace("input:fixture", "input:other")
+        .replace("snapshot:input:fixture", "snapshot:input:other");
+    std::fs::write(&after, recommit_repo_exposure_json(altered))?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("analysis input identities differ"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_accepts_historical_comparable_pair_with_disclosure()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-historical");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    std::fs::write(root.join("marker.txt"), "fixture-updated\n")?;
+    run_git(&root, &["add", "marker.txt"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "advance fixture",
+        ],
+    )?;
+    if !commit.status.success() {
+        return Err(format!("historical fixture commit failed: {commit:?}").into());
+    }
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("historical_noncurrent"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_discloses_current_head_with_dirty_worktree()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-dirty");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    std::fs::write(root.join("marker.txt"), "unsaved-edit\n")?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("dirty_worktree"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_unsupported_repo_exposure_schema() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = unique_temp_workspace("agent-verify-schema");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    let altered = std::fs::read_to_string(&before)?
+        .replace("\"schema_version\": \"0.3\"", "\"schema_version\": \"9.0\"");
+    std::fs::write(&before, altered)?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unsupported repo-exposure schema"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_malformed_typed_seam() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-seam-schema");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &before, seam)?;
+    write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    let altered =
+        std::fs::read_to_string(&before)?.replace("\"line\":42", "\"line\":\"not-a-line\"");
+    std::fs::write(&before, altered)?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("canonical repo-exposure artifact"));
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

@@ -6,6 +6,10 @@
 //! `REPO_EXPOSURE_SCHEMA_VERSION`; bumping it requires updating the
 //! doc and any downstream consumers in lockstep.
 
+use crate::agent::artifact::{
+    CONTENT_SHA256_PLACEHOLDER, RepoExposureArtifactContext, Sha256Writer,
+    repo_exposure_artifact_metadata,
+};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
 use crate::analysis::SeamLimitSource;
@@ -90,6 +94,63 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
     ts_guidance: Option<&TsFullRepoGuidance>,
     out: &mut W,
 ) -> io::Result<()> {
+    write_repo_exposure_json_document(classified, limit_info, ts_guidance, None, out)
+}
+
+/// Stream a producer-owned repo-exposure artifact with repository, revision,
+/// worktree, and content identity.  The first pass hashes the exact document
+/// with the fixed content placeholder; the second pass emits the same bytes
+/// with the resulting digest.  This preserves the bounded-memory writer path.
+pub(crate) fn write_repo_exposure_json_with_context<W: io::Write>(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    context: &RepoExposureArtifactContext,
+    out: &mut W,
+) -> Result<(), String> {
+    let placeholder = repo_exposure_artifact_metadata(context, CONTENT_SHA256_PLACEHOLDER)?;
+    let mut hasher = Sha256Writer::new();
+    write_repo_exposure_json_document(
+        classified,
+        limit_info,
+        ts_guidance,
+        Some(&placeholder),
+        &mut hasher,
+    )
+    .map_err(|err| format!("hash repo exposure JSON failed: {err}"))?;
+    let content_sha256 = hasher.finish();
+    let mut metadata = placeholder;
+    metadata["content_sha256"] = serde_json::Value::String(content_sha256);
+    write_repo_exposure_json_document(classified, limit_info, ts_guidance, Some(&metadata), out)
+        .map_err(|err| format!("write repo exposure JSON failed: {err}"))
+}
+
+/// Render a producer-owned repo-exposure artifact for non-streaming library
+/// callers.  The CLI uses the streaming sibling above.
+pub(crate) fn render_repo_exposure_json_with_context(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    context: &RepoExposureArtifactContext,
+) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    write_repo_exposure_json_with_context(
+        classified,
+        limit_info,
+        ts_guidance,
+        context,
+        &mut bytes,
+    )?;
+    String::from_utf8(bytes).map_err(|err| format!("repo exposure JSON was not UTF-8: {err}"))
+}
+
+fn write_repo_exposure_json_document<W: io::Write>(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    artifact: Option<&serde_json::Value>,
+    out: &mut W,
+) -> io::Result<()> {
     let metrics = ExposureMetrics::from(classified);
     let canonical_gaps = canonical_gap_identities(classified);
 
@@ -99,6 +160,9 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
         "  \"schema_version\": \"{}\",",
         REPO_EXPOSURE_SCHEMA_VERSION
     )?;
+    if let Some(artifact) = artifact {
+        writeln!(out, "  \"artifact\": {},", artifact)?;
+    }
     writeln!(out, "  \"scope\": \"repo\",")?;
 
     // run_status and limitations[]:

@@ -6399,6 +6399,45 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0134"
+name = "repair artifact provenance"
+spec = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
+tests = [
+  "crates/ripr/src/agent/artifact.rs::tests::content_placeholder_is_fixed_width",
+  "crates/ripr/src/agent/artifact.rs::tests::content_commitment_rejects_duplicate_fields",
+  "crates/ripr/src/agent/artifact.rs::tests::content_commitment_rejects_non_hex_digest",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_compares_before_after_repo_exposure_json",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_tampered_committed_artifact",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_plausible_uncommitted_json",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_incomparable_analysis_inputs",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_accepts_historical_comparable_pair_with_disclosure",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_discloses_current_head_with_dirty_worktree",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_unsupported_repo_exposure_schema",
+  "crates/ripr/tests/cli_smoke.rs::agent_verify_rejects_malformed_typed_seam",
+  "crates/ripr/tests/cli_smoke.rs::editor_agent_loop_fixture_outputs_match_expected",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+]
+code = [
+  "crates/ripr/src/agent/artifact.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/outcome/render_json.rs",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/adr/0020-repair-artifacts-carry-producer-identity.md",
+  "docs/adr/README.md",
+  "docs/specs/README.md",
+  "policy/doc-artifacts.toml",
+]
+metrics = [
+  "repair_artifact_provenance_status_accepted",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0114"
 name = "rust transitive-reach limitation"
 spec = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"

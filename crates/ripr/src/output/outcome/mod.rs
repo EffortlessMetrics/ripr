@@ -18,7 +18,9 @@ use markdown::md_escape;
 pub(crate) use markdown::render_targeted_test_outcome_md;
 pub(crate) use path::display_path;
 use path::normalize_report_path;
-pub(crate) use render_json::{render_agent_verify_json, render_targeted_test_outcome_json};
+pub(crate) use render_json::{
+    render_agent_verify_json_with_currentness, render_targeted_test_outcome_json,
+};
 use review::review_attention_class;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
@@ -1247,7 +1249,7 @@ mod tests {
             "after.json".to_string(),
         )?;
 
-        let json = render_agent_verify_json(&report)?;
+        let json = render_json::render_agent_verify_json_with_currentness(&report, None)?;
         let value: Value = serde_json::from_str(&json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(value["schema_version"], AGENT_VERIFY_SCHEMA_VERSION);
@@ -1448,7 +1450,7 @@ mod tests {
             "check_output_finding"
         );
 
-        let verify_json = render_agent_verify_json(&report)?;
+        let verify_json = render_json::render_agent_verify_json_with_currentness(&report, None)?;
         let verify: Value = serde_json::from_str(&verify_json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(verify["summary"]["gap_movement"]["closed"], 1);

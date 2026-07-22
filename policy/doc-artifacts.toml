@@ -634,3 +634,11 @@ path = "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Issue #2131 guidance coherence fix: detect assertion-shaped owners (body dominated by assert*/expect calls, no non-test callers; fail-closed on unrecognized statements and bare-name caller collisions) and reframe recommended_next_step for oracles instead of code under test; class never changes; additive owner_shape evidence line only (no schema_version bump, no version bump); 4 new fixtures, zero pre-existing golden drift; no repair_packet_ready impact."
+
+[[artifact]]
+id = "RIPR-SPEC-0134"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Issue #1977 first provenance slice: producer-owned repo-exposure identity envelope, repository/root and revision disclosure, bounded raw-JSON content commitment, and fail-closed agent verify ingress; receipt command execution and final receipt binding remain follow-up slices under #1941."

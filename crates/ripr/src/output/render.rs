@@ -76,11 +76,18 @@ pub(crate) fn render_check_with_config(
             let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
-            Ok(repo_exposure::render_repo_exposure_json(
+            let artifact_context =
+                crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                    output.root.clone(),
+                    output.mode.as_str().to_string(),
+                    output.base.clone(),
+                )?;
+            repo_exposure::render_repo_exposure_json_with_context(
                 &classified,
                 limit_info.as_ref(),
                 ts_guidance.as_ref(),
-            ))
+                &artifact_context,
+            )
         }
         OutputFormat::RepoExposureSummaryJson => {
             let classified =

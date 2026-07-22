@@ -212,13 +212,48 @@ fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
     let after_path = validate_agent_verify_snapshot_path(&options.root, &options.after, "--after")?;
     let before_json = read_agent_verify_snapshot(&before_path, "before")?;
     let after_json = read_agent_verify_snapshot(&after_path, "after")?;
+    let before_identity = crate::agent::artifact::validate_repo_exposure_artifact(
+        &options.root,
+        &before_json,
+        "before",
+    )?;
+    let after_identity = crate::agent::artifact::validate_repo_exposure_artifact(
+        &options.root,
+        &after_json,
+        "after",
+    )?;
+    if before_identity.base_revision != after_identity.base_revision {
+        return Err(format!(
+            "agent verify artifacts are incomparable: base revisions differ ({:?} vs {:?})",
+            before_identity.base_revision, after_identity.base_revision
+        ));
+    }
+    if before_identity.input_identity != after_identity.input_identity {
+        return Err(
+            "agent verify artifacts are incomparable: analysis input identities differ".to_string(),
+        );
+    }
+    let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
+        (
+            crate::agent::artifact::ArtifactCurrentness::Current,
+            crate::agent::artifact::ArtifactCurrentness::Current,
+        ) => "current",
+        (
+            crate::agent::artifact::ArtifactCurrentness::Historical,
+            crate::agent::artifact::ArtifactCurrentness::Historical,
+        ) => "historical_noncurrent",
+        _ => "dirty_worktree",
+    };
     let report = output::outcome::targeted_test_outcome_report_from_json(
         &before_json,
         &after_json,
         output::outcome::display_path(&options.before),
         output::outcome::display_path(&options.after),
     )?;
-    let rendered = output::outcome::render_agent_verify_json(&report)?;
+    let rendered = output::outcome::render_agent_verify_json_with_currentness(
+        &report,
+        Some(artifact_currentness),
+    )?;
     print!("{rendered}");
     Ok(())
 }
@@ -3744,15 +3779,21 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
             analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
         let ts_guidance =
             output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
+        let artifact_context =
+            crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                input.root.clone(),
+                input.mode.as_str().to_string(),
+                input.base.clone(),
+            )?;
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
-        output::repo_exposure::write_repo_exposure_json(
+        output::repo_exposure::write_repo_exposure_json_with_context(
             &classified,
             limit_info.as_ref(),
             ts_guidance.as_ref(),
+            &artifact_context,
             &mut handle,
-        )
-        .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        )?;
         return Ok(());
     }
     // Capture root and diff_file before input is moved into the analysis call.

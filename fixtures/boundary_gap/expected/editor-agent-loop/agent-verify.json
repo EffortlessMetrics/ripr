@@ -1,8 +1,9 @@
 {
+  "artifact_currentness": "dirty_worktree",
   "changed_seams": [],
   "inputs": {
-    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
-    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
+    "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
   },
   "new_gaps": [],
   "resolved_gaps": [],

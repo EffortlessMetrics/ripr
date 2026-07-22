@@ -1937,6 +1937,40 @@ Lane 1 `evidence_record` projection. Large repositories should use
 `repo-exposure-summary-json` for ordinary metrics, badge, planning, or CI
 summary workflows, and reserve the full artifact for explicit deep inspection.
 
+Every producer-generated `repo-exposure-json` snapshot also carries an
+additive top-level `artifact` envelope before it is suitable for
+`ripr agent verify`:
+
+```json
+{
+  "kind": "repo_exposure",
+  "schema_version": "1",
+  "canonicalization": "raw_json_placeholder_v1",
+  "producer": {"tool": "ripr", "version": "0.10.0"},
+  "repository": {"root": "<workspace-root>", "head": "<40-hex-sha>"},
+  "analysis": {
+    "format": "repo-exposure-json",
+    "mode": "draft",
+    "base_revision": null,
+    "input_identity": "input:<bounded-fingerprint>",
+    "command": "ripr check --format repo-exposure-json",
+    "profile": "draft",
+    "worktree": "clean"
+  },
+  "snapshot_identity": "snapshot:input:<bounded-fingerprint>",
+  "content_sha256": "sha256:<64-hex-digest>"
+}
+```
+
+`content_sha256` commits the exact JSON bytes after replacing its one value
+with the fixed zero-digest placeholder. This is an integrity/currentness
+commitment, not a signature or runtime proof. `repository.head` and
+`analysis.worktree` are `unavailable` when the producer cannot resolve Git;
+such an artifact is disclosed but is not accepted by `agent verify`.
+`analysis.input_identity` binds the selected repository, base, mode, named
+workspace inputs, and analyzer version without exposing configuration bytes;
+`analysis.command` and `analysis.profile` state the producer operation used.
+
 ### Repo Exposure Summary JSON
 
 `ripr check --root . --format repo-exposure-summary-json` emits a bounded
@@ -6034,7 +6068,11 @@ ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.js
 
 The command does not run analysis, mutation testing, SARIF policy, badge
 generation, LSP refresh, or cache warm-up. It only compares the supplied static
-artifacts after validating they resolve under `--root`.
+artifacts after validating they resolve under `--root` and carry the
+producer-owned repo-exposure identity envelope. Missing, unsupported,
+root-mismatched, revision-invalid, or content-tampered artifacts fail before
+movement is calculated. This is static artifact integrity/currentness
+validation; it does not execute tests or runtime mutation testing.
 
 JSON shape:
 
@@ -6047,6 +6085,7 @@ JSON shape:
     "before": "target/ripr/workflow/before.repo-exposure.json",
     "after": "target/ripr/workflow/after.repo-exposure.json"
   },
+  "artifact_currentness": "current",
   "summary": {
     "improved": 1,
     "changed": 0,
@@ -6114,6 +6153,9 @@ Field contract:
 - `schema_version` - currently `"0.1"`.
 - `status` - always `"advisory"`; this is an agent verification hint, not a CI
   policy.
+- `artifact_currentness` - the pair's repository identity disclosure:
+  `current`, `dirty_worktree`, or `historical_noncurrent`. It does not claim
+  that tests ran or that the static gap is correct.
 - `summary.improved` - matched seams whose after `SeamGripClass` ranks higher
   than before.
 - `summary.changed` - matched seams whose class changed without ranking higher

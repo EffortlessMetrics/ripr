@@ -1,17 +1,17 @@
 {
   "inputs": {
-    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+    "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
     "agent_verify_json": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
-    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
   },
   "provenance": {
     "after_artifact": {
-      "path": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+      "path": "target/ripr/test-agent-verify/after.repo-exposure.json",
       "sha256": "sha256:d77145b60cad4fc56217fceec32ec5283ff1dd3e7eef2b1046a4b1baf5488c1c"
     },
     "after_class": "weakly_gripped",
     "before_artifact": {
-      "path": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+      "path": "target/ripr/test-agent-verify/before.repo-exposure.json",
       "sha256": "sha256:3535d5554f60e2e442bd2b9e44a7daa1dbfae5d0effd67e3d797c7cfa7fca7c2"
     },
     "before_class": "weakly_gripped",

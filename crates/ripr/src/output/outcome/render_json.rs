@@ -36,8 +36,9 @@ pub(crate) fn render_targeted_test_outcome_json(
     super::super::json::render_pretty_with_newline(&value, "targeted-test outcome")
 }
 
-pub(crate) fn render_agent_verify_json(
+pub(crate) fn render_agent_verify_json_with_currentness(
     report: &TargetedTestOutcomeReport,
+    artifact_currentness: Option<&str>,
 ) -> Result<String, String> {
     let improved = report
         .moved
@@ -64,6 +65,7 @@ pub(crate) fn render_agent_verify_json(
             "before": report.before_path.as_str(),
             "after": report.after_path.as_str()
         },
+        "artifact_currentness": artifact_currentness,
         "summary": {
             "improved": improved,
             "changed": changed,
