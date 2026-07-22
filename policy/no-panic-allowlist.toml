@@ -9,7 +9,7 @@ status = "canonical"
 
 [[allow]]
 id = "panic-0001"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
@@ -24,7 +24,7 @@ receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 id = "panic-0002"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
@@ -39,7 +39,7 @@ receiver_fingerprint = "fs::create_dir_all(parent)"
 
 [[allow]]
 id = "panic-0004"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "expect"
 classification = "test_only"
 explanation = "Test harness: expects supported test intent kinds to parse successfully"
@@ -53,7 +53,7 @@ callee = "expect"
 
 [[allow]]
 id = "panic-0005"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -68,7 +68,7 @@ receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 id = "panic-0006"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -82,7 +82,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0007"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -96,7 +96,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0008"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -110,7 +110,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0009"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -124,7 +124,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0010"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -138,7 +138,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0011"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -152,7 +152,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0012"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: panic findings collection validation"
@@ -166,7 +166,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0015"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 allowlist parser validation"
@@ -180,7 +180,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0016"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.1 backward compatibility validation"
@@ -194,7 +194,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0017"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 missing fields validation"
@@ -436,7 +436,7 @@ column = 5
 
 [[allow]]
 id = "panic-0030"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
@@ -451,7 +451,7 @@ receiver_fingerprint = "fs::create_dir_all(&dir)"
 
 [[allow]]
 id = "panic-0031"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
@@ -466,7 +466,7 @@ receiver_fingerprint = "fs::write(path, text)"
 
 [[allow]]
 id = "panic-0032"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: saves current working directory before test"
@@ -481,7 +481,7 @@ receiver_fingerprint = "std::env::current_dir()"
 
 [[allow]]
 id = "panic-0033"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: switches into a temporary working directory"
@@ -496,7 +496,7 @@ receiver_fingerprint = "std::env::set_current_dir(&root)"
 
 [[allow]]
 id = "panic-0034"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: restores the previous working directory"
@@ -511,7 +511,7 @@ receiver_fingerprint = "std::env::set_current_dir(old)"
 
 [[allow]]
 id = "panic-0035"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
