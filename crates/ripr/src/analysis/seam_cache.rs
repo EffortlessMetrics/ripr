@@ -528,7 +528,7 @@ pub(crate) fn corpus_fingerprint(root: &Path, files: &[PathBuf]) -> Option<Strin
         let metadata = std::fs::metadata(root.join(path)).ok()?;
         let modified = metadata.modified().ok()?;
         let since_epoch = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
-        let mut entry = format!(
+        let entry = format!(
             "{}\0{}\0{}\0{}",
             path.to_string_lossy().replace('\\', "/"),
             since_epoch.as_secs(),
@@ -539,13 +539,15 @@ pub(crate) fn corpus_fingerprint(root: &Path, files: &[PathBuf]) -> Option<Strin
         // mtime-restoring tools, so mixing it in closes the
         // preserved-mtime rewrite residual on unix (see the doc comment).
         #[cfg(unix)]
-        {
+        let entry = {
             use std::os::unix::fs::MetadataExt;
+            let mut entry = entry;
             entry.push('\0');
             entry.push_str(&metadata.ctime().to_string());
             entry.push('\0');
             entry.push_str(&metadata.ctime_nsec().to_string());
-        }
+            entry
+        };
         entries.push(entry);
     }
     entries.sort();
