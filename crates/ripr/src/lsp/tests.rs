@@ -47,7 +47,9 @@ use crate::domain::{
     StaticLimitKind, ValueContext, ValueFact,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
@@ -4529,6 +4531,67 @@ fn workspace_diagnostic_batches_uses_default_lsp_analysis_config() {
 }
 
 #[test]
+fn workspace_diagnostics_exclude_changed_test_files_from_published_findings() -> Result<(), String>
+{
+    let root = unique_lsp_test_root("changed-test-scope")?;
+    write_lsp_scope_fixture(&root.path)?;
+    run_lsp_scope_git(&root.path, &["init"])?;
+    run_lsp_scope_git(
+        &root.path,
+        &["config", "user.email", "ripr@example.invalid"],
+    )?;
+    run_lsp_scope_git(&root.path, &["config", "user.name", "RIPR Test"])?;
+    run_lsp_scope_git(
+        &root.path,
+        &["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"],
+    )?;
+    run_lsp_scope_git(&root.path, &["commit", "-m", "base"])?;
+
+    fs::write(
+        root.path.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+    fs::write(
+        root.path.join("tests/end_to_end.rs"),
+        "#[test]\nfn changed_test_helper() {\n    let value = if true { true } else { false };\n    assert_eq!(value, true);\n}\n",
+    )
+    .map_err(|err| format!("write changed test fixture failed: {err}"))?;
+    run_lsp_scope_git(&root.path, &["add", "src/lib.rs", "tests/end_to_end.rs"])?;
+    run_lsp_scope_git(&root.path, &["commit", "-m", "change production and test"])?;
+
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD~1".to_string()),
+        mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        ..LspAnalysisConfig::default()
+    };
+    let diagnostics = workspace_diagnostics_with_config(&root.path, &config, false)?;
+    let test_uri = super::uri::file_uri_for_path(&root.path.join("tests/end_to_end.rs"))?;
+    let production_uri = super::uri::file_uri_for_path(&root.path.join("src/lib.rs"))?;
+
+    let test_diagnostic_count = diagnostics
+        .batches
+        .iter()
+        .find(|batch| batch.uri == test_uri)
+        .map(|batch| batch.diagnostics.len())
+        .unwrap_or(0);
+    if test_diagnostic_count != 0 {
+        return Err(format!(
+            "changed test-only file received {test_diagnostic_count} LSP diagnostics"
+        ));
+    }
+    if !diagnostics
+        .batches
+        .iter()
+        .any(|batch| batch.uri == production_uri && !batch.diagnostics.is_empty())
+    {
+        return Err("changed production file received no LSP diagnostics".to_string());
+    }
+    Ok(())
+}
+
+#[test]
 fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
     let fixture_root = boundary_gap_fixture_root();
     let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
@@ -4552,6 +4615,43 @@ fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(
         "expected boundary_gap live workspace diagnostics to include ripr-seam-weakly-gripped"
     );
     Ok(())
+}
+
+fn write_lsp_scope_fixture(root: &Path) -> Result<(), String> {
+    fs::create_dir_all(root.join("src"))
+        .map_err(|err| format!("create fixture src failed: {err}"))?;
+    fs::create_dir_all(root.join("tests"))
+        .map_err(|err| format!("create fixture tests failed: {err}"))?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"lsp-scope\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write fixture manifest failed: {err}"))?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool { flag }\n",
+    )
+    .map_err(|err| format!("write fixture production file failed: {err}"))?;
+    fs::write(
+        root.join("tests/end_to_end.rs"),
+        "#[test]\nfn unchanged_test_helper() {\n    assert_eq!(true, true);\n}\n",
+    )
+    .map_err(|err| format!("write fixture test file failed: {err}"))
+}
+
+fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("run git {args:?} failed: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
 }
 
 #[test]
