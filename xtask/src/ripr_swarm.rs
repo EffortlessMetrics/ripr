@@ -12,8 +12,8 @@
 //! Three small helpers that sit physically inside this cluster but belong to
 //! the audit / actionable-gap families (`audit_slug`,
 //! `actionable_gap_outcome_state_counts_from_entries`,
-//! `actionable_gap_outcomes_missing_verify_result_count`) intentionally remain
-//! in `main.rs`; this module reaches them through `use super::*;`.
+//! `actionable_gap_outcomes_missing_verify_result_count`) live in
+//! `evidence_audit.rs`; this module reaches them through `use super::*;`.
 
 use super::*;
 
