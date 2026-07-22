@@ -188,6 +188,10 @@
         "title": "ripr: Restart Server"
       },
       {
+        "command": "ripr.selectWorkspaceRoot",
+        "title": "ripr: Select Workspace Root"
+      },
+      {
         "command": "ripr.showOutput",
         "title": "ripr: Show Output"
       },

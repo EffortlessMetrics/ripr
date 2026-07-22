@@ -110,6 +110,7 @@ confirmation.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Select Workspace Root`
 - `ripr: Diagnose Setup`
 - `ripr: Show Status`
 - `ripr: Show Output`

@@ -336,6 +336,7 @@ The editor default matches the CLI and direct LSP missing-config default:
 The extension contributes:
 
 - `ripr.restartServer`
+- `ripr.selectWorkspaceRoot`
 - `ripr.showOutput`
 - `ripr.copyContext`
 - `ripr.copySuggestedAssertion`

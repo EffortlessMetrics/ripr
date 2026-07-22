@@ -48,6 +48,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     status,
     vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
+    // No matching `onCommand:ripr.selectWorkspaceRoot` entry in package.json
+    // `activationEvents`: since VS Code 1.74 a contributed command activates
+    // its extension automatically, and engines.vscode is ^1.90.0. The
+    // manifest's legacy onCommand list predates that guarantee and is not
+    // extended for new commands. (#2077)
+    vscode.commands.registerCommand('ripr.selectWorkspaceRoot', async () =>
+      controller?.selectWorkspaceRoot()
+    ),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
     vscode.commands.registerCommand('ripr.showStatus', () => controller?.showStatus()),
     vscode.commands.registerCommand('ripr.diagnoseSetup', () => controller?.diagnoseSetup()),

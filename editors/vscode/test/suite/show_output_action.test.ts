@@ -26,6 +26,8 @@ suite('Show Output Warning Action', () => {
         root: '/workspace',
         roots: ['/workspace']
       }),
+      workspaceFolders: () => [],
+      showQuickPick: async () => undefined,
       resolveServer: async () => ({
         command: '/sentinel/trusted/ripr',
         source: 'configured',

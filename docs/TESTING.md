@@ -101,7 +101,8 @@ The test suite:
 
 - opens a fixture Rust workspace (`test-fixtures/workspace/Cargo.toml`)
 - activates the extension
-- asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
+- asserts commands are registered (`ripr.restartServer`, `ripr.selectWorkspaceRoot`,
+  `ripr.showOutput`,
   `ripr.copyContext`, `ripr.copySuggestedAssertion`,
   `ripr.copyTargetedTestBrief`, `ripr.copyAgentPacketCommand`,
   `ripr.copyAgentBriefCommand`, `ripr.copyAfterSnapshotCommand`,

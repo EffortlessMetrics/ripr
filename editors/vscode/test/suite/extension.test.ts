@@ -32,6 +32,7 @@ suite('Extension Smoke', () => {
   test('commands are registered', async () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('ripr.restartServer'));
+    assert.ok(commands.includes('ripr.selectWorkspaceRoot'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
     assert.ok(commands.includes('ripr.diagnoseSetup'));
@@ -2693,7 +2694,7 @@ suite('Extension Smoke', () => {
         'Status: Select one workspace folder before using ripr repair actions.',
         'Workspace root state: workspace_multi_root_ambiguous',
         'Root-scoped repair actions are suppressed until one workspace folder is selected.',
-        'Next safe action: Open a Rust or enabled preview-language file from one workspace folder'
+        'Next safe action: Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder'
       ]);
     } finally {
       await context.dispose();
@@ -3899,6 +3900,8 @@ function createControllerTestContext(options: ControllerTestOptions) {
       traceServer: 'off'
     }),
     workspaceRootState: () => configuredWorkspaceRootState,
+    workspaceFolders: () => [],
+    showQuickPick: async () => undefined,
     resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',

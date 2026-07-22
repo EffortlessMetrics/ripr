@@ -22,6 +22,7 @@ const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
 ];
 
 const SHOW_OUTPUT_ACTION = 'Show Output';
+const SELECT_WORKSPACE_ROOT_ACTION = 'Select Workspace Root';
 
 const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
 const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
@@ -140,6 +141,11 @@ interface RiprLanguageClient {
 export interface RiprClientRuntime {
   getConfig(): RiprConfig;
   workspaceRootState(): RiprWorkspaceRootState;
+  workspaceFolders(): readonly vscode.WorkspaceFolder[];
+  showQuickPick<T extends vscode.QuickPickItem>(
+    items: T[],
+    options?: vscode.QuickPickOptions
+  ): Thenable<T | undefined>;
   resolveServer(
     context: vscode.ExtensionContext,
     config: RiprConfig,
@@ -175,6 +181,8 @@ export interface RiprWorkspaceRootState {
 const defaultRuntime: RiprClientRuntime = {
   getConfig,
   workspaceRootState: currentWorkspaceRootState,
+  workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
+  showQuickPick: (items, options) => vscode.window.showQuickPick(items, options),
   resolveServer,
   createLanguageClient: (serverOptions, clientOptions) =>
     new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
@@ -208,6 +216,16 @@ export class RiprClientController {
     nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
+  /**
+   * Session-scoped workspace folder picked through `ripr: Select Workspace
+   * Root` (#2077). When the document-driven root state is ambiguous (multi-
+   * root workspace, no active file editor), startOnce() falls back to this
+   * pick so an explicit `ripr: Restart Server` after picking reuses it. It
+   * never overrides the active-document disambiguation: the pick is only
+   * consulted when the runtime reports `ambiguousMultiRoot`, and it is only
+   * honored while the picked folder is still one of the workspace folders.
+   */
+  private selectedWorkspaceRoot: string | undefined;
   /**
    * In-flight start() promise, used to deduplicate concurrent start attempts.
    *
@@ -273,7 +291,7 @@ export class RiprClientController {
     }
 
     const config = this.runtime.getConfig();
-    this.workspaceRootState = this.runtime.workspaceRootState();
+    this.workspaceRootState = this.resolveWorkspaceRootState();
     this.workspaceRoot = this.workspaceRootState.root;
     await this.refreshSetupStatusFiles();
 
@@ -293,9 +311,13 @@ export class RiprClientController {
         kind: 'workspaceAmbiguous',
         summary: 'Select one workspace folder before using ripr repair actions.',
         detail: workspaceRootStateDetail(this.workspaceRootState),
-        nextStep: 'Open a Rust or enabled preview-language file from one workspace folder, then run ripr: Restart Server.'
+        nextStep: 'Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder, then run ripr: Restart Server.'
       });
-      this.output.appendLine('ripr multi-root workspace is ambiguous; select a file before starting the server.');
+      this.output.appendLine('ripr multi-root workspace is ambiguous; select a workspace folder before starting the server.');
+      // Fire and forget (#2180 review): awaiting the warning would block
+      // start() — and extension activation, which awaits it — until the
+      // user answers the notification, which may never happen.
+      void this.offerWorkspaceRootSelection();
       return;
     }
 
@@ -440,6 +462,85 @@ export class RiprClientController {
   async restart(): Promise<void> {
     await this.stop();
     await this.start();
+  }
+
+  /**
+   * Workspace root state with the session-scoped `ripr: Select Workspace
+   * Root` pick applied (#2077). The pick only resolves an
+   * `ambiguousMultiRoot` state; when the active editor already selects a
+   * folder the document-driven state wins unchanged, and a pick whose folder
+   * left the workspace is ignored.
+   */
+  private resolveWorkspaceRootState(): RiprWorkspaceRootState {
+    const state = this.runtime.workspaceRootState();
+    if (state.kind !== 'ambiguousMultiRoot' || !this.selectedWorkspaceRoot) {
+      return state;
+    }
+    const picked = state.roots.find((root) => sameWorkspaceRoot(root, this.selectedWorkspaceRoot!));
+    if (!picked) {
+      // Do not silently drop a stale pick (#2180 review): name why the
+      // session selection is not being applied.
+      this.output.appendLine(
+        `ripr previously selected workspace root '${this.selectedWorkspaceRoot}' is no longer in the workspace; run ripr: Select Workspace Root again.`
+      );
+      this.selectedWorkspaceRoot = undefined;
+      return state;
+    }
+    return {
+      kind: 'selectedRoot',
+      root: picked,
+      roots: state.roots,
+      detail: 'selected with ripr: Select Workspace Root'
+    };
+  }
+
+  /**
+   * Offer the folder picker from the blocked `workspaceAmbiguous` start path
+   * (#2077): the status bar/tooltip alone told the user to "select one
+   * workspace folder" without any UI to do so. The warning names the action;
+   * accepting it runs the same flow as the palette command.
+   */
+  private async offerWorkspaceRootSelection(): Promise<void> {
+    const selection = await this.runtime.showWarningMessage(
+      'ripr cannot tell which workspace folder to analyze. Select one workspace folder to start the ripr server.',
+      SELECT_WORKSPACE_ROOT_ACTION
+    );
+    if (selection === SELECT_WORKSPACE_ROOT_ACTION) {
+      await this.selectWorkspaceRoot();
+    }
+  }
+
+  /**
+   * `ripr: Select Workspace Root` (#2077). In a multi-root workspace with no
+   * active file editor, the start path refuses with `workspaceAmbiguous` and
+   * previously offered no in-product way to pick a folder. This command
+   * shows a quick pick over the workspace folders (name + path), keeps the
+   * pick as session state, and restarts the server through the SAME single-
+   * server start path as the active-document disambiguation — one server for
+   * one folder.
+   */
+  async selectWorkspaceRoot(): Promise<void> {
+    const folders = this.runtime.workspaceFolders();
+    if (folders.length === 0) {
+      this.warnWithOutput('ripr found no workspace folder to select.');
+      return;
+    }
+    if (folders.length === 1) {
+      await this.runtime.showInformationMessage(
+        'ripr has a single workspace folder; no workspace root selection is needed.'
+      );
+      return;
+    }
+    const selected = await this.runtime.showQuickPick(workspaceRootPickItems(folders), {
+      placeHolder: 'Select the workspace folder ripr should use for this session',
+      matchOnDescription: true
+    });
+    if (!selected) {
+      return;
+    }
+    this.selectedWorkspaceRoot = selected.root;
+    this.output.appendLine(`ripr workspace root selected for this session: ${selected.root}`);
+    await this.restart();
   }
 
   /**
@@ -1108,7 +1209,7 @@ export class RiprClientController {
         detail: `${analysisStatusDetail(status)}\n${rootDetail}`,
         nextStep: status.root_recovery_route === 'refresh'
           ? 'Refresh the saved workspace to obtain current evidence for the new root.'
-          : 'Select one workspace folder, then restart the ripr server.'
+          : 'Run ripr: Select Workspace Root, or open a file in one workspace folder, then run ripr: Restart Server.'
       });
       return;
     }
@@ -5058,6 +5159,31 @@ function selectedLocation(selected: Record<string, unknown> | undefined): string
   }
   const line = numberFieldValue(selected, 'line');
   return line === undefined ? selectedPath : `${selectedPath}:${Math.trunc(line)}`;
+}
+
+/**
+ * Quick-pick item for `ripr: Select Workspace Root` (#2077): the folder name
+ * as the label and the folder path as the description, so the user can tell
+ * same-named folders apart. `root` carries the picked folder back to the
+ * controller.
+ */
+export interface WorkspaceRootPickItem extends vscode.QuickPickItem {
+  root: string;
+}
+
+/**
+ * Build the `ripr: Select Workspace Root` pick list from the workspace
+ * folders. Kept pure and exported so the pick-list shape is reviewable and
+ * testable without stubbing `vscode.window.showQuickPick` (#2077).
+ */
+export function workspaceRootPickItems(
+  folders: readonly vscode.WorkspaceFolder[]
+): WorkspaceRootPickItem[] {
+  return folders.map((folder) => ({
+    label: folder.name,
+    description: folder.uri.fsPath,
+    root: folder.uri.fsPath
+  }));
 }
 
 function currentWorkspaceRootState(): RiprWorkspaceRootState {

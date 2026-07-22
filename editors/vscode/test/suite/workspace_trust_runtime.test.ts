@@ -30,6 +30,8 @@ suite('Workspace Trust Runtime', () => {
         root: '/workspace',
         roots: ['/workspace']
       }),
+      workspaceFolders: () => [],
+      showQuickPick: async () => undefined,
       resolveServer: async () => {
         resolverCalls += 1;
         throw new Error('untrusted workspace must not resolve or download a server');
