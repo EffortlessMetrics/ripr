@@ -343,6 +343,47 @@ Rules:
   `gh issue view <N> --json state`. Describing the pre-fix state of an
   already-closed issue is a credibility failure.
 
+### Finding verification contract
+
+The status-comment contract above covers updates on existing issues. The same
+evidence discipline applies **before filing or materially updating a code
+finding** (#2026): an inaccurate issue becomes durable context for future
+agents and invites duplicate implementation.
+
+A finding record must name:
+
+- repository, inspected branch/ref, and full source SHA;
+- file path and exact lines or symbol, and the observation timestamp;
+- the reproduction command, or the explicit reason no executable
+  reproduction exists (a design question does not need a failing command,
+  but still requires current source identity and accurate behavior
+  description);
+- actual result vs. expected result or invariant;
+- an all-state, finding-specific issue/PR search (`gh issue list
+  --state all --search <term>` and `gh pr list --state all --search
+  <term>` — both default to open-only, and a bare list is not evidence
+  bound to the finding);
+- known concurrent PRs touching the seam;
+- confidence, remaining uncertainty, and a classification:
+  `verified_current | historical | cannot_reproduce | superseded |
+  design_question`.
+
+Pre-filing rules:
+
+1. Re-read the exact current file/symbol after all scouts return — scout
+   output is a lead, never the finding.
+2. Run the smallest deterministic reproduction where practical.
+3. Treat line numbers from an earlier commit as stale until re-resolved.
+4. Do not promote a grep absence into an architectural fact without
+   checking the search command and relevant alternate paths.
+5. Check open PRs for a branch that already changes the seam.
+6. When the premise changed during the audit, narrow or close the draft
+   instead of preserving the original claim; corrections edit or
+   prominently amend the original record rather than burying it in a later
+   summary.
+7. Source SHA binds evidence, but a moved main requires a premise recheck
+   — not automatic abandonment of a valid finding.
+
 ## PR Scope Doctrine
 
 Do not optimize PRs for low line count. Optimize for narrow production risk and
