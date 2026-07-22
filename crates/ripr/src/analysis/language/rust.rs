@@ -26,6 +26,16 @@ use std::path::Path;
 /// `diff_scope_oversized` error rather than exhausting host memory and aborting.
 const DIFF_INDEX_FILE_LIMIT: usize = 800;
 
+/// Hard analysis-cost guard for the repo-scoped path (#2109): the diff path
+/// caps its working set at [`DIFF_INDEX_FILE_LIMIT`], and the repo path now
+/// has the same guard so `ripr check --mode deep|ready` on a large monorepo
+/// fails closed with a named `repo_scope_oversized` error instead of loading
+/// and indexing the entire workspace unbounded.
+const REPO_INDEX_FILE_LIMIT: usize = 800;
+
+/// Env override for [`REPO_INDEX_FILE_LIMIT`].
+const REPO_INDEX_FILE_LIMIT_ENV: &str = "RIPR_MAX_REPO_INDEX_FILES";
+
 /// Env override for [`DIFF_INDEX_FILE_LIMIT`]. Operators on larger, well-resourced
 /// runners raise it; CI can lower it to exercise the guard.
 const DIFF_INDEX_FILE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_INDEX_FILES";
@@ -52,6 +62,29 @@ fn diff_index_file_limit_from_env(
     value: Result<String, std::env::VarError>,
 ) -> Result<usize, String> {
     positive_limit_from_env(DIFF_INDEX_FILE_LIMIT_ENV, DIFF_INDEX_FILE_LIMIT, value)
+}
+
+fn repo_index_file_limit_from_env(
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    positive_limit_from_env(REPO_INDEX_FILE_LIMIT_ENV, REPO_INDEX_FILE_LIMIT, value)
+}
+
+/// Fail closed when a repo-scoped working set exceeds the guard (#2109).
+/// The repair route names only effective continuations: a diff-based run
+/// (`--base`/`--diff`) or raising the limit. A "narrower mode" is NOT
+/// offered — repo-scoped analysis does not select files by mode, so that
+/// retry would hit the same guard.
+fn enforce_repo_index_file_limit(file_count: usize, scope_limit: usize) -> Result<(), String> {
+    if file_count <= scope_limit {
+        return Ok(());
+    }
+    Err(format!(
+        "repo_scope_oversized: {file_count} indexed Rust files exceed the \
+         {REPO_INDEX_FILE_LIMIT_ENV} limit ({scope_limit}); analysis was not run to protect \
+         runner memory. Repair route: narrow the scope with a diff-based run (--base/--diff), \
+         or raise the limit via {REPO_INDEX_FILE_LIMIT_ENV}=<number>."
+    ))
 }
 
 fn diff_changed_rust_line_limit() -> Result<usize, String> {
@@ -1176,6 +1209,11 @@ impl LanguageAdapter for RustAdapter {
         oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
         let rust_files = workspace::discover_rust_files(&options.root)?;
+        // Fail closed before the whole-workspace load (#2109): an
+        // over-limit repo analysis is a named error with a repair route,
+        // not an unbounded read+index that can exhaust host memory.
+        let scope_limit = repo_index_file_limit_from_env(std::env::var(REPO_INDEX_FILE_LIMIT_ENV))?;
+        enforce_repo_index_file_limit(rust_files.len(), scope_limit)?;
         let production_files = rust_files
             .iter()
             .filter(|path| workspace::is_production_rust_path(path))
@@ -1239,13 +1277,14 @@ mod tests {
         PARTIAL_DIFF_FILE_BUDGET_ENV, PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
         PARTIAL_DIFF_LINE_BUDGET_DEFAULT, PARTIAL_DIFF_LINE_BUDGET_ENV,
         PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets, PartialDiffScope,
-        PartialDiffStopReason, RustAdapter, apply_rust_macro_wrapped_assertion_limit,
-        changed_rust_line_count, cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
+        PartialDiffStopReason, REPO_INDEX_FILE_LIMIT_ENV, RustAdapter,
+        apply_rust_macro_wrapped_assertion_limit, changed_rust_line_count,
+        cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_identity_from_changed_files, diff_index_file_limit_from_env,
-        enforce_changed_rust_line_limit, macro_reach_limit_kind, owner_has_ffi_attr,
-        partial_diff_budgets_from_env, partition_canonical_form,
-        replace_witnessed_no_path_infection_summary, select_partial_diff_partition, sha256_hex,
-        transitive_reach_limit_kind,
+        enforce_changed_rust_line_limit, enforce_repo_index_file_limit, macro_reach_limit_kind,
+        owner_has_ffi_attr, partial_diff_budgets_from_env, partition_canonical_form,
+        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
+        select_partial_diff_partition, sha256_hex, transitive_reach_limit_kind,
     };
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{CallFact, FunctionSummary, LiteralFact, RustIndex, TestSummary};
@@ -1816,6 +1855,48 @@ mod tests {
             ),
             Err(message) => message,
         }
+    }
+
+    #[test]
+    fn repo_index_file_limit_env_parsing() -> Result<(), String> {
+        // Default applies when unset; valid override wins; invalid fails
+        // closed (#2109).
+        let unset = repo_index_file_limit_from_env(Err(std::env::VarError::NotPresent))
+            .map_err(|err| format!("default should parse: {err}"))?;
+        assert_eq!(
+            unset, 800,
+            "default must be the {REPO_INDEX_FILE_LIMIT_ENV} guard"
+        );
+        let raised = repo_index_file_limit_from_env(Ok("5000".to_string()))
+            .map_err(|err| format!("valid override should parse: {err}"))?;
+        assert_eq!(raised, 5000);
+        for bad in ["", "  ", "lots", "1.5", "0", "-5"] {
+            if repo_index_file_limit_from_env(Ok(bad.to_string())).is_ok() {
+                return Err(format!("invalid override {bad:?} must fail closed"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn enforce_repo_index_file_limit_is_fail_closed_exactly_over_the_guard() -> Result<(), String> {
+        // Exactly at the limit passes; one file over fails with the named
+        // error, the guard identity, and the repair route (#2109 review).
+        enforce_repo_index_file_limit(800, 800)
+            .map_err(|err| format!("exactly-at-limit must pass: {err}"))?;
+        let err = match enforce_repo_index_file_limit(801, 800) {
+            Err(err) => err,
+            Ok(()) => return Err("one over the limit must fail".to_string()),
+        };
+        for needle in [
+            "repo_scope_oversized",
+            "801 indexed Rust files",
+            "RIPR_MAX_REPO_INDEX_FILES",
+            "--base/--diff",
+        ] {
+            assert!(err.contains(needle), "error missing `{needle}`: {err}");
+        }
+        Ok(())
     }
 
     #[test]

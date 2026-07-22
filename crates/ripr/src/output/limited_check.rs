@@ -4,14 +4,34 @@ use serde_json::json;
 
 const DIFF_SCOPE_OVERSIZED_PREFIX: &str = "diff_scope_oversized:";
 const DIFF_SCOPE_REPAIR_ROUTE: &str = "analysis/diff-scope-budget";
+const REPO_SCOPE_OVERSIZED_PREFIX: &str = "repo_scope_oversized:";
+const REPO_SCOPE_REPAIR_ROUTE: &str = "analysis/repo-scope-budget";
 
 pub(crate) fn render_diff_scope_limited_check_json(
     input: &CheckInput,
     error: &str,
 ) -> Result<Option<String>, String> {
-    if !is_diff_scope_oversized(error) {
+    if !is_diff_scope_oversized(error) && !is_repo_scope_oversized(error) {
         return Ok(None);
     }
+
+    // Same non-consumable envelope for both scope guards (#2109 review):
+    // only the scope identity differs.
+    let (scope, run_status, basis, repair_route) = if is_repo_scope_oversized(error) {
+        (
+            "repo",
+            "repo_scope_oversized",
+            "rust_repo_scope_budget",
+            REPO_SCOPE_REPAIR_ROUTE,
+        )
+    } else {
+        (
+            "diff",
+            "diff_scope_oversized",
+            "rust_diff_scope_budget",
+            DIFF_SCOPE_REPAIR_ROUTE,
+        )
+    };
 
     let mut value = json!({
         "schema_version": CHECK_OUTPUT_SCHEMA_VERSION,
@@ -33,21 +53,21 @@ pub(crate) fn render_diff_scope_limited_check_json(
         },
         "findings": [],
         "analysis_scope": {
-            "scope": "diff",
-            "run_status": "diff_scope_oversized",
-            "basis": "rust_diff_scope_budget",
+            "scope": scope,
+            "run_status": run_status,
+            "basis": basis,
             "downstream_consumable": false,
-            "limitation": "diff_scope_oversized",
-            "repair_route": DIFF_SCOPE_REPAIR_ROUTE
+            "limitation": run_status,
+            "repair_route": repair_route
         },
         "run_limitations": [
             {
-                "category": "diff_scope_oversized",
-                "run_status": "diff_scope_oversized",
-                "basis": "rust_diff_scope_budget",
+                "category": run_status,
+                "run_status": run_status,
+                "basis": basis,
                 "downstream_consumable": false,
                 "message": error,
-                "repair_route": DIFF_SCOPE_REPAIR_ROUTE
+                "repair_route": repair_route
             }
         ]
     });
@@ -61,6 +81,10 @@ pub(crate) fn render_diff_scope_limited_check_json(
 
 fn is_diff_scope_oversized(error: &str) -> bool {
     error.trim_start().starts_with(DIFF_SCOPE_OVERSIZED_PREFIX)
+}
+
+fn is_repo_scope_oversized(error: &str) -> bool {
+    error.trim_start().starts_with(REPO_SCOPE_OVERSIZED_PREFIX)
 }
 
 #[cfg(test)]
@@ -81,6 +105,37 @@ mod tests {
             perl_facts_path: None,
             suppression_policy: None,
         }
+    }
+
+    #[test]
+    fn repo_scope_oversized_renders_the_same_non_consumable_envelope() -> Result<(), String> {
+        // #2109 review: JSON consumers must get the named error and repair
+        // route for the repo guard too, in the same envelope shape.
+        let rendered = render_diff_scope_limited_check_json(
+            &input(),
+            "repo_scope_oversized: 900 indexed Rust files exceed the RIPR_MAX_REPO_INDEX_FILES limit (800); analysis was not run",
+        )?;
+        let Some(rendered) = rendered else {
+            return Err("expected a limited artifact for the repo guard".to_string());
+        };
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse limited artifact: {err}"))?;
+        for (pointer, expected) in [
+            ("/analysis_scope/scope", "repo"),
+            ("/analysis_scope/run_status", "repo_scope_oversized"),
+            ("/analysis_scope/basis", "rust_repo_scope_budget"),
+            ("/analysis_scope/repair_route", "analysis/repo-scope-budget"),
+            ("/run_limitations/0/category", "repo_scope_oversized"),
+        ] {
+            let actual = value.pointer(pointer).and_then(Value::as_str);
+            if actual != Some(expected) {
+                return Err(format!("{pointer}: expected {expected}, got {actual:?}"));
+            }
+        }
+        if value.pointer("/analysis_scope/downstream_consumable") != Some(&Value::Bool(false)) {
+            return Err("downstream_consumable must be false".to_string());
+        }
+        Ok(())
     }
 
     #[test]
