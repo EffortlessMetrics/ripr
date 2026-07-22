@@ -7245,7 +7245,17 @@ fn with_repo_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> 
         ));
     };
     std::env::set_current_dir(repo_root).map_err(|err| format!("failed to set repo cwd: {err}"))?;
-    let result = f();
+    // Restore the cwd even when the guarded body panics, mirroring
+    // `with_temp_cwd`: a leaked repo-root cwd would poison every other
+    // cwd-sensitive test in the process.
+    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => result,
+        Err(panic_payload) => {
+            let _ = std::env::set_current_dir(&old);
+            drop(guard);
+            std::panic::resume_unwind(panic_payload);
+        }
+    };
     let restore =
         std::env::set_current_dir(&old).map_err(|err| format!("failed to restore cwd: {err}"));
     drop(guard);

@@ -1425,6 +1425,7 @@ mod tests {
 
     #[test]
     fn recommendation_calibration_json_and_markdown_are_structured() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let args = RecommendationCalibrationArgs {
             root: PathBuf::from("."),
             pr_guidance: vec![PathBuf::from(
