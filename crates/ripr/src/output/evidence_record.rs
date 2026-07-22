@@ -13,6 +13,12 @@ use crate::analysis::canonical_gap::CanonicalGapIdentity;
 use crate::analysis::repair_route::{
     RepairRouteState, RepairTargetSelection, repair_route_readiness,
 };
+// The cross-language producer facts now live in `analysis::repair_route`
+// (the repair-packet eligibility authority). Re-exported here so existing
+// output/lsp callers keep compiling until their migration slice lands.
+pub(crate) use crate::analysis::repair_route::{
+    cross_language_oracle_visibility_unresolved, cross_language_test_target_unresolved,
+};
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelationReason, oracle_semantics_for};
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
@@ -801,127 +807,6 @@ pub(crate) fn is_static_limited(entry: &ClassifiedSeam) -> bool {
         ]
         .iter()
         .any(|stage| matches!(stage.state, StageState::Opaque | StageState::Unknown))
-}
-
-pub(crate) fn cross_language_oracle_visibility_unresolved(entry: &ClassifiedSeam) -> bool {
-    if !entry.class.is_headline_eligible() && !matches!(entry.class, SeamGripClass::Opaque) {
-        return false;
-    }
-
-    if has_external_language_related_test(entry) {
-        return true;
-    }
-
-    cross_language_surface_hint(entry) && !has_rust_related_test(entry)
-}
-
-pub(crate) fn cross_language_test_target_unresolved(entry: &ClassifiedSeam) -> bool {
-    if !entry.class.is_headline_eligible() && !matches!(entry.class, SeamGripClass::Opaque) {
-        return false;
-    }
-
-    (has_external_language_related_test(entry) || cross_language_surface_hint(entry))
-        && !has_rust_side_target_context(entry)
-}
-
-fn has_rust_related_test(entry: &ClassifiedSeam) -> bool {
-    entry
-        .evidence
-        .related_tests
-        .iter()
-        .any(related_test_is_rust)
-}
-
-fn has_rust_side_target_context(entry: &ClassifiedSeam) -> bool {
-    entry.evidence.related_tests.iter().any(|test| {
-        related_test_is_rust(test)
-            && matches!(
-                test.relation_reason,
-                RelationReason::DirectOwnerCall | RelationReason::HelperOwnerCall
-            )
-    })
-}
-
-fn related_test_is_rust(test: &crate::analysis::test_grip_evidence::RelatedTestGrip) -> bool {
-    test.file
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
-}
-
-fn has_external_language_related_test(entry: &ClassifiedSeam) -> bool {
-    entry.evidence.related_tests.iter().any(|test| {
-        test.file
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| {
-                matches!(
-                    extension.to_ascii_lowercase().as_str(),
-                    "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "rb" | "java"
-                )
-            })
-    })
-}
-
-fn cross_language_surface_hint(entry: &ClassifiedSeam) -> bool {
-    let file = display_path(entry.seam.file()).to_ascii_lowercase();
-    let owner = entry.seam.owner().to_ascii_lowercase();
-    let expression = entry.seam.expression().to_ascii_lowercase();
-
-    path_has_cross_language_segment(&file)
-        || text_has_cross_language_marker(&owner)
-        || text_has_cross_language_marker(&expression)
-}
-
-fn path_has_cross_language_segment(file: &str) -> bool {
-    let normalized = file.replace('\\', "/");
-    normalized.split('/').any(|segment| {
-        matches!(
-            segment,
-            "ffi"
-                | "binding"
-                | "bindings"
-                | "napi"
-                | "neon"
-                | "wasm"
-                | "wasm_bindgen"
-                | "pyo3"
-                | "python"
-                | "jni"
-                | "uniffi"
-                | "cxx"
-                | "node"
-                | "jsc"
-                | "javascriptcore"
-        )
-    })
-}
-
-fn text_has_cross_language_marker(text: &str) -> bool {
-    [
-        "from_js",
-        "to_js",
-        "jsvalue",
-        "js_value",
-        "jsc::",
-        "javascriptcore",
-        "napi",
-        "wasm_bindgen",
-        "extern \"c\"",
-        "extern_c",
-        "no_mangle",
-        "export_name",
-        "ffi",
-        "binding",
-        "pyo3",
-        "python",
-        "node_api",
-        "jni",
-        "uniffi",
-        "cxx::bridge",
-    ]
-    .iter()
-    .any(|marker| text.contains(marker))
 }
 
 fn weak_related_oracle(entry: &ClassifiedSeam) -> bool {

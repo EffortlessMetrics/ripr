@@ -19,15 +19,15 @@
 
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::repair_route::{
-    NewTestKind, RepairTargetSelection, repair_projection_ready, repair_route_readiness,
+    NewTestKind, RepairTargetSelection, cross_language_test_target_unresolved,
+    is_safe_for_repair_packet, repair_packet_eligibility, repair_packet_queue_visible,
 };
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
 use crate::analysis::{ClassifiedSeam, SeamLimitInfo, SeamLimitSource};
 use crate::app::causal_projection::CausalDeltaArtifact;
 use crate::output::evidence_record::{
-    CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, cross_language_oracle_visibility_unresolved,
-    cross_language_test_target_unresolved, evidence_record_for, evidence_record_json_value,
+    CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, evidence_record_for, evidence_record_json_value,
 };
 use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
@@ -122,7 +122,7 @@ pub(crate) fn render_agent_seam_packets_json_with_causal(
 
     let actionable: Vec<&ClassifiedSeam> = classified
         .iter()
-        .filter(|entry| is_actionable_entry(entry))
+        .filter(|entry| repair_packet_queue_visible(entry))
         .collect();
 
     out.push_str(&format!("  \"packets_total\": {},\n", actionable.len()));
@@ -775,7 +775,15 @@ fn normalize_queue_receipt_movement(movement: &str) -> String {
 /// any seam with a concrete assertion template can expose the editor
 /// action, while prose-only guidance remains hidden.
 pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) -> Option<String> {
-    if !entry.class.is_headline_eligible() || !repair_projection_ready(entry) {
+    // Deliberately gated on headline eligibility plus producer route
+    // readiness only — NOT the full `is_safe_for_repair_packet` flip.
+    // Editor callers (lsp hover/actions, pilot ranking/render) invoke this
+    // without the packet queue pre-filter and guard cross-language
+    // placement separately (`cross_language_test_target_unresolved` in
+    // lsp/actions.rs); adding the cross-language conjunct here would hide
+    // assertion templates those surfaces present today.
+    let eligibility = repair_packet_eligibility(entry);
+    if !entry.class.is_headline_eligible() || !eligibility.readiness.is_repair_ready() {
         return None;
     }
     suggested_assertions_for(
@@ -911,7 +919,12 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
     entry: &ClassifiedSeam,
 ) -> TargetedTestBriefOutline {
     let recommended = recommended_test_for(entry);
-    if !repair_projection_ready(entry) {
+    // Gated on the authority's producer route readiness only, not the full
+    // safe-for-repair-packet flip: editor surfaces (lsp hover/backend,
+    // pilot render) call this without the packet queue pre-filter, so this
+    // outline keeps its historical repair-readiness-only behavior.
+    let eligibility = repair_packet_eligibility(entry);
+    if !eligibility.readiness.is_repair_ready() {
         return TargetedTestBriefOutline {
             suggested_file: "not_applicable".to_string(),
             suggested_name: "not_applicable".to_string(),
@@ -925,7 +938,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
         .into_iter()
         .next()
         .map(|value| value.value);
-    let assertion_shape = if repair_projection_ready(entry) {
+    let assertion_shape = if eligibility.readiness.is_repair_ready() {
         assertion_shape_for_entry(entry)
     } else {
         AssertionShape {
@@ -1420,22 +1433,11 @@ fn push_markdown_bullets(out: &mut String, items: &[String]) {
     }
 }
 
-fn is_actionable(class: SeamGripClass) -> bool {
-    // Headline-eligible classes are the natural agent targets.
-    // `Opaque` is also actionable as `inspect_static_limitation`.
-    // `Intentional` and `Suppressed` are governance classes; the
-    // agent should not be told to "fix" them.
-    class.is_headline_eligible() || matches!(class, SeamGripClass::Opaque)
-}
-
-fn is_actionable_entry(entry: &ClassifiedSeam) -> bool {
-    is_actionable(entry.class)
-        && !cross_language_oracle_visibility_unresolved(entry)
-        && !cross_language_test_target_unresolved(entry)
-}
-
 fn task_for(entry: &ClassifiedSeam) -> &'static str {
-    if repair_projection_ready(entry) {
+    // Only reached through the packet queue pre-filter
+    // (`repair_packet_queue_visible`); under that filter the authority's
+    // fail-closed flip reduces to producer route readiness.
+    if is_safe_for_repair_packet(entry) {
         "write_targeted_test"
     } else {
         "inspect_static_limitation"
@@ -1582,7 +1584,7 @@ fn push_packet_json(
         json_escape(&missing_oracle_shape_for(seam.kind(), seam.expected_sink()))
     ));
 
-    let assertion_shape = if repair_projection_ready(entry) {
+    let assertion_shape = if is_safe_for_repair_packet(entry) {
         assertion_shape_for_entry(entry)
     } else {
         AssertionShape {
@@ -1681,7 +1683,7 @@ fn push_packet_json(
     }
     out.push_str("],\n");
 
-    let suggested = if repair_projection_ready(entry) {
+    let suggested = if is_safe_for_repair_packet(entry) {
         suggested_assertions_for(
             seam.kind(),
             seam.owner(),
@@ -1820,7 +1822,13 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
         };
     }
 
-    let readiness = repair_route_readiness(entry);
+    // Gated on the cross-language target guard above plus the authority's
+    // producer route readiness — the historical contract of this
+    // recommendation, which evidence-record and review-comment surfaces
+    // rely on without the packet queue pre-filter. Do not tighten this to
+    // the full `is_safe_for_repair_packet` flip without migrating those
+    // callers.
+    let readiness = repair_packet_eligibility(entry).readiness;
     if !readiness.is_repair_ready() {
         return not_applicable_recommended_test(
             "producer-owned route readiness is not eligible for a repair target",
@@ -2640,6 +2648,25 @@ mod tests {
         if !json.contains("\"headline_eligible\": false") {
             return Err(format!(
                 "expected headline_eligible=false for opaque: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn external_language_related_test_excludes_entry_from_packet_queue() -> Result<(), String> {
+        // Surface-level parity for the authority's cross-language gate: an
+        // entry whose only related test is external-language with no Rust
+        // target is cross-language-unresolved, so the queue pre-filter
+        // (`repair_packet_queue_visible`) must exclude it before `task_for`
+        // is ever reached.
+        let mut entry = weakly_gripped_classified();
+        entry.evidence.related_tests[0].file = PathBuf::from("tests/pricing.ts");
+        entry.evidence.related_tests[0].test_target = None;
+        let json = render_agent_seam_packets_json(&[entry], None);
+        if !json.contains("\"packets_total\": 0") {
+            return Err(format!(
+                "cross-language-unresolved entry must not enter the packet queue: {json}"
             ));
         }
         Ok(())
