@@ -194,6 +194,19 @@ jobs:
         working-directory: .
         run: cargo build -p ripr
       - run: sudo apt-get update && sudo apt-get install -y xvfb
-      - run: xvfb-run -a npm run test:e2e
+      - name: Run extension-host E2E
+        shell: bash
+        run: |
+          mkdir -p ../../target/ripr
+          set -o pipefail
+          xvfb-run -a npm run test:e2e 2>&1 | tee ../../target/ripr/vscode-e2e.log
         env:
           RIPR_TEST_SERVER_PATH: ${{ github.workspace }}/target/debug/ripr
+      - name: Upload extension-host transcript
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: vscode-e2e-${{ github.run_id }}
+          path: target/ripr/vscode-e2e.log
+          if-no-files-found: warn
+          retention-days: 7
