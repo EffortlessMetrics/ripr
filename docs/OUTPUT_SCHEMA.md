@@ -3,11 +3,32 @@
 `ripr` emits stable JSON for tools, CI systems, editor integrations, and coding
 agents.
 
-The current schema version is:
+The `ripr check --format json` schema version is:
 
 ```text
 0.2
 ```
+
+`schema_version` is a per-contract namespace, not a single product-wide number
+(#2075): each output family versions independently. The command-to-version
+map is:
+
+| Output | Field | Current value |
+| --- | --- | --- |
+| `ripr check --format json` | `schema_version` | `0.2` |
+| `ripr check --format sarif` | `version` | `2.1.0` (standard SARIF envelope) |
+| `ripr gate evaluate` | `schema_version` | `0.1` |
+| `ripr doctor --json` | `schema_version` | `0.1` |
+| `ripr agent packet` | `schema_version` | `0.3` |
+| `ripr agent receipt` | `schema_version` | `0.3` |
+| `ripr agent status` | `schema_version` | `0.1` |
+| `ripr agent review-summary` | `schema_version` | `0.1` |
+| `ripr receipt write/check` | `schema_version` | `0.1` |
+| badge JSON | `schema_version` | `0.7` |
+| `ripr cache status --json` | `schema_version` | `0.1` |
+
+Bump rules below apply per contract: a breaking change to one family bumps
+that family's version only.
 
 Schema changes that remove fields, rename fields, or change field meanings
 should bump `schema_version`.
