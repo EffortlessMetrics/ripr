@@ -33,6 +33,8 @@ cargo xtask badge-artifacts
 cargo xtask badge-basis [--gap-ledger <path>] [--include-seam-classes]
 cargo xtask badges
 cargo xtask badges --check
+cargo xtask branch-inventory [--input <path>] [--dry-run]
+cargo xtask branch-inventory apply --plan <path> --digest <digest>
 cargo xtask bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]
 cargo xtask bun-ub-preview-summary [--calibration-corpus <path>] [--graph-corpus <path>] [--dogfood-corpus <path>] [--out <path>] [--out-md <path>]
 cargo xtask cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]
@@ -229,6 +231,26 @@ advisory queue disposition for each PR — `merge_candidate`, `needs_rebase`,
 `needs_review`, `close_duplicate`, `superseded`, `needs_fresh_validation`,
 `needs_owner_decision`, or `do_not_touch_wrong_lane`. It is advisory and never
 updates, closes, merges, or comments on PRs.
+
+`branch-inventory` is the remote-branch ownership/age report (#2024). It
+regenerates the inventory from current GitHub/Git data and writes
+`target/ripr/reports/branch-inventory.md`, `branch-inventory.json`, the raw
+capture `branch-inventory-input.json`, and a separate digest-bound deletion
+plan `branch-inventory-plan.json`. Classification goes through the all-state
+PR lookup by head branch name with full pagination — never Git ancestry,
+because squash merges leave merged branch SHAs unreachable from `main`.
+Open PR heads, protected/authority branches (`main`, `freeze/*`, `release/*`),
+and `#2022` claims are structurally excluded; unknown always classifies
+`manual-review`, and only merged-PR leftovers whose head SHA still matches the
+merged PR head are `delete-candidate`. The default mode is read-only and never
+deletes anything. Deletion is a separate explicit operator action,
+`cargo xtask branch-inventory apply --plan <path> --digest <digest>`: it
+refuses a regenerated or changed plan, rechecks open PR heads, protection, and
+branch SHAs immediately before each deletion, uses non-force ref deletion
+bound to the rechecked SHA (`--force-with-lease=<ref>:<sha>`, never plain
+`--force`), refuses to run under CI, and writes one cleanup receipt
+(`branch-inventory-cleanup.{md,json}`) recording every deleted, skipped,
+changed, and failed branch. No CI or scheduled job runs the apply path.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
 GitHub CLI PR status, branch-protection required contexts when available,
