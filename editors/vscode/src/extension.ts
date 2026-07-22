@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
@@ -222,17 +223,21 @@ function injectTrustedExtensionHostRuntime(
   currentController: RiprClientController,
   context: vscode.ExtensionContext
 ): void {
-  if (
-    context.extensionMode === vscode.ExtensionMode.Production ||
-    process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED !== '1'
-  ) {
+  if (process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED !== '1') {
     return;
   }
 
-  // VS Code loads Workspace Trust before the extension-host suite can change it.
-  // Override only the trust predicate when a non-production extension host opts
-  // in explicitly. Packaged/installed extensions remain in Production mode,
-  // continue to use vscode.workspace.isTrusted, and retain the no-launch boundary.
+  const sourceTestRunner = vscode.Uri.joinPath(context.extensionUri, 'test', 'runTest.ts').fsPath;
+  if (!existsSync(sourceTestRunner)) {
+    return;
+  }
+
+  // The real extension-host suite runs the unpackaged source tree while VS
+  // Code's test launcher can still expose Restricted Mode during activation.
+  // The source-only marker above is excluded from the packaged VSIX by
+  // `.vscodeignore`, so installed builds cannot enable this override even if
+  // their environment contains the test variable. Production keeps the real
+  // `vscode.workspace.isTrusted` no-launch boundary.
   const runtime = (currentController as unknown as { runtime: RiprClientRuntime }).runtime;
   runtime.isWorkspaceTrusted = () => true;
 }
