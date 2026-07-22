@@ -553,6 +553,58 @@ const SMOKE_PR_GUIDANCE_JSON: &str = r#"{
   "suppressed": []
 }"#;
 
+const SMOKE_COMPLETE_GAP_LEDGER_JSON: &str = r#"{
+  "gap_records": [
+    {
+      "gap_id": "gap:pricing",
+      "canonical_gap_id": "pricing::discount::threshold",
+      "seam_id": "seam-pricing-threshold",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "weakly_exposed",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "target_line": 12,
+        "related_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "assertion_shape": "assert_eq!(price(threshold), discounted)",
+        "missing_discriminator": "amount == discount_threshold",
+        "changed_behavior": "amount == discount_threshold",
+        "inspection_command": "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+      },
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 88,
+        "owner": "price",
+        "dedupe_fingerprint": "gap:pricing"
+      },
+      "evidence_ids": ["seam-pricing"],
+      "projection_eligibility": {
+        "gate_candidate": {
+          "eligible": true,
+          "reason": "new_repairable_pr_local_gap"
+        }
+      },
+      "verification_commands": ["cargo xtask fixtures boundary_gap"],
+      "receipt_command": "ripr receipt write --gap pricing::discount::threshold",
+      "safe_gate_predicate": {
+        "policy_target_enabled": true,
+        "suppressed": false,
+        "waived": false,
+        "acknowledged_only": false,
+        "baseline_known": false,
+        "preview_language": false,
+        "static_unknown_only": false
+      }
+    }
+  ]
+}"#;
+
 fn write_exception_ledger(
     dir: &std::path::Path,
     review_after: &str,
@@ -665,6 +717,90 @@ fn gate_evaluate_exception_policy_missing_ledger_is_config_error() -> Result<(),
         decision.contains("failed to read exception policy"),
         "decision: {decision}"
     );
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_complete_gap_ledger_blocks_only_in_explicit_blocking_mode() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-gap-ledger-cli-blocking");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let ledger = dir.join("gap-ledger.json");
+    std::fs::write(&ledger, SMOKE_COMPLETE_GAP_LEDGER_JSON)
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--root",
+        &dir.display().to_string(),
+        "--gap-ledger",
+        &ledger.display().to_string(),
+        "--mode",
+        "acknowledgeable",
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_failure(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["status"], "blocked");
+    assert_eq!(value["summary"]["blocking"], 1);
+    assert_eq!(value["decisions"][0]["source"], "gap_decision_ledger");
+    assert_eq!(
+        value["decisions"][0]["repair_route"]["seam_id"],
+        "seam-pricing-threshold"
+    );
+    assert_eq!(
+        value["decisions"][0]["repair_route"]["inspection_command"],
+        "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+    );
+    assert!(decision.contains("static_ripr_evidence_only"));
+    Ok(())
+}
+
+#[test]
+fn gate_evaluate_complete_gap_ledger_is_advisory_in_visible_only_mode() -> Result<(), String> {
+    let dir = unique_temp_workspace("gate-gap-ledger-cli-visible");
+    std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+    let ledger = dir.join("gap-ledger.json");
+    std::fs::write(&ledger, SMOKE_COMPLETE_GAP_LEDGER_JSON)
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+    let out = dir.join("gate-decision.json");
+
+    let output = run_ripr(&[
+        "gate",
+        "evaluate",
+        "--root",
+        &dir.display().to_string(),
+        "--gap-ledger",
+        &ledger.display().to_string(),
+        "--mode",
+        "visible-only",
+        "--out",
+        &out.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
+    let value: serde_json::Value = serde_json::from_str(&decision)
+        .map_err(|err| format!("gate decision should parse: {err}\n{decision}"))?;
+    assert_eq!(value["status"], "advisory");
+    assert_eq!(value["summary"]["blocking"], 0);
+    assert_eq!(value["summary"]["advisory"], 1);
+    assert_eq!(value["decisions"][0]["decision"], "advisory");
+    assert_eq!(value["decisions"][0]["source"], "gap_decision_ledger");
+    assert_eq!(
+        value["decisions"][0]["repair_route"]["seam_id"],
+        "seam-pricing-threshold"
+    );
+    assert_eq!(
+        value["decisions"][0]["repair_route"]["inspection_command"],
+        "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+    );
+    assert!(decision.contains("static_ripr_evidence_only"));
     Ok(())
 }
 

@@ -178,7 +178,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
 status = "proposed"
 owner = "product-swarm"
-standalone_reason = "Defines the optional PR-gate contract, including producer-owned repair-route eligibility and fail-closed outcomes for incomplete, limited, stale, preview, advisory, and explicitly configured blocking evidence; #1933 tracks seam-identity production and enforcement as later slices."
+standalone_reason = "Defines the optional PR-gate contract, including producer-owned repair-route eligibility and fail-closed outcomes for incomplete, limited, stale, preview, advisory, and explicitly configured blocking evidence; #2249 and the #1963 command-boundary slice provide current route and process-status proof, while planned top-level output fields remain future work."
 
 [[artifact]]
 id = "RIPR-SPEC-0068"

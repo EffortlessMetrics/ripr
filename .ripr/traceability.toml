@@ -4894,6 +4894,8 @@ tests = [
   "crates/ripr/src/output/gate/repair_route.rs::tests::blank_gap_record_commands_render_as_null_and_remain_missing",
   "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_is_advisory_only_and_renders_named_limitation",
   "crates/ripr/src/output/gate/tests.rs::gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identity",
+  "crates/ripr/tests/cli_smoke.rs::gate_evaluate_complete_gap_ledger_blocks_only_in_explicit_blocking_mode",
+  "crates/ripr/tests/cli_smoke.rs::gate_evaluate_complete_gap_ledger_is_advisory_in_visible_only_mode",
   "crates/ripr/src/output/gate/tests.rs::given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails_closed",
     "crates/ripr/src/output/gate/tests.rs::conflicting_gap_ledger_seam_identities_fail_closed_as_config_error",
     "crates/ripr/src/output/gate/tests.rs::multiple_legacy_gap_ledger_records_remain_route_limited",
@@ -4921,9 +4923,11 @@ code = [
   "crates/ripr/src/output/gate/repair_route.rs",
   "crates/ripr/src/output/gate/presentation.rs",
   "crates/ripr/src/output/gap_decision_ledger.rs",
+  "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/main.rs",
   "xtask/src/verification_contracts.rs",
   ".allow/spec-system/slices/gate-repair-route-eligibility.v1.toml",
+  ".allow/spec-system/slices/gate-command-boundary.v1.toml",
   ".allow/spec-system/slices/gap-ledger-seam-identity.v1.toml",
 ]
 outputs = [
