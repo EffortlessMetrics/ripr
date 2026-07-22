@@ -59,6 +59,7 @@ struct AgentReceiptGuidance {
     safe_to_merge: bool,
 }
 
+#[cfg(test)]
 pub(crate) fn render_agent_receipt_json(
     agent_verify_json: &str,
     agent_verify_path: String,
@@ -69,8 +70,26 @@ pub(crate) fn render_agent_receipt_json(
 ) -> Result<String, String> {
     let verify: Value = serde_json::from_str(agent_verify_json)
         .map_err(|err| format!("failed to parse agent verify JSON: {err}"))?;
-    let input_paths = agent_receipt_input_paths_from_value(&verify)?;
-    let seam = find_receipt_seam(&verify, seam_id)?;
+    render_agent_receipt_value_json(
+        &verify,
+        agent_verify_path,
+        seam_id,
+        test_changed,
+        commands_run,
+        provenance,
+    )
+}
+
+pub(crate) fn render_agent_receipt_value_json(
+    verify: &Value,
+    agent_verify_path: String,
+    seam_id: &str,
+    test_changed: Option<&str>,
+    commands_run: &[String],
+    provenance: AgentReceiptProvenance,
+) -> Result<String, String> {
+    let input_paths = agent_receipt_input_paths_from_value(verify)?;
+    let seam = find_receipt_seam(verify, seam_id)?;
     let guidance = receipt_guidance(&seam.change);
     let receipt_state = receipt_lifecycle_state_from_movement(Some(seam.change.as_str()));
     let provenance = provenance_json(&provenance, &seam);
@@ -115,6 +134,7 @@ pub(crate) fn render_agent_receipt_json(
     super::json::render_pretty_with_newline(&value, "agent receipt")
 }
 
+#[cfg(test)]
 pub(crate) fn agent_receipt_input_paths(
     agent_verify_json: &str,
 ) -> Result<AgentReceiptInputPaths, String> {
@@ -123,7 +143,9 @@ pub(crate) fn agent_receipt_input_paths(
     agent_receipt_input_paths_from_value(&verify)
 }
 
-fn agent_receipt_input_paths_from_value(verify: &Value) -> Result<AgentReceiptInputPaths, String> {
+pub(crate) fn agent_receipt_input_paths_from_value(
+    verify: &Value,
+) -> Result<AgentReceiptInputPaths, String> {
     let inputs = verify
         .get("inputs")
         .ok_or_else(|| "agent verify JSON is missing `inputs`".to_string())?;

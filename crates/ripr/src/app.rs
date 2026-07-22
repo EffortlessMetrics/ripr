@@ -1,5 +1,6 @@
 pub(crate) mod agent_brief;
 pub(crate) mod agent_gap_packet;
+pub(crate) mod agent_receipt;
 pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;

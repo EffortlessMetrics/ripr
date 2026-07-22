@@ -6378,7 +6378,9 @@ Field contract:
 - `inputs.agent_verify_json` - the verify JSON path supplied to the command.
 - `inputs.before` / `inputs.after` - snapshot paths copied from the verify JSON.
 - `provenance` - identity for the static artifacts behind the receipt. It is
-  produced without rerunning analysis.
+  produced without rerunning analysis after the referenced artifacts are
+  revalidated and the supplied verify JSON is compared with canonical
+  movement recomputed from those artifacts.
 - `provenance.ripr_version` - the `ripr` binary version that rendered the
   receipt.
 - `provenance.repo_root` - the `--root` argument normalized to forward slashes
@@ -6404,6 +6406,9 @@ Field contract:
 - `provenance.limits` - explicit static boundary flags. Receipts prove only the
   relationship between static before/after artifacts; they do not run mutation
   testing or claim runtime adequacy.
+- Receipt issuance rejects hand-authored or altered verify JSON before this
+  envelope is rendered; the input must be exact canonical output from
+  `ripr agent verify` for the bound artifacts.
 - `seam` - the selected seam from `changed_seams`, `unchanged_seams`,
   `new_gaps`, or `resolved_gaps`.
 - `seam.before` / `seam.after` - before/after grip class for matched seams, or

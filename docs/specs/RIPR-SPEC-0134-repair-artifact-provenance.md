@@ -60,19 +60,26 @@ advisory output with one of:
 When Git identity is unavailable, the producer discloses `unavailable` in the
 artifact and the verifier rejects it as unsuitable evidence.
 
+`ripr agent receipt` revalidates the referenced before and after artifacts and
+recomputes the canonical agent-verify movement before rendering a receipt. The
+supplied verify JSON must exactly match that recomputed output, including its
+currentness and movement fields. Hand-authored or altered movement evidence is
+rejected before receipt issuance.
+
 ## Non-claims
 
 - The envelope is not a digital signature or proof against a compromised RIPR
   process.
 - `agent verify` still compares static before/after evidence only; it does not
   execute tests or runtime mutation testing.
-- Receipt issuance, command execution, configuration binding, and replay
+- Command execution, configuration binding, receipt signatures, and replay
   protection remain follow-up slices under #1941.
 
 ## Non-Goals
 
 - No runtime test or mutation execution.
-- No receipt signature, remote attestation, or merge-policy change.
+- No receipt signature, remote attestation, replay protection, or merge-policy
+  change.
 - No configuration or command-execution binding beyond the producer metadata
   recorded here.
 
@@ -81,7 +88,9 @@ artifact and the verifier rejects it as unsuitable evidence.
 - Producer output tests cover identity and streaming output.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
   dirty-worktree disclosure, tampered bytes, incomparable input identities,
-  unsupported schema, malformed typed seam, and plausible uncommitted JSON.
+  unsupported schema, malformed typed seam, plausible uncommitted JSON,
+  fabricated verify JSON, altered verify movement, incomparable base revision,
+  and incomparable analysis inputs.
 - The editor repair-loop fixture consumes bound artifacts and records explicit
   currentness.
 
@@ -102,13 +111,17 @@ an unsupported schema fails before movement calculation.
 - `crates/ripr/src/agent/artifact.rs` tests the fixed commitment protocol and
   duplicate-field rejection.
 - `crates/ripr/tests/cli_smoke.rs` tests valid, tampered, fabricated, and
-  editor-loop cases.
+  editor-loop cases, plus receipt rejection of fabricated and altered verify
+  output, incomparable base revisions, incomparable analysis inputs, and
+  byte-different re-renderings of canonical verify output.
 
 ## Implementation Mapping
 
 - `crates/ripr/src/agent/artifact.rs` owns identity and commitment validation.
 - `crates/ripr/src/output/repo_exposure.rs` emits the bounded two-pass artifact.
 - `crates/ripr/src/cli/commands.rs` validates both inputs before movement.
+- `crates/ripr/src/app/agent_receipt.rs` validates inputs and recomputes
+  agent-verify output before receipt issuance.
 - `crates/ripr/src/output/outcome/render_json.rs` discloses currentness.
 
 ## Metrics

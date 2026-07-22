@@ -229,15 +229,17 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
             output::outcome::display_path(&verify_path)
         )
     })?;
-    let input_paths = output::agent_receipt::agent_receipt_input_paths(&verify_json)?;
+    let validated =
+        app::agent_receipt::validate_agent_receipt_verify_json(&options.root, &verify_json)?;
+    let input_paths = &validated.input_paths;
     let provenance = build_agent_receipt_provenance(
         &options.root,
         &options.verify_json,
         &verify_path,
-        &input_paths,
+        input_paths,
     )?;
-    let rendered = output::agent_receipt::render_agent_receipt_json(
-        &verify_json,
+    let rendered = output::agent_receipt::render_agent_receipt_value_json(
+        &validated.verify,
         output::outcome::display_path(&options.verify_json),
         &options.seam_id,
         options.test_changed.as_deref(),
