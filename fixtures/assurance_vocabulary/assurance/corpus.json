@@ -1,0 +1,129 @@
+{
+  "schema_version": "1",
+  "kind": "repair_assurance_corpus",
+  "implementation_state": "design_only",
+  "cases": [
+    {
+      "id": "static_improvement_not_run",
+      "description": "Static movement improved while no command was run.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"improved","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_not_run","command_spec":null,"result":null},
+        "receipt_state": "receipt_issued",
+        "runtime_mutation": null,
+        "non_claims": ["static_only_assurance","no_runtime_mutation_confirmation","no_merge_authority"]
+      }
+    },
+    {
+      "id": "unchanged_pass",
+      "description": "A passing command does not imply static movement.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"unchanged","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_executed_pass","command_spec": {"schema_version":"1","program":"cargo","args":["test","boundary"],"working_directory":".","timeout_ms":60000,"cancellation":"allowed","network":"disabled","environment":"clean","expected_result_parser":"exit_code","cost_class":"normal","human_display":"cargo test boundary"},"result": {"root_identity":"root:fixture","head_before":"abc","head_after":"abc","command_spec_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","exit_status":0,"stdout_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","stderr_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","currentness":"current"}},
+        "receipt_state": "receipt_issued",
+        "runtime_mutation": null,
+        "non_claims": ["static_gap_unchanged","no_runtime_mutation_confirmation","no_merge_authority"]
+      }
+    },
+    {
+      "id": "improved_fail",
+      "description": "Static improvement and a failed command remain separate.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"improved","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_executed_fail","command_spec": {"schema_version":"1","program":"cargo","args":["test","boundary"],"working_directory":".","timeout_ms":60000,"cancellation":"allowed","network":"disabled","environment":"clean","expected_result_parser":"exit_code","cost_class":"normal","human_display":"cargo test boundary"},"result": {"root_identity":"root:fixture","head_before":"abc","head_after":"abc","command_spec_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","exit_status":1,"stdout_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","stderr_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","currentness":"current"}},
+        "receipt_state": "receipt_issued",
+        "runtime_mutation": null,
+        "non_claims": ["static_movement_does_not_override_failed_command","no_runtime_mutation_confirmation"]
+      }
+    },
+    {
+      "id": "unavailable",
+      "description": "A missing runner is disclosed rather than treated as pass.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"not_comparable","canonical_gap_id":null,"seam_id":null,"root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"unavailable"},
+        "verification": {"state":"verification_unavailable","command_spec":null,"result":null},
+        "receipt_state": "receipt_rejected",
+        "runtime_mutation": null,
+        "non_claims": ["verification_not_available","no_current_static_comparison","no_merge_authority"]
+      }
+    },
+    {
+      "id": "cancelled_or_timed_out",
+      "description": "Cancellation or timeout is a distinct execution disposition.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"unchanged","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_cancelled_or_timed_out","command_spec":null,"result":null},
+        "receipt_state": "receipt_rejected",
+        "runtime_mutation": null,
+        "non_claims": ["verification_incomplete","no_runtime_mutation_confirmation"]
+      }
+    },
+    {
+      "id": "malformed_command_spec",
+      "description": "A command spec with an absolute working directory is rejected by the schema.",
+      "invalid": true,
+      "record_patch": {"verification":{"state":"verification_command_available","command_spec":{"schema_version":"1","program":"cargo","args":[],"working_directory":"drive-letter:\\workspace","timeout_ms":60000,"cancellation":"allowed","network":"disabled","environment":"clean","expected_result_parser":"exit_code","cost_class":"normal","human_display":"cargo test"},"result":null}}
+    },
+    {
+      "id": "wrong_root",
+      "description": "An execution result for another repository root is rejected.",
+      "invalid": true,
+      "expected_failure": "root_identity_mismatch",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"unchanged","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_executed_pass","command_spec": {"schema_version":"1","program":"cargo","args":["test","boundary"],"working_directory":".","timeout_ms":60000,"cancellation":"allowed","network":"disabled","environment":"clean","expected_result_parser":"exit_code","cost_class":"normal","human_display":"cargo test boundary"},"result": {"root_identity":"root:other","head_before":"abc","head_after":"abc","command_spec_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","exit_status":0,"stdout_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","stderr_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","currentness":"current"}},
+        "receipt_state": "receipt_rejected",
+        "runtime_mutation": null,
+        "non_claims": ["wrong_root","no_current_verification"]
+      }
+    },
+    {
+      "id": "fabricated_result",
+      "description": "A hand-authored result lacks the producer-bound command identity and is rejected by the future runner.",
+      "invalid": true,
+      "expected_failure": "command_spec_identity_mismatch",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"improved","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_executed_pass","command_spec": {"schema_version":"1","program":"cargo","args":["test","boundary"],"working_directory":".","timeout_ms":60000,"cancellation":"allowed","network":"disabled","environment":"clean","expected_result_parser":"exit_code","cost_class":"normal","human_display":"cargo test boundary"},"result": {"root_identity":"root:fixture","head_before":"abc","head_after":"abc","command_spec_sha256":"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","exit_status":0,"stdout_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","stderr_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","currentness":"current"}},
+        "receipt_state": "receipt_rejected",
+        "runtime_mutation": null,
+        "non_claims": ["fabricated_execution_result","no_current_verification"]
+      }
+    },
+    {
+      "id": "external_runtime_mutation",
+      "description": "External mutation evidence remains explicitly outside RIPR production authority.",
+      "record": {
+        "schema_version": "1",
+        "kind": "repair_assurance",
+        "implementation_state": "design_only",
+        "static_movement": {"state":"static_movement_evaluated","result":"improved","canonical_gap_id":"gap:boundary","seam_id":"seam:boundary","root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"current"},
+        "verification": {"state":"verification_not_run","command_spec":null,"result":null},
+        "receipt_state": "receipt_issued",
+        "runtime_mutation": "runtime_mutation_confirmation_external",
+        "non_claims": ["external_runtime_data_not_produced_by_ripr","no_runtime_mutation_outcome_claim","no_merge_authority"]
+      }
+    }
+  ]
+}

@@ -6399,6 +6399,29 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0135"
+name = "assurance state vocabulary"
+spec = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
+tests = []
+fixtures = [
+  "fixtures/assurance_vocabulary",
+  "fixtures/assurance_vocabulary/assurance/corpus.json",
+]
+code = []
+outputs = [
+  "schemas/ripr/repair-assurance.schema.json",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/adr/0021-static-and-executed-assurance-axes.md",
+  "docs/specs/README.md",
+  "docs/adr/README.md",
+  "policy/doc-artifacts.toml",
+]
+metrics = [
+  "repair_assurance_vocabulary_closed",
+  "repair_assurance_static_only_disclosure",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0134"
 name = "repair artifact provenance"
 spec = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"

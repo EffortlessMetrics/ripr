@@ -642,3 +642,19 @@ path = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Issue #1977 first provenance slice: producer-owned repo-exposure identity envelope, repository/root and revision disclosure, bounded raw-JSON content commitment, and fail-closed agent verify ingress; receipt command execution and final receipt binding remain follow-up slices under #1941."
+
+[[artifact]]
+id = "RIPR-SPEC-0135"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Issue #1978 contract slice: separates static movement, explicit command execution, receipt issuance, and externally supplied runtime mutation evidence; adds a closed design-only schema and adversarial fixture corpus without implementing execution, receipt binding, gate authority, or support promotion."
+
+[[artifact]]
+id = "RIPR-ADR-0021"
+kind = "adr"
+path = "docs/adr/0021-static-and-executed-assurance-axes.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Durable trust-boundary decision for #1978: static artifact movement, executed commands, receipt issuance, and external runtime mutation remain independent assurance axes."

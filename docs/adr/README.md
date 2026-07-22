@@ -27,3 +27,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0018](0018-perl-lsp-fact-substrate.md) | proposed | Use `perl-lsp` batch fact export as the Perl intelligence substrate. |
 | [0019](0019-language-adapters-reuse-shared-packet-contract.md) | proposed | Language adapters reuse the shared packet contract: one validator, shared renderers, parity test. |
 | [0020](0020-repair-artifacts-carry-producer-identity.md) | accepted | Repair artifacts carry producer identity, repository revision, worktree state, and a bounded content commitment. |
+| [0021](0021-static-and-executed-assurance-axes.md) | accepted | Keep static movement, executed verification, receipt issuance, and external runtime mutation on separate axes. |

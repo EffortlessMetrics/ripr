@@ -6328,6 +6328,32 @@ Field contract:
   `recommended_action` is the bounded next step; and `safe_to_merge` is always
   `false` because the static receipt is review evidence, not a merge policy.
 
+## Assurance axes (design contract)
+
+The current `agent verify` and `agent receipt` surfaces are static-only
+compatibility commands. Their `verify_command`, `commands_run`, and
+`verify_result` fields record routes or caller-supplied context; they do not
+prove that a command executed. Receipt presence does not imply test execution,
+runtime mutation confirmation, adequacy, correctness, or merge authority.
+
+`RIPR-SPEC-0135` and
+`schemas/ripr/repair-assurance.schema.json` reserve the versioned
+`RepairAssuranceV1` envelope. It keeps these axes independent:
+
+- `static_movement_evaluated` with an explicit movement result;
+- `verification_command_available`, `verification_executed_pass`,
+  `verification_executed_fail`, `verification_not_run`,
+  `verification_unavailable`, or `verification_cancelled_or_timed_out`;
+- `receipt_issued`, `receipt_rejected`, or `receipt_not_requested`; and
+- `runtime_mutation_confirmation_external` only for externally supplied
+  runtime evidence.
+
+This is a design-only contract in the current release. No packet, receipt
+request, or editor action automatically executes a command. A future execution
+slice must bind the typed command, working root, repository revision, process
+disposition, bounded output commitments, and currentness before emitting an
+executed state. A static-only receipt must remain visibly lower assurance.
+
 ## PR Test Guidance
 
 RIPR-SPEC-0012 defines the pinned contract for the
