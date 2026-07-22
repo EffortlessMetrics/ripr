@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 use tower_lsp_server::ls_types::{
     Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    Uri,
+    Uri, WorkspaceFolder,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -99,6 +99,282 @@ impl WorkspaceRootAuthority {
     pub(super) fn allows_analysis(&self) -> bool {
         matches!(self.state, WorkspaceRootState::SelectedSingleRoot)
             && self.effective_root.is_some()
+    }
+}
+
+/// One canonical workspace-folder entry (#2036, RIPR-SPEC-0139): the
+/// client-sent URI spelling beside its normalized lexical path identity.
+/// Identity is lexical normalization only — never symlink canonicalization —
+/// matching the root-identity invariant in `uri.rs`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct WorkspaceFolderEntry {
+    pub(super) uri: String,
+    pub(super) path: PathBuf,
+}
+
+/// Why the stored workspace-folder set resolves to its current authority
+/// state (#2036, RIPR-SPEC-0139). More than one entry is always ambiguous:
+/// the server never falls back to the first folder.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum WorkspaceFolderSelection {
+    NoFolders,
+    SingleFolder,
+    AmbiguousFolders,
+}
+
+/// Typed rejection kind for one `workspace/didChangeWorkspaceFolders` event
+/// or full-list reconciliation (#2036, RIPR-SPEC-0139). A rejected update
+/// leaves the stored set untouched; the handler surfaces a typed bounded
+/// status instead of a silent fallback.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum WorkspaceFolderEventRejectionKind {
+    InvalidFileUri,
+    DuplicateAddition,
+    UnknownRemoval,
+    ContradictoryEvent,
+}
+
+impl WorkspaceFolderEventRejectionKind {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidFileUri => "invalid_file_uri",
+            Self::DuplicateAddition => "duplicate_addition",
+            Self::UnknownRemoval => "unknown_removal",
+            Self::ContradictoryEvent => "contradictory_event",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct WorkspaceFolderEventRejection {
+    pub(super) kind: WorkspaceFolderEventRejectionKind,
+    pub(super) detail: String,
+}
+
+/// Outcome of applying one accepted event delta to the stored set.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct WorkspaceFolderEventOutcome {
+    /// Sequence identity of the applied event (`last applied event
+    /// identity` in the folder-set identity model).
+    pub(super) event_id: u64,
+    /// Whether the delta changed the stored entries.
+    pub(super) changed: bool,
+    /// The folder-set epoch after the event, captured under the same lock
+    /// so a later reconciliation round-trip binds to this exact set state.
+    pub(super) folder_set_epoch: u64,
+}
+
+/// The stored workspace-folder-set identity (#2036, RIPR-SPEC-0139):
+/// ordered canonical entries (sorted by normalized path, deduplicated), a
+/// folder-set epoch bumped on every content change, and the identity of the
+/// last applied event. `didChangeWorkspaceFolders` deltas apply to this set;
+/// a full client list is a separately versioned confirmation step bound to
+/// the folder-set epoch. An equivalent set in a different order is
+/// byte-identical and produces no epoch bump and no transition.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct WorkspaceFolderSet {
+    entries: Vec<WorkspaceFolderEntry>,
+    folder_set_epoch: u64,
+    event_sequence: u64,
+    last_applied_event: Option<u64>,
+}
+
+fn parse_folder_entries(
+    folders: &[WorkspaceFolder],
+) -> Result<Vec<WorkspaceFolderEntry>, WorkspaceFolderEventRejection> {
+    folders
+        .iter()
+        .map(|folder| {
+            let Some(path) = path_from_file_uri(&folder.uri) else {
+                return Err(WorkspaceFolderEventRejection {
+                    kind: WorkspaceFolderEventRejectionKind::InvalidFileUri,
+                    detail: format!(
+                        "workspace folder URI is not a valid file URI: {}",
+                        folder.uri.as_str()
+                    ),
+                });
+            };
+            Ok(WorkspaceFolderEntry {
+                uri: folder.uri.as_str().to_string(),
+                path,
+            })
+        })
+        .collect()
+}
+
+fn canonical_folder_entries(
+    folders: &[WorkspaceFolder],
+) -> Result<Vec<WorkspaceFolderEntry>, WorkspaceFolderEventRejection> {
+    let mut entries: Vec<WorkspaceFolderEntry> = Vec::new();
+    for entry in parse_folder_entries(folders)? {
+        if entries
+            .iter()
+            .any(|stored: &WorkspaceFolderEntry| stored.path == entry.path)
+        {
+            continue;
+        }
+        entries.push(entry);
+    }
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(entries)
+}
+
+impl WorkspaceFolderSet {
+    /// Build a canonical set from a complete folder list (used at
+    /// `initialize`): duplicates collapse and entries sort by normalized
+    /// path so an equivalent list in any order yields the same set.
+    pub(super) fn from_folder_list(
+        folders: &[WorkspaceFolder],
+    ) -> Result<Self, WorkspaceFolderEventRejection> {
+        Ok(Self {
+            entries: canonical_folder_entries(folders)?,
+            ..Self::default()
+        })
+    }
+
+    /// Replace the set from a complete folder list returned by the client
+    /// reconciliation query. Returns whether the entries changed. Identity
+    /// is the normalized path: an equivalent list (any order, duplicates,
+    /// or a byte-different but path-equivalent URI spelling) is a no-op and
+    /// the stored URI spelling is kept for display.
+    pub(super) fn replace_from_folder_list(
+        &mut self,
+        folders: &[WorkspaceFolder],
+    ) -> Result<bool, WorkspaceFolderEventRejection> {
+        let entries = canonical_folder_entries(folders)?;
+        if self.same_paths(&entries) {
+            return Ok(false);
+        }
+        self.entries = entries;
+        self.folder_set_epoch = self.folder_set_epoch.saturating_add(1);
+        Ok(true)
+    }
+
+    /// Whether a complete folder list from the client reconciliation query
+    /// is consistent with the stored set as a path set (order- and
+    /// duplicate-insensitive, path identity only). An unparseable list is
+    /// never consistent. Used to consistency-check a reconciliation answer
+    /// against an accepted delta: a lagging contradictory answer must be
+    /// dropped, never installed over the delta.
+    pub(super) fn matches_folder_list_paths(&self, folders: &[WorkspaceFolder]) -> bool {
+        let Ok(entries) = canonical_folder_entries(folders) else {
+            return false;
+        };
+        self.same_paths(&entries)
+    }
+
+    /// Path-identity comparison against canonical (sorted, deduplicated)
+    /// entries. The URI spelling is display-only and never compared.
+    fn same_paths(&self, entries: &[WorkspaceFolderEntry]) -> bool {
+        self.entries.len() == entries.len()
+            && self
+                .entries
+                .iter()
+                .zip(entries.iter())
+                .all(|(stored, candidate)| stored.path == candidate.path)
+    }
+
+    /// Apply one `didChangeWorkspaceFolders` delta. Every entry is
+    /// validated before any mutation, so a rejected event leaves the set
+    /// untouched. The event sequence identity is recorded for every
+    /// accepted event; the folder-set epoch advances only when the entries
+    /// change.
+    pub(super) fn apply_event(
+        &mut self,
+        added: &[WorkspaceFolder],
+        removed: &[WorkspaceFolder],
+    ) -> Result<WorkspaceFolderEventOutcome, WorkspaceFolderEventRejection> {
+        self.event_sequence = self.event_sequence.saturating_add(1);
+        let event_id = self.event_sequence;
+        let added_entries = parse_folder_entries(added)?;
+        let removed_entries = parse_folder_entries(removed)?;
+        for (index, entry) in added_entries.iter().enumerate() {
+            if added_entries[..index]
+                .iter()
+                .any(|earlier| earlier.path == entry.path)
+            {
+                return Err(WorkspaceFolderEventRejection {
+                    kind: WorkspaceFolderEventRejectionKind::DuplicateAddition,
+                    detail: format!("the same folder is added more than once: {}", entry.uri),
+                });
+            }
+        }
+        for entry in &added_entries {
+            if removed_entries
+                .iter()
+                .any(|removed| removed.path == entry.path)
+            {
+                return Err(WorkspaceFolderEventRejection {
+                    kind: WorkspaceFolderEventRejectionKind::ContradictoryEvent,
+                    detail: format!(
+                        "the same folder appears in both added and removed: {}",
+                        entry.uri
+                    ),
+                });
+            }
+            if self.entries.iter().any(|stored| stored.path == entry.path) {
+                return Err(WorkspaceFolderEventRejection {
+                    kind: WorkspaceFolderEventRejectionKind::DuplicateAddition,
+                    detail: format!(
+                        "added folder is already in the workspace folder set: {}",
+                        entry.uri
+                    ),
+                });
+            }
+        }
+        for (index, entry) in removed_entries.iter().enumerate() {
+            let known = self.entries.iter().any(|stored| stored.path == entry.path);
+            let removed_twice = removed_entries[..index]
+                .iter()
+                .any(|earlier| earlier.path == entry.path);
+            if !known || removed_twice {
+                return Err(WorkspaceFolderEventRejection {
+                    kind: WorkspaceFolderEventRejectionKind::UnknownRemoval,
+                    detail: format!(
+                        "removed folder is not in the workspace folder set: {}",
+                        entry.uri
+                    ),
+                });
+            }
+        }
+        self.last_applied_event = Some(event_id);
+        let changed = !added_entries.is_empty() || !removed_entries.is_empty();
+        if changed {
+            self.entries.retain(|stored| {
+                !removed_entries
+                    .iter()
+                    .any(|removed| removed.path == stored.path)
+            });
+            self.entries.extend(added_entries);
+            self.entries
+                .sort_by(|left, right| left.path.cmp(&right.path));
+            self.folder_set_epoch = self.folder_set_epoch.saturating_add(1);
+        }
+        Ok(WorkspaceFolderEventOutcome {
+            event_id,
+            changed,
+            folder_set_epoch: self.folder_set_epoch,
+        })
+    }
+
+    pub(super) fn entries(&self) -> &[WorkspaceFolderEntry] {
+        &self.entries
+    }
+
+    pub(super) fn selection(&self) -> WorkspaceFolderSelection {
+        match self.entries.len() {
+            0 => WorkspaceFolderSelection::NoFolders,
+            1 => WorkspaceFolderSelection::SingleFolder,
+            _ => WorkspaceFolderSelection::AmbiguousFolders,
+        }
+    }
+
+    pub(super) fn folder_set_epoch(&self) -> u64 {
+        self.folder_set_epoch
+    }
+
+    pub(super) fn last_applied_event(&self) -> Option<u64> {
+        self.last_applied_event
     }
 }
 
@@ -1222,5 +1498,239 @@ mod tests {
     fn test_uri(uri: &str) -> Result<Uri, String> {
         uri.parse::<Uri>()
             .map_err(|err| format!("failed to parse test URI: {err}"))
+    }
+
+    fn folder(uri: &str) -> Result<WorkspaceFolder, String> {
+        Ok(WorkspaceFolder {
+            uri: test_uri(uri)?,
+            name: "test".to_string(),
+        })
+    }
+
+    fn entry_paths(set: &WorkspaceFolderSet) -> Vec<PathBuf> {
+        set.entries()
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect()
+    }
+
+    #[test]
+    fn workspace_folder_set_canonicalizes_order_and_duplicates() -> Result<(), String> {
+        let first = WorkspaceFolderSet::from_folder_list(&[
+            folder("file:///workspace/b")?,
+            folder("file:///workspace/a")?,
+            folder("file:///workspace/b")?,
+        ])
+        .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        let second = WorkspaceFolderSet::from_folder_list(&[
+            folder("file:///workspace/a")?,
+            folder("file:///workspace/b")?,
+        ])
+        .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if first != second {
+            return Err(
+                "an equivalent folder list in any order must canonicalize equal".to_string(),
+            );
+        }
+        if entry_paths(&first) != vec![PathBuf::from("/workspace/a"), PathBuf::from("/workspace/b")]
+        {
+            return Err("entries must sort by normalized path".to_string());
+        }
+        if first.selection() != WorkspaceFolderSelection::AmbiguousFolders {
+            return Err("two folders must read as ambiguous".to_string());
+        }
+        let empty = WorkspaceFolderSet::default();
+        if empty.selection() != WorkspaceFolderSelection::NoFolders {
+            return Err("an empty set must read as no_folders".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_folder_set_rejects_invalid_file_uri() -> Result<(), String> {
+        let rejection = WorkspaceFolderSet::from_folder_list(&[folder("https://example.test/x")?])
+            .err()
+            .ok_or_else(|| "a non-file URI must be rejected".to_string())?;
+        if rejection.kind != WorkspaceFolderEventRejectionKind::InvalidFileUri {
+            return Err("expected the invalid_file_uri rejection kind".to_string());
+        }
+        if rejection.kind.as_str() != "invalid_file_uri" {
+            return Err("unexpected rejection kind string".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_folder_set_apply_event_validates_before_mutating() -> Result<(), String> {
+        let mut set = WorkspaceFolderSet::from_folder_list(&[folder("file:///workspace/a")?])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        let epoch = set.folder_set_epoch();
+
+        // Duplicate addition: already stored.
+        let rejection = set
+            .apply_event(&[folder("file:///workspace/a")?], &[])
+            .err()
+            .ok_or_else(|| "adding a stored folder must be rejected".to_string())?;
+        if rejection.kind != WorkspaceFolderEventRejectionKind::DuplicateAddition {
+            return Err("expected duplicate_addition for a stored folder".to_string());
+        }
+        // Duplicate addition within one event.
+        let rejection = set
+            .apply_event(
+                &[
+                    folder("file:///workspace/b")?,
+                    folder("file:///workspace/b")?,
+                ],
+                &[],
+            )
+            .err()
+            .ok_or_else(|| "adding the same folder twice must be rejected".to_string())?;
+        if rejection.kind != WorkspaceFolderEventRejectionKind::DuplicateAddition {
+            return Err("expected duplicate_addition within one event".to_string());
+        }
+        // Contradictory event.
+        let rejection = set
+            .apply_event(
+                &[folder("file:///workspace/b")?],
+                &[folder("file:///workspace/b")?],
+            )
+            .err()
+            .ok_or_else(|| "add+remove of one folder must be rejected".to_string())?;
+        if rejection.kind != WorkspaceFolderEventRejectionKind::ContradictoryEvent {
+            return Err("expected contradictory_event".to_string());
+        }
+        // Removal of an unknown folder.
+        let rejection = set
+            .apply_event(&[], &[folder("file:///workspace/b")?])
+            .err()
+            .ok_or_else(|| "removing an unknown folder must be rejected".to_string())?;
+        if rejection.kind != WorkspaceFolderEventRejectionKind::UnknownRemoval {
+            return Err("expected unknown_removal".to_string());
+        }
+        // Every rejection left the set untouched: entries, epoch, and the
+        // last applied event identity are unchanged.
+        if set.entries().len() != 1
+            || set.folder_set_epoch() != epoch
+            || set.last_applied_event().is_some()
+        {
+            return Err("a rejected event must not mutate the stored set".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_folder_set_apply_event_tracks_epoch_and_event_identity() -> Result<(), String> {
+        let mut set = WorkspaceFolderSet::default();
+        // First folder after none: one content change, one applied event.
+        let outcome = set
+            .apply_event(&[folder("file:///workspace/a")?], &[])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if !outcome.changed || outcome.folder_set_epoch != 1 || outcome.event_id != 1 {
+            return Err("the first addition must change the set exactly once".to_string());
+        }
+        if set.selection() != WorkspaceFolderSelection::SingleFolder
+            || set.last_applied_event() != Some(1)
+        {
+            return Err("one stored folder must select as single_folder".to_string());
+        }
+        // An empty delta is accepted but changes nothing and bumps no epoch.
+        let outcome = set
+            .apply_event(&[], &[])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if outcome.changed || outcome.folder_set_epoch != 1 || outcome.event_id != 2 {
+            return Err("an empty delta must be a recorded no-op".to_string());
+        }
+        if set.last_applied_event() != Some(2) {
+            return Err("an accepted no-op event still advances the event identity".to_string());
+        }
+        // A direct switch in one event replaces the entries canonically.
+        let outcome = set
+            .apply_event(
+                &[folder("file:///workspace/b")?],
+                &[folder("file:///workspace/a")?],
+            )
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if !outcome.changed
+            || outcome.folder_set_epoch != 2
+            || entry_paths(&set) != vec![PathBuf::from("/workspace/b")]
+        {
+            return Err("a one-event switch must replace the stored entries".to_string());
+        }
+        // A full-list reconciliation with an equivalent set is a no-op.
+        let replaced = set
+            .replace_from_folder_list(&[folder("file:///workspace/b")?])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if replaced || set.folder_set_epoch() != 2 {
+            return Err("an equivalent reconciliation must not bump the epoch".to_string());
+        }
+        // A different reconciliation list replaces and bumps.
+        let replaced = set
+            .replace_from_folder_list(&[
+                folder("file:///workspace/c")?,
+                folder("file:///workspace/b")?,
+            ])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if !replaced
+            || set.folder_set_epoch() != 3
+            || entry_paths(&set)
+                != vec![PathBuf::from("/workspace/b"), PathBuf::from("/workspace/c")]
+        {
+            return Err("a changed reconciliation must replace canonically".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_folder_set_reconciliation_with_equivalent_uri_spelling_is_noop()
+    -> Result<(), String> {
+        // Identity is the normalized path, not the URI spelling
+        // (RIPR-SPEC-0139): a reconciliation answer that re-sends the same
+        // folder with a byte-different but path-equivalent URI spelling
+        // (here: percent-encoded characters) is a no-op — no epoch bump, no
+        // entry change, and the stored spelling is kept for display.
+        let mut set = WorkspaceFolderSet::from_folder_list(&[folder("file:///workspace/ab")?])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if set
+            .apply_event(&[folder("file:///workspace/cd")?], &[])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?
+            .folder_set_epoch
+            != 1
+        {
+            return Err("setup: the addition must bump the epoch once".to_string());
+        }
+        let replaced = set
+            .replace_from_folder_list(&[
+                folder("file:///workspace/%61%62")?,
+                folder("file:///workspace/%63d")?,
+            ])
+            .map_err(|rejection| format!("unexpected rejection: {rejection:?}"))?;
+        if replaced || set.folder_set_epoch() != 1 {
+            return Err("a path-equivalent respelling must not bump the epoch".to_string());
+        }
+        if entry_paths(&set)
+            != vec![
+                PathBuf::from("/workspace/ab"),
+                PathBuf::from("/workspace/cd"),
+            ]
+        {
+            return Err("a path-equivalent respelling must not change entries".to_string());
+        }
+        if set.entries().iter().any(|entry| entry.uri.contains('%')) {
+            return Err("the stored URI spelling must be kept, not rewritten".to_string());
+        }
+        // The consistency check agrees: both spellings match the stored set.
+        if !set.matches_folder_list_paths(&[
+            folder("file:///workspace/%61%62")?,
+            folder("file:///workspace/cd")?,
+        ]) {
+            return Err("path-equivalent spellings must be consistent".to_string());
+        }
+        if set.matches_folder_list_paths(&[folder("file:///workspace/ab")?]) {
+            return Err("a smaller list must not be consistent".to_string());
+        }
+        if set.matches_folder_list_paths(&[folder("https://example.test/ab")?]) {
+            return Err("an unparseable list must not be consistent".to_string());
+        }
+        Ok(())
     }
 }

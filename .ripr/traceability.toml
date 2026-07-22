@@ -7257,3 +7257,40 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0139"
+name = "lsp workspace-folder set authority"
+spec = "docs/specs/RIPR-SPEC-0139-lsp-workspace-folder-set-authority.md"
+tests = [
+  "crates/ripr/src/lsp/state.rs::tests::workspace_folder_set_canonicalizes_order_and_duplicates",
+  "crates/ripr/src/lsp/state.rs::tests::workspace_folder_set_rejects_invalid_file_uri",
+  "crates/ripr/src/lsp/state.rs::tests::workspace_folder_set_apply_event_validates_before_mutating",
+  "crates/ripr/src/lsp/state.rs::tests::workspace_folder_set_apply_event_tracks_epoch_and_event_identity",
+  "crates/ripr/src/lsp/state.rs::tests::workspace_folder_set_reconciliation_with_equivalent_uri_spelling_is_noop",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_first_folder_after_none_starts_single_fresh_transition",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_second_folder_becomes_ambiguous_without_fallback",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_ambiguous_resolves_to_remaining_folder_on_removal",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_direct_switch_lands_on_root_changed",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_remove_active_root_quarantines_repair_authority",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_non_active_folder_removal_keeps_ambiguous_selection",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_duplicate_and_contradictory_events_rejected_typed",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_invalid_file_uri_event_rejected_typed",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_stale_reconciliation_response_is_dropped",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_lagging_contradictory_reconciliation_is_dropped",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_equivalent_set_different_order_is_noop",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_shutdown_during_inflight_reconciliation_stops_cleanly",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/state.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/backend.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0139-lsp-workspace-folder-set-authority.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

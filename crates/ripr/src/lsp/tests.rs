@@ -6004,6 +6004,1075 @@ fn framed_lsp_direct_root_switch_repulls_on_reselection() -> Result<(), String> 
     })
 }
 
+/// Framed duplex harness for the `workspace_folder_transitions` suite
+/// (#2036, RIPR-SPEC-0139). Every `didChangeWorkspaceFolders` event that the
+/// server accepts is followed by exactly one server-originated
+/// `workspace/workspaceFolders` reconciliation request, which this fake
+/// client MUST answer — an unanswered server request hangs the test.
+struct WorkspaceFolderTransitionsClient {
+    reader: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    writer: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    server_task: tokio::task::JoinHandle<()>,
+    next_id: u64,
+}
+
+impl WorkspaceFolderTransitionsClient {
+    fn spawn() -> Self {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        Self {
+            reader: client_read,
+            writer: client_write,
+            server_task,
+            next_id: 1,
+        }
+    }
+
+    fn request_id(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    async fn initialize_with_workspace_folders(
+        &mut self,
+        folders: serde_json::Value,
+    ) -> Result<(), String> {
+        let id = self.request_id();
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "workspaceFolders": folders,
+                    "initializationOptions": { "checkMode": "instant" },
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut self.reader, id).await?;
+        if initialize.get("error").is_some() {
+            return Err(format!("initialize failed: {initialize}"));
+        }
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await
+    }
+
+    /// Send one `workspace/didChangeWorkspaceFolders` notification and return
+    /// the server's reconciliation request. The caller answers it with
+    /// `answer_workspace_folders`.
+    async fn send_folder_event(
+        &mut self,
+        added: serde_json::Value,
+        removed: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWorkspaceFolders",
+                "params": {"event": {"added": added, "removed": removed}}
+            }),
+        )
+        .await?;
+        read_lsp_request(&mut self.reader, "workspace/workspaceFolders").await
+    }
+
+    async fn answer_workspace_folders(
+        &mut self,
+        request: &serde_json::Value,
+        result: serde_json::Value,
+    ) -> Result<(), String> {
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": request["id"].clone(),
+                "result": result
+            }),
+        )
+        .await
+    }
+
+    async fn run_command(&mut self, command: &str) -> Result<serde_json::Value, String> {
+        let id = self.request_id();
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "workspace/executeCommand",
+                "params": {"command": command, "arguments": []}
+            }),
+        )
+        .await?;
+        let response = read_lsp_response(&mut self.reader, id).await?;
+        if response.get("error").is_some() {
+            return Err(format!("command {command} failed: {response}"));
+        }
+        Ok(response["result"].clone())
+    }
+
+    async fn workspace_status(&mut self) -> Result<serde_json::Value, String> {
+        let result = self.run_command(COLLECT_WORKSPACE_STATUS_COMMAND).await?;
+        Ok(result["analysis_status"].clone())
+    }
+
+    /// Poll the workspace status until the predicate holds. Folder events
+    /// are processed concurrently with command requests, so a plain status
+    /// read could observe the pre-transition state; the bounded poll is the
+    /// synchronization point for transitions that publish no request.
+    async fn poll_workspace_status_until(
+        &mut self,
+        description: &str,
+        predicate: impl Fn(&serde_json::Value) -> bool,
+    ) -> Result<serde_json::Value, String> {
+        let mut last = serde_json::Value::Null;
+        for _ in 0..40 {
+            last = self.workspace_status().await?;
+            if predicate(&last) {
+                return Ok(last);
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        Err(format!(
+            "workspace status never satisfied {description}; last status: {last}"
+        ))
+    }
+
+    async fn finish(&mut self) -> Result<(), String> {
+        let id = self.request_id();
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "shutdown", "params": null}),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut self.reader, id).await?;
+        if shutdown.get("error").is_some() {
+            return Err(format!("shutdown failed: {shutdown}"));
+        }
+        write_lsp_message(
+            &mut self.writer,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await?;
+        self.writer
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(Duration::from_secs(2), &mut self.server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                self.server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+fn run_workspace_folder_transitions_exchange<Fut>(
+    failure: &str,
+    exchange: Fut,
+) -> Result<(), String>
+where
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        match tokio::time::timeout(Duration::from_secs(15), exchange).await {
+            Ok(result) => result,
+            Err(_) => Err(failure.to_string()),
+        }
+    })
+}
+
+fn workspace_folder_json(uri: &tower_lsp_server::ls_types::Uri) -> serde_json::Value {
+    serde_json::json!({"uri": uri.as_str(), "name": "folder"})
+}
+
+fn status_root_state(status: &serde_json::Value) -> Option<&str> {
+    status["root_state"].as_str()
+}
+
+fn status_candidate_roots(status: &serde_json::Value) -> Vec<String> {
+    status["candidate_roots"]
+        .as_array()
+        .map(|roots| {
+            roots
+                .iter()
+                .filter_map(|root| root.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn workspace_folder_transitions_first_folder_after_none_starts_single_fresh_transition()
+-> Result<(), String> {
+    // Issue fixture 1: no folders -> add one. The first valid folder after a
+    // no-workspace state creates one fresh transition: the stored set gains
+    // one entry, the authority selects it, and no duplicate analysis runs.
+    run_workspace_folder_transitions_exchange(
+        "first-folder-after-none transition did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-first-folder-a")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_a_path = root_a.path().display().to_string();
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([]))
+                .await?;
+            let status = client.workspace_status().await?;
+            if status_root_state(&status) != Some("root_unavailable") {
+                return Err(format!(
+                    "an empty folder list must start unavailable: {status}"
+                ));
+            }
+
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_a_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([workspace_folder_json(&root_a_uri)]),
+                )
+                .await?;
+
+            // Collect the transition publish plus a 300ms drain: exactly one
+            // transition to the selected root, no duplicate analysis, and no
+            // further server-originated requests.
+            let id = client.request_id();
+            write_lsp_message(
+                &mut client.writer,
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "workspace/executeCommand",
+                    "params": {"command": COLLECT_WORKSPACE_STATUS_COMMAND, "arguments": []}
+                }),
+            )
+            .await?;
+            let (response, notifications) =
+                read_response_and_notifications(&mut client.reader, id).await?;
+            let status = &response["result"]["analysis_status"];
+            if status_root_state(status) != Some("selected_single_root")
+                || status["effective_root"].as_str() != Some(root_a_path.as_str())
+            {
+                return Err(format!("the first folder must be selected: {status}"));
+            }
+            let mut transition_publishes = 0_u32;
+            for message in &notifications {
+                if message.get("method").and_then(serde_json::Value::as_str)
+                    == Some("ripr/analysisStatus")
+                {
+                    let params = &message["params"];
+                    if params["root_state"].as_str() != Some("selected_single_root")
+                        || params["effective_root"].as_str() != Some(root_a_path.as_str())
+                    {
+                        return Err(format!(
+                            "a second, divergent transition published: {params}"
+                        ));
+                    }
+                    transition_publishes += 1;
+                }
+                if message.get("id").is_some() && message.get("method").is_some() {
+                    return Err(format!(
+                        "unexpected server-originated request after the transition: {message}"
+                    ));
+                }
+                if message.get("method").and_then(serde_json::Value::as_str)
+                    == Some("textDocument/publishDiagnostics")
+                {
+                    return Err("no analysis may publish diagnostics here".to_string());
+                }
+            }
+            if transition_publishes == 0 {
+                return Err("the first-folder transition must publish a status".to_string());
+            }
+            client.finish().await
+        },
+    )
+}
+
+#[test]
+fn workspace_folder_transitions_second_folder_becomes_ambiguous_without_fallback()
+-> Result<(), String> {
+    // Issue fixture 2: one folder -> add second. The workspace becomes
+    // ambiguous; the server never silently falls back to the first folder.
+    run_workspace_folder_transitions_exchange(
+        "second-folder ambiguity transition did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-ambiguous-a")?;
+            let root_b = unique_lsp_test_root("wft-ambiguous-b")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_b_uri = file_uri_for_path(root_b.path())?;
+            let root_a_path = root_a.path().display().to_string();
+            let root_b_path = root_b.path().display().to_string();
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                    &root_a_uri
+                )]))
+                .await?;
+            let status = client.workspace_status().await?;
+            if status_root_state(&status) != Some("selected_single_root") {
+                return Err(format!("one folder must start selected: {status}"));
+            }
+
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([
+                        workspace_folder_json(&root_a_uri),
+                        workspace_folder_json(&root_b_uri)
+                    ]),
+                )
+                .await?;
+            let status = client
+                .poll_workspace_status_until("workspace_ambiguous", |status| {
+                    status_root_state(status) == Some("workspace_ambiguous")
+                })
+                .await?;
+            if !status["effective_root"].is_null() {
+                return Err(format!(
+                    "an ambiguous workspace must not select the first folder: {status}"
+                ));
+            }
+            if status_candidate_roots(&status) != vec![root_a_path, root_b_path] {
+                return Err(format!(
+                    "candidates must be the canonical sorted folder set: {status}"
+                ));
+            }
+            if status["repair_actions_available"].as_bool() != Some(false) {
+                return Err(format!(
+                    "an ambiguous workspace must block repair authority: {status}"
+                ));
+            }
+            client.finish().await
+        },
+    )
+}
+
+#[test]
+fn workspace_folder_transitions_ambiguous_resolves_to_remaining_folder_on_removal()
+-> Result<(), String> {
+    // Issue fixture 3: ambiguous -> the client narrows the set to one root
+    // by removing the other folder; the remaining folder is selected.
+    run_workspace_folder_transitions_exchange(
+        "ambiguous-to-selected transition did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-resolve-a")?;
+            let root_b = unique_lsp_test_root("wft-resolve-b")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_b_uri = file_uri_for_path(root_b.path())?;
+            let root_a_path = root_a.path().display().to_string();
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([
+                    workspace_folder_json(&root_a_uri),
+                    workspace_folder_json(&root_b_uri)
+                ]))
+                .await?;
+            let status = client.workspace_status().await?;
+            if status_root_state(&status) != Some("workspace_ambiguous") {
+                return Err(format!("two folders must start ambiguous: {status}"));
+            }
+
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([]),
+                    serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([workspace_folder_json(&root_a_uri)]),
+                )
+                .await?;
+            let status = client
+                .poll_workspace_status_until("selected_single_root", |status| {
+                    status_root_state(status) == Some("selected_single_root")
+                })
+                .await?;
+            if status["effective_root"].as_str() != Some(root_a_path.as_str()) {
+                return Err(format!(
+                    "the remaining folder must be selected after the removal: {status}"
+                ));
+            }
+            client.finish().await
+        },
+    )
+}
+
+#[test]
+fn workspace_folder_transitions_direct_switch_lands_on_root_changed() -> Result<(), String> {
+    // Issue fixture 4: switch from A to B in one event. The authority lands
+    // on the non-analyzable root_changed state; an explicit refresh owns the
+    // re-selection, exactly as in the query-driven direct-switch pin.
+    run_workspace_folder_transitions_exchange("direct root switch did not complete", async {
+        let root_a = unique_lsp_test_root("wft-switch-a")?;
+        let root_b = unique_lsp_test_root("wft-switch-b")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let root_b_uri = file_uri_for_path(root_b.path())?;
+        let root_b_path = root_b.path().display().to_string();
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                &root_a_uri
+            )]))
+            .await?;
+
+        let request = client
+            .send_folder_event(
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                serde_json::json!([workspace_folder_json(&root_a_uri)]),
+            )
+            .await?;
+        client
+            .answer_workspace_folders(
+                &request,
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+            )
+            .await?;
+        let status = client
+            .poll_workspace_status_until("root_changed", |status| {
+                status_root_state(status) == Some("root_changed")
+            })
+            .await?;
+        if status["effective_root"].as_str() != Some(root_b_path.as_str()) {
+            return Err(format!(
+                "root_changed must carry the new root as the current root: {status}"
+            ));
+        }
+        if status["root_recovery_route"].as_str() != Some("refresh") {
+            return Err(format!("root_changed must route to refresh: {status}"));
+        }
+        if status["repair_actions_available"].as_bool() != Some(false) {
+            return Err(format!(
+                "root_changed must block repair authority: {status}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_remove_active_root_quarantines_repair_authority()
+-> Result<(), String> {
+    // Issue fixture 5: remove the active root. The transition clears the
+    // analysis state and quarantines repair authority behind the typed
+    // workspace_root_removed block reason.
+    run_workspace_folder_transitions_exchange("active-root removal did not complete", async {
+        let root_a = unique_lsp_test_root("wft-removal-a")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                &root_a_uri
+            )]))
+            .await?;
+
+        let request = client
+            .send_folder_event(
+                serde_json::json!([]),
+                serde_json::json!([workspace_folder_json(&root_a_uri)]),
+            )
+            .await?;
+        client
+            .answer_workspace_folders(&request, serde_json::json!([]))
+            .await?;
+        let status = client
+            .poll_workspace_status_until("root_removed", |status| {
+                status_root_state(status) == Some("root_removed")
+            })
+            .await?;
+        if !status["effective_root"].is_null()
+            || status["repair_actions_available"].as_bool() != Some(false)
+        {
+            return Err(format!(
+                "removing the active root must clear the root and repair authority: {status}"
+            ));
+        }
+        let receipt = client.run_command(COLLECT_RECEIPT_STATUS_COMMAND).await?;
+        if receipt["missing_receipt_reason"].as_str() != Some("workspace_root_removed")
+            || receipt["receipt_status"].as_str() != Some("not_available")
+        {
+            return Err(format!(
+                "repair authority must stay quarantined behind workspace_root_removed: {receipt}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_non_active_folder_removal_keeps_ambiguous_selection()
+-> Result<(), String> {
+    // Issue fixture 6: removing a non-active folder from an ambiguous set
+    // changes only the candidate list; no root is selected or removed.
+    run_workspace_folder_transitions_exchange("non-active folder removal did not complete", async {
+        let root_a = unique_lsp_test_root("wft-nonactive-a")?;
+        let root_b = unique_lsp_test_root("wft-nonactive-b")?;
+        let root_c = unique_lsp_test_root("wft-nonactive-c")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let root_b_uri = file_uri_for_path(root_b.path())?;
+        let root_c_uri = file_uri_for_path(root_c.path())?;
+        let root_a_path = root_a.path().display().to_string();
+        let root_b_path = root_b.path().display().to_string();
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([
+                workspace_folder_json(&root_a_uri),
+                workspace_folder_json(&root_b_uri),
+                workspace_folder_json(&root_c_uri)
+            ]))
+            .await?;
+
+        let request = client
+            .send_folder_event(
+                serde_json::json!([]),
+                serde_json::json!([workspace_folder_json(&root_c_uri)]),
+            )
+            .await?;
+        client
+            .answer_workspace_folders(
+                &request,
+                serde_json::json!([
+                    workspace_folder_json(&root_a_uri),
+                    workspace_folder_json(&root_b_uri)
+                ]),
+            )
+            .await?;
+        let status = client
+            .poll_workspace_status_until("two remaining candidates", |status| {
+                status_root_state(status) == Some("workspace_ambiguous")
+                    && status_candidate_roots(status).len() == 2
+            })
+            .await?;
+        if status_candidate_roots(&status) != vec![root_a_path, root_b_path]
+            || !status["effective_root"].is_null()
+        {
+            return Err(format!(
+                "removing a non-active folder must only narrow the candidate list: {status}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_duplicate_and_contradictory_events_rejected_typed()
+-> Result<(), String> {
+    // Issue fixture 7: duplicate and contradictory entries are rejected with
+    // a typed bounded status; the stored set is left unchanged, which the
+    // follow-up valid events prove.
+    run_workspace_folder_transitions_exchange("typed rejection flow did not complete", async {
+        let root_a = unique_lsp_test_root("wft-reject-a")?;
+        let root_b = unique_lsp_test_root("wft-reject-b")?;
+        let root_c = unique_lsp_test_root("wft-reject-c")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let root_b_uri = file_uri_for_path(root_b.path())?;
+        let root_c_uri = file_uri_for_path(root_c.path())?;
+        let root_a_path = root_a.path().display().to_string();
+        let root_b_path = root_b.path().display().to_string();
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                &root_a_uri
+            )]))
+            .await?;
+
+        // Duplicate addition of the stored folder: rejected. A rejected
+        // event sends no reconciliation request, so the poll is the
+        // synchronization point.
+        write_lsp_message(
+            &mut client.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWorkspaceFolders",
+                "params": {"event": {"added": [workspace_folder_json(&root_a_uri)], "removed": []}}
+            }),
+        )
+        .await?;
+        let status = client
+            .poll_workspace_status_until("duplicate_addition rejection", |status| {
+                status_root_state(status) == Some("root_unavailable")
+                    && status["root_detail"]
+                        .as_str()
+                        .is_some_and(|detail| detail.contains("duplicate_addition"))
+            })
+            .await?;
+        if status["root_detail"]
+            .as_str()
+            .is_none_or(|detail| !detail.contains("rejected (duplicate_addition)"))
+        {
+            return Err(format!("the rejection must be typed and bounded: {status}"));
+        }
+
+        // The set still holds exactly {A}: adding B now yields the
+        // ambiguous set {A, B}.
+        let request = client
+            .send_folder_event(
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                serde_json::json!([]),
+            )
+            .await?;
+        client
+            .answer_workspace_folders(
+                &request,
+                serde_json::json!([
+                    workspace_folder_json(&root_a_uri),
+                    workspace_folder_json(&root_b_uri)
+                ]),
+            )
+            .await?;
+        let status = client
+            .poll_workspace_status_until("ambiguous after valid add", |status| {
+                status_root_state(status) == Some("workspace_ambiguous")
+            })
+            .await?;
+        if status_candidate_roots(&status) != vec![root_a_path.clone(), root_b_path.clone()] {
+            return Err(format!(
+                "a rejected event must not have mutated the stored set: {status}"
+            ));
+        }
+
+        // Contradictory event (C in both added and removed): rejected.
+        write_lsp_message(
+                &mut client.writer,
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "workspace/didChangeWorkspaceFolders",
+                    "params": {"event": {"added": [workspace_folder_json(&root_c_uri)], "removed": [workspace_folder_json(&root_c_uri)]}}
+                }),
+            )
+            .await?;
+        client
+            .poll_workspace_status_until("contradictory_event rejection", |status| {
+                status_root_state(status) == Some("root_unavailable")
+                    && status["root_detail"]
+                        .as_str()
+                        .is_some_and(|detail| detail.contains("contradictory_event"))
+            })
+            .await?;
+
+        // The set is still {A, B}: removing B selects A, and C never
+        // entered the set.
+        let request = client
+            .send_folder_event(
+                serde_json::json!([]),
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+            )
+            .await?;
+        client
+            .answer_workspace_folders(
+                &request,
+                serde_json::json!([workspace_folder_json(&root_a_uri)]),
+            )
+            .await?;
+        let status = client
+            .poll_workspace_status_until("selected after contradictory rejection", |status| {
+                status_root_state(status) == Some("selected_single_root")
+            })
+            .await?;
+        if status["effective_root"].as_str() != Some(root_a_path.as_str()) {
+            return Err(format!(
+                "the contradictory event must not have entered the set: {status}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_invalid_file_uri_event_rejected_typed() -> Result<(), String> {
+    // Issue fixture 8: a non-file URI in the delta is rejected with a typed
+    // bounded status; the stored set is left unchanged.
+    run_workspace_folder_transitions_exchange(
+        "invalid-uri rejection flow did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-invalid-a")?;
+            let root_b = unique_lsp_test_root("wft-invalid-b")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_b_uri = file_uri_for_path(root_b.path())?;
+            let root_a_path = root_a.path().display().to_string();
+            let root_b_path = root_b.path().display().to_string();
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                    &root_a_uri
+                )]))
+                .await?;
+
+            write_lsp_message(
+                &mut client.writer,
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "workspace/didChangeWorkspaceFolders",
+                    "params": {"event": {"added": [{"uri": "https://example.test/workspace", "name": "remote"}], "removed": []}}
+                }),
+            )
+            .await?;
+            client
+                .poll_workspace_status_until("invalid_file_uri rejection", |status| {
+                    status_root_state(status) == Some("root_unavailable")
+                        && status["root_detail"]
+                            .as_str()
+                            .is_some_and(|detail| detail.contains("invalid_file_uri"))
+                })
+                .await?;
+
+            // The set still holds exactly {A}: adding B yields {A, B}.
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([
+                        workspace_folder_json(&root_a_uri),
+                        workspace_folder_json(&root_b_uri)
+                    ]),
+                )
+                .await?;
+            let status = client
+                .poll_workspace_status_until("ambiguous after invalid-uri rejection", |status| {
+                    status_root_state(status) == Some("workspace_ambiguous")
+                })
+                .await?;
+            if status_candidate_roots(&status) != vec![root_a_path, root_b_path] {
+                return Err(format!(
+                    "the invalid-uri event must not have mutated the stored set: {status}"
+                ));
+            }
+            client.finish().await
+        },
+    )
+}
+
+#[test]
+fn workspace_folder_transitions_stale_reconciliation_response_is_dropped() -> Result<(), String> {
+    // Issue fixtures 9 and 10: event A's reconciliation round-trip completes
+    // only after event B was applied from its own delta. The stale response
+    // must be dropped — the authority stays at B's outcome and the epoch
+    // never regresses.
+    run_workspace_folder_transitions_exchange("stale-reconciliation flow did not complete", async {
+        let root_a = unique_lsp_test_root("wft-stale-a")?;
+        let root_b = unique_lsp_test_root("wft-stale-b")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let root_b_uri = file_uri_for_path(root_b.path())?;
+        let root_a_path = root_a.path().display().to_string();
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                &root_a_uri
+            )]))
+            .await?;
+
+        // Event A adds B; its reconciliation request stays unanswered.
+        let request_a = client
+            .send_folder_event(
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                serde_json::json!([]),
+            )
+            .await?;
+        // Event B removes B; reading its reconciliation request proves
+        // event B's delta was applied to the stored set.
+        let request_b = client
+            .send_folder_event(
+                serde_json::json!([]),
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+            )
+            .await?;
+        // The stale A-era answer claims the folder list is only [B]. If
+        // it were applied, the authority would switch to B
+        // (root_changed); the epoch guard must drop it instead.
+        client
+            .answer_workspace_folders(
+                &request_a,
+                serde_json::json!([workspace_folder_json(&root_b_uri)]),
+            )
+            .await?;
+        let during = read_lsp_messages_for(&mut client.reader, Duration::from_millis(300)).await?;
+        if let Some(message) = during.first() {
+            return Err(format!(
+                "the stale reconciliation response must be dropped without any publication: {message}"
+            ));
+        }
+        // Event B's own round-trip confirms the stored set {A}.
+        client
+            .answer_workspace_folders(
+                &request_b,
+                serde_json::json!([workspace_folder_json(&root_a_uri)]),
+            )
+            .await?;
+        let status = client.workspace_status().await?;
+        if status_root_state(&status) != Some("selected_single_root")
+            || status["effective_root"].as_str() != Some(root_a_path.as_str())
+        {
+            return Err(format!(
+                "the newer event's outcome must survive the stale response: {status}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_lagging_contradictory_reconciliation_is_dropped()
+-> Result<(), String> {
+    // Review fixture (#2036 review): an accepted delta changes the set, then
+    // the reconciliation answer is the lagging PRE-delta list. The answer
+    // contradicts the stored set and must be dropped without mutating: the
+    // authority keeps the delta-derived state. A consistent answer confirms
+    // the same way.
+    run_workspace_folder_transitions_exchange(
+        "lagging-reconciliation flow did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-lagging-a")?;
+            let root_b = unique_lsp_test_root("wft-lagging-b")?;
+            let root_c = unique_lsp_test_root("wft-lagging-c")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_b_uri = file_uri_for_path(root_b.path())?;
+            let root_c_uri = file_uri_for_path(root_c.path())?;
+            let root_a_path = root_a.path().display().to_string();
+            let root_b_path = root_b.path().display().to_string();
+            let root_c_path = root_c.path().display().to_string();
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                    &root_a_uri
+                )]))
+                .await?;
+
+            // Accepted delta: add B (stored set {A, B}). The lagging answer
+            // claims the list is still only [A]; installing it would undo
+            // the delta, so it must be dropped and the delta-derived
+            // ambiguous authority applied.
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([workspace_folder_json(&root_a_uri)]),
+                )
+                .await?;
+            let status = client
+                .poll_workspace_status_until("delta-derived ambiguity survives", |status| {
+                    status_root_state(status) == Some("workspace_ambiguous")
+                })
+                .await?;
+            if status_candidate_roots(&status) != vec![root_a_path.clone(), root_b_path.clone()] {
+                return Err(format!(
+                    "the lagging contradictory answer must not undo the accepted delta: {status}"
+                ));
+            }
+
+            // A consistent answer confirms the accepted delta the same way.
+            let request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_c_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            client
+                .answer_workspace_folders(
+                    &request,
+                    serde_json::json!([
+                        workspace_folder_json(&root_a_uri),
+                        workspace_folder_json(&root_b_uri),
+                        workspace_folder_json(&root_c_uri)
+                    ]),
+                )
+                .await?;
+            let status = client
+                .poll_workspace_status_until("consistent confirmation", |status| {
+                    status_root_state(status) == Some("workspace_ambiguous")
+                        && status_candidate_roots(status).len() == 3
+                })
+                .await?;
+            if status_candidate_roots(&status) != vec![root_a_path, root_b_path, root_c_path] {
+                return Err(format!(
+                    "the consistent answer must confirm the accepted delta: {status}"
+                ));
+            }
+            client.finish().await
+        },
+    )
+}
+
+#[test]
+fn workspace_folder_transitions_equivalent_set_different_order_is_noop() -> Result<(), String> {
+    // Issue fixture 11: an equivalent folder set in a different order is
+    // byte-identical after canonicalization — no epoch bump, no transition,
+    // no status publish, and the initialize-order authority is untouched.
+    run_workspace_folder_transitions_exchange("equivalent-set no-op flow did not complete", async {
+        let root_a = unique_lsp_test_root("wft-reorder-a")?;
+        let root_b = unique_lsp_test_root("wft-reorder-b")?;
+        let root_a_uri = file_uri_for_path(root_a.path())?;
+        let root_b_uri = file_uri_for_path(root_b.path())?;
+        let root_a_path = root_a.path().display().to_string();
+        let root_b_path = root_b.path().display().to_string();
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        client
+            .initialize_with_workspace_folders(serde_json::json!([
+                workspace_folder_json(&root_b_uri),
+                workspace_folder_json(&root_a_uri)
+            ]))
+            .await?;
+        let status = client.workspace_status().await?;
+        if status_root_state(&status) != Some("workspace_ambiguous")
+            || status_candidate_roots(&status) != vec![root_b_path.clone(), root_a_path.clone()]
+        {
+            return Err(format!(
+                "initialize must keep the client folder order for candidates: {status}"
+            ));
+        }
+
+        let request = client
+            .send_folder_event(serde_json::json!([]), serde_json::json!([]))
+            .await?;
+        client
+            .answer_workspace_folders(
+                &request,
+                serde_json::json!([
+                    workspace_folder_json(&root_a_uri),
+                    workspace_folder_json(&root_b_uri)
+                ]),
+            )
+            .await?;
+        let during = read_lsp_messages_for(&mut client.reader, Duration::from_millis(250)).await?;
+        if let Some(message) = during.first() {
+            return Err(format!(
+                "an equivalent set in a different order must not publish or request: {message}"
+            ));
+        }
+        let status = client.workspace_status().await?;
+        if status_root_state(&status) != Some("workspace_ambiguous")
+            || status_candidate_roots(&status) != vec![root_b_path, root_a_path]
+        {
+            return Err(format!(
+                "the equivalent reconciliation must leave the authority untouched: {status}"
+            ));
+        }
+        client.finish().await
+    })
+}
+
+#[test]
+fn workspace_folder_transitions_shutdown_during_inflight_reconciliation_stops_cleanly()
+-> Result<(), String> {
+    // Issue fixture 12: shutdown while a reconciliation round-trip is still
+    // in flight. The server must stop cleanly: the shutdown request is
+    // handled concurrently with the pending round-trip, and the late answer
+    // lands in a session that is already stopping, with no observable
+    // effect.
+    run_workspace_folder_transitions_exchange(
+        "shutdown during transition did not complete",
+        async {
+            let root_a = unique_lsp_test_root("wft-shutdown-a")?;
+            let root_b = unique_lsp_test_root("wft-shutdown-b")?;
+            let root_a_uri = file_uri_for_path(root_a.path())?;
+            let root_b_uri = file_uri_for_path(root_b.path())?;
+            let mut client = WorkspaceFolderTransitionsClient::spawn();
+            client
+                .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
+                    &root_a_uri
+                )]))
+                .await?;
+            let pending_request = client
+                .send_folder_event(
+                    serde_json::json!([workspace_folder_json(&root_b_uri)]),
+                    serde_json::json!([]),
+                )
+                .await?;
+            // Shutdown while the reconciliation request is unanswered.
+            let id = client.request_id();
+            write_lsp_message(
+                &mut client.writer,
+                serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "shutdown", "params": null}),
+            )
+            .await?;
+            let shutdown = read_lsp_response(&mut client.reader, id).await?;
+            if shutdown.get("error").is_some() {
+                return Err(format!("shutdown failed: {shutdown}"));
+            }
+            // The protocol requires answering every server request; the late
+            // answer must not prevent a clean stop.
+            client
+                .answer_workspace_folders(
+                    &pending_request,
+                    serde_json::json!([
+                        workspace_folder_json(&root_a_uri),
+                        workspace_folder_json(&root_b_uri)
+                    ]),
+                )
+                .await?;
+            write_lsp_message(
+                &mut client.writer,
+                serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+            )
+            .await?;
+            client
+                .writer
+                .shutdown()
+                .await
+                .map_err(|err| format!("failed to close test client: {err}"))?;
+            match tokio::time::timeout(Duration::from_secs(2), &mut client.server_task).await {
+                Ok(join_result) => {
+                    join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+                }
+                Err(_) => {
+                    client.server_task.abort();
+                    return Err(
+                        "LSP server did not stop after exit during an in-flight transition"
+                            .to_string(),
+                    );
+                }
+            }
+            Ok(())
+        },
+    )
+}
+
 #[test]
 fn backend_starts_with_default_lsp_analysis_config() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));

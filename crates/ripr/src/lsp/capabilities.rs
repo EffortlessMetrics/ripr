@@ -1,4 +1,5 @@
 use super::agent_protocol::server_capability;
+use super::state::WorkspaceFolderSet;
 use super::uri::path_from_file_uri;
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -287,6 +288,35 @@ fn path_from_workspace_folder(
         },
         WorkspaceRootResolution::Selected,
     )
+}
+
+/// Retain the canonical workspace-folder set at `initialize` (#2036,
+/// RIPR-SPEC-0139) from the same inputs `root_from_initialize_params`
+/// resolves: `workspaceFolders` when present, otherwise the documented
+/// `rootUri` fallback. Entries canonicalize (dedup + path order) so later
+/// deltas and reconciliations compare order-insensitively. An unparseable
+/// list yields an empty set; the root resolution above stays the authority
+/// that reports the typed unavailable state for it.
+#[expect(
+    deprecated,
+    reason = "rootUri remains the LSP compatibility fallback when workspaceFolders is absent"
+)]
+pub(super) fn workspace_folder_set_from_initialize_params(
+    params: &InitializeParams,
+) -> WorkspaceFolderSet {
+    if let Some(folders) = params.workspace_folders.as_ref() {
+        return WorkspaceFolderSet::from_folder_list(folders).unwrap_or_default();
+    }
+    params
+        .root_uri
+        .as_ref()
+        .map_or_else(WorkspaceFolderSet::default, |uri| {
+            WorkspaceFolderSet::from_folder_list(&[tower_lsp_server::ls_types::WorkspaceFolder {
+                uri: uri.clone(),
+                name: "root".to_string(),
+            }])
+            .unwrap_or_default()
+        })
 }
 
 #[cfg(test)]

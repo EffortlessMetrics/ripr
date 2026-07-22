@@ -4,7 +4,7 @@ use super::capabilities::{
     ConfigurationMode, WorkspaceRootResolution, client_supports_code_lens_refresh,
     client_supports_diagnostic_refresh, client_supports_pull_diagnostics,
     client_supports_work_done_progress, configuration_mode, initialize_result_for_client,
-    root_from_initialize_params,
+    root_from_initialize_params, workspace_folder_set_from_initialize_params,
 };
 use super::config::{LspAnalysisConfig, validated_pulled_options};
 use super::diagnostics::{
@@ -26,8 +26,9 @@ use super::refresh_scheduler::{
 };
 use super::state::{
     AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, ConfigPullState,
-    DocumentStalenessReason, DocumentStore, QuarantineTransition, WorkspaceRootAuthority,
-    WorkspaceRootState, content_digest, format_duration,
+    DocumentStalenessReason, DocumentStore, QuarantineTransition, WorkspaceFolderEventRejection,
+    WorkspaceFolderSelection, WorkspaceFolderSet, WorkspaceRootAuthority, WorkspaceRootState,
+    content_digest, format_duration,
 };
 use super::uri::{
     file_uri_for_path, file_uri_is_within_root, file_uris_match, path_from_file_uri,
@@ -88,6 +89,11 @@ pub(super) struct Backend {
     workspace_root: Mutex<WorkspaceRootAuthority>,
     workspace_root_epoch: AtomicU64,
     workspace_root_transition: AsyncMutex<()>,
+    /// The stored workspace-folder-set identity (#2036, RIPR-SPEC-0139):
+    /// `didChangeWorkspaceFolders` deltas apply to this set, and the
+    /// optional full-list reconciliation query is a separately versioned
+    /// confirmation step bound to the folder-set epoch.
+    workspace_folders: Mutex<WorkspaceFolderSet>,
     documents: Mutex<DocumentStore>,
     saved_content_digests: Mutex<BTreeMap<tower_lsp_server::ls_types::Uri, String>>,
     analysis_config: Mutex<LspAnalysisConfig>,
@@ -166,6 +172,7 @@ impl Backend {
             )),
             workspace_root_epoch: AtomicU64::new(0),
             workspace_root_transition: AsyncMutex::new(()),
+            workspace_folders: Mutex::new(WorkspaceFolderSet::default()),
             documents: Mutex::new(DocumentStore::default()),
             saved_content_digests: Mutex::new(BTreeMap::new()),
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
@@ -1491,6 +1498,20 @@ impl Backend {
         })
     }
 
+    /// Typed bounded status for a rejected workspace-folder update (#2036,
+    /// RIPR-SPEC-0139): the stored set was left unchanged, and analysis is
+    /// blocked behind `workspace_root_unavailable` until a valid event
+    /// repairs the set.
+    async fn reject_workspace_folder_update(&self, rejection: WorkspaceFolderEventRejection) {
+        let detail = bounded_failure_message(&format!(
+            "workspace folder update rejected ({}): {}; the stored folder set was left unchanged",
+            rejection.kind.as_str(),
+            rejection.detail
+        ));
+        self.apply_workspace_root_authority(WorkspaceRootAuthority::unavailable(detail))
+            .await;
+    }
+
     fn set_root(&self, root: PathBuf) {
         let Ok(mut current_root) = self.root.lock() else {
             return;
@@ -1499,7 +1520,16 @@ impl Backend {
     }
 
     async fn apply_workspace_root_resolution(&self, resolution: WorkspaceRootResolution) {
-        let authority = match resolution {
+        self.apply_workspace_root_authority(Self::workspace_root_authority_for_resolution(
+            resolution,
+        ))
+        .await;
+    }
+
+    fn workspace_root_authority_for_resolution(
+        resolution: WorkspaceRootResolution,
+    ) -> WorkspaceRootAuthority {
+        match resolution {
             WorkspaceRootResolution::Selected(root) => {
                 if !root.is_absolute() {
                     WorkspaceRootAuthority::unavailable(format!(
@@ -1530,14 +1560,36 @@ impl Backend {
             WorkspaceRootResolution::Unavailable(detail) => {
                 WorkspaceRootAuthority::unavailable(detail)
             }
-        };
-
-        self.apply_workspace_root_authority(authority).await;
+        }
     }
 
     async fn apply_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
-        let (schedule_deferred_pull, lens_view_cleared) =
-            self.apply_workspace_root_authority_locked(authority).await;
+        self.apply_workspace_root_authority_inner(authority, None)
+            .await;
+    }
+
+    /// Apply an authority derived from the stored workspace-folder set
+    /// (#2036, RIPR-SPEC-0139). The application is bound to the folder-set
+    /// epoch the authority was derived from: if a newer event advanced the
+    /// set before the transition guard is acquired, the stale application is
+    /// dropped and the newer event's handler owns the authority.
+    async fn apply_workspace_folder_set_authority(
+        &self,
+        authority: WorkspaceRootAuthority,
+        expected_folder_set_epoch: u64,
+    ) {
+        self.apply_workspace_root_authority_inner(authority, Some(expected_folder_set_epoch))
+            .await;
+    }
+
+    async fn apply_workspace_root_authority_inner(
+        &self,
+        authority: WorkspaceRootAuthority,
+        expected_folder_set_epoch: Option<u64>,
+    ) {
+        let (schedule_deferred_pull, lens_view_cleared) = self
+            .apply_workspace_root_authority_locked(authority, expected_folder_set_epoch)
+            .await;
         if lens_view_cleared {
             // Sent after the transition guard is released, same discipline as
             // the deferred configuration pull: a cleared analysis state means
@@ -1561,13 +1613,36 @@ impl Backend {
     async fn apply_workspace_root_authority_locked(
         &self,
         authority: WorkspaceRootAuthority,
+        expected_folder_set_epoch: Option<u64>,
     ) -> (bool, bool) {
         let _transition = self.workspace_root_transition.lock().await;
-        let authority_epoch = self.workspace_root_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+        // Folder-set epoch binding (#2036): an authority derived from the
+        // stored workspace-folder set is applied only when the set has not
+        // advanced since derivation. The set lock is always the inner lock
+        // (transition guard first), matching the handler's ordering.
+        if let Some(expected) = expected_folder_set_epoch {
+            let current = self
+                .workspace_folders
+                .lock()
+                .ok()
+                .map(|set| set.folder_set_epoch());
+            if current != Some(expected) {
+                return (false, false);
+            }
+        }
         let previous = self.workspace_root_authority();
         let changed = previous.state != authority.state
             || previous.effective_root != authority.effective_root
-            || previous.candidate_roots != authority.candidate_roots;
+            || previous.candidate_roots != authority.candidate_roots
+            || previous.detail != authority.detail;
+        if !changed {
+            // A byte-identical authority is no transition (#2036): no epoch
+            // bump, no invalidation, no status publish. An equivalent
+            // workspace-folder set (any order) therefore produces no epoch
+            // bump and no transition.
+            return (false, false);
+        }
+        let authority_epoch = self.workspace_root_epoch.fetch_add(1, Ordering::SeqCst) + 1;
         // Any change away from a selected root affects root-scoped pulled
         // settings: bump the pull epoch so an in-flight response scoped to
         // the old root is dropped. A re-pull is scheduled below whenever the
@@ -2969,6 +3044,12 @@ impl LanguageServer for Backend {
             *supported = supports_dynamic_registration;
         }
         let resolution = root_from_initialize_params(&params);
+        // Retain the canonical workspace-folder set (#2036, RIPR-SPEC-0139)
+        // so `didChangeWorkspaceFolders` deltas apply to stored state
+        // instead of being discarded. The root resolution is unchanged.
+        if let Ok(mut set) = self.workspace_folders.lock() {
+            *set = workspace_folder_set_from_initialize_params(&params);
+        }
         let (repo_config, config_error) = match &resolution {
             WorkspaceRootResolution::Selected(root) if root.is_dir() => {
                 match crate::config::load_for_root(root) {
@@ -3053,29 +3134,119 @@ impl LanguageServer for Backend {
             self.verbose_params_bytes(&params),
         )
         .await;
-        let resolution = match self.client.workspace_folders().await {
-            Ok(Some(folders)) => {
-                if folders.is_empty() {
-                    self.apply_workspace_root_authority(WorkspaceRootAuthority::removed(
-                        self.effective_root(),
-                    ))
-                    .await;
-                    return;
-                }
-                let params = InitializeParams {
-                    workspace_folders: Some(folders),
-                    ..InitializeParams::default()
-                };
-                root_from_initialize_params(&params)
-            }
-            Ok(None) => WorkspaceRootResolution::Unavailable(
-                "client did not return workspace folders after a workspace change".to_string(),
-            ),
-            Err(err) => WorkspaceRootResolution::Unavailable(format!(
-                "workspace folder query failed: {err}"
-            )),
+        // 1. Apply the event delta to the stored workspace-folder set (#2036,
+        //    RIPR-SPEC-0139); the delta is never discarded. Validation runs
+        //    before any mutation, so a rejected event leaves the set
+        //    untouched and surfaces a typed bounded status instead of a
+        //    silent fallback. The folder-set and root epochs are captured
+        //    under the same lock acquisition so the reconciliation
+        //    round-trip below binds to this exact set state.
+        let delta = {
+            let Ok(mut set) = self.workspace_folders.lock() else {
+                return;
+            };
+            set.apply_event(&params.event.added, &params.event.removed)
+                .map(|outcome| (outcome, self.workspace_root_epoch.load(Ordering::SeqCst)))
         };
-        self.apply_workspace_root_resolution(resolution).await;
+        let (outcome, root_epoch) = match delta {
+            Ok(pair) => pair,
+            Err(rejection) => {
+                self.reject_workspace_folder_update(rejection).await;
+                return;
+            }
+        };
+        // 2. Optional full-list reconciliation: a separately versioned
+        //    confirmation step, never a substitute for the delta. A client
+        //    that cannot answer keeps the delta-derived state.
+        let queried = self.client.workspace_folders().await.unwrap_or(None);
+        // 3. Drop the round-trip when a newer event or transition won the
+        //    race, then apply at most one transition derived from the stored
+        //    set.
+        let action = {
+            let Ok(mut set) = self.workspace_folders.lock() else {
+                return;
+            };
+            if set.folder_set_epoch() != outcome.folder_set_epoch
+                || set.last_applied_event() != Some(outcome.event_id)
+                || self.workspace_root_epoch.load(Ordering::SeqCst) != root_epoch
+            {
+                return;
+            }
+            match queried {
+                Some(folders) if outcome.changed => {
+                    // The accepted delta is authoritative over the
+                    // round-trip: the answer is consistency-checked but
+                    // NEVER installed. A consistent answer (same path set)
+                    // merely confirms the stored set; a lagging,
+                    // contradictory answer (e.g. the pre-delta list) is
+                    // dropped without mutating — installing it would undo
+                    // the accepted delta and reintroduce the stale
+                    // full-list race this handler exists to close. Either
+                    // way the delta-derived authority is applied below.
+                    let _contradictory_answer_dropped = !set.matches_folder_list_paths(&folders);
+                    Some(Ok(set.folder_set_epoch()))
+                }
+                Some(folders) => {
+                    // No accepted delta: the full-list answer is the
+                    // drift-correction path and may replace the set.
+                    match set.replace_from_folder_list(&folders) {
+                        Ok(replaced) => {
+                            if replaced {
+                                Some(Ok(set.folder_set_epoch()))
+                            } else {
+                                None
+                            }
+                        }
+                        Err(rejection) => Some(Err(rejection)),
+                    }
+                }
+                None if outcome.changed => Some(Ok(set.folder_set_epoch())),
+                None => None,
+            }
+        };
+        let folder_set_epoch = match action {
+            None => return,
+            Some(Err(rejection)) => {
+                self.reject_workspace_folder_update(rejection).await;
+                return;
+            }
+            Some(Ok(folder_set_epoch)) => folder_set_epoch,
+        };
+        // Derive the authority from the stored set in one lock acquisition
+        // (re-reading the epoch alongside) and apply it epoch-bound: a set
+        // that advanced in the meantime makes the guard drop this
+        // application, and the newer event's handler converges the
+        // authority to the latest set.
+        let derived = {
+            let Ok(set) = self.workspace_folders.lock() else {
+                return;
+            };
+            let resolution = match set.selection() {
+                WorkspaceFolderSelection::NoFolders => None,
+                WorkspaceFolderSelection::SingleFolder => set
+                    .entries()
+                    .first()
+                    .map(|entry| WorkspaceRootResolution::Selected(entry.path.clone())),
+                WorkspaceFolderSelection::AmbiguousFolders => {
+                    Some(WorkspaceRootResolution::Ambiguous(
+                        set.entries()
+                            .iter()
+                            .map(|entry| entry.path.clone())
+                            .collect(),
+                    ))
+                }
+            };
+            (resolution, set.folder_set_epoch())
+        };
+        if derived.1 != folder_set_epoch {
+            return;
+        }
+        let authority = match derived.0 {
+            None => WorkspaceRootAuthority::removed(self.effective_root()),
+            Some(resolution) => Self::workspace_root_authority_for_resolution(resolution),
+        };
+        self.apply_workspace_folder_set_authority(authority, folder_set_epoch)
+            .await;
         self.reload_repository_config().await;
     }
 
