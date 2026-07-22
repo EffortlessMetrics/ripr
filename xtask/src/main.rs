@@ -923,6 +923,44 @@ fn ci_fast_with_envs(envs: &[(&str, &str)]) -> Result<(), String> {
     run_policy_checks()
 }
 
+/// The `cargo xtask` gate commands `precommit()` runs, in run order (the
+/// leading `cargo fmt --check` is not an xtask command and stays out). The
+/// command-catalog CI drift check expands an enforced `cargo xtask precommit`
+/// workflow invocation into these gates (issue #2258), so the routed-rust
+/// lanes can invoke the shared table once instead of enumerating each gate.
+/// Keep aligned with `precommit()` and `precommit_report_body()`; the
+/// `precommit_gate_commands_match_report` test pins the report to this list.
+const PRECOMMIT_GATE_COMMANDS: &[&str] = &[
+    "check-static-language",
+    "check-no-panic-family",
+    "check-allow-attributes",
+    "check-local-context",
+    "check-file-policy",
+    "check-executable-files",
+    "check-workflows",
+    "check-droid-review-config",
+    "check-spec-format",
+    "check-spec-numbering",
+    "check-fixture-contracts",
+    "check-traceability",
+    "check-capabilities",
+    "check-workspace-shape",
+    "check-architecture",
+    "check-public-api",
+    "check-output-contracts",
+    "check-doc-artifacts",
+    "check-doc-index",
+    "check-readme-state",
+    "markdown-links",
+    "check-pr-shape",
+    "check-command-catalog",
+    "check-generated",
+    "check-badge-diff-policy",
+    "check-generated-clean",
+    "check-proof-packs",
+    "check-lint-policy",
+];
+
 fn precommit() -> Result<(), String> {
     ensure_reports_dir()?;
     run("cargo", &["fmt", "--check"])?;
@@ -2173,7 +2211,21 @@ fn command_catalog_ci_drift_violations_for_repo(
         let text = read_text_lossy(&path)?;
         enforced.extend(ci_enforced_xtask_invocations(&text));
     }
+    expand_precommit_ci_invocations(&mut enforced);
     Ok(command_catalog_ci_drift_violations(catalog, &enforced))
+}
+
+/// An enforced `cargo xtask precommit` invocation transitively enforces every
+/// gate in the precommit table (issue #2258): expand it so gates invoked only
+/// through precommit still count as CI-enforced. Advisory precommit
+/// invocations never reach the enforced set, so they expand nothing.
+fn expand_precommit_ci_invocations(enforced: &mut BTreeSet<WorkflowXtaskInvocation>) {
+    if !enforced.contains(&("precommit".to_string(), String::new())) {
+        return;
+    }
+    for gate in PRECOMMIT_GATE_COMMANDS {
+        enforced.insert(((*gate).to_string(), String::new()));
+    }
 }
 
 fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {

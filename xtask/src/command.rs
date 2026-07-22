@@ -582,8 +582,8 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/precommit.md",
             false,
-            false,
-            "Cheap local guardrail for formatting and policy checks.",
+            true,
+            "Cheap local guardrail for formatting and policy checks; the routed-rust lanes invoke it as the shared required gate table, so an enforced precommit invocation transitively enforces every gate it runs.",
         ),
         command_entry(
             "check-pr",
@@ -1262,7 +1262,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/workspace-shape.md",
             false,
-            false,
+            true,
             "Checks workspace shape.",
         ),
         command_entry(
@@ -1270,7 +1270,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/architecture.md",
             false,
-            false,
+            true,
             "Checks architecture boundaries.",
         ),
         command_entry(
@@ -1278,7 +1278,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/public-api.md",
             false,
-            false,
+            true,
             "Checks public API boundaries.",
         ),
         command_entry(
@@ -1294,7 +1294,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/doc-artifacts.md",
             false,
-            false,
+            true,
             "Checks the source-of-truth document artifact ledger.",
         ),
         command_entry(
@@ -1318,7 +1318,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/readme-state.md",
             false,
-            false,
+            true,
             "Checks README state.",
         ),
         command_entry(
@@ -1326,7 +1326,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/markdown-links.md",
             false,
-            false,
+            true,
             "Checks Markdown links.",
         ),
         command_entry(
@@ -1334,7 +1334,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/pr-shape.md",
             false,
-            false,
+            true,
             "Checks PR shape.",
         ),
         command_entry(
@@ -1414,7 +1414,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/lint-policy.md",
             false,
-            false,
+            true,
             "Checks lint policy.",
         ),
         command_entry(
@@ -1430,7 +1430,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/proof-packs.md",
             false,
-            false,
+            true,
             "Checks the proof-pack manifest structure; manifest-only, no routing.",
         ),
         command_entry(

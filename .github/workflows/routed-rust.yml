@@ -171,30 +171,13 @@ jobs:
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
         if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
@@ -319,30 +302,13 @@ jobs:
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
         if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
@@ -466,30 +432,13 @@ jobs:
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
         if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
@@ -576,30 +525,13 @@ jobs:
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
@@ -666,13 +598,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-docs-gate
-      - name: Doc/spec gates (docs-spec pack required commands)
+      - name: Doc/spec gates (full precommit table)
         run: |
-          cargo xtask check-static-language
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-doc-index
-          cargo xtask check-local-context
+          cargo xtask precommit
       - name: Upload docs-gate reports
         if: always()
         uses: actions/upload-artifact@v7
