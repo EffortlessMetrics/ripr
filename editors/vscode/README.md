@@ -132,6 +132,17 @@ confirmation.
 - `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 
+The repair-loop commands also appear in the editor context menu for Rust
+and preview-language files (ripr groups, right-click in the editor). The
+targeted-test and agent-loop commands stay code-action-only because their
+handlers need the diagnostic payload a code action carries, which a
+context-menu click cannot supply. `ripr: Show Status` (`Ctrl+Alt+R`,
+`Cmd+Alt+R` on macOS) and `ripr: Copy Top Repair Packet` (`Ctrl+Alt+P`,
+`Cmd+Alt+P` on macOS) ship default keybindings; both are user-overridable.
+VS Code when-clauses have no diagnostic-source context key, so the context
+menu is gated on the document language rather than on the `ripr` diagnostic
+source.
+
 ## Preview Limitations
 
 The `0.8.x` extension uses a universal VSIX and downloads native server

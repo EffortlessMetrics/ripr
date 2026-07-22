@@ -171,6 +171,10 @@ suite('Workspace Root Picker', () => {
     const controller = makeController(harness);
 
     await controller.start();
+    // The ambiguous-start offer is intentionally fire-and-forget (it must
+    // not block start()); flush the microtask queue so the warning/picker
+    // flow has completed before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
 
     assert.strictEqual(harness.warningMessages.length, 1, 'the ambiguous start should surface one warning');
     assert.deepStrictEqual(
@@ -187,6 +191,8 @@ suite('Workspace Root Picker', () => {
     const controller = makeController(harness);
 
     await controller.start();
+    // Same fire-and-forget flush as above: the warning lands async.
+    await new Promise((resolve) => setImmediate(resolve));
 
     assert.strictEqual(harness.warningMessages.length, 1);
     assert.strictEqual(harness.quickPickItems.length, 0, 'a dismissed warning must not show the picker');

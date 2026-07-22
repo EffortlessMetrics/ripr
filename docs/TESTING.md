@@ -109,6 +109,11 @@ The test suite:
   `ripr.copyAgentVerifyCommand`, `ripr.copyAgentReceiptCommand`,
   `ripr.openRelatedTest`, `ripr.openSettings`)
 - verifies the defaults-first editor check mode is `draft`
+- pins the `contributes.menus` editor/context repair-loop entries (ripr
+  groups, `resourceLangId` gating) and the two default
+  `contributes.keybindings`, keeps the payload-bound targeted-test and
+  agent-loop commands code-action-only, and fails closed when a menu or
+  keybinding references an unregistered command
 - verifies `copyContext` completes without crash when no editor is active
 - verifies `copyContext` accepts a structured target with `finding_id` and
   `probe_id` without crashing
