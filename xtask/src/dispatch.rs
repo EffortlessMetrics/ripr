@@ -156,6 +156,11 @@ mod tests {
 
     #[test]
     fn rust_repair_trust_report_is_reachable_from_dispatch() -> Result<(), String> {
+        // The report reads repo-relative paths, so the test changes the
+        // process cwd — a global mutation that races other tests since the
+        // suite went parallel (#2132; flake seen on CI in two unrelated PR
+        // branches). Hold the write guard for the whole window.
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let original_dir = std::env::current_dir().map_err(|error| error.to_string())?;
         let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
