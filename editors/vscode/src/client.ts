@@ -396,6 +396,12 @@ export class RiprClientController {
     );
     try {
       await client.start();
+      // Re-apply the configured trace level after the handshake (#2082
+      // review): a ripr.trace change that landed while start() was in
+      // flight (before this.client was assigned, so the live path was a
+      // no-op) must not be lost. Idempotent with the setTrace above and
+      // with any live update that already ran.
+      this.setTraceFromConfig();
     } catch (error) {
       // A rejected start must not strand a half-initialized client: clear the
       // reference and detach listeners so a later start() re-initializes
@@ -434,6 +440,21 @@ export class RiprClientController {
   async restart(): Promise<void> {
     await this.stop();
     await this.start();
+  }
+
+  /**
+   * Apply the configured `ripr.trace.server` level to the running client
+   * without a restart (#2082): trace changes must not drop published
+   * diagnostics or force a full re-analysis. No-op when no client runs —
+   * the next start() applies the configured level anyway.
+   */
+  setTraceFromConfig(): void {
+    if (!this.client) {
+      return;
+    }
+    const config = this.runtime.getConfig();
+    this.client.setTrace(traceFromConfig(config.traceServer));
+    this.output.appendLine(`ripr server trace set to '${config.traceServer}' without a restart.`);
   }
 
   /**

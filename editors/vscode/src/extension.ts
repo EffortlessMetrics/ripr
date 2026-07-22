@@ -205,10 +205,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         event.affectsConfiguration('ripr.enabled') ||
         event.affectsConfiguration('ripr.server') ||
         event.affectsConfiguration('ripr.check') ||
-        event.affectsConfiguration('ripr.baseRef') ||
-        event.affectsConfiguration('ripr.trace')
+        event.affectsConfiguration('ripr.baseRef')
       ) {
         await controller?.restart();
+        return;
+      }
+      if (event.affectsConfiguration('ripr.trace')) {
+        // Trace applies live (#2082): a full restart would drop every
+        // published diagnostic and force a full re-analysis. When a
+        // restart-triggering key changed in the same event, the restart
+        // above already applied the new trace level at start().
+        controller?.setTraceFromConfig();
       }
     })
   );
