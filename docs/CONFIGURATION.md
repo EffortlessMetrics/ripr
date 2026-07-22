@@ -271,7 +271,10 @@ ripr lsp [--stdio] [--version]
 | `--version` | _(off)_ | Print the language server version and exit. |
 
 LSP runtime behavior is not configured by CLI flags; clients pass options via
-`initializationOptions` (next section).
+`initializationOptions` (next section), pushed
+`workspace/didChangeConfiguration` settings, or — when the client supports it
+— the server-originated `workspace/configuration` pull (see
+[Configuration pull](#lsp-configuration-pull) below).
 
 ## LSP `initializationOptions`
 
@@ -291,6 +294,49 @@ reads five keys; everything else is ignored. The schema lives in
 Initialization options are treated as explicit LSP settings and override
 `ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
 present, except that LSP diagnostics render JSON-shaped data internally.
+
+## LSP configuration pull
+
+When the client advertises `capabilities.workspace.configuration = true`, the
+server negotiates **pull mode** (RIPR-SPEC-0136) and requests the bounded
+`ripr` section once from the `initialized` handler:
+
+```text
+workspace/configuration ← [{ "scopeUri": <selected root URI>, "section": "ripr" }]
+```
+
+The section carries the same five governed keys as `initializationOptions`
+(`baseRef`, `checkMode`, `includeUnchangedTests`, `seamDiagnostics`,
+`diagnosticProfile`) and nothing else. The response is validated before it is
+applied; a supported key with the wrong JSON type or an unknown enum literal
+fails the whole pull (fail-closed), while unrecognized keys are ignored.
+
+Precedence per governed key in pull mode:
+
+```text
+valid pulled setting > initialization option > ripr.toml > built-in default
+```
+
+`workspace/didChangeConfiguration` in pull mode does not apply pushed values;
+it invalidates the pulled layer and schedules one coalesced re-pull
+(responses for a superseded epoch are dropped). A re-pull that leaves the
+effective settings unchanged does not reschedule analysis.
+
+Fallback, negotiated from capabilities only (never the client name):
+
+- `pull` — client answers `workspace/configuration`; behavior above.
+- `push_fallback` — no pull support, but the client advertises
+  `workspace/didChangeConfiguration`; pushed values keep applying as today.
+- `initialization_only` — neither transport; only `initializationOptions`
+  apply.
+
+All three transports can supply exactly the same five governed keys. The
+`ripr.collectWorkspaceStatus` payload discloses the negotiated
+`configuration_mode`, the per-field source of each governed value
+(`pulled` | `initialization` | `repo` | `default`), and the last pull state
+(`pending` until the first pull resolves, `deferred` when no single root is
+selected, `applied`, or `failed` with a typed kind and recovery route) under
+`analysis_status.input_authority`.
 
 ## VS Code extension settings
 
@@ -788,10 +834,12 @@ For CLI commands:
 CLI flag  >  ripr.toml  >  CheckInput::default()
 ```
 
-For LSP:
+For LSP, the negotiated configuration transport decides (see "LSP
+configuration pull" above):
 
 ```
-LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
+pull mode:      valid pulled setting  >  LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
+other modes:    LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
 ```
 
 ## See also

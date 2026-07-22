@@ -156,6 +156,65 @@ pub(super) fn client_supports_work_done_progress(params: &InitializeParams) -> b
         .unwrap_or(false)
 }
 
+/// How session configuration reaches the server for the five governed
+/// session keys (#2031, RIPR-SPEC-0136). Negotiated once at `initialize`
+/// from client capabilities only — never inferred from the client name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConfigurationMode {
+    /// The client answers `workspace/configuration`; the server pulls the
+    /// bounded `ripr` section and re-pulls on `workspace/didChangeConfiguration`.
+    Pull,
+    /// The client cannot answer `workspace/configuration` but advertises
+    /// `workspace/didChangeConfiguration`; pushed values keep applying.
+    PushFallback,
+    /// The client neither pulls nor advertises push support; initialization
+    /// options are the only client-supplied settings.
+    InitializationOnly,
+}
+
+impl ConfigurationMode {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Pull => "pull",
+            Self::PushFallback => "push_fallback",
+            Self::InitializationOnly => "initialization_only",
+        }
+    }
+}
+
+/// Whether the client answers server-originated `workspace/configuration`
+/// requests (`capabilities.workspace.configuration`).
+pub(super) fn client_supports_configuration_pull(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.configuration)
+        .unwrap_or(false)
+}
+
+/// Whether the client advertises `workspace/didChangeConfiguration` support,
+/// which makes pushed settings the fallback transport when pull is
+/// unavailable.
+fn client_supports_push_configuration(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.did_change_configuration.as_ref())
+        .is_some()
+}
+
+pub(super) fn configuration_mode(params: &InitializeParams) -> ConfigurationMode {
+    if client_supports_configuration_pull(params) {
+        ConfigurationMode::Pull
+    } else if client_supports_push_configuration(params) {
+        ConfigurationMode::PushFallback
+    } else {
+        ConfigurationMode::InitializationOnly
+    }
+}
+
 #[expect(
     deprecated,
     reason = "rootUri remains the LSP compatibility fallback when workspaceFolders is absent"
@@ -349,6 +408,53 @@ mod tests {
             || client_supports_work_done_progress(&InitializeParams::default())
         {
             return Err("missing or declined window.workDoneProgress must disable progress".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_mode_follows_workspace_capabilities() -> Result<(), String> {
+        let mut pull = InitializeParams::default();
+        pull.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            configuration: Some(true),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if !client_supports_configuration_pull(&pull)
+            || configuration_mode(&pull) != ConfigurationMode::Pull
+        {
+            return Err("workspace.configuration=true must negotiate pull mode".to_string());
+        }
+
+        let mut declined = InitializeParams::default();
+        declined.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            configuration: Some(false),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if client_supports_configuration_pull(&declined)
+            || configuration_mode(&declined) != ConfigurationMode::InitializationOnly
+        {
+            return Err("workspace.configuration=false must not negotiate pull mode".to_string());
+        }
+
+        let mut push = InitializeParams::default();
+        push.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            did_change_configuration: Some(
+                tower_lsp_server::ls_types::DidChangeConfigurationClientCapabilities {
+                    dynamic_registration: Some(true),
+                },
+            ),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if configuration_mode(&push) != ConfigurationMode::PushFallback {
+            return Err(
+                "didChangeConfiguration support without pull must negotiate push fallback"
+                    .to_string(),
+            );
+        }
+
+        if configuration_mode(&InitializeParams::default()) != ConfigurationMode::InitializationOnly
+        {
+            return Err("empty capabilities must negotiate initialization-only mode".to_string());
         }
         Ok(())
     }

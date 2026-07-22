@@ -1,10 +1,11 @@
 use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
 use super::capabilities::{
-    WorkspaceRootResolution, client_supports_diagnostic_refresh, client_supports_pull_diagnostics,
-    client_supports_work_done_progress, initialize_result_for_client, root_from_initialize_params,
+    ConfigurationMode, WorkspaceRootResolution, client_supports_diagnostic_refresh,
+    client_supports_pull_diagnostics, client_supports_work_done_progress, configuration_mode,
+    initialize_result_for_client, root_from_initialize_params,
 };
-use super::config::LspAnalysisConfig;
+use super::config::{LspAnalysisConfig, validated_pulled_options};
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, DiagnosticResultIdCache, WorkspaceDiagnostics,
     diagnostic_refresh_plan, take_all_uris,
@@ -23,7 +24,7 @@ use super::refresh_scheduler::{
     RefreshScope,
 };
 use super::state::{
-    AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot,
+    AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, ConfigPullState,
     DocumentStalenessReason, DocumentStore, QuarantineTransition, WorkspaceRootAuthority,
     WorkspaceRootState, content_digest, format_duration,
 };
@@ -66,7 +67,7 @@ const INTERACTIVE_REFRESH_DEBOUNCE: Duration = Duration::from_millis(200);
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Diagnostic,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, ConfigurationItem, Diagnostic,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
@@ -89,6 +90,23 @@ pub(super) struct Backend {
     saved_content_digests: Mutex<BTreeMap<tower_lsp_server::ls_types::Uri, String>>,
     analysis_config: Mutex<LspAnalysisConfig>,
     configuration_failure: Mutex<Option<AnalysisFailure>>,
+    /// Negotiated session-configuration transport (#2031, RIPR-SPEC-0136).
+    configuration_mode: Mutex<ConfigurationMode>,
+    /// Epoch guarding pull responses: `workspace/didChangeConfiguration` in
+    /// pull mode bumps it, and a response arriving for an older epoch is
+    /// dropped. Mirrors `workspace_root_epoch`.
+    config_pull_epoch: AtomicU64,
+    config_pull_state: Mutex<ConfigPullState>,
+    /// Coalesces pull scheduling to one in-flight request plus at most one
+    /// queued re-pull for the latest epoch.
+    config_pull_coordinator: Mutex<ConfigPullCoordinator>,
+    /// The root the currently retained pulled layer was scoped to. Pulled
+    /// settings are valid only for that root; any transition landing on a
+    /// different analysis-capable root must re-pull. Compared rather than
+    /// derived from transition deltas so a direct A -> B switch (which
+    /// rewrites to a non-analyzable `RootChanged` state and is re-selected
+    /// later with `root_changed == false`) is still caught.
+    config_pull_scope_root: Mutex<Option<PathBuf>>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     latest_analysis: Mutex<Option<Arc<AnalysisSnapshot>>>,
@@ -101,6 +119,12 @@ pub(super) struct Backend {
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
     pub(super) progress: Arc<AnalysisProgressTracker>,
+}
+
+#[derive(Default)]
+struct ConfigPullCoordinator {
+    in_flight: bool,
+    queued: bool,
 }
 
 pub(super) struct RefreshTransaction {
@@ -133,6 +157,11 @@ impl Backend {
             saved_content_digests: Mutex::new(BTreeMap::new()),
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
             configuration_failure: Mutex::new(None),
+            configuration_mode: Mutex::new(ConfigurationMode::InitializationOnly),
+            config_pull_epoch: AtomicU64::new(0),
+            config_pull_state: Mutex::new(ConfigPullState::NotApplicable),
+            config_pull_coordinator: Mutex::new(ConfigPullCoordinator::default()),
+            config_pull_scope_root: Mutex::new(None),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
             latest_analysis: Mutex::new(None),
@@ -1284,6 +1313,7 @@ impl Backend {
                     .map(|input_identity| serde_json::json!({"input_identity": input_identity}))
             })
             .unwrap_or(serde_json::Value::Null);
+        let pull_state = self.config_pull_state();
         let input_authority = serde_json::json!({
             "current": if configuration_failure.is_some() {
                 serde_json::Value::Null
@@ -1301,6 +1331,28 @@ impl Backend {
             "session_options_present": config
                 .as_ref()
                 .is_some_and(|value| value.session_options.is_some()),
+            // Session-configuration transport disclosure (#2031,
+            // RIPR-SPEC-0136): how governed values arrive, where each one
+            // came from, and the last pull outcome so defaults never
+            // masquerade as accepted requested settings.
+            "configuration_mode": self.configuration_mode().as_str(),
+            "session_value_sources": config
+                .as_ref()
+                .map(|value| serde_json::Value::Object(value.session_value_sources()))
+                .unwrap_or(serde_json::Value::Null),
+            "configuration_pull": {
+                // Snapshot once: the status request handler runs concurrently
+                // with pull tasks, and three separate locked reads could
+                // interleave a state change into a torn payload (e.g. a
+                // failure from a newer state beside an older state string).
+                "state": pull_state.as_str(),
+                "epoch": self.config_pull_epoch.load(Ordering::Relaxed),
+                "failure": pull_state.failure().map(|failure| serde_json::json!({
+                    "kind": failure.kind,
+                    "message": failure.message,
+                })),
+                "recovery_route": pull_state.recovery_route(),
+            },
         });
         let last_success_age_ms = health
             .last_success_at
@@ -1397,12 +1449,47 @@ impl Backend {
     }
 
     async fn apply_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
+        let schedule_deferred_pull = self.apply_workspace_root_authority_locked(authority).await;
+        if schedule_deferred_pull {
+            // Scheduled after the transition guard is released: a deferred
+            // configuration pull (#2031) becomes runnable once a single
+            // workspace root is selected, and its apply path can reach the
+            // refresh path, which re-locks `workspace_root_transition`
+            // (`run_refresh_request`). Scheduling inline while holding the
+            // guard would deadlock.
+            // Indirection via Box::pin: root transitions are reachable from
+            // the refresh path that a pull can schedule, so the direct call
+            // would be a recursive async fn.
+            Box::pin(self.schedule_configuration_pull()).await;
+        }
+    }
+
+    async fn apply_workspace_root_authority_locked(
+        &self,
+        authority: WorkspaceRootAuthority,
+    ) -> bool {
         let _transition = self.workspace_root_transition.lock().await;
         let authority_epoch = self.workspace_root_epoch.fetch_add(1, Ordering::SeqCst) + 1;
         let previous = self.workspace_root_authority();
         let changed = previous.state != authority.state
             || previous.effective_root != authority.effective_root
             || previous.candidate_roots != authority.candidate_roots;
+        // Any change away from a selected root affects root-scoped pulled
+        // settings: bump the pull epoch so an in-flight response scoped to
+        // the old root is dropped. A re-pull is scheduled below whenever the
+        // transition lands on an analysis-capable root — including
+        // A -> unavailable -> B, where the intermediate transition has no
+        // root but the retained layer is still A-scoped; the epoch bump at
+        // the A -> unavailable step already dropped A's in-flight responses
+        // (#2211 review). Initial selection (None -> Some) does not bump:
+        // nothing was ever scoped to a prior root.
+        let root_changed = previous.effective_root != authority.effective_root;
+        if previous.effective_root.is_some()
+            && root_changed
+            && self.configuration_mode() == ConfigurationMode::Pull
+        {
+            self.config_pull_epoch.fetch_add(1, Ordering::SeqCst);
+        }
         if changed {
             self.refresh_scheduler.invalidate_input();
             self.progress
@@ -1418,7 +1505,7 @@ impl Backend {
         }
 
         if self.workspace_root_epoch.load(Ordering::SeqCst) != authority_epoch {
-            return;
+            return false;
         }
 
         let final_authority = if changed
@@ -1440,6 +1527,43 @@ impl Backend {
         self.set_workspace_root_authority(final_authority);
         self.publish_analysis_status().await;
         self.refresh_idle.notify_waiters();
+        // A deferred configuration pull (#2031) becomes runnable once a
+        // single workspace root is selected, and a root change after the
+        // pull lifecycle has started needs one re-pull scoped to the new
+        // root. Staleness is decided by comparing the retained layer's scope
+        // root against the final effective root — NOT by transition deltas —
+        // so a direct A -> B switch (rewritten to a non-analyzable
+        // `RootChanged` state and re-selected later with no further root
+        // change) is still caught when B is re-selected. Applied/Failed or
+        // an in-flight pull makes the lifecycle restartable; a
+        // pre-`initialized` Pending state must NOT schedule here — the
+        // client rejects server->client requests before `initialized`
+        // (-32002), and `initialized` owns the first pull. The wrapper
+        // schedules after the transition guard is released.
+        let pull_scope_stale = {
+            let restartable = {
+                let in_flight = self
+                    .config_pull_coordinator
+                    .lock()
+                    .map(|coordinator| coordinator.in_flight)
+                    .unwrap_or(false);
+                in_flight
+                    || matches!(
+                        self.config_pull_state(),
+                        ConfigPullState::Applied | ConfigPullState::Failed(_)
+                    )
+            };
+            restartable
+                && self
+                    .config_pull_scope_root
+                    .lock()
+                    .ok()
+                    .and_then(|scope_root| scope_root.clone())
+                    != self.workspace_root_authority().effective_root
+        };
+        self.configuration_mode() == ConfigurationMode::Pull
+            && (matches!(self.config_pull_state(), ConfigPullState::Deferred) || pull_scope_stale)
+            && self.workspace_root_authority().allows_analysis()
     }
 
     fn set_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
@@ -1598,6 +1722,175 @@ impl Backend {
         self.publish_analysis_status().await;
         self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
             .await;
+    }
+
+    fn configuration_mode(&self) -> ConfigurationMode {
+        self.configuration_mode
+            .lock()
+            .map(|mode| *mode)
+            .unwrap_or(ConfigurationMode::InitializationOnly)
+    }
+
+    fn config_pull_state(&self) -> ConfigPullState {
+        self.config_pull_state
+            .lock()
+            .map(|state| state.clone())
+            .unwrap_or(ConfigPullState::NotApplicable)
+    }
+
+    fn set_config_pull_state(&self, state: ConfigPullState) {
+        if let Ok(mut current) = self.config_pull_state.lock() {
+            *current = state;
+        }
+    }
+
+    /// Schedule one coalesced `workspace/configuration` pull (#2031). At most
+    /// one request is in flight; a schedule request arriving while one is
+    /// in flight collapses into a single queued re-pull for the latest epoch.
+    /// The pull is a pure LSP round-trip: it never launches analysis, git,
+    /// network beyond the LSP connection, or edits.
+    async fn schedule_configuration_pull(&self) {
+        {
+            let Ok(mut coordinator) = self.config_pull_coordinator.lock() else {
+                return;
+            };
+            if coordinator.in_flight {
+                coordinator.queued = true;
+                return;
+            }
+            coordinator.in_flight = true;
+        }
+        loop {
+            let epoch = self.config_pull_epoch.load(Ordering::SeqCst);
+            self.set_config_pull_state(ConfigPullState::Pending);
+            self.publish_analysis_status().await;
+            self.pull_and_apply_configuration(epoch).await;
+            let queued = {
+                let Ok(mut coordinator) = self.config_pull_coordinator.lock() else {
+                    return;
+                };
+                if coordinator.queued {
+                    coordinator.queued = false;
+                    true
+                } else {
+                    coordinator.in_flight = false;
+                    false
+                }
+            };
+            if !queued {
+                return;
+            }
+        }
+    }
+
+    async fn pull_and_apply_configuration(&self, epoch: u64) {
+        let Some(root) = self.effective_root() else {
+            // No single selected root at pull time (ambiguous or unavailable
+            // workspace): defer the pull; analysis is already blocked there.
+            self.set_config_pull_state(ConfigPullState::Deferred);
+            self.publish_analysis_status().await;
+            return;
+        };
+        let scope_uri = match file_uri_for_path(&root) {
+            Ok(uri) => uri,
+            Err(error) => {
+                self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
+                    kind: "config_pull_failed".to_string(),
+                    message: bounded_failure_message(&format!(
+                        "workspace/configuration scope URI for the selected root is invalid: {error}"
+                    )),
+                }));
+                self.publish_analysis_status().await;
+                return;
+            }
+        };
+        let result = self
+            .client
+            .configuration(vec![ConfigurationItem {
+                scope_uri: Some(scope_uri),
+                section: Some("ripr".to_string()),
+            }])
+            .await;
+        // Epoch guard: a response for an older epoch is dropped; the queued
+        // re-pull for the current epoch owns the disclosed state.
+        if self.config_pull_epoch.load(Ordering::SeqCst) != epoch {
+            return;
+        }
+        match result {
+            Ok(values) => match validated_pulled_options(&values) {
+                Ok(pulled) => {
+                    self.apply_pulled_configuration(pulled).await;
+                    // The retained layer is scoped to the root it was pulled
+                    // for; root transitions compare against this to decide
+                    // whether a re-pull is needed.
+                    if let Ok(mut scope_root) = self.config_pull_scope_root.lock() {
+                        *scope_root = Some(root);
+                    }
+                }
+                Err(message) => {
+                    self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
+                        kind: "config_pull_invalid".to_string(),
+                        message: bounded_failure_message(&message),
+                    }));
+                    self.publish_analysis_status().await;
+                }
+            },
+            Err(error) => {
+                self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
+                    kind: "config_pull_failed".to_string(),
+                    message: bounded_failure_message(&format!(
+                        "workspace/configuration request failed: {error}"
+                    )),
+                }));
+                self.publish_analysis_status().await;
+            }
+        }
+    }
+
+    /// Apply a validated pulled layer. Semantically unchanged effective
+    /// settings do not reschedule analysis (the `next == current` no-op guard
+    /// pattern from `apply_session_configuration_change`, applied to the
+    /// effective settings rather than the retained layer representation).
+    async fn apply_pulled_configuration(&self, pulled: Option<LSPAny>) {
+        let Some(current) = self.analysis_config() else {
+            return;
+        };
+        let next = current.with_pulled_options(pulled.as_ref());
+        self.set_config_pull_state(ConfigPullState::Applied);
+        if next.effective_settings_eq(&current) {
+            // Retain the pulled layer (it decides precedence and source
+            // disclosure on later reloads) without rescheduling analysis:
+            // semantically unchanged effective settings are a no-op.
+            if next != current {
+                self.set_analysis_config(next);
+            }
+            self.publish_analysis_status().await;
+            return;
+        }
+        self.set_analysis_config(next);
+        if self.configuration_failure().is_some() {
+            // Mirror the session-change path: the pulled layer is retained
+            // and re-applied once the repository configuration recovers; it
+            // cannot authorize a refresh on its own.
+            self.publish_analysis_status().await;
+            return;
+        }
+        self.invalidate_analysis_input_and_end_queued_progress(
+            RefreshReason::ConfigReload.as_str(),
+        )
+        .await;
+        self.publish_analysis_status().await;
+        self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
+            .await;
+    }
+
+    /// `workspace/didChangeConfiguration` in pull mode: invalidate the cached
+    /// pulled values by bumping the pull epoch (responses for older epochs
+    /// are dropped) and schedule one coalesced re-pull. The retained pulled
+    /// layer stays in effect as last-known-good until the re-pull resolves.
+    async fn handle_pull_mode_configuration_change(&self) {
+        self.config_pull_epoch.fetch_add(1, Ordering::SeqCst);
+        self.schedule_configuration_pull().await;
     }
 
     fn file_event_is_repository_config(&self, event: &FileEvent) -> bool {
@@ -2365,27 +2658,32 @@ impl LanguageServer for Backend {
             .lock()
             .map(|value| *value)
             .unwrap_or(false);
-        if !supports_dynamic_registration {
-            return;
+        if supports_dynamic_registration {
+            let registration = Registration {
+                id: "ripr-config-file-watch".to_string(),
+                method: "workspace/didChangeWatchedFiles".to_string(),
+                register_options: Some(serde_json::json!({
+                    "watchers": [
+                        {"globPattern": "**/ripr.toml"},
+                        {"globPattern": "**/Cargo.toml"},
+                        {"globPattern": "**/Cargo.lock"}
+                    ]
+                })),
+            };
+            if let Err(error) = self.client.register_capability(vec![registration]).await {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("ripr workspace input watching unavailable: {error}"),
+                    )
+                    .await;
+            }
         }
-        let registration = Registration {
-            id: "ripr-config-file-watch".to_string(),
-            method: "workspace/didChangeWatchedFiles".to_string(),
-            register_options: Some(serde_json::json!({
-                "watchers": [
-                    {"globPattern": "**/ripr.toml"},
-                    {"globPattern": "**/Cargo.toml"},
-                    {"globPattern": "**/Cargo.lock"}
-                ]
-            })),
-        };
-        if let Err(error) = self.client.register_capability(vec![registration]).await {
-            self.client
-                .log_message(
-                    MessageType::WARNING,
-                    format!("ripr workspace input watching unavailable: {error}"),
-                )
-                .await;
+        // First configuration pull (#2031). This runs in `initialized`, not
+        // `initialize`: tower-lsp-server rejects client requests with -32002
+        // before the session is initialized.
+        if self.configuration_mode() == ConfigurationMode::Pull {
+            self.schedule_configuration_pull().await;
         }
     }
 
@@ -2403,6 +2701,18 @@ impl LanguageServer for Backend {
         }
         self.progress
             .set_supported(client_supports_work_done_progress(&params));
+        // Negotiate the session-configuration transport from capabilities
+        // only (#2031, RIPR-SPEC-0136): pull when the client answers
+        // `workspace/configuration`, push fallback when it advertises
+        // `workspace/didChangeConfiguration`, otherwise initialization-only.
+        let negotiated_mode = configuration_mode(&params);
+        if let Ok(mut mode) = self.configuration_mode.lock() {
+            *mode = negotiated_mode;
+        }
+        self.set_config_pull_state(match negotiated_mode {
+            ConfigurationMode::Pull => ConfigPullState::Pending,
+            _ => ConfigPullState::NotApplicable,
+        });
         let supports_dynamic_registration = params
             .capabilities
             .workspace
@@ -2450,8 +2760,16 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
-        self.apply_session_configuration_change(&params.settings)
-            .await;
+        match self.configuration_mode() {
+            // Pull mode (#2031): pushed values are not applied directly; the
+            // notification invalidates the pulled layer and schedules one
+            // coalesced re-pull.
+            ConfigurationMode::Pull => self.handle_pull_mode_configuration_change().await,
+            ConfigurationMode::PushFallback | ConfigurationMode::InitializationOnly => {
+                self.apply_session_configuration_change(&params.settings)
+                    .await;
+            }
+        }
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {

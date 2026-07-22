@@ -550,6 +550,8 @@ tests = [
   "crates/ripr/src/config.rs::tests::oracle_policy_rewrites_configurable_oracle_strengths",
   "crates/ripr/src/lsp/config.rs::tests::repo_config_sets_defaults_when_initialization_options_are_missing",
   "crates/ripr/src/lsp/config.rs::tests::initialization_options_override_repo_config_defaults",
+  "crates/ripr/src/lsp/config.rs::tests::pulled_settings_override_initialization_options_for_returned_keys",
+  "crates/ripr/src/lsp/config.rs::tests::repository_reload_preserves_pulled_overrides",
   "crates/ripr/src/app.rs::tests::configured_finding_severity_applies_to_human_json_and_github",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::configured_seam_severity_can_disable_a_class",
   "crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults",
@@ -7092,6 +7094,42 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0136"
+name = "lsp configuration pull"
+spec = "docs/specs/RIPR-SPEC-0136-lsp-configuration-pull.md"
+tests = [
+  "crates/ripr/src/lsp/capabilities.rs::tests::configuration_mode_follows_workspace_capabilities",
+  "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_wrong_item_count",
+  "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_non_object_item_and_bad_values",
+  "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_oversized_string_value",
+  "crates/ripr/src/lsp/config.rs::tests::pulled_settings_override_initialization_options_for_returned_keys",
+  "crates/ripr/src/lsp/config.rs::tests::empty_pull_layer_restores_initialization_and_repo_precedence",
+  "crates/ripr/src/lsp/config.rs::tests::session_option_change_preserves_pulled_layer",
+  "crates/ripr/src/lsp/config.rs::tests::effective_settings_eq_ignores_layer_representation",
+  "crates/ripr/src/lsp/config.rs::tests::repository_reload_preserves_pulled_overrides",
+  "crates/ripr/src/lsp/config.rs::tests::session_value_sources_disclose_per_field_origin",
+  "crates/ripr/src/lsp/tests.rs::initialization_only_mode_discloses_transport_and_value_sources",
+  "crates/ripr/src/lsp/tests.rs::pull_mode_is_pending_until_the_first_pull_resolves",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_configuration_pull_applies_and_discloses_pull_state",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_release",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/config.rs",
+  "crates/ripr/src/lsp/state.rs",
+  "crates/ripr/src/lsp/backend.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0136-lsp-configuration-pull.md",
+  "docs/CONFIGURATION.md",
 ]
 metrics = [
   "unit_test_pass_rate",

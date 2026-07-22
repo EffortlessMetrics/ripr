@@ -143,6 +143,58 @@ pub(super) struct AnalysisFailure {
     pub(super) message: String,
 }
 
+/// Startup-window and lifecycle state of the server-originated
+/// `workspace/configuration` pull (#2031, RIPR-SPEC-0136). Disclosed in the
+/// analysis status payload so defaults never masquerade as accepted requested
+/// settings: until the first pull resolves the state is `pending`, and a
+/// failed or malformed pull is a typed state with a recovery route while the
+/// last-known-good pulled layer is retained as stale.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum ConfigPullState {
+    /// The negotiated configuration mode is not pull; no pull is attempted.
+    NotApplicable,
+    /// Pull mode is active but no single workspace root is selected, so the
+    /// pull is deferred (analysis is already blocked in that state).
+    Deferred,
+    /// A pull has been requested and has not resolved yet.
+    Pending,
+    /// The last pull resolved and its validated settings were applied.
+    Applied,
+    /// The last pull failed at the transport level (`config_pull_failed`) or
+    /// failed validation (`config_pull_invalid`); the retained pulled layer
+    /// is last-known-good and stale.
+    Failed(AnalysisFailure),
+}
+
+impl ConfigPullState {
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::NotApplicable => "not_applicable",
+            Self::Deferred => "deferred",
+            Self::Pending => "pending",
+            Self::Applied => "applied",
+            Self::Failed(_) => "failed",
+        }
+    }
+
+    pub(super) fn failure(&self) -> Option<&AnalysisFailure> {
+        match self {
+            Self::Failed(failure) => Some(failure),
+            _ => None,
+        }
+    }
+
+    /// Recovery route disclosed next to a failed pull, mirroring the
+    /// `root_recovery_route` style.
+    pub(super) fn recovery_route(&self) -> Option<&'static str> {
+        match self {
+            Self::Failed(_) => Some("retry_via_did_change_configuration"),
+            Self::Deferred => Some("select_single_workspace_root"),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct AnalysisHealth {
     pub(super) attempt_id: Option<u64>,
