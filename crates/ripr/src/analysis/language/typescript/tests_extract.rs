@@ -168,11 +168,8 @@ pub(crate) fn test_name_and_assertions_from_call(
     if test_callee_is_each(call) {
         let name = string_argument(call.arguments.first()?)?;
         let callback = call.arguments.get(1)?;
-        let receiver = test_callback_receiver_name(callback);
         let assertions = function_body_statements_from_argument(callback)
-            .map(|statements| {
-                collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
-            })
+            .map(|statements| collect_expect_assertions_in_statements(statements, source, None))
             .unwrap_or_default();
         return Some((name, assertions));
     }
@@ -187,7 +184,8 @@ pub(crate) fn test_name_and_assertions_from_call(
 /// (`t.is(...)`, `t.deepEqual(...)`). Jest/Vitest callbacks take no such
 /// receiver, so this returns `None` for a zero-parameter callback and the AVA
 /// assertion matcher is never attempted (fail-closed: no receiver, no AVA
-/// assertions credited).
+/// assertions credited). Parameterized `test.each` callbacks are handled
+/// separately because their parameters are table-row values, not test contexts.
 fn test_callback_receiver_name(arg: &oxc_ast::ast::Argument<'_>) -> Option<String> {
     let params = match arg {
         oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => &arrow.params,
@@ -247,4 +245,29 @@ pub(crate) fn qualified_test_name(describe_stack: &[String], name: &str) -> Stri
     let mut parts = describe_stack.to_vec();
     parts.push(name.to_string());
     parts.join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_each_data_parameter_is_not_an_ava_assertion_receiver() -> Result<(), String> {
+        let source = r#"
+            test.each([{ value: 1 }])("case", (case_) => {
+                case_.is(1);
+            });
+        "#;
+        let tests = extract_tests(Path::new("tests/cases.test.ts"), source);
+        let test = tests
+            .first()
+            .ok_or_else(|| "expected the parameterized test to be extracted".to_string())?;
+        if !test.assertions.is_empty() {
+            return Err(format!(
+                "test.each row data must not be credited as AVA assertions: {:?}",
+                test.assertions
+            ));
+        }
+        Ok(())
+    }
 }
