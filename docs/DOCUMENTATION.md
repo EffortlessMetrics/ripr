@@ -74,6 +74,7 @@ Current how-to docs:
 - [Agent operating model](AGENT_OPERATING_MODEL.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [LSP-first repair/receipt workflow for agents](LSP_AGENT_REPAIR_WORKFLOW.md)
+- [LSP transport bounds](LSP_TRANSPORT_BOUNDS.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

@@ -10,12 +10,14 @@ mod gap_artifacts;
 mod hover;
 mod input_identity;
 mod lens;
+mod payload_bounds;
 mod position;
 mod progress;
 mod refresh_scheduler;
 mod state;
 #[cfg(test)]
 mod tests;
+mod transport_bounds;
 mod uri;
 
 use backend::Backend;
@@ -61,8 +63,35 @@ async fn serve_stdio() -> Result<(), String> {
         std::env::current_dir().map_err(|err| format!("failed to get current dir: {err}"))?;
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
+    serve_streams(
+        stdin,
+        stdout,
+        root,
+        &transport_bounds::TransportBounds::default(),
+    )
+    .await
+}
+
+/// Serves one LSP session over the given transport pair with the reviewed
+/// ingress/concurrency/egress bounds from `lsp/transport_bounds.rs` (issue
+/// #2034). Separated from `serve_stdio` so the bounded composition is
+/// exercised in-process by tests, not only by spawned binaries.
+async fn serve_streams<I, O>(
+    stdin: I,
+    stdout: O,
+    root: std::path::PathBuf,
+    bounds: &transport_bounds::TransportBounds,
+) -> Result<(), String>
+where
+    I: tokio::io::AsyncRead + Unpin,
+    O: tokio::io::AsyncWrite + Unpin,
+{
+    let (stdin, stdout) = bounds.wrap(stdin, stdout);
     let (service, socket) = LspService::new(|client| Backend::new(client, root.clone()));
 
-    Server::new(stdin, stdout, socket).serve(service).await;
+    Server::new(stdin, stdout, socket)
+        .concurrency_level(bounds.request_concurrency)
+        .serve(service)
+        .await;
     Ok(())
 }

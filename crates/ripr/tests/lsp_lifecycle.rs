@@ -351,6 +351,51 @@ fn handshake(session: &mut LspSession) -> Result<(), String> {
     session.notify("initialized", Some(serde_json::json!({})))
 }
 
+/// Sends a request frame without awaiting its response (load generation).
+/// Allocates the id from the session sequence so it cannot collide with a
+/// later `request()` call; returns the id used.
+fn fire(session: &mut LspSession, method: &str, params: serde_json::Value) -> Result<u64, String> {
+    let id = session.next_id;
+    session.next_id += 1;
+    let message = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+    session.send_frame(message.to_string().as_bytes())?;
+    Ok(id)
+}
+
+/// Collects the responses for `ids` in any arrival order, failing on a stray
+/// response id (protocol violation) or timeout.
+fn collect_responses(
+    session: &mut LspSession,
+    ids: &[u64],
+    timeout: Duration,
+) -> Result<Vec<serde_json::Value>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut collected: Vec<serde_json::Value> = Vec::new();
+    while collected.len() < ids.len() {
+        let message = session.await_message(deadline, "queued responses")?;
+        let is_response = message.get("result").is_some() || message.get("error").is_some();
+        if !is_response {
+            continue;
+        }
+        let id = message.get("id").and_then(serde_json::Value::as_u64);
+        match id {
+            Some(id) if ids.contains(&id) => collected.push(message),
+            other => {
+                return Err(format!(
+                    "protocol violation: stray response id {other:?} while collecting {} responses",
+                    ids.len()
+                ));
+            }
+        }
+    }
+    Ok(collected)
+}
+
 /// Ask the server to stop and require exit code 0 within the budget.
 fn exit_and_wait(session: &mut LspSession) -> Result<(), String> {
     session.notify("exit", None)?;
@@ -591,4 +636,322 @@ fn initialize_accepts_client_process_id_without_monitoring() -> Result<(), Strin
     expect_result(&response, "initialize with processId")?;
     session.notify("initialized", Some(serde_json::json!({})))?;
     exit_and_wait(&mut session)
+}
+
+// ── 9. Transport and typed-payload bounds (issue #2034) ──
+//
+// Adversarial framing/payload cases against the same real binary. Every
+// negative asserts a bounded wire response (or bounded rejection), prompt
+// clean termination where framing cannot recover, and a server that starts
+// no analysis, Git, or filesystem work for the rejected input: the rejected
+// paths run before dispatch, and the follow-up healthy request in each test
+// proves no poisoned or half-applied state. Peak-memory classes are pinned
+// by construction (rejection happens before the declared body is read or
+// the typed payload is iterated), not by one-host RSS measurement.
+
+const INVALID_PARAMS: i64 = -32602;
+
+/// Awaits one bounded framing-level rejection (null id, bounded message),
+/// then requires the process to exit on its own: tokio-util's FramedRead
+/// fuses after the first decode error, so an ingress bound trip ends the
+/// session exactly like a malformed frame.
+fn expect_bounded_frame_rejection(session: &mut LspSession, case: &str) -> Result<(), String> {
+    let message = session.await_message(Instant::now() + RESPONSE_TIMEOUT, case)?;
+    if !message.get("id").is_some_and(serde_json::Value::is_null) {
+        return Err(format!(
+            "{case}: framing rejection must carry a null id, got: {message}"
+        ));
+    }
+    let code = message
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_i64);
+    if code != Some(PARSE_ERROR) && code != Some(INVALID_REQUEST) {
+        return Err(format!("{case}: expected -32700 or -32600, got: {message}"));
+    }
+    let rendered = message.to_string();
+    if rendered.len() > 4096 {
+        return Err(format!(
+            "{case}: rejection response must be bounded, got {} bytes",
+            rendered.len()
+        ));
+    }
+    let status = session.wait_exit(EXIT_TIMEOUT)?;
+    if status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "{case}: expected exit code 0 after rejection, got: {status}"
+    ))
+}
+
+/// Awaits a typed -32602 rejection for the in-flight request id, asserting
+/// the message is bounded and carries no attacker-controlled payload.
+fn expect_bounded_invalid_params(
+    session: &mut LspSession,
+    id: u64,
+    case: &str,
+    attacker_marker: &str,
+) -> Result<(), String> {
+    let response = session.await_response(id, RESPONSE_TIMEOUT)?;
+    expect_error(&response, case, INVALID_PARAMS)?;
+    let message = response
+        .pointer("/error/message")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{case}: rejection must carry a message: {response}"))?;
+    if message.len() > 256 {
+        return Err(format!(
+            "{case}: rejection message must be bounded, got {} bytes",
+            message.len()
+        ));
+    }
+    if !attacker_marker.is_empty() && message.contains(attacker_marker) {
+        return Err(format!(
+            "{case}: rejection message must not echo attacker input: {message}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_declared_content_length_is_rejected_before_body() -> Result<(), String> {
+    // 16 MiB + 1 exceeds the transport message cap; no body is ever sent.
+    // If the server waited for the declared body this test would time out
+    // instead of receiving the bounded rejection.
+    let mut session = LspSession::spawn()?;
+    session.send_raw(b"Content-Length: 16777217\r\n\r\n")?;
+    expect_bounded_frame_rejection(&mut session, "oversized Content-Length")
+}
+
+#[test]
+fn oversized_header_block_is_rejected() -> Result<(), String> {
+    // Well past the 8 KiB header-block cap with no terminator in sight.
+    let mut session = LspSession::spawn()?;
+    let mut frame = b"Content-Length: 2\r\nX-Pad: ".to_vec();
+    frame.extend_from_slice(&[b'x'; 16 * 1024]);
+    session.send_raw(&frame)?;
+    expect_bounded_frame_rejection(&mut session, "oversized header block")
+}
+
+#[test]
+fn integer_overflow_content_length_is_rejected() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    session.send_raw(b"Content-Length: 99999999999999999999\r\n\r\n")?;
+    expect_bounded_frame_rejection(&mut session, "overflowing Content-Length")
+}
+
+#[test]
+fn negative_content_length_is_rejected() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    session.send_raw(b"Content-Length: -1\r\n\r\n")?;
+    expect_bounded_frame_rejection(&mut session, "negative Content-Length")
+}
+
+#[test]
+fn deeply_nested_json_is_rejected_bounded() -> Result<(), String> {
+    // serde_json's default recursion limit (128) must reject the body as a
+    // bounded codec error; the nesting must not produce allocation or a
+    // response proportional to depth.
+    let mut session = LspSession::spawn()?;
+    let depth = 5000;
+    let mut params = String::with_capacity(depth * 2 + 2);
+    params.extend(std::iter::repeat_n('[', depth));
+    params.extend(std::iter::repeat_n(']', depth));
+    let body = format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"textDocument/hover\",\"params\":{params}}}"
+    );
+    session.send_frame(body.as_bytes())?;
+    let message =
+        session.await_message(Instant::now() + RESPONSE_TIMEOUT, "nested-JSON rejection")?;
+    let code = message
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_i64);
+    if code != Some(PARSE_ERROR) && code != Some(INVALID_REQUEST) {
+        return Err(format!(
+            "deeply nested JSON: expected -32700 or -32600, got: {message}"
+        ));
+    }
+    let rendered = message.to_string();
+    if rendered.len() > 4096 {
+        return Err(format!(
+            "deeply nested JSON: rejection must be bounded, got {} bytes",
+            rendered.len()
+        ));
+    }
+    if rendered.contains("[[[[") {
+        return Err("deeply nested JSON: rejection must not echo the payload".to_string());
+    }
+    let status = session.wait_exit(EXIT_TIMEOUT)?;
+    if status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "deeply nested JSON: expected exit code 0 after rejection, got: {status}"
+    ))
+}
+
+#[test]
+fn giant_previous_result_ids_are_rejected_and_server_stays_healthy() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    // 5000 entries (with duplicates) exceed the 4096-entry typed bound.
+    let ids: Vec<serde_json::Value> = (0..5000)
+        .map(|index| {
+            serde_json::json!({
+                "uri": format!("file:///ripr-bounds/f{}.rs", index % 2500),
+                "value": format!("attacker-marker-result-{index}")
+            })
+        })
+        .collect();
+    let response = session.request(
+        "workspace/diagnostic",
+        serde_json::json!({ "previousResultIds": ids }),
+    )?;
+    expect_error(&response, "oversized previousResultIds", INVALID_PARAMS)?;
+    let message = response
+        .pointer("/error/message")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("rejection must carry a message: {response}"))?;
+    if message.contains("attacker-marker") {
+        return Err(format!("rejection must not echo attacker input: {message}"));
+    }
+    // A legitimately sized set is accepted, and the rejection left no
+    // half-applied state: the server answers normally afterwards.
+    let legit = session.request(
+        "workspace/diagnostic",
+        serde_json::json!({
+            "previousResultIds": [
+                {"uri": "file:///ripr-bounds/a.rs", "value": "digest-1"},
+                {"uri": "file:///ripr-bounds/a.rs", "value": "digest-1"}
+            ]
+        }),
+    )?;
+    expect_result(&legit, "legit previousResultIds")?;
+    let hover = session.request("textDocument/hover", hover_params())?;
+    expect_result(&hover, "textDocument/hover")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn previous_result_ids_oversized_value_is_rejected() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    let id = fire(
+        &mut session,
+        "workspace/diagnostic",
+        serde_json::json!({
+            "previousResultIds": [
+                {"uri": "file:///ripr-bounds/a.rs", "value": "v".repeat(2048)}
+            ]
+        }),
+    )?;
+    expect_bounded_invalid_params(&mut session, id, "oversized result-id value", "")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn oversized_execute_command_arguments_are_rejected() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    // One argument object carrying a 200 KiB identifier exceeds the 64 KiB
+    // typed arguments bound.
+    let id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({
+            "command": "ripr.collectContext",
+            "arguments": [{"gap_id": "g".repeat(200 * 1024)}]
+        }),
+    )?;
+    expect_bounded_invalid_params(
+        &mut session,
+        id,
+        "oversized executeCommand arguments",
+        "gggg",
+    )?;
+    // Too many argument entries is rejected on the count bound alone.
+    let id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({
+            "command": "ripr.collectContext",
+            "arguments": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}]
+        }),
+    )?;
+    expect_bounded_invalid_params(&mut session, id, "too many executeCommand arguments", "")?;
+    // A legitimate command still runs; rejection did not poison the session.
+    let status = session.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.collectWorkspaceStatus", "arguments": []}),
+    )?;
+    expect_result(&status, "ripr.collectWorkspaceStatus")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn oversized_initialization_options_are_rejected_without_poisoning() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    let mut params = initialize_params();
+    params["initializationOptions"] = serde_json::json!({"pad": "p".repeat(1024 * 1024)});
+    let rejected = session.request("initialize", params)?;
+    expect_error(
+        &rejected,
+        "oversized initialization_options",
+        INVALID_PARAMS,
+    )?;
+    // The rejection happened before any state mutation: a clean initialize
+    // on the same connection still completes the handshake.
+    handshake(&mut session)?;
+    let hover = session.request("textDocument/hover", hover_params())?;
+    expect_result(&hover, "textDocument/hover")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn concurrent_requests_and_cancel_stay_bounded_and_serviceable() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    // Fire a burst beyond the in-flight concurrency bound whose aggregate
+    // bytes also exceed the 8 KiB framing-header cap (~15 KiB across 96
+    // frames): the transport queue (bounded, backpressured) and the framing
+    // observer must absorb it without dropping, corrupting, or false-tripping
+    // on legitimate coalesced reads.
+    let mut ids = Vec::new();
+    for _ in 0..96 {
+        ids.push(fire(&mut session, "textDocument/hover", hover_params())?);
+    }
+    // A cancellation for an unknown/queued id is a lightweight lifecycle
+    // notification; it must stay serviceable under load and must not break
+    // the session.
+    session.notify("$/cancelRequest", Some(serde_json::json!({"id": 9999})))?;
+    let responses = collect_responses(&mut session, &ids, RESPONSE_TIMEOUT)?;
+    for response in &responses {
+        if response.get("result").is_none() && response.get("error").is_none() {
+            return Err(format!(
+                "burst response must be a result or error: {response}"
+            ));
+        }
+    }
+    // The server is still healthy after the burst.
+    let hover = session.request("textDocument/hover", hover_params())?;
+    expect_result(&hover, "textDocument/hover after burst")?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn shutdown_and_eof_during_request_load_exits_zero() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    for _ in 0..32 {
+        fire(&mut session, "textDocument/hover", hover_params())?;
+    }
+    // Shutdown + exit while requests are still queued: lifecycle messages
+    // must stay serviceable and the process must terminate cleanly.
+    session.notify("exit", None)?;
+    let status = session.wait_exit(EXIT_TIMEOUT)?;
+    if status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "expected exit code 0 for exit during request load, got: {status}"
+    ))
 }

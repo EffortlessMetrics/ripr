@@ -14,6 +14,9 @@ use super::hover::{
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
 use super::lens::code_lens_response;
+use super::payload_bounds::{
+    check_execute_command_arguments, check_initialization_options, check_previous_result_ids,
+};
 use super::progress::{AnalysisProgressEnd, AnalysisProgressPhase, AnalysisProgressTracker};
 use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler,
@@ -2387,6 +2390,9 @@ impl LanguageServer for Backend {
     }
 
     async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
+        // Typed ingress bound (#2034): reject oversized client options before
+        // any config load, root resolution, or capability state mutation.
+        check_initialization_options(params.initialization_options.as_ref())?;
         let supports_pull_diagnostics = client_supports_pull_diagnostics(&params);
         let supports_diagnostic_refresh = client_supports_diagnostic_refresh(&params);
         if let Ok(mut supported) = self.pull_diagnostics.lock() {
@@ -2691,6 +2697,10 @@ impl LanguageServer for Backend {
         &self,
         params: WorkspaceDiagnosticParams,
     ) -> LspResult<WorkspaceDiagnosticReportResult> {
+        // Typed ingress bound (#2034): reject an oversized previousResultIds
+        // set before the URI set clone and per-document scan, and before the
+        // snapshot fast path so a missing snapshot cannot skip the bound.
+        check_previous_result_ids(&params.previous_result_ids)?;
         let Some((snapshot, result_ids)) = self.latest_pull_snapshot() else {
             return Ok(WorkspaceDiagnosticReport { items: Vec::new() }.into());
         };
@@ -2814,6 +2824,9 @@ impl LanguageServer for Backend {
     }
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
+        // Typed ingress bound (#2034): reject oversized argument payloads
+        // before any command dispatch, refresh, or packet lookup.
+        check_execute_command_arguments(&params.arguments)?;
         if params.command == REFRESH_COMMAND {
             if self.configuration_failure().is_some() {
                 // A retry must re-read the repository configuration. The

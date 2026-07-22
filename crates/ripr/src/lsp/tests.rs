@@ -682,14 +682,30 @@ fn serve_stdio_call_presence_observer() -> Result<(), String> {
         .split("async fn serve_stdio()")
         .nth(1)
         .ok_or_else(|| "expected serve_stdio implementation in lsp module".to_string())?;
+    let serve_streams = source
+        .split("async fn serve_streams")
+        .nth(1)
+        .ok_or_else(|| "expected serve_streams implementation in lsp module".to_string())?;
 
     assert!(
-        serve_stdio.contains("LspService::new(|client| Backend::new(client, root.clone()))"),
-        "serve_stdio should construct the LSP service with the resolved workspace root"
+        serve_stdio.contains("transport_bounds::TransportBounds::default()"),
+        "serve_stdio should serve the stdio transport with the reviewed default transport bounds (#2034)"
     );
     assert!(
-        serve_stdio.contains("Server::new(stdin, stdout, socket).serve(service).await"),
-        "serve_stdio should hand stdin/stdout, the socket, and the service to the tower LSP server"
+        serve_streams.contains("LspService::new(|client| Backend::new(client, root.clone()))"),
+        "serve_streams should construct the LSP service with the resolved workspace root"
+    );
+    assert!(
+        serve_streams.contains("bounds.wrap(stdin, stdout)"),
+        "serve_streams should wrap stdin/stdout in the bounded transport adapters (#2034)"
+    );
+    assert!(
+        serve_streams.contains(".concurrency_level(bounds.request_concurrency)"),
+        "serve_streams should set the explicit in-flight request concurrency bound (#2034)"
+    );
+    assert!(
+        serve_streams.contains(".serve(service)"),
+        "serve_streams should hand the bounded transport, the socket, and the service to the tower LSP server"
     );
 
     Ok(())
