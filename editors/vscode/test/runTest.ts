@@ -53,7 +53,7 @@ async function main() {
           'ripr.server.path': testServerPath,
           'ripr.server.autoDownload': false,
           'ripr.baseRef': 'HEAD',
-          'ripr.check.mode': 'instant',
+          'ripr.check.mode': 'draft',
         }, null, 2)}\n`
       );
     }
