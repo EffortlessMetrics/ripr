@@ -4891,8 +4891,16 @@ tests = [
   "crates/ripr/src/output/gate/repair_route.rs::tests::generic_gap_record_evidence_ids_do_not_become_seam_identity",
   "crates/ripr/src/output/gate/repair_route.rs::tests::blank_gap_record_commands_render_as_null_and_remain_missing",
   "crates/ripr/src/output/gate/repair_route.rs::tests::incomplete_route_is_advisory_only_and_renders_named_limitation",
-  "crates/ripr/src/output/gate/tests.rs::gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity",
+  "crates/ripr/src/output/gate/tests.rs::gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identity",
   "crates/ripr/src/output/gate/tests.rs::given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails_closed",
+    "crates/ripr/src/output/gate/tests.rs::conflicting_gap_ledger_seam_identities_fail_closed_as_config_error",
+    "crates/ripr/src/output/gate/tests.rs::multiple_legacy_gap_ledger_records_remain_route_limited",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_ledger_roundtrip_preserves_producer_seam_and_inspection_identity",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_ledger_markdown_preserves_producer_seam_and_inspection_identity",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::duplicate_gap_ledger_seam_identity_is_rejected",
+  "crates/ripr/src/output/review_comments.rs::tests::review_comments_gap_ledger_renders_only_eligible_repair_cards",
+    "crates/ripr/src/output/review_comments.rs::tests::review_comments_gap_ledger_without_seam_identity_is_suppressed",
+    "crates/ripr/src/output/review_comments.rs::tests::review_comments_missing_seam_does_not_consume_duplicate_slot",
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_complete_repair_route_for_ci_summary",
   "crates/ripr/src/output/gate.rs::tests::gate_markdown_projects_incomplete_route_limitation_without_fabricated_command",
   "crates/ripr/src/output/gate/presentation.rs::tests::production_caller_target_markdown_preserves_explicit_location",
@@ -4901,6 +4909,7 @@ tests = [
 ]
 fixtures = [
   "tests/fixtures/verification/ripr/gate-decision.valid.json",
+  "fixtures/gap-decision-ledger/corpus.json",
   "fixtures/boundary_gap/expected/calibrated-gate",
   "fixtures/boundary_gap/expected/gate-adoption"
 ]
@@ -4909,9 +4918,11 @@ code = [
   "crates/ripr/src/output/gate/model.rs",
   "crates/ripr/src/output/gate/repair_route.rs",
   "crates/ripr/src/output/gate/presentation.rs",
+  "crates/ripr/src/output/gap_decision_ledger.rs",
   "xtask/src/main.rs",
   "xtask/src/verification_contracts.rs",
   ".allow/spec-system/slices/gate-repair-route-eligibility.v1.toml",
+  ".allow/spec-system/slices/gap-ledger-seam-identity.v1.toml",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md",

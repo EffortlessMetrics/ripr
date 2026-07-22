@@ -121,7 +121,11 @@ fn gap_record_route_facts(record: &GapRecord) -> GateRouteFacts {
     let route = record.repair_route.as_ref();
     GateRouteFacts {
         canonical_gap_id: non_empty(&record.canonical_gap_id),
-        seam_id: None,
+        seam_id: record
+            .seam_id
+            .as_deref()
+            .and_then(non_empty_str)
+            .map(ToString::to_string),
         gap_state: non_empty(&record.gap_state),
         classification: None,
         changed_owner: record
@@ -148,7 +152,10 @@ fn gap_record_route_facts(record: &GapRecord) -> GateRouteFacts {
             .first()
             .and_then(|command| non_empty(command)),
         receipt_command: record.receipt_command.as_deref().and_then(non_empty),
-        inspection_command: None,
+        inspection_command: route
+            .and_then(|route| route.inspection_command.as_deref())
+            .and_then(non_empty_str)
+            .map(ToString::to_string),
     }
 }
 

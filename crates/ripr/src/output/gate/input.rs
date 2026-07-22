@@ -82,7 +82,19 @@ pub(super) fn read_gap_ledger_impl(
         return Some(Vec::new());
     }
     match gap_decision_ledger::parse_gap_records_json(&text) {
-        Ok(records) => Some(records),
+        Ok(records) => {
+            if let Err(errors) = gap_decision_ledger::validate_gap_record_seam_identities(&records)
+            {
+                for error in errors {
+                    config_errors.push(format!(
+                        "required gap decision ledger input {} is invalid: {error}",
+                        display_path(path)
+                    ));
+                }
+                return Some(Vec::new());
+            }
+            Some(records)
+        }
         Err(error) => {
             config_errors.push(format!(
                 "required gap decision ledger input {} is invalid: {error}",

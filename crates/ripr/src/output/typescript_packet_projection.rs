@@ -132,6 +132,7 @@ pub(crate) fn typescript_gap_record_for(finding: &Finding) -> Option<GapRecord> 
         } else {
             None
         },
+        inspection_command: None,
         stop_conditions: vec![
             "Stop if the gap record is no longer present or loses agent-packet eligibility."
                 .to_string(),

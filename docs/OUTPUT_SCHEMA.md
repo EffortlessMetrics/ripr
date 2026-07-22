@@ -14069,6 +14069,19 @@ not rerun analysis, infer analyzer truth, publish comments, edit source,
 generate tests, call providers, run mutation testing, change gate policy, or
 make CI blocking by default.
 
+Each supplied `GapRecord` may carry `seam_id` when the producer owns a typed
+canonical seam identity. Generic ordered `evidence_ids`, file/line placement,
+display text, and owner names are not seam-ID fallbacks. A repair route may
+also carry the producer-owned `inspection_command`; it is distinct from the
+verification and receipt commands and is never synthesized by the gate. A
+legacy record that omits either field remains readable but its normalized gate
+route is explicitly `incomplete_repair_route`. Multiple records for one
+canonical gap that contain duplicate, conflicting, or mixed seam identities
+fail closed as a named ledger input configuration error.
+Gap-ledger PR review cards likewise project only `GapRecord.seam_id`; a row
+without it is suppressed with `missing_seam_identity` rather than using
+`gap_id` as a seam substitute.
+
 JSON shape:
 
 ```jsonc

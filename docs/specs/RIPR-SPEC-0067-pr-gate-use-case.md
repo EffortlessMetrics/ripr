@@ -294,11 +294,13 @@ The eligibility decision has this closed outcome table:
 | Explicit advisory mode | Never blocks, including for an otherwise complete route. |
 | Explicit calibrated blocking mode | Blocks only a complete, current, full-scope, policy-eligible decision. |
 
-This contract does not make the default-generated workflow blocking. It also
-does not populate a missing `GapRecord.seam_id`; the producer-owned identity
-carry-through is the next implementation slice under #1933. Until that slice
-lands, gap-ledger routes remain visibly `incomplete_repair_route` and the gate
-must not advertise them as blocking-capable.
+This contract does not make the default-generated workflow blocking. The
+gap-ledger producer now carries an optional typed `GapRecord.seam_id` and an
+optional exact `repair_route.inspection_command` through the normalized gate
+route. Rows that omit either producer-owned fact remain visibly
+`incomplete_repair_route`; duplicate or conflicting seam identities fail closed
+as a named ledger configuration error. Gate-mode enforcement remains the next
+slice under #1933.
 
 ### Human and check-summary projection
 
@@ -496,6 +498,10 @@ disclosed and fails closed; it is never treated as a complete causal comparison.
   into human and CI summaries. #1933 now sequences the remaining trust work:
   B1 defines this repair-route eligibility contract, B2 carries producer-owned
   seam identity through the gap ledger, and B3 enforces configured gate modes.
+  B2 is represented by `issue:1962` and
+  `.allow/spec-system/slices/gap-ledger-seam-identity.v1.toml`; its complete,
+  legacy, round-trip, conflict, Markdown, and review-card identity controls
+  are in the gate, ledger, and review-card tests.
   The CLI dogfood receipt proves the complete failure surface for a supported
   threshold route, but does not make the gap-ledger path blocking. PR C remains
   open until a real policy-eligible call-observation producer can drive the

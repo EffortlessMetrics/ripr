@@ -893,7 +893,7 @@ fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
 }
 
 #[test]
-fn gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity()
+fn gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identity()
 -> Result<(), String> {
     let dir = temp_dir("gate-gap-ledger-block")?;
     let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
@@ -925,15 +925,11 @@ fn gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity(
     let value: Value = serde_json::from_str(&rendered)
         .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
 
-    assert_eq!(report.status, "advisory");
-    assert_eq!(report.summary.blocking, 0);
-    assert_eq!(report.summary.advisory, 1);
-    assert_eq!(report.decisions[0].decision, "advisory");
-    assert!(
-        report.decisions[0]
-            .gate_reason
-            .contains("incomplete_repair_route")
-    );
+    assert_eq!(report.status, "blocked");
+    assert_eq!(report.summary.blocking, 1);
+    assert_eq!(report.summary.advisory, 0);
+    assert_eq!(report.decisions[0].decision, "blocking");
+    assert!(gate_decision_should_fail(&report));
     assert_eq!(report.decisions[0].source, "gap_decision_ledger");
     assert_eq!(report.decisions[0].gap_id.as_deref(), Some("gap:pricing"));
     assert_eq!(
@@ -949,6 +945,14 @@ fn gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity(
         "AddBoundaryAssertion"
     );
     assert_eq!(
+        value["decisions"][0]["repair_route"]["seam_id"],
+        "seam-pricing-threshold"
+    );
+    assert_eq!(
+        value["decisions"][0]["repair_route"]["inspection_command"],
+        "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+    );
+    assert_eq!(
         value["decisions"][0]["evidence"]["verification_commands"][0],
         "cargo xtask fixtures boundary_gap"
     );
@@ -957,6 +961,100 @@ fn gate_acknowledgeable_fails_closed_for_gap_ledger_without_typed_seam_identity(
         Value::Array(Vec::new()),
         "gap ledger records do not carry test input variants"
     );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn conflicting_gap_ledger_seam_identities_fail_closed_as_config_error() -> Result<(), String> {
+    let dir = temp_dir("gate-gap-ledger-conflicting-seams")?;
+    let mut value: Value = serde_json::from_str(GAP_LEDGER_BLOCKING_JSON)
+        .map_err(|err| format!("complete fixture should parse: {err}"))?;
+    let record = value["gap_records"][0].clone();
+    let mut conflicting = record;
+    conflicting["seam_id"] = Value::String("seam-other".to_string());
+    value["gap_records"] = Value::Array(vec![value["gap_records"][0].clone(), conflicting]);
+    let gap_ledger = write_temp_json(
+        &dir,
+        "gap-ledger.json",
+        &serde_json::to_string(&value).map_err(|err| err.to_string())?,
+    )?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: Vec::new(),
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert_eq!(report.status, "config_error");
+    assert_eq!(report.summary.evaluated, 0);
+    assert!(gate_decision_should_fail(&report));
+    assert!(report.config_errors.iter().any(|error| {
+        error.contains("conflicting seam identities for canonical gap pricing::discount::threshold")
+    }));
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn multiple_legacy_gap_ledger_records_remain_route_limited() -> Result<(), String> {
+    let dir = temp_dir("gate-gap-ledger-legacy-duplicates")?;
+    let mut value: Value = serde_json::from_str(&legacy_gap_ledger_json()?)
+        .map_err(|err| format!("legacy fixture should parse: {err}"))?;
+    let record = value["gap_records"][0].clone();
+    value["gap_records"] = Value::Array(vec![record.clone(), record]);
+    let gap_ledger = write_temp_json(
+        &dir,
+        "gap-ledger.json",
+        &serde_json::to_string(&value).map_err(|err| err.to_string())?,
+    )?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: Vec::new(),
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert_eq!(report.status, "advisory");
+    assert!(report.config_errors.is_empty());
+    assert_eq!(report.summary.evaluated, 2);
+    assert!(report.decisions.iter().all(|decision| {
+        decision.decision == "advisory" && decision.gate_reason.contains("incomplete_repair_route")
+    }));
     let _ = fs::remove_dir_all(dir);
     Ok(())
 }
@@ -1893,7 +1991,8 @@ fn given_gap_ledger_record_with_safe_predicate_but_missing_anchor_then_reason_ci
 fn given_gap_ledger_record_without_typed_seam_identity_then_baseline_check_fails_closed()
 -> Result<(), String> {
     let dir = temp_dir("gate-gap-ledger-baseline-check-new")?;
-    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
+    let legacy = legacy_gap_ledger_json()?;
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", &legacy)?;
     let baseline = write_temp_json(&dir, "baseline.json", r#"{"decisions":[]}"#)?;
     let input = GateEvaluateInput {
         root: dir.clone(),
@@ -2685,6 +2784,7 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
         {
           "gap_id": "gap:pricing",
           "canonical_gap_id": "pricing::discount::threshold",
+          "seam_id": "seam-pricing-threshold",
           "kind": "MissingBoundaryAssertion",
           "language": "rust",
           "language_status": "stable",
@@ -2700,7 +2800,8 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
             "related_test": "tests/pricing.rs::above_threshold_gets_discount",
             "assertion_shape": "assert_eq!(price(threshold), discounted)",
             "missing_discriminator": "amount == discount_threshold",
-            "changed_behavior": "amount == discount_threshold"
+            "changed_behavior": "amount == discount_threshold",
+            "inspection_command": "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
           },
           "anchor": {
             "file": "src/pricing.rs",
@@ -2729,6 +2830,20 @@ const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
         }
       ]
     }"#;
+
+fn legacy_gap_ledger_json() -> Result<String, String> {
+    let mut value: Value = serde_json::from_str(GAP_LEDGER_BLOCKING_JSON)
+        .map_err(|err| format!("complete fixture should parse: {err}"))?;
+    value["gap_records"][0]
+        .as_object_mut()
+        .ok_or_else(|| "complete fixture record should be an object".to_string())?
+        .remove("seam_id");
+    value["gap_records"][0]["repair_route"]
+        .as_object_mut()
+        .ok_or_else(|| "complete fixture route should be an object".to_string())?
+        .remove("inspection_command");
+    serde_json::to_string(&value).map_err(|err| format!("legacy fixture should serialize: {err}"))
+}
 
 const GAP_LEDGER_REPORT_ONLY_JSON: &str = r#"{
       "gap_records": [

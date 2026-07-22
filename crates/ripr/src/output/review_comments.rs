@@ -620,6 +620,13 @@ fn gap_record_comment_json(
             "PR comments require a non-empty anchor and dedupe fingerprint.",
         ));
     }
+    let Some(seam_id) = record.seam_id.as_deref().and_then(non_empty) else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_seam_identity",
+            "PR comments require producer-owned seam identity.",
+        ));
+    };
     if !seen_dedupe.insert(dedupe.to_string()) {
         return Err(gap_record_suppressed_json(
             record,
@@ -659,7 +666,7 @@ fn gap_record_comment_json(
         "gap_state": record.gap_state.as_str(),
         "policy_state": record.policy_state.as_str(),
         "repairability": record.repairability.as_str(),
-        "seam_id": gap_id.as_str(),
+        "seam_id": seam_id,
         "dedupe_key": dedupe,
         "source_location": source_location,
         "placement": {
@@ -1658,6 +1665,7 @@ mod tests {
     {
       "gap_id": "gap:pr:pricing:threshold-boundary",
       "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "seam_id": "seam:pricing:threshold-boundary",
       "kind": "MissingBoundaryAssertion",
       "language": "rust",
       "language_status": "stable",
@@ -1749,6 +1757,7 @@ mod tests {
     fn eligible_gap_record_json(gap_id: &str, dedupe: &str) -> Value {
         serde_json::json!({
             "gap_id": gap_id,
+            "seam_id": gap_id,
             "kind": "MissingBoundaryAssertion",
             "language": "rust",
             "language_status": "stable",
@@ -2259,6 +2268,10 @@ mod tests {
         assert_eq!(value["analysis_scope"]["classified_seams_considered"], 3);
         assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
         assert_eq!(
+            value["comments"][0]["seam_id"],
+            "seam:pricing:threshold-boundary"
+        );
+        assert_eq!(
             value["comments"][0]["source_location"]["file"],
             "src/pricing.rs"
         );
@@ -2280,10 +2293,7 @@ mod tests {
             value["comments"][0].get("confidence").is_none(),
             "repair cards should not expose generic confidence optics"
         );
-        assert_eq!(
-            value["suppressed"][0]["reason"],
-            "duplicate_dedupe_fingerprint"
-        );
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
         assert_eq!(value["suppressed"][1]["reason"], "not_pr_comment_eligible");
 
         let markdown = render_gap_record_review_comments_markdown(
@@ -2294,16 +2304,68 @@ mod tests {
             "target/ripr/reports/gap-decision-ledger.json",
             &records,
         );
-        assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("seam:pricing:threshold-boundary"));
         assert!(markdown.contains("analysis scope: `gap_ledger_artifact`"));
         assert!(markdown.contains("run status: `artifact_scope`"));
         assert!(markdown.contains("review_comments_gap_ledger_artifact_scope_only"));
-        assert!(markdown.contains("`gap:pr:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
+        assert!(markdown.contains("`seam:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
         assert!(
             markdown.contains("canonical_gap_id: `gap:rust:pricing:discount:threshold-boundary`")
         );
         assert!(markdown.contains("repair_route: `AddBoundaryAssertion`"));
         assert!(markdown.contains("command: `ripr first-action"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_without_seam_identity_is_suppressed() -> Result<(), String> {
+        let mut record = eligible_gap_record_json("gap:missing-seam", "dedupe:missing-seam");
+        record
+            .as_object_mut()
+            .ok_or("missing-seam fixture should be an object")?
+            .remove("seam_id");
+        let records_json = serde_json::json!({ "records": [record] }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse suppressed JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["suppressed"], 1);
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_missing_seam_does_not_consume_duplicate_slot() -> Result<(), String> {
+        let mut legacy = eligible_gap_record_json("gap:legacy", "dedupe:shared");
+        legacy
+            .as_object_mut()
+            .ok_or("legacy fixture should be an object")?
+            .remove("seam_id");
+        let valid = eligible_gap_record_json("gap:valid", "dedupe:shared");
+        let records_json = serde_json::json!({ "records": [legacy, valid] }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse mixed migration JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(value["summary"]["suppressed"], 1);
+        assert_eq!(value["comments"][0]["gap_id"], "gap:valid");
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
         Ok(())
     }
 
@@ -2423,6 +2485,7 @@ mod tests {
             assertion_shape: None,
             missing_discriminator: None,
             changed_behavior: None,
+            inspection_command: None,
             stop_conditions: Vec::new(),
         };
         assert_eq!(
@@ -2466,6 +2529,7 @@ mod tests {
             assertion_shape: None,
             missing_discriminator: None,
             changed_behavior: None,
+            inspection_command: None,
             stop_conditions: Vec::new(),
         };
         let value = gap_record_related_test(&full);

@@ -3,7 +3,7 @@ use crate::agent::loop_commands::shell_arg;
 use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "gap_decision_ledger";
@@ -155,8 +155,65 @@ pub(crate) struct GapRepairRoute {
     pub(crate) missing_discriminator: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) changed_behavior: Option<String>,
+    /// Exact producer-owned command for inspecting the selected seam. This is
+    /// intentionally separate from verification and receipt commands; gate
+    /// consumers must not synthesize it from a path, line, or display label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) inspection_command: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) stop_conditions: Vec<String>,
+}
+
+/// Reject ambiguous producer identity while preserving readable legacy rows.
+/// A single row without a seam ID remains route-limited; multiple legacy rows
+/// without any seam IDs are also left readable so their existing advisory
+/// projection can explain the missing identity. Once a canonical gap contains
+/// any producer-owned seam identity, duplicates or mixed missing identities are
+/// configuration errors rather than a choice for the gate adapter to guess.
+pub(crate) fn validate_gap_record_seam_identities(
+    records: &[GapRecord],
+) -> Result<(), Vec<String>> {
+    let mut grouped: BTreeMap<&str, Vec<&GapRecord>> = BTreeMap::new();
+    for record in records {
+        let canonical_gap_id = record.canonical_gap_id.trim();
+        if !canonical_gap_id.is_empty() {
+            grouped.entry(canonical_gap_id).or_default().push(record);
+        }
+    }
+
+    let mut errors = Vec::new();
+    for (canonical_gap_id, group) in grouped {
+        if group.len() < 2 {
+            continue;
+        }
+        let seam_ids = group
+            .iter()
+            .filter_map(|record| record.seam_id.as_deref())
+            .map(str::trim)
+            .filter(|seam_id| !seam_id.is_empty())
+            .collect::<BTreeSet<_>>();
+        let has_missing_identity = group.iter().any(|record| {
+            record
+                .seam_id
+                .as_deref()
+                .is_none_or(|seam_id| seam_id.trim().is_empty())
+        });
+        if seam_ids.len() > 1 || (has_missing_identity && !seam_ids.is_empty()) {
+            errors.push(format!(
+                "conflicting seam identities for canonical gap {canonical_gap_id}"
+            ));
+        } else if seam_ids.len() == 1 {
+            errors.push(format!(
+                "duplicate gap-ledger records with seam identity for canonical gap {canonical_gap_id}"
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -731,6 +788,7 @@ fn gap_record_from_python_repair_finding(finding: &Value, index: usize) -> Optio
             missing_discriminator: string_at(card, &["missing_discriminator"])
                 .map(ToString::to_string),
             changed_behavior: string_at(card, &["changed_behavior"]).map(ToString::to_string),
+            inspection_command: string_at(card, &["inspection_command"]).map(ToString::to_string),
             stop_conditions: string_array_at(card, &["stop_conditions"]),
         })
     } else {
@@ -876,6 +934,7 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
             missing_discriminator,
             changed_behavior: string_at(finding, &["typescript_preview_card", "changed_behavior"])
                 .map(ToString::to_string),
+            inspection_command: string_at(packet, &["inspection_command"]).map(ToString::to_string),
             stop_conditions: vec![
                 "Stop if the TypeScript preview packet loses repair_packet_ready=true.".to_string(),
                 "Stop if the verification command cannot run from this workspace.".to_string(),
@@ -1012,6 +1071,7 @@ fn gap_record_from_perl_preview_finding(finding: &Value, index: usize) -> Option
         assertion_shape: string_at(card, &["suggested_assertion"]).map(ToString::to_string),
         missing_discriminator: string_at(card, &["missing_discriminator"]).map(ToString::to_string),
         changed_behavior: string_at(card, &["changed_owner"]).map(ToString::to_string),
+        inspection_command: string_at(card, &["inspection_command"]).map(ToString::to_string),
         stop_conditions: string_array_at(card, &["stop_if"]),
     };
     let verification_commands = verify_command.into_iter().collect::<Vec<_>>();
@@ -1621,6 +1681,7 @@ fn presentation_text_repair_route_from_alignment_item(
             .and_then(|text| string_at(text, &["text_literal"]))
             .or_else(|| presentation_text.and_then(|text| string_at(text, &["constant_name"])))
             .map(ToString::to_string),
+        inspection_command: string_at(item, &["inspection_command"]).map(ToString::to_string),
         stop_conditions: vec![
             "Stop if the changed text is not user-facing in the current product surface."
                 .to_string(),
@@ -1691,6 +1752,9 @@ fn repair_route_from_evidence(
             .or_else(|| string_at(evidence, &["recommendation", "missing_discriminator"]))
             .map(ToString::to_string),
         changed_behavior: first_raw_finding_expression(evidence).map(ToString::to_string),
+        inspection_command: string_at(canonical_item, &["inspection_command"])
+            .or_else(|| string_at(evidence, &["inspection_command"]))
+            .map(ToString::to_string),
         stop_conditions: vec![
             "Stop if the related test is outside the current workspace.".to_string(),
             "Stop if the suggested assertion would require changing production behavior first."
@@ -2109,6 +2173,9 @@ fn render_record_markdown(record: &GapRecord, out: &mut String) {
                 .unwrap_or_default()
         ));
     }
+    if let Some(seam_id) = record.seam_id.as_deref().and_then(non_empty) {
+        out.push_str(&format!("- Seam: `{}`\n", md_inline(seam_id)));
+    }
     if let Some(route) = &record.repair_route {
         out.push_str(&format!(
             "- Repair: `{}`{}\n",
@@ -2124,6 +2191,9 @@ fn render_record_markdown(record: &GapRecord, out: &mut String) {
                 "- Assertion or observer: `{}`\n",
                 md_inline(assertion)
             ));
+        }
+        if let Some(command) = route.inspection_command.as_deref().and_then(non_empty) {
+            out.push_str(&format!("- Inspect: `{}`\n", md_inline(command)));
         }
     }
     let eligible = eligible_projection_names(record);
@@ -4201,6 +4271,87 @@ mod tests {
             err_msg.contains("invalid JSON"),
             "unexpected error: {err_msg}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_roundtrip_preserves_producer_seam_and_inspection_identity() -> Result<(), String>
+    {
+        let source = serde_json::json!({
+            "gap_records": [{
+                "gap_id": "gap:pricing",
+                "canonical_gap_id": "pricing::discount::threshold",
+                "seam_id": "seam-pricing-threshold",
+                "gap_state": "actionable",
+                "repairability": "repairable",
+                "repair_route": {
+                    "route_kind": "AddBoundaryAssertion",
+                    "inspection_command": "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+                }
+            }]
+        });
+        let report = report_from_json(source);
+        let rendered = render_gap_decision_ledger_json(&report)
+            .map_err(|err| format!("ledger render failed: {err}"))?;
+        let records = parse_gap_records_json(&rendered)
+            .map_err(|err| format!("rendered ledger should parse: {err}"))?;
+        let record = records
+            .first()
+            .ok_or_else(|| "round-tripped ledger should retain one record".to_string())?;
+        assert_eq!(record.seam_id.as_deref(), Some("seam-pricing-threshold"));
+        assert_eq!(
+            record
+                .repair_route
+                .as_ref()
+                .and_then(|route| route.inspection_command.as_deref()),
+            Some("ripr agent brief --root . --seam-id seam-pricing-threshold --json")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_markdown_preserves_producer_seam_and_inspection_identity() -> Result<(), String> {
+        let source = serde_json::json!({
+            "gap_records": [{
+                "gap_id": "gap:pricing",
+                "canonical_gap_id": "pricing::discount::threshold",
+                "seam_id": "seam-pricing-threshold",
+                "repair_route": {
+                    "route_kind": "AddBoundaryAssertion",
+                    "inspection_command": "ripr agent brief --root . --seam-id seam-pricing-threshold --json"
+                }
+            }]
+        });
+        let markdown = render_gap_decision_ledger_markdown(&report_from_json(source));
+        assert!(markdown.contains("- Seam: `seam-pricing-threshold`"));
+        assert!(markdown.contains(
+            "- Inspect: `ripr agent brief --root . --seam-id seam-pricing-threshold --json`"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_gap_ledger_seam_identity_is_rejected() -> Result<(), String> {
+        let source = serde_json::json!({
+            "gap_records": [{
+                "canonical_gap_id": "pricing::discount::threshold",
+                "seam_id": "seam-pricing-threshold"
+            }]
+        });
+        let mut records = parse_gap_records_json(&source.to_string())?;
+        let duplicate = records
+            .first()
+            .cloned()
+            .ok_or_else(|| "expected one seam-bearing record".to_string())?;
+        records.push(duplicate);
+        let errors = validate_gap_record_seam_identities(&records)
+            .err()
+            .ok_or_else(|| "duplicate seam identity should fail closed".to_string())?;
+        assert!(errors.iter().any(|error| {
+            error.contains(
+                "duplicate gap-ledger records with seam identity for canonical gap pricing::discount::threshold",
+            )
+        }));
         Ok(())
     }
 
