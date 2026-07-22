@@ -86,6 +86,15 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
 
+### Crate tarball contents
+
+`crates/ripr/Cargo.toml` intentionally includes `tests/**` and `examples/**`
+in the published source distribution. The package list therefore carries the
+checked integration corpus and sample workspace used by release and dogfood
+evidence. This does not change the installed binary or library API, but
+removing either surface is a release-contract change that must be reviewed
+against `cargo package -p ripr --list` and this document.
+
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).
 

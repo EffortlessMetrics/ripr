@@ -10,6 +10,8 @@ description = "Find static mutation-exposure gaps before expensive mutation test
 readme = "README.md"
 keywords = ["mutation-testing", "testing", "rust", "static-analysis", "lsp"]
 categories = ["development-tools", "development-tools::testing"]
+# Keep the integration tests and sample workspace in the source distribution.
+# This is intentional release evidence; see docs/RELEASE.md before changing it.
 include = [
   "src/**",
   "tests/**",
