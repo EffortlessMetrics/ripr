@@ -273,7 +273,9 @@ Options:
   --status STATUS       Outcome of the verify command. Required.
                         Valid values: passed, failed, not_run, unknown.
   --out PATH            Write receipt JSON to this path. When omitted, writes to
-                        target/ripr/receipts/<canonical_gap_id>.json.
+                        target/ripr/receipts/<canonical_gap_id>.json with
+                        filename-unsafe characters (`:`, etc.) percent-encoded
+                        so the default path is portable across platforms.
   --json                Print JSON output to stdout (also written to --out path).
 
 Fail-closed:
@@ -293,7 +295,8 @@ Usage: ripr receipt check [--path <receipt_path>] [--gap <canonical_gap_id>]
 Options:
   --path PATH       Path to the receipt JSON file to validate.
   --gap ID          Resolve path from canonical location
-                    target/ripr/receipts/<canonical_gap_id>.json.
+                    target/ripr/receipts/<canonical_gap_id>.json with
+                    filename-unsafe characters (`:`, etc.) percent-encoded.
   --ledger PATH     Path to a gap-decision-ledger JSON file.  When provided,
                     cross-references the receipt's canonical_gap_id against the
                     live gap set and classifies the result as:
