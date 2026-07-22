@@ -20,6 +20,7 @@
 
 use crate::output::gap_decision_ledger::parse_gap_records_json;
 use crate::output::json;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// Schema version for receipts written by this command.
@@ -241,10 +242,53 @@ fn cross_reference_receipt(
 pub(crate) fn receipt_out_path(opts: &ReceiptWriteOptions) -> PathBuf {
     match &opts.out {
         Some(p) => p.clone(),
-        None => PathBuf::from("target/ripr/receipts").join(format!(
-            "{}.json",
-            receipt_file_stem(&opts.canonical_gap_id)
-        )),
+        None => receipt_default_path(&opts.canonical_gap_id),
+    }
+}
+
+const RECEIPT_DEFAULT_DIRECTORY: &str = "target/ripr/receipts";
+const MAX_RECEIPT_DEFAULT_PATH_LEN: usize = 260;
+const RECEIPT_DEFAULT_DIRECTORY_WITH_SEPARATOR_LEN: usize = RECEIPT_DEFAULT_DIRECTORY.len() + 1;
+const RECEIPT_FILENAME_EXTENSION_LEN: usize = ".json".len();
+const MAX_RECEIPT_FILENAME_COMPONENT_LEN: usize =
+    MAX_RECEIPT_DEFAULT_PATH_LEN - RECEIPT_DEFAULT_DIRECTORY_WITH_SEPARATOR_LEN;
+const MAX_RECEIPT_FILENAME_STEM_LEN: usize =
+    MAX_RECEIPT_FILENAME_COMPONENT_LEN - RECEIPT_FILENAME_EXTENSION_LEN;
+const RECEIPT_FILENAME_HASH_HEX_LEN: usize = 64;
+
+fn receipt_default_path(canonical_gap_id: &str) -> PathBuf {
+    PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join(format!(
+        "{}.json",
+        bounded_receipt_file_stem(canonical_gap_id)
+    ))
+}
+
+fn bounded_receipt_file_stem(canonical_gap_id: &str) -> String {
+    let stem = receipt_file_stem(canonical_gap_id);
+    if stem.len() <= MAX_RECEIPT_FILENAME_STEM_LEN {
+        return stem;
+    }
+
+    let digest = format!("{:x}", Sha256::digest(canonical_gap_id.as_bytes()));
+    let suffix_len = 1 + RECEIPT_FILENAME_HASH_HEX_LEN;
+    let prefix_limit = MAX_RECEIPT_FILENAME_STEM_LEN - suffix_len;
+    let prefix_len = complete_percent_encoded_prefix_len(&stem, prefix_limit);
+    format!(
+        "{}~{}",
+        &stem[..prefix_len],
+        &digest[..RECEIPT_FILENAME_HASH_HEX_LEN]
+    )
+}
+
+fn complete_percent_encoded_prefix_len(encoded: &str, limit: usize) -> usize {
+    let mut prefix_limit = limit.min(encoded.len());
+    while prefix_limit > 0 && !encoded.is_char_boundary(prefix_limit) {
+        prefix_limit -= 1;
+    }
+    let prefix = &encoded[..prefix_limit];
+    match prefix.rfind('%') {
+        Some(percent) if percent + 3 > prefix_limit => percent,
+        _ => prefix_limit,
     }
 }
 
@@ -369,10 +413,7 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
 fn resolve_check_path(opts: &ReceiptCheckOptions) -> Result<PathBuf, String> {
     match (&opts.path, &opts.gap) {
         (Some(p), _) => Ok(p.clone()),
-        (None, Some(gap)) => {
-            Ok(PathBuf::from("target/ripr/receipts")
-                .join(format!("{}.json", receipt_file_stem(gap))))
-        }
+        (None, Some(gap)) => Ok(receipt_default_path(gap)),
         (None, None) => Err(
             "receipt check requires --path <receipt_path> or --gap <canonical_gap_id>".to_string(),
         ),
@@ -1121,6 +1162,55 @@ mod tests {
             "default receipt file name must be filesystem-portable: {file_name}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_caps_the_complete_default_path() {
+        let at_limit = "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN);
+        let beyond_limit = format!("{at_limit}0");
+        let distinct_beyond_limit = format!("{at_limit}1");
+        let at_limit_path = receipt_default_path(&at_limit);
+        let beyond_limit_path = receipt_default_path(&beyond_limit);
+        let distinct_beyond_limit_path = receipt_default_path(&distinct_beyond_limit);
+
+        assert_eq!(
+            at_limit_path.to_string_lossy().len(),
+            MAX_RECEIPT_DEFAULT_PATH_LEN
+        );
+        assert_eq!(
+            beyond_limit_path.to_string_lossy().len(),
+            MAX_RECEIPT_DEFAULT_PATH_LEN
+        );
+        assert_ne!(at_limit_path, beyond_limit_path);
+        assert_ne!(beyond_limit_path, distinct_beyond_limit_path);
+        assert!(
+            beyond_limit_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains('~'))
+        );
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_preserves_short_and_percent_boundaries() {
+        let short = "gap:rust:pricing:aabbccdd";
+        assert_eq!(bounded_receipt_file_stem(short), receipt_file_stem(short));
+
+        let prefix = "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN - 1 - RECEIPT_FILENAME_HASH_HEX_LEN);
+        let percent_boundary = format!("{prefix}:{}", "tail".repeat(100));
+        let bounded = bounded_receipt_file_stem(&percent_boundary);
+        assert_eq!(bounded.as_bytes().get(prefix.len()), Some(&b'~'));
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_handles_multibyte_prefix_boundaries() {
+        let value = format!(
+            "{}é{}",
+            "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN - RECEIPT_FILENAME_HASH_HEX_LEN - 2),
+            "1".repeat(100)
+        );
+        let path = receipt_default_path(&value);
+        assert!(path.to_string_lossy().len() <= MAX_RECEIPT_DEFAULT_PATH_LEN);
     }
 
     // ── written_at format ─────────────────────────────────────────────────────

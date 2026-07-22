@@ -5230,13 +5230,17 @@ tests = [
   "crates/ripr/src/app/receipt.rs::receipt_check_no_path_no_gap_exits_nonzero",
   "crates/ripr/src/app/receipt.rs::receipt_out_path_uses_explicit_path_when_provided",
   "crates/ripr/src/app/receipt.rs::receipt_out_path_defaults_to_canonical_location",
+  "crates/ripr/src/app/receipt.rs::bounded_receipt_file_stem_caps_the_complete_default_path",
+  "crates/ripr/src/app/receipt.rs::bounded_receipt_file_stem_preserves_short_and_percent_boundaries",
+  "crates/ripr/src/app/receipt.rs::bounded_receipt_file_stem_handles_multibyte_prefix_boundaries",
   "crates/ripr/tests/cli_smoke.rs::receipt_write_then_check_exits_zero",
   "crates/ripr/tests/cli_smoke.rs::receipt_write_with_packet_id_smoke",
   "crates/ripr/tests/cli_smoke.rs::receipt_write_missing_gap_exits_nonzero_smoke",
   "crates/ripr/tests/cli_smoke.rs::receipt_write_invalid_status_exits_nonzero_smoke",
   "crates/ripr/tests/cli_smoke.rs::receipt_check_missing_file_exits_nonzero_smoke",
   "crates/ripr/tests/cli_smoke.rs::receipt_help_exits_zero_smoke",
-  "crates/ripr/tests/cli_smoke.rs::agent_receipt_legacy_alias_still_dispatches_smoke"
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_legacy_alias_still_dispatches_smoke",
+  "crates/ripr/tests/cli_smoke.rs::receipt_default_long_gap_path_round_trips_smoke"
 ]
 fixtures = []
 code = [

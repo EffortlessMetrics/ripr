@@ -5554,6 +5554,55 @@ fn receipt_write_then_check_exits_zero() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+/// Smoke: a long canonical gap ID stays within the bounded default path and
+/// round-trips through `receipt check --gap` from an isolated Git repository.
+#[test]
+fn receipt_default_long_gap_path_round_trips_smoke() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("receipt-default-long-gap");
+    std::fs::create_dir_all(&workspace)?;
+    run_git(&workspace, &["init"])?;
+    run_git(&workspace, &["config", "user.email", "test@test.com"])?;
+    run_git(&workspace, &["config", "user.name", "Test"])?;
+    std::fs::write(workspace.join("README.md"), "receipt path fixture\n")?;
+    run_git(&workspace, &["add", "."])?;
+    run_git(&workspace, &["commit", "-m", "initial"])?;
+
+    let gap_id = format!(
+        "gap:windows:long:{}",
+        "segment-with-punctuation/".repeat(32)
+    );
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let write = run_command(
+        bin,
+        Some(&workspace),
+        &[
+            "receipt",
+            "write",
+            "--gap",
+            gap_id.as_str(),
+            "--verify-command",
+            "cargo test",
+            "--status",
+            "passed",
+            "--json",
+        ],
+    )?;
+    assert_success(&write);
+    let written: serde_json::Value = serde_json::from_slice(&write.stdout)?;
+    assert_eq!(written["canonical_gap_id"], gap_id);
+
+    let check = run_command(
+        bin,
+        Some(&workspace),
+        &["receipt", "check", "--gap", gap_id.as_str()],
+    )?;
+    assert_success(&check);
+    assert!(String::from_utf8_lossy(&check.stdout).contains("structurally valid"));
+
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
 /// Smoke: `ripr receipt write` with `--packet` records packet_id correctly.
 #[test]
 fn receipt_write_with_packet_id_smoke() -> Result<(), Box<dyn std::error::Error>> {

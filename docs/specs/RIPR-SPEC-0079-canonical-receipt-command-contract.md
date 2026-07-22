@@ -118,6 +118,10 @@ injective — distinct gap ids never collide on one file name —
 deterministic, and applied on every platform, so a colon-delimited gap id
 such as `gap:rust:pricing:aabbccdd` resolves to
 `target/ripr/receipts/gap%3Arust%3Apricing%3Aaabbccdd.json` everywhere.
+The complete relative default path, including `target/ripr/receipts/` and the
+`.json` extension, is capped at 260 bytes. If the encoded stem exceeds
+the derived filename budget, the path uses a bounded encoded prefix plus `~`
+and the lowercase SHA-256 digest of the full canonical ID.
 The canonical gap id inside the receipt JSON is unchanged; only its
 filesystem representation is made portable. Explicit `--out` / `--path`
 values are used verbatim.
@@ -333,6 +337,7 @@ non-zero on any error, printing a human-readable message to stderr.
 5. `ripr receipt check --path target/ripr/receipts/nonexistent.json` exits non-zero with an explicit "not found" error.
 6. `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id <id> --json` is accepted as the legacy alias and produces the same receipt output.
 7. No surface emits `ripr outcome ...` in the `receipt_command` field; any such occurrence is a failing test.
+8. A long punctuation-containing `canonical_gap_id` writes to the bounded default path and is found again by `ripr receipt check --gap <canonical_gap_id>`.
 
 ## Test Mapping
 
@@ -352,6 +357,9 @@ Unit tests (app layer) — `crates/ripr/src/app/receipt.rs`:
 - `receipt_check_no_path_no_gap_exits_nonzero`
 - `receipt_out_path_uses_explicit_path_when_provided`
 - `receipt_out_path_defaults_to_canonical_location`
+- `bounded_receipt_file_stem_caps_the_complete_default_path`
+- `bounded_receipt_file_stem_preserves_short_and_percent_boundaries`
+- `bounded_receipt_file_stem_handles_multibyte_prefix_boundaries`
 
 Integration smoke tests — `crates/ripr/tests/cli_smoke.rs`:
 
@@ -362,6 +370,7 @@ Integration smoke tests — `crates/ripr/tests/cli_smoke.rs`:
 - `receipt_check_missing_file_exits_nonzero_smoke`
 - `receipt_help_exits_zero_smoke`
 - `agent_receipt_legacy_alias_still_dispatches_smoke`
+- `receipt_default_long_gap_path_round_trips_smoke`
 
 Emitter-alignment tests (PR 2):
 
