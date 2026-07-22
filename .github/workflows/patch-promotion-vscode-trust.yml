@@ -1,0 +1,108 @@
+name: Patch promotion VS Code trust harness
+
+on:
+  push:
+    branches:
+      - promote/0.10.1-swarm
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: promote/0.10.1-swarm
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - name: Apply test-host-only trust injection
+        shell: python
+        run: |
+          from pathlib import Path
+
+          client = Path('editors/vscode/src/client.ts')
+          text = client.read_text(encoding='utf-8')
+          old = 'const defaultRuntime: RiprClientRuntime = {'
+          new = 'export const defaultRuntime: RiprClientRuntime = {'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one defaultRuntime declaration, found {text.count(old)}')
+          client.write_text(text.replace(old, new), encoding='utf-8')
+
+          extension = Path('editors/vscode/src/extension.ts')
+          text = extension.read_text(encoding='utf-8')
+          old_import = """  RiprClientController,
+  RiprAgentLoopCommandTarget,
+  RiprContextTarget,
+  RiprRelatedTestTarget,
+  RiprSuggestedAssertionTarget,
+  RiprTargetedTestBriefTarget,
+} from './client';"""
+          new_import = """  RiprClientController,
+  RiprAgentLoopCommandTarget,
+  RiprClientRuntime,
+  RiprContextTarget,
+  RiprRelatedTestTarget,
+  RiprSuggestedAssertionTarget,
+  RiprTargetedTestBriefTarget,
+  defaultRuntime,
+} from './client';"""
+          if text.count(old_import) != 1:
+              raise SystemExit('extension import block did not match exactly once')
+          text = text.replace(old_import, new_import)
+          old_constructor = '  controller = new RiprClientController(context, output, undefined, status);'
+          new_constructor = """  const runtime: RiprClientRuntime | undefined =
+    context.extensionMode === vscode.ExtensionMode.Test &&
+    process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED === '1'
+      ? { ...defaultRuntime, isWorkspaceTrusted: () => true }
+      : undefined;
+  controller = new RiprClientController(context, output, runtime, status);"""
+          if text.count(old_constructor) != 1:
+              raise SystemExit('controller construction did not match exactly once')
+          extension.write_text(
+              text.replace(old_constructor, new_constructor),
+              encoding='utf-8',
+          )
+
+          runner = Path('editors/vscode/test/runTest.ts')
+          text = runner.read_text(encoding='utf-8')
+          anchor = '    process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;'
+          replacement = anchor + "\n    process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED = '1';"
+          if text.count(anchor) != 1:
+              raise SystemExit('test runner environment anchor did not match exactly once')
+          runner.write_text(text.replace(anchor, replacement), encoding='utf-8')
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: npm ci
+      - name: Compile extension and tests
+        working-directory: editors/vscode
+        run: npm run compile
+      - name: Package extension
+        working-directory: editors/vscode
+        run: npm run package
+      - name: Build local ripr server
+        run: cargo build -p ripr
+      - name: Install Electron test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Run real extension-host tests
+        working-directory: editors/vscode
+        env:
+          RIPR_TEST_SERVER_PATH: ${{ github.workspace }}/target/debug/ripr
+        run: xvfb-run -a npm run test:e2e
+      - name: Commit verified harness correction
+        run: |
+          rm .github/workflows/patch-promotion-vscode-trust.yml
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add editors/vscode/src/client.ts editors/vscode/src/extension.ts editors/vscode/test/runTest.ts .github/workflows/patch-promotion-vscode-trust.yml
+          git commit -m "test(vscode): inject trust only in extension-host test mode"
+          git push origin HEAD:promote/0.10.1-swarm
