@@ -223,16 +223,16 @@ function injectTrustedExtensionHostRuntime(
   context: vscode.ExtensionContext
 ): void {
   if (
-    context.extensionMode !== vscode.ExtensionMode.Test ||
+    context.extensionMode === vscode.ExtensionMode.Production ||
     process.env.RIPR_TEST_ASSUME_WORKSPACE_TRUSTED !== '1'
   ) {
     return;
   }
 
-  // VS Code loads Workspace Trust before the extension-host test suite can
-  // seed or change it. Override only the trust predicate in explicit test
-  // mode; installed/development extensions continue to use
-  // vscode.workspace.isTrusted and retain the production no-launch boundary.
+  // VS Code loads Workspace Trust before the extension-host suite can change it.
+  // Override only the trust predicate when a non-production extension host opts
+  // in explicitly. Packaged/installed extensions remain in Production mode,
+  // continue to use vscode.workspace.isTrusted, and retain the no-launch boundary.
   const runtime = (currentController as unknown as { runtime: RiprClientRuntime }).runtime;
   runtime.isWorkspaceTrusted = () => true;
 }
