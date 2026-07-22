@@ -144,6 +144,20 @@ pub(super) fn client_supports_diagnostic_refresh(params: &InitializeParams) -> b
         .unwrap_or(false)
 }
 
+/// Whether the client accepts a server-originated `workspace/codeLens/refresh`
+/// request (`capabilities.workspace.codeLens.refreshSupport`) (#2032,
+/// RIPR-SPEC-0138). Clients without this capability keep their normal
+/// re-request (poll) behavior and receive no refresh request.
+pub(super) fn client_supports_code_lens_refresh(params: &InitializeParams) -> bool {
+    params
+        .capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.code_lens.as_ref())
+        .and_then(|code_lens| code_lens.refresh_support)
+        .unwrap_or(false)
+}
+
 /// Whether the client accepts server-initiated work-done progress
 /// (`window/workDoneProgress/create` + `$/progress`) for analysis requests
 /// (#1971). Clients without this capability see no progress traffic at all.
@@ -408,6 +422,53 @@ mod tests {
             || client_supports_work_done_progress(&InitializeParams::default())
         {
             return Err("missing or declined window.workDoneProgress must disable progress".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_refresh_follows_workspace_capability() -> Result<(), String> {
+        let mut supported = InitializeParams::default();
+        supported.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            code_lens: Some(
+                tower_lsp_server::ls_types::CodeLensWorkspaceClientCapabilities {
+                    refresh_support: Some(true),
+                },
+            ),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if !client_supports_code_lens_refresh(&supported) {
+            return Err("workspace.codeLens.refreshSupport=true must enable refresh".to_string());
+        }
+
+        let mut declined = InitializeParams::default();
+        declined.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            code_lens: Some(
+                tower_lsp_server::ls_types::CodeLensWorkspaceClientCapabilities {
+                    refresh_support: Some(false),
+                },
+            ),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if client_supports_code_lens_refresh(&declined) {
+            return Err("workspace.codeLens.refreshSupport=false must disable refresh".to_string());
+        }
+
+        let mut present_without_flag = InitializeParams::default();
+        present_without_flag.capabilities.workspace = Some(WorkspaceClientCapabilities {
+            code_lens: Some(
+                tower_lsp_server::ls_types::CodeLensWorkspaceClientCapabilities {
+                    refresh_support: None,
+                },
+            ),
+            ..WorkspaceClientCapabilities::default()
+        });
+        if client_supports_code_lens_refresh(&present_without_flag)
+            || client_supports_code_lens_refresh(&InitializeParams::default())
+        {
+            return Err(
+                "absent workspace.codeLens.refreshSupport must disable refresh".to_string(),
+            );
         }
         Ok(())
     }

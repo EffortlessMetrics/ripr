@@ -19,7 +19,7 @@ use super::gap_artifacts::{
 };
 use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
 use super::input_identity::LspAnalysisInputIdentity;
-use super::lens::{code_lens_response, lens_title_is_static_language_clean};
+use super::lens::{code_lens_response, lens_title_is_static_language_clean, lens_view_identity};
 use super::progress::ProgressEvent;
 use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
@@ -678,6 +678,112 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
 }
 
 #[test]
+fn code_lens_refresh_is_not_attempted_for_unsupported_clients() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("code-lens-refresh-unsupported")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        // Initialize WITHOUT workspace.codeLens.refreshSupport: the server
+        // must not record or attempt any refresh for this client (#2032).
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let finding = sample_finding();
+        let diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+            vec![finding],
+        );
+        let identity = lens_view_identity(&diagnostics.snapshot);
+        if backend.note_lens_view_for_refresh(identity) {
+            return Err("an unsupported client must not attempt a code lens refresh".to_string());
+        }
+        if backend.last_requested_lens_view_identity().is_some() {
+            return Err(
+                "an unsupported client must not record or attempt a code lens refresh".to_string(),
+            );
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn code_lens_refresh_tracks_semantic_view_changes_for_supported_clients() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("code-lens-refresh-supported")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = initialize_params(None, Some(file_uri_for_path(root.path())?));
+        params.capabilities.workspace =
+            Some(tower_lsp_server::ls_types::WorkspaceClientCapabilities {
+                code_lens: Some(
+                    tower_lsp_server::ls_types::CodeLensWorkspaceClientCapabilities {
+                        refresh_support: Some(true),
+                    },
+                ),
+                ..tower_lsp_server::ls_types::WorkspaceClientCapabilities::default()
+            });
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let identity_for = |finding: Finding| {
+            lens_view_identity(
+                &sample_workspace_diagnostics(
+                    PathBuf::from("/workspace"),
+                    uri.clone(),
+                    vec![diagnostic_for_finding(Path::new("/workspace"), &finding)],
+                    vec![finding],
+                )
+                .snapshot,
+            )
+        };
+        let identity_a = identity_for(sample_finding());
+        if !backend.note_lens_view_for_refresh(identity_a.clone()) {
+            return Err("a supported client's first lens view must read as changed".to_string());
+        }
+        if backend.last_requested_lens_view_identity() != Some(identity_a.clone()) {
+            return Err(
+                "a supported client's first lens view must be recorded as requested".to_string(),
+            );
+        }
+        // A byte-identical re-commit reports no change and sends nothing.
+        if backend.note_lens_view_for_refresh(identity_a) {
+            return Err("a byte-identical lens view must not read as changed".to_string());
+        }
+
+        // A semantic change (classification flip) advances the recorded view.
+        let mut changed = sample_finding();
+        changed.class = ExposureClass::Exposed;
+        let identity_b = identity_for(changed);
+        if !backend.note_lens_view_for_refresh(identity_b.clone()) {
+            return Err("a classification change must read as a lens-view change".to_string());
+        }
+        if backend.last_requested_lens_view_identity() != Some(identity_b) {
+            return Err("a classification change must advance the recorded lens view".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn serve_stdio_call_presence_observer() -> Result<(), String> {
     let source = include_str!("../lsp.rs");
     let serve_stdio = source
@@ -1158,6 +1264,264 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
         )
         .await?;
         let shutdown = read_lsp_response(&mut client_read, 6).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "exit",
+                "params": null
+            }),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        // Temp git repo: a committed base plus a committed production
+        // change, so the saved-workspace analysis (base..HEAD) produces
+        // findings.
+        let root = unique_lsp_test_root("framed-code-lens-refresh")?;
+        write_lsp_scope_fixture(&root.path)?;
+        run_lsp_scope_git(&root.path, &["init"])?;
+        run_lsp_scope_git(
+            &root.path,
+            &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        run_lsp_scope_git(&root.path, &["config", "user.name", "RIPR Test"])?;
+        run_lsp_scope_git(
+            &root.path,
+            &["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"],
+        )?;
+        run_lsp_scope_git(&root.path, &["commit", "-m", "base"])?;
+        fs::write(
+            root.path.join("src/lib.rs"),
+            "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )
+        .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+        run_lsp_scope_git(&root.path, &["add", "src/lib.rs"])?;
+        run_lsp_scope_git(&root.path, &["commit", "-m", "change production"])?;
+        let root_uri = file_uri_for_path(root.path())?;
+
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD~1",
+                        "checkMode": "instant",
+                        "diagnosticProfile": "full"
+                    },
+                    "capabilities": {
+                        "workspace": {
+                            "codeLens": { "refreshSupport": true }
+                        }
+                    }
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialize.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialized",
+                "params": {}
+            }),
+        )
+        .await?;
+
+        // Refresh 1: the first snapshot commits with findings, so exactly one
+        // workspace/codeLens/refresh request must arrive (#2032).
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, refresh_requests) =
+            read_response_answering_code_lens_refresh(&mut client_read, &mut client_write, 2)
+                .await?;
+        assert!(refresh.get("error").is_none());
+        assert_eq!(
+            refresh_requests, 1,
+            "the first snapshot commit must send exactly one workspace/codeLens/refresh"
+        );
+
+        // Vacuous-pass guard (tests-red-green review): the fixture must
+        // actually produce lenses, or the request counts in this test could
+        // pass on an empty view (an empty first view also changes the
+        // recorded identity from None).
+        let changed_file_uri = file_uri_for_path(&root.path.join("src/lib.rs"))?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 20,
+                "method": "textDocument/codeLens",
+                "params": {
+                    "textDocument": { "uri": changed_file_uri.as_str() }
+                }
+            }),
+        )
+        .await?;
+        let lenses = read_lsp_response(&mut client_read, 20).await?;
+        let lens_count = lenses["result"].as_array().map_or(0, Vec::len);
+        if lens_count == 0 {
+            return Err(format!(
+                "fixture must produce at least one code lens, or the refresh counts pass vacuously: {lenses}"
+            ));
+        }
+
+        // Refresh 2: byte-identical inputs. A new snapshot commits with a
+        // fresh wall-clock age (the rendered title suffix changes), but the
+        // semantic lens view is unchanged, so no request may be sent.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, refresh_requests) =
+            read_response_answering_code_lens_refresh(&mut client_read, &mut client_write, 3)
+                .await?;
+        assert!(refresh.get("error").is_none());
+        assert_eq!(
+            refresh_requests, 0,
+            "a byte-identical re-commit must not send workspace/codeLens/refresh"
+        );
+
+        // Refresh 3: the saved workspace changes semantically (a committed
+        // second changed predicate alters the base..HEAD diff and with it
+        // the visible lens set), so exactly one new request must arrive.
+        fs::write(
+            root.path.join("src/lib.rs"),
+            "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n\npub fn second_gate(level: u8) -> bool {\n    level > 3\n}\n",
+        )
+        .map_err(|err| format!("write second production change failed: {err}"))?;
+        run_lsp_scope_git(&root.path, &["add", "src/lib.rs"])?;
+        run_lsp_scope_git(&root.path, &["commit", "-m", "add second gate"])?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, refresh_requests) =
+            read_response_answering_code_lens_refresh(&mut client_read, &mut client_write, 4)
+                .await?;
+        assert!(refresh.get("error").is_none());
+        assert_eq!(
+            refresh_requests, 1,
+            "a semantic lens-view change must send exactly one workspace/codeLens/refresh"
+        );
+
+        // Refresh 4 (RIPR-SPEC-0138, review): removing the workspace root
+        // clears analysis state — every lens is now stale — so the server
+        // must send one more refresh for the cleared view.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWorkspaceFolders",
+                "params": {"event": {"added": [], "removed": [{"uri": root_uri.as_str(), "name": "fixture"}]}}
+            }),
+        )
+        .await?;
+        let folders_request =
+            read_lsp_request(&mut client_read, "workspace/workspaceFolders").await?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": folders_request["id"].clone(),
+                "result": []
+            }),
+        )
+        .await?;
+        let cleared_refresh =
+            read_lsp_request(&mut client_read, "workspace/codeLens/refresh").await?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": cleared_refresh["id"].clone(),
+                "result": null
+            }),
+        )
+        .await?;
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "shutdown",
+                "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 5).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -6252,6 +6616,47 @@ where
         let message = read_lsp_message(reader).await?;
         if message.get("method").and_then(serde_json::Value::as_str) == Some(method) {
             return Ok(message);
+        }
+    }
+}
+
+/// Read until the response for `id` arrives, answering every
+/// `workspace/codeLens/refresh` server-originated request with a null result
+/// so the publish path cannot stall (#2032, RIPR-SPEC-0138). Returns the
+/// response plus how many refresh requests arrived before it. The publish
+/// path awaits the refresh request before completing the command response,
+/// so the count needs no timing window.
+async fn read_response_answering_code_lens_refresh<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    id: u64,
+) -> Result<(serde_json::Value, u64), String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut refresh_requests = 0_u64;
+    loop {
+        let message = read_lsp_message(reader).await?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("workspace/codeLens/refresh")
+        {
+            refresh_requests += 1;
+            let request_id = message
+                .get("id")
+                .cloned()
+                .ok_or_else(|| "workspace/codeLens/refresh request carried no id".to_string())?;
+            write_lsp_message(
+                writer,
+                serde_json::json!({"jsonrpc": "2.0", "id": request_id, "result": null}),
+            )
+            .await?;
+            continue;
+        }
+        if message.get("method").is_none()
+            && message.get("id").and_then(serde_json::Value::as_u64) == Some(id)
+        {
+            return Ok((message, refresh_requests));
         }
     }
 }

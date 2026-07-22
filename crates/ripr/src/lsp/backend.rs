@@ -1,9 +1,10 @@
 use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
 use super::capabilities::{
-    ConfigurationMode, WorkspaceRootResolution, client_supports_diagnostic_refresh,
-    client_supports_pull_diagnostics, client_supports_work_done_progress, configuration_mode,
-    initialize_result_for_client, root_from_initialize_params,
+    ConfigurationMode, WorkspaceRootResolution, client_supports_code_lens_refresh,
+    client_supports_diagnostic_refresh, client_supports_pull_diagnostics,
+    client_supports_work_done_progress, configuration_mode, initialize_result_for_client,
+    root_from_initialize_params,
 };
 use super::config::{LspAnalysisConfig, validated_pulled_options};
 use super::diagnostics::{
@@ -14,7 +15,7 @@ use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
-use super::lens::code_lens_response;
+use super::lens::{LensViewIdentity, code_lens_response, lens_view_identity};
 use super::payload_bounds::{
     check_execute_command_arguments, check_initialization_options, check_previous_result_ids,
 };
@@ -120,6 +121,12 @@ pub(super) struct Backend {
     /// receipt state, and it is never read from refresh or identity paths.
     trace: Mutex<TraceValue>,
     diagnostic_refresh_support: Mutex<bool>,
+    /// Negotiated `workspace.codeLens.refreshSupport` (#2032, RIPR-SPEC-0138).
+    code_lens_refresh_support: Mutex<bool>,
+    /// The lens-view identity covered by the last `workspace/codeLens/refresh`
+    /// request. Compared per committed snapshot; a request is sent only when
+    /// the visible lens view changed. `None` until the first commit.
+    last_lens_view_identity: Mutex<Option<LensViewIdentity>>,
     dynamic_file_watch_registration: Mutex<bool>,
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
@@ -176,6 +183,8 @@ impl Backend {
             pull_diagnostics: Mutex::new(false),
             trace: Mutex::new(TraceValue::Off),
             diagnostic_refresh_support: Mutex::new(false),
+            code_lens_refresh_support: Mutex::new(false),
+            last_lens_view_identity: Mutex::new(None),
             dynamic_file_watch_registration: Mutex::new(false),
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
@@ -635,6 +644,10 @@ impl Backend {
             .await;
             return cancellation_outcome(request);
         }
+        // Compute the lens-view identity from the completed snapshot before
+        // the commit consumes it; the refresh request below compares it
+        // against the last requested view (#2032, RIPR-SPEC-0138).
+        let lens_view = lens_view_identity(&snapshot);
         let Some(quarantine_edges) =
             self.commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
         else {
@@ -674,6 +687,8 @@ impl Backend {
                 )
                 .await;
         }
+        self.request_code_lens_refresh_if_view_changed(lens_view)
+            .await;
         self.log_refresh_completed(
             summary,
             published_uri_count,
@@ -1000,6 +1015,71 @@ impl Backend {
             .lock()
             .map(|supported| *supported)
             .unwrap_or(false)
+    }
+
+    fn code_lens_refresh_support_enabled(&self) -> bool {
+        self.code_lens_refresh_support
+            .lock()
+            .map(|supported| *supported)
+            .unwrap_or(false)
+    }
+
+    /// Record `new_identity` as the current lens view and report whether the
+    /// visible view changed since the last recorded one (#2032,
+    /// RIPR-SPEC-0138). Returns `false` without touching state when the
+    /// client did not negotiate refresh support, so an unsupported client
+    /// never records or attempts a refresh. The identity comparison is the
+    /// coalescing: a byte-identical re-commit reports no change.
+    pub(super) fn note_lens_view_for_refresh(&self, new_identity: LensViewIdentity) -> bool {
+        if !self.code_lens_refresh_support_enabled() {
+            return false;
+        }
+        match self.last_lens_view_identity.lock() {
+            Ok(mut last) => {
+                if last.as_ref() == Some(&new_identity) {
+                    false
+                } else {
+                    *last = Some(new_identity);
+                    true
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Request one `workspace/codeLens/refresh` after a snapshot commit when
+    /// the visible lens view changed (#2032, RIPR-SPEC-0138). Failure is
+    /// log-only with no retry (mirrors the pull-diagnostic refresh), and the
+    /// request never triggers analysis, refresh scheduling, config reload,
+    /// or source access by itself.
+    async fn request_code_lens_refresh_if_view_changed(&self, new_identity: LensViewIdentity) {
+        if !self.note_lens_view_for_refresh(new_identity) {
+            return;
+        }
+        self.send_code_lens_refresh().await;
+    }
+
+    /// Bare `workspace/codeLens/refresh` send with log-only failure, shared
+    /// by the view-changed and view-cleared paths.
+    async fn send_code_lens_refresh(&self) {
+        if let Err(error) = self.client.code_lens_refresh().await {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!("code lens refresh request failed: {error}"),
+                )
+                .await;
+        }
+    }
+
+    /// Test-only view of the lens-view identity covered by the last refresh
+    /// request, so in-process tests can pin gating and change detection.
+    #[cfg(test)]
+    pub(super) fn last_requested_lens_view_identity(&self) -> Option<LensViewIdentity> {
+        self.last_lens_view_identity
+            .lock()
+            .ok()
+            .and_then(|last| last.clone())
     }
 
     fn latest_pull_snapshot(
@@ -1456,7 +1536,14 @@ impl Backend {
     }
 
     async fn apply_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
-        let schedule_deferred_pull = self.apply_workspace_root_authority_locked(authority).await;
+        let (schedule_deferred_pull, lens_view_cleared) =
+            self.apply_workspace_root_authority_locked(authority).await;
+        if lens_view_cleared {
+            // Sent after the transition guard is released, same discipline as
+            // the deferred configuration pull: a cleared analysis state means
+            // every lens is stale (#2032, RIPR-SPEC-0138).
+            self.send_code_lens_refresh().await;
+        }
         if schedule_deferred_pull {
             // Scheduled after the transition guard is released: a deferred
             // configuration pull (#2031) becomes runnable once a single
@@ -1474,7 +1561,7 @@ impl Backend {
     async fn apply_workspace_root_authority_locked(
         &self,
         authority: WorkspaceRootAuthority,
-    ) -> bool {
+    ) -> (bool, bool) {
         let _transition = self.workspace_root_transition.lock().await;
         let authority_epoch = self.workspace_root_epoch.fetch_add(1, Ordering::SeqCst) + 1;
         let previous = self.workspace_root_authority();
@@ -1512,7 +1599,7 @@ impl Backend {
         }
 
         if self.workspace_root_epoch.load(Ordering::SeqCst) != authority_epoch {
-            return false;
+            return (false, false);
         }
 
         let final_authority = if changed
@@ -1568,9 +1655,16 @@ impl Backend {
                     .and_then(|scope_root| scope_root.clone())
                     != self.workspace_root_authority().effective_root
         };
-        self.configuration_mode() == ConfigurationMode::Pull
+        let schedule_deferred_pull = self.configuration_mode() == ConfigurationMode::Pull
             && (matches!(self.config_pull_state(), ConfigPullState::Deferred) || pull_scope_stale)
-            && self.workspace_root_authority().allows_analysis()
+            && self.workspace_root_authority().allows_analysis();
+        // Clearing analysis state (#2032): the visible lens view just became
+        // empty. Record the cleared identity (coalesced — no-op when already
+        // cleared or unsupported); the wrapper sends the refresh after the
+        // guard is released.
+        let lens_view_cleared =
+            changed && self.note_lens_view_for_refresh(LensViewIdentity::cleared());
+        (schedule_deferred_pull, lens_view_cleared)
     }
 
     fn set_workspace_root_authority(&self, authority: WorkspaceRootAuthority) {
@@ -2843,6 +2937,12 @@ impl LanguageServer for Backend {
         }
         if let Ok(mut supported) = self.diagnostic_refresh_support.lock() {
             *supported = supports_diagnostic_refresh;
+        }
+        // CodeLens refresh negotiation (#2032, RIPR-SPEC-0138): from client
+        // capabilities only, never inferred from the client name.
+        let supports_code_lens_refresh = client_supports_code_lens_refresh(&params);
+        if let Ok(mut supported) = self.code_lens_refresh_support.lock() {
+            *supported = supports_code_lens_refresh;
         }
         self.progress
             .set_supported(client_supports_work_done_progress(&params));

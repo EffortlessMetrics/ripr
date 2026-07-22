@@ -7182,3 +7182,29 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0138"
+name = "lsp codelens refresh lifecycle"
+spec = "docs/specs/RIPR-SPEC-0138-lsp-codelens-refresh.md"
+tests = [
+  "crates/ripr/src/lsp/capabilities.rs::tests::code_lens_refresh_follows_workspace_capability",
+  "crates/ripr/src/lsp/lens.rs::tests::lens_view_identity_ignores_wall_clock_age",
+  "crates/ripr/src/lsp/lens.rs::tests::lens_view_identity_tracks_semantic_lens_fields",
+  "crates/ripr/src/lsp/tests.rs::code_lens_refresh_is_not_attempted_for_unsupported_clients",
+  "crates/ripr/src/lsp/tests.rs::code_lens_refresh_tracks_semantic_view_changes_for_supported_clients",
+  "crates/ripr/src/lsp/tests.rs::framed_code_lens_refresh_follows_semantic_lens_view_changes",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/lens.rs",
+  "crates/ripr/src/lsp/backend.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0138-lsp-codelens-refresh.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]
