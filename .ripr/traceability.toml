@@ -7099,6 +7099,12 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::code_action_response_negotiates_only_the_advertised_client_commands",
   "crates/ripr/src/lsp/tests.rs::framed_lsp_protocol_smoke_logs_successful_refresh_completion",
   "crates/ripr/src/lsp/tests.rs::initialize_result_exposes_existing_lsp_capabilities",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_keeps_current_commands",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_honors_only_quickfix_when_no_repair_actions_exist",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_only_source_ripr_navigate_keeps_only_navigation",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_only_source_or_absent_only_keeps_every_action",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_only_filter_compounds_with_client_command_filter",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_emitted_kinds_stay_within_the_advertised_set",
 ]
 fixtures = []
 code = [

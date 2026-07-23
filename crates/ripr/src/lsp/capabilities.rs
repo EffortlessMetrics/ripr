@@ -22,6 +22,22 @@ pub(super) enum WorkspaceRootResolution {
     Unavailable(String),
 }
 
+/// The closed `CodeActionOptions.code_action_kinds` hierarchy (#1829,
+/// RIPR-SPEC-0129). This is the single source of truth for the advertised
+/// set: the code-action parity tests in `lsp/tests.rs` assert every emitted
+/// kind against these constants so the advertisement and the emitters
+/// cannot drift in the same direction. `quickfix.ripr` and
+/// `source.ripr.verify` are advertised-but-unemitted (reserved); the emitters
+/// in `lsp/actions.rs` use the `source.ripr.*` inspect/navigate/refresh
+/// kinds.
+pub(super) const ADVERTISED_CODE_ACTION_KINDS: [&str; 5] = [
+    "quickfix.ripr",
+    "source.ripr.inspect",
+    "source.ripr.navigate",
+    "source.ripr.verify",
+    "source.ripr.refresh",
+];
+
 #[cfg(test)]
 pub(super) fn initialize_result() -> InitializeResult {
     initialize_result_for_client(true, PositionEncodingKind::UTF16)
@@ -44,13 +60,12 @@ pub(super) fn initialize_result_for_client(
             ),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
-                code_action_kinds: Some(vec![
-                    CodeActionKind::new("quickfix.ripr"),
-                    CodeActionKind::new("source.ripr.inspect"),
-                    CodeActionKind::new("source.ripr.navigate"),
-                    CodeActionKind::new("source.ripr.verify"),
-                    CodeActionKind::new("source.ripr.refresh"),
-                ]),
+                code_action_kinds: Some(
+                    ADVERTISED_CODE_ACTION_KINDS
+                        .into_iter()
+                        .map(CodeActionKind::new)
+                        .collect(),
+                ),
                 resolve_provider: Some(false),
                 ..CodeActionOptions::default()
             })),

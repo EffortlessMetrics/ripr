@@ -4,7 +4,8 @@ use super::backend::{
     workspace_input_path_is_relevant,
 };
 use super::capabilities::{
-    WorkspaceRootResolution, initialize_result, root_from_initialize_params,
+    ADVERTISED_CODE_ACTION_KINDS, WorkspaceRootResolution, initialize_result,
+    root_from_initialize_params,
 };
 use super::client_features::ClientFeatureProfile;
 use super::config::LspAnalysisConfig;
@@ -55,8 +56,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeLensOptions, Diagnostic,
-    DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeLensOptions,
+    Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType, FileEvent, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString,
@@ -2905,7 +2906,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
             ),
             (
                 "Refresh Analysis - Saved Workspace Check",
-                "source",
+                "source.ripr.refresh",
                 "Refresh Analysis - Saved Workspace Check",
                 REFRESH_COMMAND,
             ),
@@ -4006,6 +4007,174 @@ fn code_action_response_emitted_commands_stay_within_server_or_advertised_sets()
         }
     }
     Ok(())
+}
+
+#[test]
+fn code_action_response_honors_only_quickfix_when_no_repair_actions_exist() -> Result<(), String> {
+    // `only: [quickfix]` (#1750, RIPR-SPEC-0129): `quickfix.ripr` is
+    // advertised-but-unemitted (no repair actions exist yet), so no emitted
+    // kind equals or sits under `quickfix` and the response is empty.
+    let vscode = vscode_client_features()?;
+    let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
+    seam_params.context.only = Some(vec![CodeActionKind::QUICKFIX]);
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    assert_eq!(
+        actions.len(),
+        0,
+        "only: [quickfix] must filter out every source.ripr.* action"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_only_source_ripr_navigate_keeps_only_navigation() -> Result<(), String> {
+    // `only: [source.ripr.navigate]` (#1750, RIPR-SPEC-0129) keeps exactly
+    // the related-test navigation action; every inspect/refresh action is
+    // outside the requested subtree.
+    let vscode = vscode_client_features()?;
+    let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
+    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.navigate")]);
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![OPEN_RELATED_TEST_COMMAND],
+        "only: [source.ripr.navigate] must keep only the navigation action"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_only_source_or_absent_only_keeps_every_action() -> Result<(), String> {
+    // `only: [source]` (#1750, RIPR-SPEC-0129) dot-segment-prefixes every
+    // kind emitted today, so the response matches the unfiltered one; an
+    // absent `only` leaves the response unfiltered by kind.
+    let vscode = vscode_client_features()?;
+    let (mut source_params, seam_snapshot) = seam_code_action_request()?;
+    source_params.context.only = Some(vec![CodeActionKind::SOURCE]);
+    let source_only = code_action_response(&source_params, Some(&seam_snapshot), &vscode);
+
+    let mut unfiltered_params = source_params.clone();
+    unfiltered_params.context.only = None;
+    let unfiltered = code_action_response(&unfiltered_params, Some(&seam_snapshot), &vscode);
+
+    if unfiltered.len() < 2 {
+        return Err(format!(
+            "seam scenario should emit several actions, got {}",
+            unfiltered.len()
+        ));
+    }
+    assert_eq!(
+        source_only.len(),
+        unfiltered.len(),
+        "only: [source] must keep every action emitted without an only filter"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_only_filter_compounds_with_client_command_filter() -> Result<(), String> {
+    // Both filters apply (#1750 + #1776, RIPR-SPEC-0129): with
+    // `only: [source.ripr.inspect]` and an unenhanced client profile, the
+    // kind filter drops the navigate and refresh actions while the
+    // client-command filter strips every surviving inspect action (all are
+    // client-executed) — nothing remains.
+    let unenhanced = ClientFeatureProfile::unsupported();
+    let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
+    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.inspect")]);
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &unenhanced);
+    assert_eq!(
+        actions.len(),
+        0,
+        "the kind filter and the client-command filter must compound"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_emitted_kinds_stay_within_the_advertised_set() -> Result<(), String> {
+    // Kind parity invariant (#1750, RIPR-SPEC-0129): every kind emitted
+    // across the seam, gap, finding, and refresh paths is in the advertised
+    // `CodeActionOptions.code_action_kinds` set. The advertised constant is
+    // shared with `capabilities.rs`, so this test fails on emitter drift
+    // instead of re-blessing it.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let finding_params = code_action_params(vec![diagnostic_for_finding(
+        Path::new("/workspace"),
+        &sample_finding(),
+    )])?;
+    let (_gap_root, gap_params, gap_snapshot) = gap_kind_parity_request()?;
+    let scenarios = [
+        (
+            "seam",
+            code_action_response(&seam_params, Some(&seam_snapshot), &vscode),
+        ),
+        (
+            "finding",
+            code_action_response(&finding_params, None, &vscode),
+        ),
+        (
+            "gap",
+            code_action_response(&gap_params, Some(&gap_snapshot), &vscode),
+        ),
+    ];
+    for (scenario, actions) in &scenarios {
+        if actions.len() < 2 {
+            return Err(format!(
+                "{scenario}: scenario should emit actions beyond refresh, got {}",
+                actions.len()
+            ));
+        }
+        for kind in code_action_kinds(actions)? {
+            if !ADVERTISED_CODE_ACTION_KINDS.contains(&kind.as_str()) {
+                return Err(format!(
+                    "{scenario}: emitted kind {kind} is not in the advertised code-action kinds"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Collect the kind string of every action, failing when an action carries
+/// no kind (a kind-less action would fail closed under `context.only`).
+fn code_action_kinds(actions: &[CodeActionOrCommand]) -> Result<Vec<String>, String> {
+    let mut kinds = Vec::new();
+    for action in actions {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return Err("expected code action".to_string());
+        };
+        let Some(kind) = &action.kind else {
+            return Err(format!("expected kind for action {}", action.title));
+        };
+        kinds.push(kind.as_str().to_string());
+    }
+    Ok(kinds)
+}
+
+/// The gap code-action scenario for the kind-parity test (#1750): one gap
+/// diagnostic whose snapshot carries a matching validated gap artifact, so
+/// the gap emitters in `lsp/actions.rs` run. The temp root must stay alive
+/// for the duration of the response call.
+fn gap_kind_parity_request() -> Result<(TempLspRoot, CodeActionParams, AnalysisSnapshot), String> {
+    let root = unique_lsp_test_root("gap-kind-parity")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let diagnostic = gap_action_diagnostic();
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+    Ok((root, params, snapshot))
 }
 
 #[test]

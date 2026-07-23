@@ -30,7 +30,9 @@ the base LSP specification.
 Consumes:
 - `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
 - `textDocument/hover`
-- `textDocument/codeAction` (standard kinds only: `quickfix`, `source`)
+- `textDocument/codeAction` (kind strings are metadata visible to every
+  layer: the advertised `quickfix.ripr` / `source.ripr.*` hierarchy; the
+  negotiated surface is the command IDs inside the actions, not the kinds)
 - `workspace/status` via custom notification
 
 Does NOT consume:
@@ -97,8 +99,9 @@ real handlers. The capability is advertised as `capability_only`.
 
 - A standard LSP client (e.g. Neovim) that does NOT advertise
   `experimental.riprEditor` receives zero `ripr.copyContext` or
-  `ripr.openRelatedTest` command IDs in code actions — only standard
-  `quickfix`/`source` kinds and diagnostics/hover.
+  `ripr.openRelatedTest` command IDs in code actions — only server-executed
+  commands. The `source.ripr.*` kind strings still appear as kind metadata
+  for every client; they carry no negotiation requirement.
 - A VS Code client that advertises `experimental.riprEditor` with
   `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
   code actions containing `ripr.copyContext` commands.
@@ -117,6 +120,8 @@ real handlers. The capability is advertised as `capability_only`.
   negotiated `riprEditor.commands` advertisement. The full-profile tests
   parse the advertisement from `editors/vscode/src/client.ts`, so a command
   the extension registers but does not advertise fails the parity tests.
+  Further `tests.rs` tests verify `CodeActionContext.only` honoring (#1750)
+  and the emitted-kinds ⊆ advertised-kinds parity invariant.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
@@ -149,7 +154,17 @@ client supports:
 - `experimental.riprEditor` negotiation (#1628, delivered in #1776) filters
   client-command code actions to clients that advertise support.
 - Code action kinds are advertised as `quickfix.ripr` and
-  `source.ripr.*` (#1750, landed).
+  `source.ripr.*` (#1750, landed). Every kind the server emits stays within
+  the advertised set (parity-pinned by
+  `tests.rs::code_action_response_emitted_kinds_stay_within_the_advertised_set`
+  against the shared `ADVERTISED_CODE_ACTION_KINDS` constant).
+- `textDocument/codeAction` honors `CodeActionContext.only` (#1750): with
+  LSP 3.17 hierarchical kind semantics, an action survives when any
+  requested kind equals the action's kind or is a dot-segment prefix of it
+  (`source` keeps every `source.ripr.*` action; `source.ripr.navigate`
+  keeps only that subtree). An absent `only` leaves the response
+  unfiltered, and an action with no kind fails closed. The kind filter
+  compounds with the negotiated client-command filter.
 
 The server does NOT:
 - Emit unknown command IDs to a client that has not negotiated them.

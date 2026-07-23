@@ -55,7 +55,7 @@ pub(super) fn code_action_response(
     }
     actions.push(CodeActionOrCommand::CodeAction(CodeAction {
         title: REFRESH_ANALYSIS_TITLE.to_string(),
-        kind: Some(CodeActionKind::SOURCE),
+        kind: Some(CodeActionKind::new("source.ripr.refresh")),
         command: Some(Command {
             title: REFRESH_ANALYSIS_TITLE.to_string(),
             command: REFRESH_COMMAND.to_string(),
@@ -63,6 +63,13 @@ pub(super) fn code_action_response(
         }),
         ..CodeAction::default()
     }));
+    // `CodeActionContext.only` filter (#1750, RIPR-SPEC-0129): LSP 3.17
+    // hierarchical kind semantics — an action survives when a requested
+    // kind equals or dot-segment-prefixes the action's kind. Absent `only`
+    // leaves the response unfiltered; a kind-less action fails closed.
+    if let Some(only) = &params.context.only {
+        actions.retain(|action| kind_matches_only(action, only));
+    }
     // Client-command filter (#1776, RIPR-SPEC-0129): an action whose command
     // executes client-side (clipboard copies, related-test navigation) is
     // offered only when the negotiated profile advertised that command —
@@ -71,6 +78,28 @@ pub(super) fn code_action_response(
     // server and stay unconditional.
     actions.retain(|action| command_allowed_for_client(action, client_features));
     actions
+}
+
+/// LSP 3.17 `CodeActionContext.only` matching (#1750, RIPR-SPEC-0129): an
+/// action survives when any requested kind equals the action's kind or is a
+/// dot-segment prefix of it (`source` matches `source.ripr.inspect` and
+/// `source.ripr.refresh`; `source.ripr.navigate` matches only that
+/// subtree). An action with no kind fails closed when `only` is present.
+fn kind_matches_only(action: &CodeActionOrCommand, only: &[CodeActionKind]) -> bool {
+    let kind = match action {
+        CodeActionOrCommand::CodeAction(action) => action.kind.as_ref(),
+        CodeActionOrCommand::Command(_) => None,
+    };
+    let Some(kind) = kind else {
+        return false;
+    };
+    only.iter().any(|requested| {
+        kind.as_str() == requested.as_str()
+            || kind
+                .as_str()
+                .strip_prefix(requested.as_str())
+                .is_some_and(|rest| rest.starts_with('.'))
+    })
 }
 
 /// Server-executed commands: the `executeCommandProvider` set from
