@@ -91,14 +91,21 @@ fn render_annotations(
     options: &AnnotationOptions,
 ) -> Result<AnnotationOutput, String> {
     let comments_path = repo.join(&options.comments);
-    if !comments_path.exists() {
-        return Ok(AnnotationOutput {
-            text: String::new(),
-            comments_missing: true,
-        });
-    }
-    let text = fs::read_to_string(&comments_path)
-        .map_err(|err| format!("failed to read {}: {err}", options.comments))?;
+    // One direct read determines presence: `NotFound` is the intended
+    // optional-comments-file state; every other I/O failure (permission
+    // denied, directory input, invalid UTF-8) stays an explicit error.
+    let text = match fs::read_to_string(&comments_path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(AnnotationOutput {
+                text: String::new(),
+                comments_missing: true,
+            });
+        }
+        Err(err) => {
+            return Err(format!("failed to read {}: {err}", options.comments));
+        }
+    };
     let packet: Value = serde_json::from_str(&text)
         .map_err(|err| format!("{} is not valid JSON: {err}", options.comments))?;
     let comments = packet
@@ -266,5 +273,98 @@ mod tests {
             Err(msg) if msg.contains("--bogus") => Ok(()),
             other => Err(format!("expected unknown-arg error, got {other:?}")),
         }
+    }
+
+    fn unique_temp_dir(label: &str) -> Result<PathBuf, String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-annotations-test-{label}-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+        Ok(dir)
+    }
+
+    fn options() -> AnnotationOptions {
+        AnnotationOptions {
+            comments: "comments.json".to_string(),
+            out: "annotations.txt".to_string(),
+            check: false,
+        }
+    }
+
+    #[test]
+    fn render_missing_comments_file_is_optional_state() -> Result<(), String> {
+        let dir = unique_temp_dir("missing")?;
+        let rendered = render_annotations(&dir, &options())?;
+        assert!(rendered.comments_missing);
+        assert!(rendered.text.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_valid_comments_file_emits_annotations() -> Result<(), String> {
+        let dir = unique_temp_dir("valid")?;
+        std::fs::write(
+            dir.join("comments.json"),
+            r#"{"comments":[{"placement":{"path":"src/lib.rs","line":3,"mode":"exact_seam_line"},"severity":"advisory","kind":"focused_test","reason":"pin the boundary"}]}"#,
+        )
+        .map_err(|err| format!("write comments.json: {err}"))?;
+        let rendered = render_annotations(&dir, &options())?;
+        assert!(!rendered.comments_missing);
+        assert!(rendered.text.contains("::warning file=src/lib.rs,line=3"));
+        Ok(())
+    }
+
+    #[test]
+    fn render_directory_as_comments_path_is_an_explicit_error() -> Result<(), String> {
+        // Portable non-NotFound read failure (EISDIR): must not collapse into
+        // the optional-missing state or an empty comment set.
+        let dir = unique_temp_dir("directory")?;
+        std::fs::create_dir_all(dir.join("comments.json"))
+            .map_err(|err| format!("mkdir comments.json: {err}"))?;
+        match render_annotations(&dir, &options()) {
+            Err(msg) if msg.contains("failed to read") => Ok(()),
+            other => Err(format!("expected explicit read error, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn render_invalid_utf8_is_an_explicit_error() -> Result<(), String> {
+        let dir = unique_temp_dir("utf8")?;
+        std::fs::write(dir.join("comments.json"), [0xff, 0xfe, 0x00, 0x01])
+            .map_err(|err| format!("write comments.json: {err}"))?;
+        match render_annotations(&dir, &options()) {
+            Err(msg) if msg.contains("failed to read") => Ok(()),
+            other => Err(format!("expected explicit read error, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn production_loader_has_no_exists_pre_check() -> Result<(), String> {
+        // issue #1958: one direct read determines file presence — a separate
+        // existence decision is the removed TOCTOU-shaped pattern. This is a
+        // source scan, not a behavioral proof (behavior is identical by
+        // design for every portable input class): it covers the realistic
+        // re-introduction spellings, and the behavioral pins are the
+        // directory-as-path and invalid-UTF-8 tests above.
+        let source = include_str!("annotations.rs");
+        // Needles split so this test's own source does not satisfy the search.
+        let needles = [
+            ["comments_path.", "exists()"].concat(),
+            ["comments_path.", "try_exists()"].concat(),
+            ["metadata(&comments", "_path)"].concat(),
+        ];
+        for needle in needles {
+            if source.contains(&needle) {
+                return Err(format!(
+                    "render_annotations must not re-introduce an existence pre-check (`{needle}`)"
+                ));
+            }
+        }
+        Ok(())
     }
 }

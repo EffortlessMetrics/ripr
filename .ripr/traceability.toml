@@ -1008,6 +1008,11 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::review_comments_gap_ledger_renders_only_eligible_repair_cards",
   "crates/ripr/src/cli/commands.rs::review_comments_writes_json_and_markdown_from_loaded_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_scopes_diff_fast_path_to_changed_files_and_immediate_callers",
+  "crates/ripr/src/app/annotations.rs::tests::render_missing_comments_file_is_optional_state",
+  "crates/ripr/src/app/annotations.rs::tests::render_valid_comments_file_emits_annotations",
+  "crates/ripr/src/app/annotations.rs::tests::render_directory_as_comments_path_is_an_explicit_error",
+  "crates/ripr/src/app/annotations.rs::tests::render_invalid_utf8_is_an_explicit_error",
+  "crates/ripr/src/app/annotations.rs::tests::production_loader_has_no_exists_pre_check",
   "crates/ripr/src/cli/commands.rs::review_comments_gap_ledger_writes_repair_cards_without_loading_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_parses_required_revisions_and_out",
   "crates/ripr/src/cli/commands.rs::review_comments_requires_base_and_head",
@@ -1021,6 +1026,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-guidance"
 ]
 code = [
+  "crates/ripr/src/app/annotations.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/help.rs",
