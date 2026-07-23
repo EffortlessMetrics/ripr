@@ -21,6 +21,7 @@ Linked plan:
 Linked issues:
 
 - #1111 — Silent "No probes found" honesty gap for preview-language content
+- #2304 — Docs/config-only diffs produced an unexplained empty result
 
 Linked PRs:
 
@@ -204,9 +205,17 @@ advisory-may-be-incomplete `why` string.
    `preview_languages[0].enabled == true`.
 3. Diff contains only `.rs` files → NO `Note:` line, NO `preview_languages`
    field in JSON output (both enabled and default config).
-4. Diff contains only non-analyzable files (`.md`, `.yaml`) → NO disclosure.
+4. Diff contains only non-analyzable files (`.md`, `.yaml`) → NO
+   preview-language `Note:` line and NO `preview_languages` JSON field. The
+   separate docs-only stderr disclosure (#2304, example 6) applies instead.
 5. Count in `Note:` matches `file_count` in advisory, matches files routed by
    `analysis::language::route` to that adapter.
+6. Diff contains only non-source files (`.md`, `.toml`, extensionless), zero
+   probes (#2304) → a one-line stderr disclosure names the changed-file count
+   and observed extensions and states that the empty result is correct
+   because ripr cannot analyze non-source files. It is not a Finding, not a
+   `preview_languages` block, changes no JSON schema or golden, and the exit
+   code stays 0. Any source-routed file, or an empty diff, suppresses it.
 
 ## Test Mapping
 
@@ -221,6 +230,8 @@ advisory-may-be-incomplete `why` string.
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff`
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope`
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope`
+- `crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_names_count_and_extensions`
+- `crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_silent_for_source_or_empty_diffs`
 
 ## Implementation Mapping
 
@@ -229,6 +240,10 @@ advisory-may-be-incomplete `why` string.
 - `crates/ripr/src/analysis/pipeline.rs` — `is_preview_language()`,
   `detect_preview_advisories()` (diff), `detect_repo_preview_advisories()`
   (repo); detection runs after the language loop, independent of enablement.
+  Also `non_source_disclosure_message()` (#2304): the pure docs-only stderr
+  disclosure decision (count + extension summary), emitted only when the
+  pipeline produced zero findings and no changed file routes to a source
+  adapter.
 - `crates/ripr/src/analysis/workspace/discover.rs` —
   `discover_preview_language_files()` for repo-mode detection, including Perl
   paths when the optional adapter is unavailable.

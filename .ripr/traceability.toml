@@ -5353,7 +5353,9 @@ tests = [
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_ts_diff_with_rust_only_config",
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff",
   "crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope",
-  "crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope"
+  "crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope",
+  "crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_names_count_and_extensions",
+  "crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_silent_for_source_or_empty_diffs"
 ]
 fixtures = []
 code = [

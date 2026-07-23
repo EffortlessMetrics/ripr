@@ -6,7 +6,7 @@ use super::language::PythonAdapter;
 use super::language::TypeScriptAdapter;
 use super::language::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, PartialDiffScope,
-    RustAdapter,
+    RustAdapter, route,
 };
 use super::{
     AnalysisOptions, AnalysisResult, LanguageRun, LanguageRunStatus, PreviewLanguageAdvisory, diff,
@@ -52,6 +52,40 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy(
     let diff_text = diff::load_worktree_diff(&options.root, options.base.as_deref())?;
     cancellation::checkpoint()?;
     run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
+}
+
+/// The docs-only disclosure message (#2304): `Some(message)` when the diff
+/// changed at least one file but none of them routes to a source adapter.
+/// An empty result in that case needs the explicit explanation that ripr
+/// saw no analyzable source files — never a silent clean-looking zero
+/// (#1888). Pure so the disclosure contract is testable without capturing
+/// stderr.
+fn non_source_disclosure_message(changed_files: &[diff::ChangedFile]) -> Option<String> {
+    if changed_files.is_empty() || changed_files.iter().any(|file| route(&file.path).is_some()) {
+        return None;
+    }
+    let non_source_count = changed_files.len();
+    let extensions: Vec<String> = changed_files
+        .iter()
+        .filter_map(|file| {
+            file.path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| format!(".{ext}"))
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let ext_summary = if extensions.is_empty() {
+        "extensionless files".to_string()
+    } else {
+        extensions.join(", ")
+    };
+    Some(format!(
+        "ripr: diff contained {non_source_count} non-source file(s) ({ext_summary}); \
+         no analyzable Rust, TypeScript, Python, or Perl files found. \
+         The empty result is correct — ripr cannot analyze non-source files."
+    ))
 }
 
 fn run_pipeline_for_diff_text(
@@ -156,6 +190,22 @@ fn run_pipeline_for_diff_text(
     // require the adapter to be enabled.
     let preview_paths: Vec<&diff::ChangedFile> = changed_files.iter().collect();
     let preview_advisories = detect_preview_advisories(languages, preview_paths.into_iter());
+
+    // Disclose when the diff contains only non-source files (docs/config-only
+    // PRs): an empty result with zero probes is not a "clean" result in that
+    // case — the user needs to know ripr saw no analyzable source files
+    // (#1888, #2304).
+    if findings.is_empty()
+        && rust_changed_files == 0
+        && changed_files_by_language
+            .iter()
+            .all(|(_, count)| *count == 0)
+        && let Some(message) = non_source_disclosure_message(&changed_files)
+    {
+        // Emit as stderr disclosure — this is not a Finding (no probe was
+        // generated), but the user needs to know why the result is empty.
+        eprintln!("{message}");
+    }
 
     sort::sort_findings(&mut findings);
     cancellation::checkpoint()?;
@@ -528,6 +578,59 @@ mod tests {
         // this path fails with ENOTDIR / "not a directory" on both platforms.
         let _ = fs::write(&file_path, b"this is a file, not a directory");
         file_path
+    }
+
+    fn changed_file(path: &str) -> diff::ChangedFile {
+        diff::ChangedFile {
+            path: PathBuf::from(path),
+            added_lines: Vec::new(),
+            removed_lines: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn non_source_disclosure_message_names_count_and_extensions() -> Result<(), String> {
+        // #2304: a docs/config-only diff yields the disclosure naming the
+        // changed-file count and the observed extensions, so an empty result
+        // is explained instead of reading as a clean zero.
+        let files = vec![
+            changed_file("docs/ROADMAP.md"),
+            changed_file("docs/CHANGELOG.md"),
+            changed_file("policy/ci-budget.toml"),
+        ];
+        let message = non_source_disclosure_message(&files)
+            .ok_or_else(|| "docs-only diff must produce the disclosure".to_string())?;
+        if !message.contains("3 non-source file(s)") {
+            return Err(format!("disclosure must name the file count: {message}"));
+        }
+        if !message.contains(".md") || !message.contains(".toml") {
+            return Err(format!("disclosure must list extensions: {message}"));
+        }
+        if message.contains(".md, .md") {
+            return Err(format!("extensions must be deduplicated: {message}"));
+        }
+        if !message.contains("empty result is correct") {
+            return Err(format!("disclosure must carry the non-claim: {message}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_source_disclosure_message_silent_for_source_or_empty_diffs() -> Result<(), String> {
+        // #2304: the disclosure is scoped to the docs-only case — any
+        // source-routed file, or an empty diff, suppresses it.
+        let mixed = vec![
+            changed_file("docs/ROADMAP.md"),
+            changed_file("crates/ripr/src/lib.rs"),
+        ];
+        if non_source_disclosure_message(&mixed).is_some() {
+            return Err("a diff containing a source file must not disclose".to_string());
+        }
+        let empty: Vec<diff::ChangedFile> = Vec::new();
+        if non_source_disclosure_message(&empty).is_some() {
+            return Err("an empty diff must not disclose".to_string());
+        }
+        Ok(())
     }
 
     #[test]
