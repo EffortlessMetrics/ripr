@@ -1,0 +1,79 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_adversarial_owner_module_mock/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+WARNING src/discount.ts:2
+
+Changed
+  after:      if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/discount.ts::applyDiscount
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: static_limitation
+  category: mocked_module
+  repair packet ready: false
+  why not actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance
+  repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet
+  evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+  raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 1 related test(s) found for owner `applyDiscount`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/discount.test.ts:12 applyDiscount at threshold discounts uses unknown unknown oracle
+
+Weakness
+  - Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  - Static limit `mocked_module`: related test file mocks `../src/discount` via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.
+
+Static limitation
+  mocked_module — A mocked module replaces the real implementation, so a passing test may not observe the actual changed behavior.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/discount.ts:2: `if (amount >= threshold) {`
+  related test: tests/discount.test.ts:12 applyDiscount at threshold discounts
+  oracle: unknown (unknown)
+  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
+  static limits: mocked_module
+  repair packet ready: false
+  why not actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance
+  repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: static limit `mocked_module` prevents bounded TypeScript repair guidance
+  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
+
+Next step
+  TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no actionable repair packet is emitted.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

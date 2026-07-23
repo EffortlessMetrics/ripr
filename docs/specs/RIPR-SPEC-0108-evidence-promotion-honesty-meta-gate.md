@@ -527,11 +527,21 @@ per support policy, no gate, badge, or RIPR Zero role):
   owner-targeted oracle but no observed-sink fact stays `weakly_exposed`,
   advisory only.
 
-#### Documented live finding: TypeScript owner-module mock over-credit
+#### Resolved live finding: TypeScript owner-module mock over-credit
+
+**Resolved by #2269 (PR #2272).** The Function/ArrowFunction owner path in
+`owner_call_relation` now applies the same `test_mocks_owner_module` guard
+the Method/ClassMethod/ModuleFunction paths already applied, so no owner-call
+relation is credited when the test mocks the changed owner's own module; the
+finding lands at `weakly_exposed` with the `mocked_module` limitation
+disclosed and `repair_packet_ready: false`. The graduated corpus case
+`ts_mocked_owner_module_unrelated_assertion` (fixture
+`fixtures/typescript_adversarial_owner_module_mock`) is now a charter member
+with `must_not_promote` and `maximum_class: weakly_exposed`.
 
 The issue #1983 family "mocked module or dependency with unrelated assertion"
-has one uncovered TypeScript arm that is NOT a charter member because the
-current analyzer over-credits it. Reproduction (base `97acf1a4`):
+had one uncovered TypeScript arm that could not be a charter member while the
+analyzer over-credited it. Historical reproduction (base `97acf1a4`):
 
 ```bash
 # workspace: src/discount.ts exports applyDiscount; tests/discount.test.ts

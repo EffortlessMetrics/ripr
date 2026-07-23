@@ -875,6 +875,23 @@
       ]
     },
     {
+      "id": "ts_mocked_owner_module_unrelated_assertion",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_owner_module_mock",
+      "vector": "mocked_owner_module_strong_oracle_observes_unrelated_sink",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_token_substring",
       "language": "typescript",
       "tier": "pure",

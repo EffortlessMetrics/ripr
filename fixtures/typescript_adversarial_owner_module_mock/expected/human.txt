@@ -1,0 +1,29 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_adversarial_owner_module_mock/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/discount.ts:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Changed behavior: if (amount >= threshold) {
+  Missing discriminator: Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Related test: tests/discount.test.ts:12 applyDiscount at threshold discounts
+  Next step: TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no act…
+  Evidence:
+    - reach weak: 1 related test(s) found for owner `applyDiscount`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
