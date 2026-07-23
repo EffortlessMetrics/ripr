@@ -719,6 +719,53 @@ fn evidence_promotion_honesty_accepts_typed_assertion_vocabulary() -> Result<(),
 }
 
 #[test]
+fn evidence_promotion_honesty_rejects_duplicate_keys_in_case_object() -> Result<(), String> {
+    // issue #2277: a hand-spliced case object with duplicate keys parses under
+    // serde_json's last-wins rule and silently drops the earlier case's pin —
+    // the gate must fail closed instead of blessing the loss.
+    let root = temp_dir("evidence-promotion-honesty-duplicate-keys");
+    let corpus = root.join("corpus.json");
+    write(
+        &corpus,
+        r#"{
+  "cases": [
+    {
+      "id": "ts_hoc_wrapped_owner",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_hoc_wrapped_owner",
+      "vector": "higher_order_wrapper_obscures_owner_identity",
+      "id": "ts_mocked_owner_module_unrelated_assertion",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_owner_module_mock",
+      "vector": "mocked_owner_module_strong_oracle_observes_unrelated_sink",
+      "assertions": [{ "type": "must_not_promote" }]
+    }
+  ]
+}
+"#,
+    );
+
+    let mut violations = Vec::new();
+    let result = super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations);
+
+    let err = match result {
+        Err(err) => err,
+        Ok(()) => {
+            return Err(format!(
+                "duplicate-key corpus must fail closed, got Ok with violations {violations:?}"
+            ));
+        }
+    };
+    assert!(
+        err.contains("duplicate key `id`"),
+        "expected duplicate-key parse failure, got {err}"
+    );
+    Ok(())
+}
+
+#[test]
 fn evidence_promotion_honesty_rejects_unknown_assertion_type() -> Result<(), String> {
     let root = temp_dir("evidence-promotion-honesty-unknown-assertion");
     let corpus = root.join("corpus.json");

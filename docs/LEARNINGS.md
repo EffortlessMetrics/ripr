@@ -1868,3 +1868,38 @@ PR's merged-at timestamp against your base), never "is the PR branch head an
 ancestor". Sub-agent prompts should state the merge mechanism whenever base
 recency matters, and builders should re-fetch main before pronouncing a PR
 unmerged.
+
+## 2026-07-23: A both-append rebase splice can silently corrupt JSON with duplicate keys
+
+During the #2272 rebase, a "take both appended blocks" splice of
+`fixtures/evidence-promotion-honesty-corpus/corpus.json` fused two case
+objects into one object with duplicate `id`/`language`/`tier`/`source_fixture`
+keys. `serde_json` (and Python `json`) apply last-wins to duplicate keys, so
+the file still parsed, every gate stayed green — and the
+`ts_hoc_wrapped_owner` case silently vanished from the parsed corpus, taking
+its non-promotion pin with it. Caught only by a coderabbit review thread.
+
+The lesson: JSON is not append-splice-safe the way TOML/Markdown lists are.
+When a rebase conflicts on a JSON array, re-apply your own append on top of
+the new base (or parse the result and compare case counts/ids against both
+parents) instead of text-splicing. And when a corpus is authority for a
+fail-closed gate, the loader should reject duplicate keys outright — the
+gate hole itself is fixed in #2279 (`parse_json_rejecting_duplicate_keys`),
+with a red-verified negative test. Verify the artifact, not the parse: "it
+parsed" is not "it contained all the cases".
+
+## 2026-07-23: A PR-body verification claim must be an executed experiment
+
+While opening #2279 the draft body asserted the negative test was "verified
+red before the loader swap" — but the parser and test had been written
+together and only ever run green. The claim was caught before merge and made
+true by actually reverting the loader swap, watching the test fail with the
+exact last-wins symptom (the spliced corpus returned `Ok` and the surviving
+case was the wrong one), then restoring.
+
+The lesson: treat verification sentences in PR bodies as debt until executed.
+"Red before, green after" is a two-run experiment, not a narrative device —
+if you wrote fix and test together, you have only run one of the two arms.
+This is the guard-disable-experiment discipline applied to prose: every
+behavioral claim in a PR description should name a run that could have
+contradicted it.

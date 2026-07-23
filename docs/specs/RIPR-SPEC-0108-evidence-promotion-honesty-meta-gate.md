@@ -79,7 +79,11 @@ says it was re-blessed to."
 
 ### The gate (`check-evidence-promotion-honesty`)
 
-1. Loads `fixtures/evidence-promotion-honesty-corpus/corpus.json`.
+1. Loads `fixtures/evidence-promotion-honesty-corpus/corpus.json`. The load
+   rejects duplicate object keys (issue #2277): `serde_json`'s last-wins rule
+   would silently drop a spliced case's pin while the file still parses, so a
+   duplicate key anywhere in the corpus fails the gate closed with a parse
+   error naming the repeated key.
 2. For each pure case, reads exactly one byte-pinned source artifact:
    - `source_fixture` -> the fixture's `expected/check.json` (covered by
      `goldens check`);
@@ -648,6 +652,7 @@ the gate has over-corrected or the fixture needs re-blessing
 | `evidence_promotion_corpus_summary_reports_pinned_external_setup_failure` | Malformed pinned-external setup metadata still writes the corpus summary with `setup_failure` instead of exiting before the envelope exists |
 | `evidence_promotion_corpus_summary_classifies_failure_kinds` | Summary envelope distinguishes golden drift, setup, budget, unexpected-limitation, and unexpected-promotion failures |
 | `evidence_promotion_honesty_pass_report_names_clean_guard` | Pass report names the false-clean guard invariant |
+| `evidence_promotion_honesty_rejects_duplicate_keys_in_case_object` | Corpus load fails closed on duplicate object keys (spliced case pin loss) |
 | `evidence_promotion_honesty_rejects_missing_unknown_and_impure_tiers` | Validator rejects missing/unknown tiers and external metadata on pure cases |
 | `evidence_promotion_honesty_rejects_incomplete_pinned_external_tier` | Validator rejects branch-floating or budgetless external cases |
 | `evidence_promotion_honesty_accepts_complete_pinned_external_tier` | Validator accepts complete pinned external metadata |

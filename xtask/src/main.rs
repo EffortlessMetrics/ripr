@@ -10331,7 +10331,7 @@ fn load_evidence_promotion_pinned_external_cases(
     options: &EvidencePromotionHonestyOptions,
 ) -> Result<Vec<EvidencePromotionExternalCase>, String> {
     let corpus_text = read_text_lossy(corpus_path)?;
-    let corpus_value: Value = serde_json::from_str(&corpus_text)
+    let corpus_value: Value = parse_json_rejecting_duplicate_keys(&corpus_text)
         .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
     let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
         return Err(format!(
@@ -13101,7 +13101,7 @@ fn load_evidence_promotion_corpus_case_metadata(
     corpus_path: &Path,
 ) -> Result<Vec<EvidencePromotionCorpusCaseMeta>, String> {
     let corpus_text = read_text_lossy(corpus_path)?;
-    let corpus_value: Value = serde_json::from_str(&corpus_text)
+    let corpus_value: Value = parse_json_rejecting_duplicate_keys(&corpus_text)
         .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
     let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
         return Err(format!(
@@ -13677,6 +13677,115 @@ fn is_exact_git_commit(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+/// Parse JSON while rejecting duplicate object keys (issue #2277).
+///
+/// `serde_json::from_str::<Value>` keeps the LAST duplicate key silently, so a
+/// hand-spliced corpus object with repeated `id`/`language`/... keys parses
+/// fine while silently dropping an earlier case's pin — exactly the failure
+/// the evidence-promotion corpus exists to catch. This visitor fails closed
+/// on the first duplicate key instead.
+fn parse_json_rejecting_duplicate_keys(text: &str) -> Result<Value, String> {
+    use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
+    use std::fmt;
+
+    struct NoDupValue;
+
+    impl<'de> Visitor<'de> for NoDupValue {
+        type Value = Value;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("any JSON value with unique object keys")
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<Value, E> {
+            Ok(Value::Bool(value))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Value, E> {
+            Ok(Value::from(value))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
+            Ok(Value::from(value))
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Value, E> {
+            Ok(serde_json::Number::from_f64(value).map_or(Value::Null, Value::Number))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Value, E> {
+            Ok(Value::String(value.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Value, E> {
+            Ok(Value::String(value))
+        }
+
+        fn visit_none<E>(self) -> Result<Value, E> {
+            Ok(Value::Null)
+        }
+
+        fn visit_unit<E>(self) -> Result<Value, E> {
+            Ok(Value::Null)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(NoDupValue)
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut items = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+            while let Some(item) = seq.next_element_seed(NoDupSeed)? {
+                items.push(item);
+            }
+            Ok(Value::Array(items))
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut object = serde_json::Map::with_capacity(map.size_hint().unwrap_or(0));
+            while let Some(key) = map.next_key::<String>()? {
+                if object.contains_key(&key) {
+                    return Err(de::Error::custom(format!(
+                        "duplicate key `{key}` in JSON object"
+                    )));
+                }
+                let value = map.next_value_seed(NoDupSeed)?;
+                object.insert(key, value);
+            }
+            Ok(Value::Object(object))
+        }
+    }
+
+    struct NoDupSeed;
+
+    impl<'de> DeserializeSeed<'de> for NoDupSeed {
+        type Value = Value;
+
+        fn deserialize<D>(self, deserializer: D) -> Result<Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(NoDupValue)
+        }
+    }
+
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    let value = NoDupSeed
+        .deserialize(&mut deserializer)
+        .map_err(|err| err.to_string())?;
+    deserializer.end().map_err(|err| err.to_string())?;
+    Ok(value)
+}
+
 fn validate_evidence_promotion_honesty_corpus_at(
     corpus_path: &Path,
     violations: &mut Vec<String>,
@@ -13690,7 +13799,7 @@ fn validate_evidence_promotion_honesty_corpus_at(
     }
 
     let corpus_text = read_text_lossy(corpus_path)?;
-    let corpus_value: Value = serde_json::from_str(&corpus_text)
+    let corpus_value: Value = parse_json_rejecting_duplicate_keys(&corpus_text)
         .map_err(|err| format!("failed to parse {}: {err}", normalize_path(corpus_path)))?;
 
     let Some(cases) = corpus_value.get("cases").and_then(Value::as_array) else {
