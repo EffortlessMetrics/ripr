@@ -7364,6 +7364,10 @@ tests = [
   "crates/ripr/src/app/check_artifact/tests.rs::load_fails_closed_on_wrong_schema_version_and_malformed_input",
   "crates/ripr/src/app/check_artifact/tests.rs::scope_flags_passed_alongside_from_are_assertions",
   "crates/ripr/src/app/check_artifact/tests.rs::perl_facts_packet_content_is_part_of_the_identity",
+  "crates/ripr/src/app/check_artifact/tests.rs::worktree_diff_source_wire_form_is_documented_worktree",
+  "crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_round_trip_reuses_recorded_findings",
+  "crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_fails_closed_when_worktree_drifts",
+  "crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_scope_flags_alongside_from_are_assertions",
   "crates/ripr/src/app/check_artifact/tests.rs::repeated_write_replaces_artifact_atomically",
   "crates/ripr/src/app/check_artifact/tests.rs::concurrent_writers_never_leave_a_torn_artifact",
   "crates/ripr/src/config/tests.rs::check_artifact_identity_fields_classify_every_config_field",
@@ -7374,12 +7378,14 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::explain_from_consumes_artifact_written_with_non_default_mode",
   "crates/ripr/tests/cli_smoke.rs::context_from_consumes_artifact_written_with_no_unchanged_tests",
   "crates/ripr/tests/cli_smoke.rs::check_write_artifact_rejects_managed_perl_producer",
+  "crates/ripr/tests/cli_smoke.rs::check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed",
 ]
 fixtures = []
 code = [
   "crates/ripr/src/app/check_artifact.rs",
   "crates/ripr/src/app/explain.rs",
   "crates/ripr/src/app/context.rs",
+  "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/help/core.rs",
   "crates/ripr/src/config/model.rs",

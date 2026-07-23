@@ -1,7 +1,8 @@
 //! Tests for the check-artifact write/load/identity gate (RIPR-SPEC-0140).
 //!
-//! These tests never spawn processes: the diff identity flow is exercised
-//! through `--diff` file sources only, and every fail-closed path is
+//! The `--diff` file paths are exercised without spawning processes; the
+//! `--worktree` paths spawn `git` against a local temp fixture repo (same
+//! pattern as `analysis::diff::load` tests). Every fail-closed path is
 //! asserted on the typed error string naming the mismatched field.
 
 use super::*;
@@ -51,7 +52,7 @@ fn write_sample_artifact(
         return Err("sample diff must produce findings".to_string());
     }
     let path = dir.join("artifact.json");
-    write_check_artifact(&path, &input, &config, &output.findings)?;
+    write_check_artifact(&path, &input, &config, &output.findings, false)?;
     Ok((path, input, config, output.findings))
 }
 
@@ -266,7 +267,7 @@ fn context_from_artifact_honors_max_related_tests_beyond_json_render_cap() -> Re
                 relation_confidence: Some(RelationConfidence::High),
             })
             .collect();
-        write_check_artifact(&path, &input, &config, &[finding.clone()])?;
+        write_check_artifact(&path, &input, &config, &[finding.clone()], false)?;
         let packet = collect_context_from_artifact(input, &finding.id, 12, &config, &path, None)?;
         if !packet.contains("reuse_cap_test_11") {
             return Err(
@@ -345,7 +346,7 @@ fn load_fails_closed_on_diff_bytes_change() -> Result<(), String> {
         let config = RiprConfig::default();
         let output = check_workspace_with_config(input.clone(), &config)?;
         let path = dir.join("artifact.json");
-        write_check_artifact(&path, &input, &config, &output.findings)?;
+        write_check_artifact(&path, &input, &config, &output.findings, false)?;
 
         let mut bytes =
             std::fs::read_to_string(&diff_copy).map_err(|err| format!("read: {err}"))?;
@@ -373,7 +374,7 @@ fn load_fails_closed_when_recorded_diff_source_is_missing() -> Result<(), String
         let config = RiprConfig::default();
         let output = check_workspace_with_config(input.clone(), &config)?;
         let path = dir.join("artifact.json");
-        write_check_artifact(&path, &input, &config, &output.findings)?;
+        write_check_artifact(&path, &input, &config, &output.findings, false)?;
 
         std::fs::remove_file(&diff_copy).map_err(|err| format!("remove diff: {err}"))?;
 
@@ -533,7 +534,7 @@ fn perl_facts_packet_content_is_part_of_the_identity() -> Result<(), String> {
         let path = dir.join("artifact.json");
         // Write directly: the artifact write path does not run the analysis,
         // so a synthetic packet exercises the identity without a Perl adapter.
-        write_check_artifact(&path, &input, &config, &[])?;
+        write_check_artifact(&path, &input, &config, &[], false)?;
 
         let loaded = load_findings_for_reuse(&path, &input, &config, None)?;
         if !loaded.is_empty() {
@@ -573,12 +574,12 @@ fn repeated_write_replaces_artifact_atomically() -> Result<(), String> {
     let dir = unique_temp_dir("rewrite")?;
     let result = (|| {
         let (path, input, config, findings) = write_sample_artifact(&dir)?;
-        write_check_artifact(&path, &input, &config, &[])?;
+        write_check_artifact(&path, &input, &config, &[], false)?;
         let loaded = load_findings_for_reuse(&path, &input, &config, None)?;
         if !loaded.is_empty() {
             return Err("last writer must win on a repeated --write-artifact".to_string());
         }
-        write_check_artifact(&path, &input, &config, &findings)?;
+        write_check_artifact(&path, &input, &config, &findings, false)?;
         let loaded = load_findings_for_reuse(&path, &input, &config, None)?;
         if loaded != findings {
             return Err("re-written artifact must round-trip the finding set".to_string());
@@ -611,7 +612,7 @@ fn concurrent_writers_never_leave_a_torn_artifact() -> Result<(), String> {
                 };
                 handles.push(scope.spawn(move || -> Result<(), String> {
                     for _ in 0..10 {
-                        write_check_artifact(&path, &input, &config, &findings)?;
+                        write_check_artifact(&path, &input, &config, &findings, false)?;
                     }
                     Ok(())
                 }));
@@ -647,6 +648,190 @@ fn concurrent_writers_never_leave_a_torn_artifact() -> Result<(), String> {
             return Err(format!("{leftovers} temp file(s) left behind"));
         }
         Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+// -------- --worktree diff-source recording (#2251, RIPR-SPEC-0140) --------
+
+/// Run `git <args>` in `repo`, failing the test on spawn or non-zero exit.
+fn git(repo: &Path, args: &[&str]) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .map_err(|err| format!("failed to spawn git {}: {err}", args.join(" ")))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// Initialize a temp cargo-package git repo with one committed predicate
+/// function, then dirty the tracked file so the worktree diff against the
+/// explicit `HEAD` base is non-empty. Returns the repo root.
+fn init_worktree_fixture_repo(dir: &Path) -> Result<PathBuf, String> {
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(repo.join("src"))
+        .map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+    // `--initial-branch` needs git >= 2.28; fall back to symbolic-ref.
+    let initialized = std::process::Command::new("git")
+        .args(["init", "--initial-branch", "main"])
+        .current_dir(&repo)
+        .output()
+        .map_err(|err| format!("failed to spawn git init: {err}"))?
+        .status
+        .success();
+    if !initialized {
+        git(&repo, &["init"])?;
+        git(&repo, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
+    }
+    git(&repo, &["config", "user.email", "ripr@example.invalid"])?;
+    git(&repo, &["config", "user.name", "RIPR test"])?;
+    std::fs::write(
+        repo.join("Cargo.toml"),
+        "[package]\nname = \"check-artifact-worktree-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    std::fs::write(
+        repo.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|err| format!("write lib.rs: {err}"))?;
+    git(&repo, &["add", "."])?;
+    git(&repo, &["commit", "-m", "initial"])?;
+    // Dirty the tracked file: the worktree diff against HEAD is non-empty.
+    std::fs::write(
+        repo.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold\n}\n",
+    )
+    .map_err(|err| format!("dirty lib.rs: {err}"))?;
+    Ok(repo)
+}
+
+fn worktree_input(repo: &Path) -> CheckInput {
+    CheckInput {
+        root: repo.to_path_buf(),
+        base: Some("HEAD".to_string()),
+        mode: Mode::Draft,
+        ..CheckInput::default()
+    }
+}
+
+#[test]
+fn worktree_diff_source_wire_form_is_documented_worktree() -> Result<(), String> {
+    // The envelope is a wire contract: the new variant must serialize in
+    // the documented snake_case vocabulary, not serde's PascalCase default.
+    for (source, expected) in [
+        (
+            DiffSourceIdentity::Worktree {
+                base: Some("HEAD".to_string()),
+            },
+            r#"{"worktree":{"base":"HEAD"}}"#,
+        ),
+        (
+            DiffSourceIdentity::Worktree { base: None },
+            r#"{"worktree":{"base":null}}"#,
+        ),
+    ] {
+        let json =
+            serde_json::to_string(&source).map_err(|err| format!("serialize failed: {err}"))?;
+        if json != expected {
+            return Err(format!("worktree wire form must be {expected}, got {json}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn worktree_artifact_round_trip_reuses_recorded_findings() -> Result<(), String> {
+    let dir = unique_temp_dir("worktree-round-trip")?;
+    let result = (|| {
+        let repo = init_worktree_fixture_repo(&dir)?;
+        let input = worktree_input(&repo);
+        let config = RiprConfig::default();
+        let output = crate::app::check_workspace_worktree_with_config(input.clone(), &config)?;
+        if output.findings.is_empty() {
+            return Err("worktree fixture diff must produce findings".to_string());
+        }
+        let path = dir.join("artifact.json");
+        write_check_artifact(&path, &input, &config, &output.findings, true)?;
+        let text = std::fs::read_to_string(&path).map_err(|err| format!("read artifact: {err}"))?;
+        if !text.contains("\"worktree\"") {
+            return Err("artifact must record the worktree diff source".to_string());
+        }
+        // Matching worktree state: reuse loads the exact recorded set.
+        let loaded = load_findings_for_reuse(&path, &input, &config, None)?;
+        if loaded != output.findings {
+            return Err("worktree artifact did not round-trip the finding set".to_string());
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+fn worktree_artifact_fails_closed_when_worktree_drifts() -> Result<(), String> {
+    let dir = unique_temp_dir("worktree-drift")?;
+    let result = (|| {
+        let repo = init_worktree_fixture_repo(&dir)?;
+        let input = worktree_input(&repo);
+        let config = RiprConfig::default();
+        let path = dir.join("artifact.json");
+        write_check_artifact(&path, &input, &config, &[], true)?;
+
+        // A further tracked edit between write and reuse changes the diff
+        // bytes; reuse must fail closed naming diff_bytes_hash.
+        std::fs::write(
+            repo.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold && amount > 0\n}\n",
+        )
+        .map_err(|err| format!("re-dirty lib.rs: {err}"))?;
+        require_err_containing(
+            load_findings_for_reuse(&path, &input, &config, None),
+            &["cannot be reused", "identity mismatch", "diff_bytes_hash"],
+        )
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
+fn worktree_artifact_scope_flags_alongside_from_are_assertions() -> Result<(), String> {
+    let dir = unique_temp_dir("worktree-assertions")?;
+    let result = (|| {
+        let repo = init_worktree_fixture_repo(&dir)?;
+        let input = worktree_input(&repo);
+        let config = RiprConfig::default();
+        let path = dir.join("artifact.json");
+        write_check_artifact(&path, &input, &config, &[], true)?;
+
+        // A matching --base assertion against a worktree recording loads.
+        load_findings_for_reuse(&path, &input, &config, Some("HEAD"))?;
+
+        // A mismatched --base assertion fails closed naming diff_source.base.
+        require_err_containing(
+            load_findings_for_reuse(&path, &input, &config, Some("main")),
+            &["asserted scope does not match", "diff_source.base"],
+        )?;
+
+        // A --diff assertion against a worktree recording fails closed
+        // naming diff_source.
+        let asserted_diff = dir.join("asserted.diff");
+        std::fs::write(&asserted_diff, "not the recording\n")
+            .map_err(|err| format!("write asserted diff: {err}"))?;
+        let mut diff_input = input.clone();
+        diff_input.diff_file = Some(asserted_diff);
+        require_err_containing(
+            load_findings_for_reuse(&path, &diff_input, &config, None),
+            &["asserted scope does not match", "diff_source"],
+        )
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result

@@ -411,10 +411,13 @@ Envelope (`schema_version = "ripr-check-artifact-v1"`):
 ```
 
 - `diff_source` is `{"diff_file": {"path": ...}}` (a canonicalized `--diff`
-  path) or `{"base_head": {"base": ..., "head": "HEAD"}}`. At reuse time the
+  path), `{"base_head": {"base": ..., "head": "HEAD"}}`, or
+  `{"worktree": {"base": ...}}` (a `--worktree` run; `base` is `null` when
+  the producing run used dynamic default-base resolution). At reuse time the
   recorded source is re-resolved: a recorded `--diff` path is re-read, a
-  recorded base/head pair is re-resolved through git, and the bytes are
-  re-hashed against `diff_bytes_hash`.
+  recorded base/head pair or worktree diff is re-resolved through git, and
+  the bytes are re-hashed against `diff_bytes_hash`. A dirty or advanced
+  worktree between write and reuse fails closed on `diff_bytes_hash`.
 - `findings` serializes the complete `Finding` set with serde: uncapped
   `related_tests` (no 8-entry render cap), always-present probe `owner`,
   and no render-time severity projection.

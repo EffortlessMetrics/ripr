@@ -88,6 +88,11 @@ pub(crate) enum DiffSourceIdentity {
     /// is `None` when the producing run used dynamic default-base
     /// resolution (RIPR-SPEC-0084); `head` is always `HEAD` today.
     BaseHead { base: Option<String>, head: String },
+    /// A `--worktree` run: the `base`-to-live-working-tree diff is
+    /// re-resolved through git. `base` is `None` when the producing run
+    /// used dynamic default-base resolution (RIPR-SPEC-0084); a dirty or
+    /// advanced worktree between write and reuse trips `diff_bytes_hash`.
+    Worktree { base: Option<String> },
 }
 
 /// The `CheckInput` analysis options recorded in the identity.
@@ -107,14 +112,18 @@ pub(crate) struct AnalysisOptionsIdentity {
 ///
 /// The identity is recomputed here from the resolved input: the diff source
 /// is re-resolved with the same loaders the pipeline used, so the recorded
-/// hash commits to the exact diff bytes of this run.
+/// hash commits to the exact diff bytes of this run. `worktree` marks a
+/// `--worktree` producing run so its diff source is recorded as the
+/// base-to-live-working-tree diff (re-resolvable at reuse time) instead of
+/// the committed `base...HEAD` pair.
 pub(crate) fn write_check_artifact(
     path: &Path,
     input: &CheckInput,
     config: &RiprConfig,
     findings: &[Finding],
+    worktree: bool,
 ) -> Result<(), String> {
-    let identity = build_identity_at_write(input, config)?;
+    let identity = build_identity_at_write(input, config, worktree)?;
     let artifact = CheckArtifactV1 {
         schema_version: CHECK_ARTIFACT_SCHEMA_VERSION.to_string(),
         tool: "ripr".to_string(),
@@ -188,8 +197,9 @@ pub(crate) fn load_findings_for_reuse(
 fn build_identity_at_write(
     input: &CheckInput,
     config: &RiprConfig,
+    worktree: bool,
 ) -> Result<CheckArtifactIdentityV1, String> {
-    let diff_source = diff_source_at_write(input)?;
+    let diff_source = diff_source_at_write(input, worktree)?;
     let diff_text = resolve_diff_text(&diff_source, &input.root)?;
     let options = analysis_options_from_input_and_config(input, config);
     let (include_unchanged_tests, perl_facts_path) = closed_analysis_options_view(&options);
@@ -330,12 +340,13 @@ fn verify_scope_assertions(
         }
     }
     if let Some(base) = asserted_base {
-        let matches = matches!(
-            recorded,
-            DiffSourceIdentity::BaseHead { base: recorded_base, .. }
-                if recorded_base.as_deref() == Some(base)
-        );
-        if !matches {
+        let recorded_base = match recorded {
+            DiffSourceIdentity::BaseHead { base, .. } | DiffSourceIdentity::Worktree { base } => {
+                base.as_deref()
+            }
+            DiffSourceIdentity::DiffFile { .. } => None,
+        };
+        if recorded_base != Some(base) {
             mismatched.push("diff_source.base");
         }
     }
@@ -350,8 +361,10 @@ fn verify_scope_assertions(
     ))
 }
 
-/// Record the diff source from the resolved check input.
-fn diff_source_at_write(input: &CheckInput) -> Result<DiffSourceIdentity, String> {
+/// Record the diff source from the resolved check input. `worktree` marks a
+/// `--worktree` producing run: its diff source is the base-to-live-working-
+/// tree diff, which is re-resolvable at reuse time through git.
+fn diff_source_at_write(input: &CheckInput, worktree: bool) -> Result<DiffSourceIdentity, String> {
     if let Some(diff_file) = input.diff_file.as_ref() {
         let canonical = std::fs::canonicalize(diff_file).map_err(|err| {
             format!(
@@ -363,6 +376,11 @@ fn diff_source_at_write(input: &CheckInput) -> Result<DiffSourceIdentity, String
             path: canonical.to_string_lossy().to_string(),
         });
     }
+    if worktree {
+        return Ok(DiffSourceIdentity::Worktree {
+            base: input.base.clone(),
+        });
+    }
     Ok(DiffSourceIdentity::BaseHead {
         base: input.base.clone(),
         head: "HEAD".to_string(),
@@ -370,8 +388,8 @@ fn diff_source_at_write(input: &CheckInput) -> Result<DiffSourceIdentity, String
 }
 
 /// Re-resolve a recorded diff source to its exact bytes: a recorded `--diff`
-/// path is re-read; a recorded base/head pair is re-resolved through git.
-/// Missing or unresolvable sources fail closed.
+/// path is re-read; a recorded base/head pair or worktree diff is
+/// re-resolved through git. Missing or unresolvable sources fail closed.
 fn resolve_diff_text(source: &DiffSourceIdentity, root: &Path) -> Result<String, String> {
     match source {
         DiffSourceIdentity::DiffFile { path } => std::fs::read_to_string(path).map_err(|err| {
@@ -380,6 +398,10 @@ fn resolve_diff_text(source: &DiffSourceIdentity, root: &Path) -> Result<String,
         DiffSourceIdentity::BaseHead { base, .. } => {
             crate::analysis::load_diff(root, base.as_deref(), None)
                 .map_err(|err| format!("recorded base/head diff could not be re-resolved: {err}"))
+        }
+        DiffSourceIdentity::Worktree { base } => {
+            crate::analysis::load_worktree_diff(root, base.as_deref())
+                .map_err(|err| format!("recorded worktree diff could not be re-resolved: {err}"))
         }
     }
 }

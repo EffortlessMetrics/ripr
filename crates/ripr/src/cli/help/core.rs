@@ -141,10 +141,13 @@ Options:
                            analysis options, config identity, analyzer
                            version). It is a local, disposable derivative:
                            never a gate, badge, or proof input. Diff-scoped
-                           findings runs only; not supported for repo-scoped
-                           formats, --gap-ledger, --worktree, or managed
-                           [perl] producer packet generation (pass
-                           --perl-facts PATH explicitly instead).
+                           findings runs only, including --worktree runs
+                           (the recorded base-to-worktree diff is re-resolved
+                           at reuse time; worktree drift fails closed on the
+                           diff bytes hash); not supported for repo-scoped
+                           formats, --gap-ledger, or managed [perl] producer
+                           packet generation (pass --perl-facts PATH
+                           explicitly instead).
 
 Environment variables:
   RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines

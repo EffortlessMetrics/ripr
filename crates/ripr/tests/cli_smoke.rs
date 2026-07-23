@@ -5515,28 +5515,15 @@ fn explain_from_fails_closed_on_tampered_identity() -> Result<(), String> {
 }
 
 /// `--write-artifact` fails closed with a named limitation for run shapes
-/// that have no re-resolvable diff-scoped finding set.
+/// that have no re-resolvable diff-scoped finding set. (`--worktree` runs
+/// are supported: their base-to-worktree diff source is re-resolvable —
+/// see check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed.)
 #[test]
 fn check_write_artifact_rejects_unsupported_run_shapes() {
     let root = workspace_root().display().to_string();
     let dir = unique_temp_workspace("check-artifact-reject");
     let artifact = dir.join("last-check.json");
     let artifact_arg = artifact.display().to_string();
-
-    let worktree = run_ripr(&[
-        "check",
-        "--root",
-        &root,
-        "--worktree",
-        "--write-artifact",
-        &artifact_arg,
-    ]);
-    assert_failure(&worktree);
-    let stderr = String::from_utf8_lossy(&worktree.stderr);
-    assert!(
-        stderr.contains("not yet supported for --worktree"),
-        "worktree limitation must be named:\n{stderr}"
-    );
 
     let repo_scoped = run_ripr(&[
         "check",
@@ -5553,6 +5540,148 @@ fn check_write_artifact_rejects_unsupported_run_shapes() {
         stderr.contains("repo-scoped"),
         "repo-scope limitation must be named:\n{stderr}"
     );
+}
+
+/// `check --worktree --write-artifact` records the base-to-worktree diff
+/// source (#2251): `explain --from` reuses it while the worktree matches
+/// the recording, a matching `--base` alongside `--from` is accepted as an
+/// assertion, and worktree drift between write and reuse fails closed
+/// naming diff_bytes_hash.
+#[test]
+fn check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed() -> Result<(), String> {
+    let root = unique_temp_workspace("worktree-artifact-reuse");
+    let result = (|| {
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        run_git(&root, &["init"])?;
+        run_git(&root, &["config", "user.email", "test@test.com"])?;
+        run_git(&root, &["config", "user.name", "Test"])?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+        )
+        .map_err(|err| format!("write base lib.rs: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"spec-0140-worktree-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        run_git(&root, &["add", "."])?;
+        run_git(&root, &["commit", "-m", "initial"])?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold\n}\n",
+        )
+        .map_err(|err| format!("write dirty lib.rs: {err}"))?;
+
+        let root_str = root.to_string_lossy().into_owned();
+        let artifact = root.join("last-check.json");
+        let artifact_arg = artifact.display().to_string();
+        let check = run_ripr(&[
+            "check",
+            "--root",
+            &root_str,
+            "--base",
+            "HEAD",
+            "--worktree",
+            "--json",
+            "--write-artifact",
+            &artifact_arg,
+        ]);
+        assert_success(&check);
+        let stdout = String::from_utf8_lossy(&check.stdout);
+        let report: serde_json::Value = serde_json::from_str(&stdout)
+            .map_err(|err| format!("parse check JSON: {err}\n{stdout}"))?;
+        let selector = report
+            .pointer("/findings/0/id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("expected a finding id in JSON:\n{stdout}"))?
+            .to_string();
+        let artifact_text = std::fs::read_to_string(&artifact)
+            .map_err(|err| format!("artifact was not written: {err}"))?;
+        if !artifact_text.contains("\"worktree\"") {
+            return Err(format!(
+                "artifact must record the worktree diff source:\n{artifact_text}"
+            ));
+        }
+
+        // Matching worktree state: reuse succeeds, with or without the
+        // matching --base assertion.
+        let reused = run_ripr(&[
+            "explain",
+            "--root",
+            &root_str,
+            "--from",
+            &artifact_arg,
+            &selector,
+        ]);
+        assert_success(&reused);
+        let reused_stdout = String::from_utf8_lossy(&reused.stdout);
+        if !reused_stdout.contains("Static exposure") {
+            return Err(format!(
+                "reused explain lost its exposure section:\n{reused_stdout}"
+            ));
+        }
+        let asserted = run_ripr(&[
+            "explain",
+            "--root",
+            &root_str,
+            "--from",
+            &artifact_arg,
+            "--base",
+            "HEAD",
+            &selector,
+        ]);
+        assert_success(&asserted);
+        assert_eq!(
+            reused.stdout, asserted.stdout,
+            "a matching --base assertion must not change reused output"
+        );
+
+        // A mismatched --base assertion fails closed naming diff_source.base.
+        let wrong_base = run_ripr(&[
+            "explain",
+            "--root",
+            &root_str,
+            "--from",
+            &artifact_arg,
+            "--base",
+            "main",
+            &selector,
+        ]);
+        assert_failure(&wrong_base);
+        let stderr = String::from_utf8_lossy(&wrong_base.stderr);
+        if !(stderr.contains("asserted scope does not match")
+            && stderr.contains("diff_source.base"))
+        {
+            return Err(format!(
+                "mismatched --base assertion must be named:\n{stderr}"
+            ));
+        }
+
+        // Worktree drift between write and reuse fails closed naming
+        // diff_bytes_hash — never a silent recompute.
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount > threshold && amount > 0\n}\n",
+        )
+        .map_err(|err| format!("re-dirty lib.rs: {err}"))?;
+        let drifted = run_ripr(&[
+            "explain",
+            "--root",
+            &root_str,
+            "--from",
+            &artifact_arg,
+            &selector,
+        ]);
+        assert_failure(&drifted);
+        let stderr = String::from_utf8_lossy(&drifted.stderr);
+        if !(stderr.contains("cannot be reused") && stderr.contains("diff_bytes_hash")) {
+            return Err(format!("worktree drift must be named:\n{stderr}"));
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&root);
+    result
 }
 
 /// An artifact written with a CLI-only non-default `--mode` is consumable

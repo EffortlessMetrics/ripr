@@ -154,10 +154,10 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
     // RIPR-SPEC-0140: --write-artifact records a diff-scoped findings run.
-    // Repo-scoped and gap-ledger paths produce no such finding set, and the
-    // --worktree diff source cannot yet be re-resolved for identity
-    // verification, so all three fail closed with a named limitation rather
-    // than silently skipping the requested artifact.
+    // Repo-scoped and gap-ledger paths produce no such finding set, so both
+    // fail closed with a named limitation rather than silently skipping the
+    // requested artifact. --worktree runs record the base-to-worktree diff
+    // source, which is re-resolvable at reuse time.
     if let Some(path) = write_artifact.as_ref() {
         if gap_ledger.is_some() {
             return Err(format!(
@@ -172,19 +172,13 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 format.primary_cli_name()
             ));
         }
-        if worktree_explicitly_provided {
-            return Err(format!(
-                "--write-artifact {} is not yet supported for --worktree runs (named limitation: the worktree diff source cannot be re-resolved for identity verification)",
-                path.display()
-            ));
-        }
         // Managed producer mode generates the Perl fact packet inside
         // `run_check`, after the CLI-level input was captured — the
         // generated packet would not be part of the recorded identity, and
         // resolving it at reuse time would re-run the producer and defeat
-        // reuse. Mirror the --worktree precedent: fail closed with a named
-        // limitation. An explicit --perl-facts packet is already recorded
-        // (path + content hash) and remains supported.
+        // reuse, so fail closed with a named limitation. An explicit
+        // --perl-facts packet is already recorded (path + content hash) and
+        // remains supported.
         if input.perl_facts_path.is_none()
             && config
                 .perl()
@@ -271,6 +265,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             &limited_check_input,
             &config,
             &output.findings,
+            worktree_explicitly_provided,
         )?;
     }
     // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.

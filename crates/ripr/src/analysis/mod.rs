@@ -22,7 +22,7 @@ mod value_resolution;
 mod workspace;
 
 pub(crate) use diff::{
-    load_diff, load_diff_range, parse_unified_diff, resolve_base_commit,
+    load_diff, load_diff_range, load_worktree_diff, parse_unified_diff, resolve_base_commit,
     resolve_default_base_commit, working_tree_has_tracked_changes,
 };
 pub use language::{

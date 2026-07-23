@@ -58,15 +58,19 @@ write.
 
 `--write-artifact` records a diff-scoped findings run. It fails closed
 with a named limitation when combined with `--gap-ledger`, a repo-scoped
-format, `--worktree` (the worktree diff source cannot yet be re-resolved
-for identity verification — see Non-Goals), or managed `[perl] producer`
-packet generation without an explicit `--perl-facts` packet (the generated
-packet is produced inside the analysis run, after the CLI-level input is
-captured, so it cannot join the recorded identity; resolving it at reuse
-time would re-run the producer and defeat reuse). An explicit
-`--perl-facts <path>` packet is recorded (path plus content hash) and
-remains supported. A failed artifact write fails the command: the user
-explicitly requested the artifact.
+format, or managed `[perl] producer` packet generation without an explicit
+`--perl-facts` packet (the generated packet is produced inside the
+analysis run, after the CLI-level input is captured, so it cannot join the
+recorded identity; resolving it at reuse time would re-run the producer
+and defeat reuse). An explicit `--perl-facts <path>` packet is recorded
+(path plus content hash) and remains supported. A failed artifact write
+fails the command: the user explicitly requested the artifact.
+
+A `--worktree` producing run is supported: its diff source is recorded as
+`worktree` (the requested base, or none for dynamic default-base
+resolution), and reuse re-resolves the base-to-live-working-tree diff
+through git and re-hashes it. Worktree drift between write and reuse
+changes the diff bytes and fails closed on `diff_bytes_hash`.
 
 ### `CheckArtifactV1` envelope, full-fidelity findings
 
@@ -83,6 +87,18 @@ same path replaces it via rename (last writer wins); concurrent writers
 use distinct temp names (pid + clock + process-local sequence) so one
 writer's failure cannot tear another's artifact.
 
+The envelope stays at `ripr-check-artifact-v1` for the `worktree` diff
+source: adding an enum variant is additive — artifacts written before the
+variant existed still parse under v1, and an older binary reading a new
+`worktree` artifact fails closed on serde's unknown-variant error instead
+of misreading it.
+
+A `worktree` recording with no explicit base re-resolves the default base
+at load time; if the default base advanced between write and reuse the
+diff bytes differ and reuse fails closed on `diff_bytes_hash` — the same
+accepted hazard as a `base_head` recording with dynamic default-base
+resolution.
+
 `--from` load follows the receipt read-path precedent: parse, validate
 structure and `schema_version`, fail closed with a named error on any
 deviation (missing or unreadable file, invalid JSON, missing or
@@ -92,8 +108,9 @@ unsupported `schema_version`, unknown or missing fields, wrong `tool`).
 
 The artifact embeds an input identity computed at check time:
 
-- `diff_source` — `diff_file` (canonicalized `--diff` path) or `base_head`
-  (requested base plus `HEAD`), plus `diff_bytes_hash`, the hash of the
+- `diff_source` — `diff_file` (canonicalized `--diff` path), `base_head`
+  (requested base plus `HEAD`), or `worktree` (requested base for the
+  base-to-live-working-tree diff), plus `diff_bytes_hash`, the hash of the
   exact diff bytes the analysis consumed;
 - `root` (canonicalized), `mode` (resolved analysis effort profile), and
   `enabled_languages` (resolved, sorted, including the explicit
@@ -130,10 +147,10 @@ identity under an envelope schema-version bump.
 
 `explain --from` / `context --from` do not require re-supplying scope
 flags: the recorded diff source is re-resolved and re-hashed (a recorded
-`--diff` path is re-read; a recorded base/head pair is re-resolved through
-git), and the root, mode, languages, analysis options, config identity,
-and analyzer version are recomputed from the invocation's working
-directory and config files. Scope flags passed alongside `--from`
+`--diff` path is re-read; a recorded base/head pair or base-to-worktree
+diff is re-resolved through git), and the root, mode, languages, analysis
+options, config identity, and analyzer version are recomputed from the
+invocation's working directory and config files. Scope flags passed alongside `--from`
 (`--diff`, `--base`) are assertions verified against the recording, never
 overrides. `explain` and `context` also accept `--mode` and
 `--no-unchanged-tests`: both feed the identity recomputation (and the
@@ -187,9 +204,6 @@ artifact stores the uncapped related-tests list.
 - LSP warm refresh (#1908) — the LSP has its own input-identity model.
 - Any change to the `check --json` output contract.
 - Content-addressed automatic caching or cache eviction policy.
-- `--worktree` artifacts: the worktree diff source is not yet
-  re-resolvable from the app layer; the combination fails closed with a
-  named limitation until it is.
 - Managed `[perl] producer` packet generation as an artifact input: the
   generated packet cannot join the recorded identity (it is produced
   inside the analysis run) and resolving it at reuse time would re-run
@@ -233,6 +247,17 @@ then it fails closed naming diff_source,
 and `ripr explain --from a.json --diff X probe:<id>` succeeds.
 ```
 
+### Worktree write then reuse fails closed on drift
+
+```text
+Given `ripr check --worktree --base HEAD --write-artifact a.json` succeeded,
+when `ripr explain --from a.json probe:<id>` runs with the worktree unchanged,
+then it re-resolves and re-hashes the base-to-worktree diff and renders the
+recorded finding,
+and when a tracked file is edited between write and reuse,
+then it fails closed with "cannot be reused: identity mismatch on diff_bytes_hash".
+```
+
 ### Render knobs are honored fresh
 
 ```text
@@ -267,6 +292,17 @@ even though the `check --json` render caps related tests at 8.
   — assertion semantics for `--diff` / `--base`.
 - `crates/ripr/src/app/check_artifact/tests.rs::perl_facts_packet_content_is_part_of_the_identity`
   — the fact packet's content hash participates.
+- `crates/ripr/src/app/check_artifact/tests.rs::worktree_diff_source_wire_form_is_documented_worktree`
+  — the `worktree` variant serializes in the documented snake_case wire
+  vocabulary.
+- `crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_round_trip_reuses_recorded_findings`
+  — a matching worktree reuses the recorded finding set exactly.
+- `crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_fails_closed_when_worktree_drifts`
+  — worktree drift between write and reuse fails closed naming
+  `diff_bytes_hash`.
+- `crates/ripr/src/app/check_artifact/tests.rs::worktree_artifact_scope_flags_alongside_from_are_assertions`
+  — `--base` assertion semantics against a worktree recording; a `--diff`
+  assertion fails closed naming `diff_source`.
 - `crates/ripr/src/app/check_artifact/tests.rs::repeated_write_replaces_artifact_atomically`
   and `concurrent_writers_never_leave_a_torn_artifact` — atomic-write
   discipline.
@@ -289,11 +325,17 @@ even though the `check --json` render caps related tests at 8.
 - `crates/ripr/tests/cli_smoke.rs::check_write_artifact_rejects_managed_perl_producer`
   — managed `[perl] producer` packet generation fails closed with the
   named limitation.
+- `crates/ripr/tests/cli_smoke.rs::check_worktree_write_artifact_then_explain_reuse_and_drift_fails_closed`
+  — end-to-end `--worktree --write-artifact` then `explain --from` reuse,
+  matching and mismatched `--base` assertions, and the drift fail-closed
+  path.
 
 ## Implementation Mapping
 
 - `crates/ripr/src/app/check_artifact.rs` — envelope, atomic write,
   fail-closed load, identity build/verify, scope assertions.
+- `crates/ripr/src/analysis/mod.rs` — `load_worktree_diff` re-export so the
+  app layer can re-resolve a recorded `worktree` diff source.
 - `crates/ripr/src/app/explain.rs` — `explain_finding_from_artifact`.
 - `crates/ripr/src/app/context.rs` — `collect_context_from_artifact`.
 - `crates/ripr/src/cli/commands.rs` — flag parsing, run-shape rejection,
