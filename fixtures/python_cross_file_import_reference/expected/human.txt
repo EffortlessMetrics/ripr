@@ -13,7 +13,7 @@ Start here:
   Static exposure: exposed (info, confidence 0.60)
   Canonical gap: gap:python:src/tax.py:apply_tax:return_value:return_value:amount+2
   Changed behavior: return amount + 2
-  Missing discriminator: Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Discriminator (observed, advisory): Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_checkout_tax.py:4 test_checkout_tax_alias_import
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
   Evidence:

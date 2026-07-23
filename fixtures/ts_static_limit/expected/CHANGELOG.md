@@ -83,3 +83,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+issue 2273: digest discriminator label reflects observed-advisory state for exposed preview findings; preview_limited safe action distinguishes complete-but-advisory repair packet
+
+Command:
+`cargo xtask goldens bless ts_static_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+issue #2273: preview_limited safe action names the static-limitation block (packet blocked, no missing fields, static_limit_kind set)
+
+Command:
+`cargo xtask goldens bless ts_static_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

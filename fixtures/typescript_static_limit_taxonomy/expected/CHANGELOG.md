@@ -299,3 +299,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+issue #2273: preview_limited safe action names the static-limitation block (packet blocked, no missing fields, static_limit_kind set)
+
+Command:
+`cargo xtask goldens bless typescript_static_limit_taxonomy --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

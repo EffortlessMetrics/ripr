@@ -13,7 +13,7 @@ Start here:
   Static exposure: exposed (info, confidence 0.60)
   Canonical gap: gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2
   Changed behavior: return await client.total() + 2
-  Missing discriminator: Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Discriminator (observed, advisory): Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_loading.py:4 test_load_total_includes_fee
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
   Evidence:

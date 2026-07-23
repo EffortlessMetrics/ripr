@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding};
+use crate::output::preview_actionability::preview_actionability_for;
 use std::collections::BTreeSet;
 
 use super::sections::render_finding_digest_with_config;
@@ -112,9 +113,34 @@ pub(crate) fn render_human_triage(
         HumanTriageState::StaticLimited => out.push_str(
             "  Safe next action: inspect the named static limitation before treating this as repair-ready.\n",
         ),
-        HumanTriageState::PreviewLimited => out.push_str(
-            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n",
-        ),
+        HumanTriageState::PreviewLimited => {
+            // #2273: the shared repair-packet validator is the only authority
+            // on packet completeness, and the line must name the real blocker:
+            // a complete packet stays advisory (do not tell the operator to
+            // complete fields that are already present); a blocked packet with
+            // no missing fields AND a structured static-limit kind is held by
+            // that named limitation, not by absent fields; anything else has
+            // genuinely missing fields. Languages without a structured preview
+            // packet (for example Python) fall through to the generic line.
+            match triage.selected.and_then(preview_actionability_for) {
+                Some(actionability) if actionability.repair_packet_ready => out.push_str(
+                    "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n",
+                ),
+                Some(actionability)
+                    if actionability.missing_actionability_fields.is_empty()
+                        && triage
+                            .selected
+                            .is_some_and(|finding| finding.static_limit_kind.is_some()) =>
+                {
+                    out.push_str(
+                        "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n",
+                    );
+                }
+                _ => out.push_str(
+                    "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n",
+                ),
+            }
+        }
         HumanTriageState::MissingScope => out.push_str(
             "  Safe next action: provide an analysis scope; this empty output is not an all-clear.\n",
         ),

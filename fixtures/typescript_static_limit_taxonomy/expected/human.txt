@@ -8,7 +8,7 @@ Changed file(s) by language: javascript: 2, rust: 0, typescript: 2.
 
 Start here:
   State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
   File: src/dispatch.ts:2
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: actions[key]();

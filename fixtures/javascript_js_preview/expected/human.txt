@@ -12,7 +12,7 @@ Start here:
   File: src/discount.js:2
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: if (amount >= threshold) {
-  Missing discriminator: Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…
+  Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…
   Related test: tests/discount.test.js:1 at threshold discounts
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
   Evidence:

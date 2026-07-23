@@ -13,7 +13,7 @@ Start here:
   Static exposure: exposed (info, confidence 0.60)
   Canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
   Changed behavior: self.status = "paid"
-  Missing discriminator: Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Discriminator (observed, advisory): Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_invoice.py:4 test_mark_paid_sets_status
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
   Evidence:

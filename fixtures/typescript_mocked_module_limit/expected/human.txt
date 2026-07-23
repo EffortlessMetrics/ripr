@@ -8,11 +8,11 @@ Changed file(s) by language: rust: 0, typescript: 1.
 
 Start here:
   State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
   File: src/discount.ts:2
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: if (amount >= threshold) {
-  Missing discriminator: Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…
+  Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…
   Related test: tests/discount.test.ts:11 at threshold discounts
   Next step: TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet.; no act…
   Evidence:

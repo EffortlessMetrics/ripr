@@ -20,7 +20,9 @@ Linked plan:
 
 Linked issues:
 
-- None yet
+- [#2273](https://github.com/EffortlessMetrics/ripr-swarm/issues/2273) -
+  digest discriminator label and `preview_limited` safe-next-action wording
+  must reflect discriminator state and repair-packet completeness.
 
 Linked PRs:
 
@@ -82,6 +84,16 @@ exposure class, changed behavior, first missing discriminator when known,
 related test when known, suggested repair or verify command when known, and a
 short evidence summary.
 
+The digest's discriminator line label reflects the discriminator state:
+
+- `Missing discriminator` — the finding is not `exposed`; the named
+  discriminator is absent from the related tests.
+- `Discriminator (observed, advisory)` — the finding is `exposed` and the
+  field carries an observation rationale instead of a missing discriminator.
+  Preview-language classifiers record that rationale in the same field, so an
+  unconditional `Missing discriminator` header would contradict the exposure
+  class. Rust `exposed` findings carry no such entry and are unaffected.
+
 The bounded renderer selects at most one visible unsuppressed finding. The
 selector is deterministic:
 
@@ -102,6 +114,22 @@ selector is deterministic:
 | `preview_limited` | The selected finding is from a preview-language adapter; evidence is advisory until the preview contract explicitly promotes it. |
 | `static_limited` | The selected finding is no-path or unknown; inspect the named static limitation before treating it as repair-ready. |
 | `missing_scope` | The run produced no findings because no analysis scope was provided. This empty output is not an all-clear. |
+
+The `preview_limited` safe next action distinguishes repair-packet
+completeness, with the shared repair-packet validator as the only authority:
+
+- When the selected preview finding projects a complete repair packet, the
+  action states that the packet is complete but remains advisory and must be
+  verified independently before acting.
+- When the packet is blocked but no actionability fields are missing and the
+  finding carries a structured static-limit kind, the action names the real
+  blocker: the named static limitation holds the packet, and the operator
+  must resolve the limitation and rerun preview evidence before acting.
+  Without a structured static-limit kind the line stays generic rather than
+  inventing a limitation the analysis did not name.
+- Otherwise — missing packet fields, or a preview language without a
+  structured repair-packet projection — the action directs the operator to
+  complete the missing repair-packet fields before acting.
 
 ### Exhaustive human output
 
@@ -152,6 +180,10 @@ inputs where present.
 - Unit tests for bounded human selection, omitted count, no-scope
   `missing_scope`, preview-limited state, stable-gap-over-preview ranking,
   all-suppressed policy output, and `human-full` preservation.
+- Unit tests for the digest discriminator label (`Discriminator (observed,
+  advisory)` for `exposed` findings with an observation rationale; `Missing
+  discriminator` otherwise) and for both `preview_limited` safe-next-action
+  arms (complete-but-advisory packet versus missing packet fields).
 - Format parsing tests for `human-full` and `text-full`.
 - CLI unit tests for repo-scope warnings with `--base` and `--diff`, and no
   warning for diff-scoped JSON.
@@ -169,6 +201,12 @@ inputs where present.
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_keeps_preview_language_in_preview_limited_state`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_prefers_stable_gap_over_preview_with_route`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_no_actionable_gap_when_all_findings_suppressed`
+- `crates/ripr/src/output/human.rs::tests::digest_labels_observation_rationale_as_observed_advisory_for_exposed`
+- `crates/ripr/src/output/human.rs::tests::digest_keeps_missing_discriminator_label_for_non_exposed_classes`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_keeps_missing_fields_line_for_incomplete_packet`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_complete_but_advisory_packet`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_limitation_block_when_no_fields_missing`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind`
 - `crates/ripr/src/output/human.rs::tests::human_full_preserves_legacy_all_findings_output`
 - `crates/ripr/src/output/format.rs::tests::parses_human_full_aliases`
 - `crates/ripr/src/output/format.rs::tests::human_full_is_not_repo_scope`

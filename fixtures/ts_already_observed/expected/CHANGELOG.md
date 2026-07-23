@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+issue 2273: digest discriminator label reflects observed-advisory state for exposed preview findings; preview_limited safe action distinguishes complete-but-advisory repair packet
+
+Command:
+`cargo xtask goldens bless ts_already_observed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -1,5 +1,5 @@
 use crate::config::RiprConfig;
-use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
 };
@@ -43,7 +43,17 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         .unwrap_or(&finding.probe.expression);
     out.push_str(&format!("  Changed behavior: {}\n", one_line(changed)));
     if let Some(missing) = finding.missing.first() {
-        out.push_str(&format!("  Missing discriminator: {}\n", one_line(missing)));
+        // #2273: preview-language classifiers record an observation rationale
+        // (not a missing discriminator) in this field for `exposed` findings;
+        // label it as observed advisory evidence so the header does not
+        // contradict the machine state. Rust `exposed` findings never carry a
+        // `missing` entry, so this switch only affects advisory preview output.
+        let label = if finding.class == ExposureClass::Exposed {
+            "Discriminator (observed, advisory)"
+        } else {
+            "Missing discriminator"
+        };
+        out.push_str(&format!("  {label}: {}\n", one_line(missing)));
     }
     if let Some(test) = finding.related_tests.first() {
         out.push_str(&format!(

@@ -686,6 +686,219 @@ mod tests {
         assert!(!rendered.contains("State: top_gap"));
     }
 
+    // #2273: an `exposed` finding can carry an observation rationale (not a
+    // missing discriminator) in `missing`; the digest label must reflect the
+    // discriminator state instead of contradicting the class.
+    #[test]
+    fn digest_labels_observation_rationale_as_observed_advisory_for_exposed() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::Exposed;
+        finding.missing = vec![
+            "Related test reaches `applyDiscount` with a `exact_value` oracle; behavior observed."
+                .to_string(),
+        ];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains(
+                "  Discriminator (observed, advisory): Related test reaches `applyDiscount`"
+            ),
+            "expected observed-advisory label in digest; got:\n{digest}"
+        );
+        assert!(
+            !digest.contains("Missing discriminator:"),
+            "exposed digest must not claim a missing discriminator; got:\n{digest}"
+        );
+    }
+
+    #[test]
+    fn digest_keeps_missing_discriminator_label_for_non_exposed_classes() {
+        for class in [
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::StaticUnknown,
+        ] {
+            let mut finding = sample_finding();
+            finding.class = class;
+            finding.missing = vec!["missing strong oracle".to_string()];
+
+            let digest = super::sections::render_finding_digest_with_config(
+                &finding,
+                &crate::config::RiprConfig::default(),
+            );
+
+            assert!(
+                digest.contains("  Missing discriminator: missing strong oracle"),
+                "expected missing-discriminator label for {:?}; got:\n{digest}",
+                finding.class
+            );
+            assert!(
+                !digest.contains("Discriminator (observed, advisory)"),
+                "non-exposed digest must not use the observed-advisory label; got:\n{digest}"
+            );
+        }
+    }
+
+    // #2273: the preview_limited safe next action distinguishes a
+    // complete-but-advisory repair packet (shared validator authority) from
+    // one with missing fields.
+    #[test]
+    fn preview_limited_safe_action_keeps_missing_fields_line_for_incomplete_packet() {
+        let finding = typescript_preview_finding(false);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
+        ));
+        assert!(!rendered.contains("the repair packet is complete but remains advisory"));
+    }
+
+    #[test]
+    fn preview_limited_safe_action_names_complete_but_advisory_packet() {
+        let finding = typescript_preview_finding(true);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n"
+        ));
+        assert!(!rendered.contains("complete the missing repair-packet fields before acting"));
+    }
+
+    // #2273 (coderabbit thread on #2272): a packet that is blocked with no
+    // missing actionability fields AND a structured static-limit kind is held
+    // by the named limitation — the safe action must not tell the operator to
+    // complete absent fields.
+    #[test]
+    fn preview_limited_safe_action_names_limitation_block_when_no_fields_missing() {
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("missing_actionability_fields: "));
+        finding.static_limit_kind = Some(crate::domain::StaticLimitKind::MockedModule);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n"
+        ));
+        assert!(!rendered.contains("complete the missing repair-packet fields before acting"));
+        assert!(!rendered.contains("the repair packet is complete but remains advisory"));
+    }
+
+    // Guard against over-crediting the limitation arm: the same blocked
+    // packet WITHOUT a structured static-limit kind keeps the generic
+    // missing-fields line (e.g. a strong-oracle preview finding whose packet
+    // simply lacks projected contract fields).
+    #[test]
+    fn preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind() {
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("missing_actionability_fields: "));
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
+        ));
+        assert!(!rendered.contains("blocked by the named static limitation"));
+    }
+
+    fn single_finding_output(finding: Finding) -> CheckOutput {
+        CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        }
+    }
+
+    // Build a TypeScript preview finding. With `complete_packet`, the evidence
+    // satisfies the shared repair-packet validator so
+    // `preview_actionability_for` reports `repair_packet_ready: true`.
+    fn typescript_preview_finding(complete_packet: bool) -> Finding {
+        let mut finding = unknown_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.probe.location = SourceLocation::new("src/lib.ts", 2, 1);
+        finding.evidence = vec![
+            "owner: applyDiscount".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: incomplete_repair_packet".to_string(),
+            "why_not_actionable: TypeScript preview lacks a complete repair packet contract"
+                .to_string(),
+            "repair_route: project canonical TypeScript repair packet fields later".to_string(),
+            "missing_actionability_fields: canonical_gap_id, verify_command".to_string(),
+            "missing_graph_legs: verify_command, receipt_command".to_string(),
+            "unlock_condition: project complete repair packet fields before public projection"
+                .to_string(),
+            "evidence_needed_to_promote: canonical gap identity and verify command".to_string(),
+            "raw_evidence_ref: leg=rust_seam;file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=applyDiscount;sample=if amount >= threshold".to_string(),
+        ];
+        if complete_packet {
+            finding
+                .evidence
+                .push("typescript_verify_command: jest tests/discount.test.ts".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_observed: result".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_expected: 50".to_string());
+            finding
+                .activation
+                .missing_discriminators
+                .push(MissingDiscriminatorFact {
+                    value: "amount == threshold".to_string(),
+                    reason: "changed TypeScript equality-boundary lacks a concrete discriminator"
+                        .to_string(),
+                    flow_sink: None,
+                });
+            finding.related_tests.push(RelatedTest {
+                name: "applies discount at threshold".to_string(),
+                file: PathBuf::from("tests/discount.test.ts"),
+                line: 5,
+                oracle_strength: OracleStrength::Weak,
+                oracle_kind: OracleKind::ExactValue,
+                oracle: Some("expect(result).toBe(50)".to_string()),
+                relation_reason: None,
+                relation_confidence: None,
+            });
+        }
+        finding
+    }
+
     #[test]
     fn bounded_human_output_prefers_stable_gap_over_preview_with_route() {
         let mut stable = sample_finding();

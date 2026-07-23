@@ -13,7 +13,7 @@ Start here:
   Static exposure: exposed (info, confidence 0.60)
   Canonical gap: gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7
   Changed behavior: return amount + 7
-  Missing discriminator: Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Discriminator (observed, advisory): Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_checkout.py:4 test_checkout_total_includes_fee
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
   Evidence:

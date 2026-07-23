@@ -12,7 +12,7 @@ Start here:
   File: src/clamp.ts:2
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: if (value < min) {
-  Missing discriminator: Related test reaches `clamp` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+  Discriminator (observed, advisory): Related test reaches `clamp` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   Related test: tests/clamp.test.ts:6 clamps below minimum
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
   Evidence:
