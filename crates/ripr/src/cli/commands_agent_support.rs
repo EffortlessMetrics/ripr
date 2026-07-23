@@ -197,7 +197,7 @@ pub(super) fn resolve_agent_brief_working_set(
     match working_set {
         crate::cli::agent::AgentBriefWorkingSet::Diff(path) => {
             let diff_path = validate_agent_brief_diff_path(root, path)?;
-            let diff_text = analysis::load_diff(root, None, Some(&diff_path))?;
+            let diff_text = analysis::load_diff(root, None, Some(&diff_path), None)?;
             let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
             let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
             Ok(AgentBriefResolvedWorkingSet::diff(
@@ -207,7 +207,7 @@ pub(super) fn resolve_agent_brief_working_set(
             .map(|working_set| working_set.with_changed_owners(changed_owners))
         }
         crate::cli::agent::AgentBriefWorkingSet::Base(base) => {
-            let diff_text = analysis::load_diff(root, Some(base.as_str()), None)?;
+            let diff_text = analysis::load_diff(root, Some(base.as_str()), None, None)?;
             let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
             let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
             Ok(AgentBriefResolvedWorkingSet::base(

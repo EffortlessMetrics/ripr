@@ -104,6 +104,7 @@ mod tests {
             include_unchanged_tests: true,
             perl_facts_path: None,
             suppression_policy: None,
+            git_timeout: None,
         }
     }
 

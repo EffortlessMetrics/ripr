@@ -93,6 +93,7 @@ impl LspAnalysisInputIdentity {
         let git_inputs = super::git_inputs::ResolvedGitInputs::resolve(
             &effective_root,
             config.base_ref.as_deref(),
+            None,
         );
         Self::from_refresh_inputs_with_git(
             effective_root,
@@ -357,7 +358,8 @@ mod tests {
             base_ref: Some("HEAD".to_string()),
             ..LspAnalysisConfig::default()
         };
-        let record = crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let record =
+            crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         let via_record = LspAnalysisInputIdentity::from_refresh_inputs_with_git(
             root.path().to_path_buf(),
             1,
@@ -410,7 +412,7 @@ mod tests {
             base_ref: None,
             ..LspAnalysisConfig::default()
         };
-        let record = crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None);
+        let record = crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None, None);
         let via_record = LspAnalysisInputIdentity::from_refresh_inputs_with_git(
             root.path().to_path_buf(),
             1,
@@ -423,7 +425,7 @@ mod tests {
         let Some(resolved) = via_record.resolved_base.as_deref() else {
             return Err("default-base fixture must produce a resolved base".to_string());
         };
-        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path(), None)
             .map_err(|error| format!("fixture default base must resolve: {error}"))?;
         if resolved != expected {
             return Err(format!(

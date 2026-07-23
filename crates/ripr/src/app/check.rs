@@ -386,11 +386,16 @@ fn invoke_perl_lsp_producer(
         )
     })?;
 
-    // Real timeout enforcement: wait up to `timeout_ms`; on timeout,
-    // kill the child and reap it so no orphan process holds a handle.
-    let wait_result = child.wait_timeout(std::time::Duration::from_millis(timeout_ms));
+    // Real timeout enforcement: wait up to `timeout_ms`; on timeout, the
+    // shared deadline-aware wait (#2303, `git::poll_child`) kills and reaps
+    // the child so no orphan process holds a handle.
+    let wait_result = crate::git::poll_child(
+        &mut child,
+        Some(std::time::Duration::from_millis(timeout_ms)),
+        &format!("Perl facts exporter at `{}`", executable.display()),
+    );
     match wait_result {
-        Ok(Some(status)) => {
+        crate::git::ChildWait::Exited(status) => {
             // Item 4b: non-zero exit must NEVER be accepted even if a tmp
             // packet exists. Only accept the packet if the producer exited
             // successfully AND the file exists.
@@ -416,18 +421,22 @@ fn invoke_perl_lsp_producer(
                 tmp_path.display()
             ))
         }
-        Ok(None) => {
-            // Timed out: kill + reap, then report. The `.tmp` is never renamed.
-            let _ = child.kill();
-            let _ = child.wait();
+        crate::git::ChildWait::TimedOut(_) => {
+            // Timed out: the shared wait already terminated + reaped the child.
+            // The `.tmp` is never renamed.
             Err(format!(
                 "Perl facts exporter timed out after {timeout_ms}ms (process terminated); no packet consumed"
             ))
         }
-        Err(e) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            Err(format!("Perl facts exporter failed while waiting: {e}"))
+        crate::git::ChildWait::Cancelled(cancelled) => {
+            // Cooperative cancellation (#2303): the enclosing analysis was
+            // superseded or cancelled; the shared wait already terminated +
+            // reaped the child. Propagate the named cancellation error.
+            Err(cancelled)
+        }
+        crate::git::ChildWait::WaitFailed(err) => {
+            // The shared wait already terminated + reaped the child.
+            Err(format!("Perl facts exporter failed while waiting: {err}"))
         }
     }
 }
@@ -480,36 +489,11 @@ fn simple_hash(s: &str) -> u64 {
     hash
 }
 
-// `Child::wait_timeout` is not in std (stable). Implement a minimal helper that
-// polls `try_wait` on a short interval up to the deadline, so a timeout is
-// enforced with no external crate. Returns `Ok(Some(status))` if the child
-// exited, `Ok(None)` on timeout (caller kills + reaps).
-trait ChildWaitTimeoutExt {
-    fn wait_timeout(
-        &mut self,
-        timeout: std::time::Duration,
-    ) -> std::io::Result<Option<std::process::ExitStatus>>;
-}
-
-impl ChildWaitTimeoutExt for std::process::Child {
-    fn wait_timeout(
-        &mut self,
-        timeout: std::time::Duration,
-    ) -> std::io::Result<Option<std::process::ExitStatus>> {
-        let deadline = std::time::Instant::now() + timeout;
-        loop {
-            match self.try_wait()? {
-                Some(status) => return Ok(Some(status)),
-                None => {
-                    if std::time::Instant::now() >= deadline {
-                        return Ok(None);
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-            }
-        }
-    }
-}
+// The pre-#2303 `ChildWaitTimeoutExt` poll helper (spawn, poll `try_wait` on
+// a short interval up to the deadline, kill + reap on timeout) now lives in
+// `crate::git::poll_child`, shared with the git invocation authority; the
+// Perl producer wait above delegates to it so both subprocess families
+// enforce deadlines — and honor cooperative cancellation — identically.
 
 #[cfg(test)]
 mod tests {
@@ -530,6 +514,24 @@ mod tests {
             format: OutputFormat::Json,
             ..CheckInput::default()
         }
+    }
+
+    #[test]
+    fn cli_check_input_carries_no_git_deadline() -> Result<(), String> {
+        // #2303 no-drift contract: the CLI never sets a git deadline, so the
+        // diff-load path stays unbounded and byte-identical to the pre-#2303
+        // behavior. Only the LSP refresh path populates the deadline (via
+        // `LspAnalysisConfig::check_input`).
+        let input = sample_diff_input();
+        if input.git_timeout.is_some() {
+            return Err("CLI check input must not set a git deadline".to_string());
+        }
+        let options =
+            options_builder::analysis_options_from_input_and_config(&input, &RiprConfig::default());
+        if options.git_timeout.is_some() {
+            return Err("CLI analysis options must not set a git deadline".to_string());
+        }
+        Ok(())
     }
 
     #[test]

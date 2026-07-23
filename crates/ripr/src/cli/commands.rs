@@ -3039,6 +3039,7 @@ fn run_diff_check_from_file(
         include_unchanged_tests: options.include_unchanged_tests,
         perl_facts_path: None,
         suppression_policy: None,
+        git_timeout: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)

@@ -170,6 +170,11 @@
           "default": "origin/main",
           "description": "Git base ref used by ripr editor diagnostics and context commands."
         },
+        "ripr.gitTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Deadline in milliseconds for each git invocation in the ripr language server's refresh path. A git command that exceeds the deadline is terminated and the refresh commits a limited snapshot naming git_invocation_timeout; run the ripr.refreshDiagnostics command to retry."
+        },
         "ripr.trace.server": {
           "type": "string",
           "enum": [

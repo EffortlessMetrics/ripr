@@ -396,11 +396,11 @@ fn resolve_diff_text(source: &DiffSourceIdentity, root: &Path) -> Result<String,
             format!("recorded diff file {path} no longer exists or is unreadable: {err}")
         }),
         DiffSourceIdentity::BaseHead { base, .. } => {
-            crate::analysis::load_diff(root, base.as_deref(), None)
+            crate::analysis::load_diff(root, base.as_deref(), None, None)
                 .map_err(|err| format!("recorded base/head diff could not be re-resolved: {err}"))
         }
         DiffSourceIdentity::Worktree { base } => {
-            crate::analysis::load_worktree_diff(root, base.as_deref())
+            crate::analysis::load_worktree_diff(root, base.as_deref(), None)
                 .map_err(|err| format!("recorded worktree diff could not be re-resolved: {err}"))
         }
     }
@@ -419,6 +419,9 @@ fn closed_analysis_options_view(options: &AnalysisOptions) -> (bool, Option<&Pat
         include_unchanged_tests,
         resolve_tsconfig_paths: _, // recorded via the config identity allowlist
         perl_facts_path,
+        git_timeout: _, // resource bound (#2303), not analysis identity: a
+                        // deadline never changes what the analysis computes,
+                        // only whether a hung git invocation aborts the run
     } = options;
     (*include_unchanged_tests, perl_facts_path.as_deref())
 }

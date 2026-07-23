@@ -59,6 +59,7 @@ fn packet_test_options() -> crate::analysis::AnalysisOptions {
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     }
 }
 

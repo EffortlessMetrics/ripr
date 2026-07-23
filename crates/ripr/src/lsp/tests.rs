@@ -1324,7 +1324,7 @@ fn framed_lsp_refresh_resolves_git_inputs_once_and_projects_the_record() -> Resu
         )
         .map_err(|err| format!("write changed production fixture failed: {err}"))?;
         commit_lsp_test_scope_change(root.path(), "change production")?;
-        let expected_base = crate::analysis::resolve_base_commit(root.path(), Some("HEAD~1"))
+        let expected_base = crate::analysis::resolve_base_commit(root.path(), Some("HEAD~1"), None)
             .ok_or_else(|| "fixture HEAD~1 must resolve".to_string())?;
         let root_uri = file_uri_for_path(root.path())?;
 
@@ -5331,7 +5331,7 @@ fn commit_push_pull_parity_fixture(
             1,
             &LspAnalysisConfig::default(),
         ),
-        git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None),
+        git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None, None),
         root: root.path().to_path_buf(),
         config: LspAnalysisConfig::default(),
         workspace_revision: 1,
@@ -6440,6 +6440,7 @@ fn stale_refresh_does_not_rollback_after_root_authority_transition() -> Result<(
             ),
             git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
                 Path::new("/workspace"),
+                None,
                 None,
             ),
             root: PathBuf::from("/workspace"),
@@ -11903,6 +11904,7 @@ fn failed_refresh_retains_last_snapshot_and_reports_stale_health() -> Result<(),
             git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
                 Path::new("/workspace"),
                 None,
+                None,
             ),
             root: PathBuf::from("/workspace"),
             config: LspAnalysisConfig::default(),
@@ -12572,6 +12574,7 @@ fn seed_successful_snapshot(backend: &Backend) -> Result<(), String> {
         ),
         git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
             Path::new("/workspace"),
+            None,
             None,
         ),
         root: PathBuf::from("/workspace"),

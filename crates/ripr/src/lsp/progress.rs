@@ -567,6 +567,7 @@ mod tests {
             git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(
                 &root,
                 config.base_ref.as_deref(),
+                None,
             ),
             root,
             config,

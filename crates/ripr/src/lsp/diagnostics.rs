@@ -699,8 +699,23 @@ pub(super) fn workspace_diagnostics_with_config(
     defer_seam_inventory: bool,
 ) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
-    let output = check_workspace_with_config(input, config.repo_config())
-        .map_err(|err| format!("workspace analysis failed: {err}"))?;
+    let output = match check_workspace_with_config(input, config.repo_config()) {
+        Ok(output) => output,
+        // #2303: a git invocation that exceeded the configured cooperative
+        // deadline commits a limited snapshot (zero findings, one typed
+        // failed `diff` outcome) instead of dropping the refresh with no
+        // snapshot. ONLY the named timeout error converts; every other
+        // analysis failure keeps the pre-#2303 no-snapshot path.
+        Err(err) if crate::git::is_git_invocation_timeout(&err) => {
+            return Ok(git_timeout_limited_diagnostics(
+                root,
+                config,
+                defer_seam_inventory,
+                err,
+            ));
+        }
+        Err(err) => return Err(format!("workspace analysis failed: {err}")),
+    };
     let root = output.root;
     let base = output.base;
     let mode = output.mode;
@@ -952,6 +967,54 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
     })
 }
 
+/// The committed snapshot for a diff-load git invocation timeout (#2303).
+///
+/// A git invocation that exceeded the configured cooperative deadline means
+/// the refresh could not establish what changed, so the snapshot carries
+/// ZERO findings — but it is committed (not dropped) so the typed component
+/// outcome can disclose the degradation on every status surface: one failed
+/// `diff` outcome with kind `git_invocation_timeout`,
+/// `findings_trustworthy: false`, and the `ripr.refreshDiagnostics` recovery
+/// route. The shared run-status derivation turns the degraded component into
+/// `limited` (no new run-status string). Pure so the conversion contract is
+/// testable without a hung git.
+fn git_timeout_limited_diagnostics(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    message: String,
+) -> WorkspaceDiagnostics {
+    let component_outcomes = vec![ComponentOutcome::failed(
+        AnalysisComponent::Diff,
+        crate::git::GIT_INVOCATION_TIMEOUT_PREFIX,
+        message,
+        false,
+        "retry ripr.refreshDiagnostics",
+    )];
+    let snapshot = AnalysisSnapshot {
+        root: root.to_path_buf(),
+        input_identity: None,
+        base: config.base_ref.clone(),
+        mode: config.mode.clone(),
+        refresh: RefreshMetadata::generated_now(),
+        findings: Vec::new(),
+        diagnostic_profile: config.diagnostic_profile,
+        classified_seams: Vec::new(),
+        gap_artifacts: Vec::new(),
+        gap_artifact_rejections: Vec::new(),
+        diagnostics_by_uri: BTreeMap::new(),
+        delivery_selection: None,
+        seams_deferred: defer_seam_inventory,
+        partial_scope: None,
+        component_outcomes,
+        out_of_scope_test_file_findings: 0,
+    };
+    WorkspaceDiagnostics {
+        snapshot,
+        batches: Vec::new(),
+    }
+}
+
 /// Compute the run status from findings, gap-artifact rejections, and the
 /// Shared run-status derivation from the raw ingredients. Both
 /// `backend::workspace_status_run_status` (for workspace status) and
@@ -1118,6 +1181,116 @@ pub(super) fn snapshot_run_status_for_test(
     defer_seam_inventory: bool,
 ) -> &'static str {
     derive_run_status(findings, rejections, &[], defer_seam_inventory, false, &[])
+}
+
+#[cfg(test)]
+#[test]
+fn git_timeout_error_converts_to_a_committed_limited_snapshot() -> Result<(), String> {
+    // #2303: the named diff-load timeout commits a limited snapshot with
+    // zero findings and one typed failed `diff` outcome — the deliberate
+    // replacement for the pre-#2303 no-snapshot path. Pure conversion: no
+    // hung git required.
+    let config = LspAnalysisConfig::default();
+    let message = "git_invocation_timeout: git -C /workspace [\"diff\", \"--unified=0\", \
+                   \"origin/main...HEAD\"] exceeded the 30000ms deadline (process terminated)"
+        .to_string();
+    let diagnostics =
+        git_timeout_limited_diagnostics(Path::new("/workspace"), &config, false, message);
+
+    if !diagnostics.snapshot.findings.is_empty() {
+        return Err("a timed-out diff load must commit zero findings".to_string());
+    }
+    if !diagnostics.batches.is_empty() || !diagnostics.snapshot.diagnostics_by_uri.is_empty() {
+        return Err("a timed-out diff load must publish no diagnostics".to_string());
+    }
+    if diagnostics.snapshot.component_outcomes.len() != 1 {
+        return Err(format!(
+            "expected exactly one component outcome, got {}",
+            diagnostics.snapshot.component_outcomes.len()
+        ));
+    }
+    let Some(outcome) = diagnostics.snapshot.component_outcomes.first() else {
+        return Err("expected the failed diff outcome".to_string());
+    };
+    if outcome.component != AnalysisComponent::Diff {
+        return Err(format!(
+            "expected the diff component, got {}",
+            outcome.component.as_str()
+        ));
+    }
+    if outcome.state.as_str() != "failed" {
+        return Err(format!(
+            "expected the failed state, got {}",
+            outcome.state.as_str()
+        ));
+    }
+    if outcome.kind != Some("git_invocation_timeout") {
+        return Err(format!("expected the named kind, got {:?}", outcome.kind));
+    }
+    if outcome.findings_trustworthy {
+        return Err("a timed-out diff load must mark findings untrustworthy".to_string());
+    }
+    if outcome.recovery != Some("retry ripr.refreshDiagnostics") {
+        return Err(format!(
+            "expected the recovery route, got {:?}",
+            outcome.recovery
+        ));
+    }
+    // The message is normalized and path-redacted at construction, so the
+    // committed record carries the named kind and deadline but not the raw
+    // workspace path.
+    let Some(outcome_message) = outcome.message.as_deref() else {
+        return Err("expected the bounded timeout message".to_string());
+    };
+    if !outcome_message.contains("git_invocation_timeout")
+        || !outcome_message.contains("exceeded the 30000ms deadline")
+    {
+        return Err(format!(
+            "expected the named timeout detail, got {outcome_message:?}"
+        ));
+    }
+    if outcome_message.contains("/workspace") {
+        return Err(format!(
+            "the raw workspace path must be redacted, got {outcome_message:?}"
+        ));
+    }
+    // The shared derivation (the only run-status aggregation) turns the
+    // degraded component into `limited` — no new run-status string.
+    let run_status = derive_run_status(
+        &diagnostics.snapshot.findings,
+        &diagnostics.snapshot.gap_artifact_rejections,
+        &diagnostics.snapshot.gap_artifacts,
+        diagnostics.snapshot.seams_deferred,
+        diagnostics.snapshot.partial_scope.is_some(),
+        &diagnostics.snapshot.component_outcomes,
+    );
+    if run_status != "limited" {
+        return Err(format!("expected run_status=limited, got {run_status}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn non_timeout_analysis_errors_are_not_converted() -> Result<(), String> {
+    // #2303: the conversion guard matches ONLY the named timeout prefix; an
+    // ordinary analysis failure (missing base ref, parse error) keeps the
+    // pre-#2303 no-snapshot `Err` path.
+    for lookalike in [
+        "workspace analysis failed: git diff failed: fatal: ambiguous argument",
+        "agit_invocation_timeout: forged prefix must not match",
+        "could not resolve a default base (no origin/main, origin/master, or local main/master found)",
+    ] {
+        if crate::git::is_git_invocation_timeout(lookalike) {
+            return Err(format!("non-timeout error matched the guard: {lookalike}"));
+        }
+    }
+    if !crate::git::is_git_invocation_timeout(
+        "git_invocation_timeout: git -C /x [\"diff\"] exceeded the 1ms deadline (process terminated)",
+    ) {
+        return Err("the named timeout error must match the guard".to_string());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -4028,6 +4028,7 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -4057,6 +4058,7 @@ fn analyze_diff_splits_changed_files_into_typescript_and_javascript() -> Result<
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -4088,6 +4090,7 @@ fn analyze_repo_returns_empty_scaffold() -> Result<(), String> {
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let result = adapter.analyze_repo(&options, &policy)?;
@@ -7348,6 +7351,7 @@ fn delta5_verify_command_absent_from_missing_list_when_runner_resolved() -> Resu
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -7439,6 +7443,7 @@ fn delta5_verify_command_stays_in_missing_list_when_runner_unresolved() -> Resul
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {

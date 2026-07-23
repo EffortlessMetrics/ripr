@@ -11,11 +11,15 @@ Linked issues:
 - [#2031](https://github.com/EffortlessMetrics/ripr-swarm/issues/2031) - add a
   server-originated `workspace/configuration` pull model with a documented
   fallback for LSP session configuration.
+- [#2303](https://github.com/EffortlessMetrics/ripr-swarm/issues/2303) -
+  amendment: add a sixth governed session key, `gitTimeoutMs`, the
+  cooperative per-invocation git deadline for the refresh path.
 
 Support-tier impact:
 
-- No tier change. This spec adds one LSP transport for the five already
-  governed session keys plus additive status disclosure fields. It does not
+- No tier change. This spec adds one LSP transport for the governed session
+  keys (five at ratification; the #2303 amendment adds a sixth,
+  `gitTimeoutMs`) plus additive status disclosure fields. It does not
   change any classification, finding set, ExposureClass, probe family,
   confidence score, `repair_packet_ready` authority, output schema version,
   or pass/fail behavior.
@@ -60,9 +64,10 @@ In pull mode the server sends, from the `initialized` handler (never from
 ConfigurationItem { scope_uri: <selected root URI>, section: "ripr" }
 ```
 
-The section contains exactly the five governed session keys already
-allowlisted for initialization options: `baseRef`, `checkMode`,
-`includeUnchangedTests`, `seamDiagnostics`, `diagnosticProfile`.
+The section contains exactly the governed session keys allowlisted for
+initialization options: `baseRef`, `checkMode`, `includeUnchangedTests`,
+`seamDiagnostics`, `diagnosticProfile`, and — per the #2303 amendment —
+`gitTimeoutMs`.
 
 The response is validated before anything is applied:
 
@@ -80,7 +85,7 @@ The response is validated before anything is applied:
 
 ### Precedence (amends RIPR-SPEC-0007, scoped)
 
-In pull mode, the five governed keys resolve per key:
+In pull mode, the governed keys resolve per key:
 
 ```text
 valid pulled setting > initialization option > ripr.toml > built-in default
@@ -119,9 +124,9 @@ state (`config_pull_failed` / `config_pull_invalid`, mirroring the
 the last-known-good pulled layer is retained as stale. Defaults never
 masquerade as accepted requested settings: the status payload carries the
 negotiated `configuration_mode`, a per-field source map
-(`pulled` | `initialization` | `repo` | `default`) for the five governed
-keys, and the last pull state, epoch, failure, and recovery route. All
-status fields are additive and snake_case.
+(`pulled` | `initialization` | `repo` | `default`) for the governed keys
+(six per the #2303 amendment), and the last pull state, epoch, failure, and
+recovery route. All status fields are additive and snake_case.
 
 A pull is a pure LSP round-trip: it never launches analysis, git, network
 beyond the LSP connection, or edits. Applying changed effective settings
@@ -133,8 +138,42 @@ path, exactly as a pushed configuration change does today.
 Clients without `workspace.configuration` support keep today's behavior:
 `workspace/didChangeConfiguration` keeps applying pushed values
 (push fallback), and clients that neither pull nor push usable values run
-initialization-only. Each transport can supply exactly the same five
-governed keys; no transport can set anything else.
+initialization-only. Each transport can supply exactly the same governed
+keys (six per the #2303 amendment); no transport can set anything else.
+
+### Cooperative git invocation deadline (#2303 amendment)
+
+The sixth governed key, `gitTimeoutMs` (non-negative integer, default
+`30000`), bounds every git invocation the LSP refresh path spawns: the
+scheduler's Git-input resolution probe and the `git diff` load inside
+analysis. It is a resource bound, not an analysis input — it never changes
+what the analysis computes, only whether a hung git invocation aborts the
+run. The CLI passes no deadline and stays unbounded, byte-identical to the
+pre-#2303 behavior.
+
+Semantics:
+
+- every git spawn goes through the shared `crates/ripr/src/git.rs`
+  authority, which polls the child on a short interval, checks cooperative
+  analysis cancellation each tick (a superseded refresh kills a hung git),
+  drains piped stdout/stderr so a verbose child cannot deadlock against the
+  wait, and kills + reaps the child on deadline expiry;
+- an expired deadline yields the named, matchable error
+  `git_invocation_timeout`; a zero deadline fails before spawning;
+- a diff load that fails with the named timeout commits a LIMITED snapshot
+  — zero findings plus one typed failed `diff` component outcome
+  (`kind: git_invocation_timeout`, `findings_trustworthy: false`, recovery
+  `retry ripr.refreshDiagnostics`) so `run_status` derives `limited` — instead
+  of dropping the refresh with no snapshot. Only the named timeout error
+  converts; every other analysis failure keeps the no-snapshot path;
+- a scheduler probe that exceeds the deadline fails closed exactly like an
+  unresolvable ref (`Unresolved` / loader-default with no commit) — a
+  timed-out probe is never mistaken for a resolved input;
+- initialization and pushed values are lenient (a malformed `gitTimeoutMs`
+  is ignored, keeping the current value); pulled values validate
+  fail-closed (a non-integer fails the whole pull). `gitTimeoutMs` has no
+  `ripr.toml` slot, so its disclosed source is only `pulled`,
+  `initialization`, or `default`.
 
 ## Required Evidence
 
@@ -155,12 +194,16 @@ governed keys; no transport can set anything else.
 ## Non-Goals
 
 - A full typed client feature profile (that is #1987's scope).
-- New governed configuration keys, new output schema versions, or changes to
-  `ripr.toml` parsing.
+- New output schema versions, or changes to `ripr.toml` parsing. (The
+  ratified text also excluded new governed configuration keys; the #2303
+  amendment deliberately adds exactly one, `gitTimeoutMs`, with the
+  semantics above.)
 - Dynamic registration for `workspace/didChangeConfiguration`.
 - Per-resource `scope_uri` pulls; the scope is always the selected root URI.
-- Editor extension changes; the extension keeps sending initialization
-  options and pushed settings.
+- Editor extension behavior changes; the extension keeps sending
+  initialization options and pushed settings. (The #2303 amendment adds one
+  additive contributed setting declaration, `ripr.gitTimeoutMs`, so
+  pull-mode clients can serve the key; it wires no new extension logic.)
 
 ## Acceptance Examples
 
@@ -203,6 +246,31 @@ didChangeConfiguration keeps applying pushed values,
 and no workspace/configuration request is ever sent.
 ```
 
+### Git deadline applies, discloses, and fails honestly (#2303 amendment)
+
+```text
+Given initializationOptions gitTimeoutMs = 45000,
+when the session applies the option,
+then the refresh path bounds each git invocation at 45s,
+and input_authority.session_value_sources.git_timeout_ms is "initialization".
+
+Given a pull returns {"gitTimeoutMs": "45000"} (wrong JSON type),
+when the response is validated,
+then the whole pull fails closed and the previous deadline stays in effect.
+
+Given a diff-load git invocation exceeds the configured deadline,
+when the refresh would previously have dropped with no snapshot,
+then a limited snapshot commits with zero findings,
+and one failed diff component outcome with kind git_invocation_timeout,
+findings_trustworthy false, and recovery "retry ripr.refreshDiagnostics",
+and run_status derives "limited".
+
+Given a scheduler Git-input probe exceeds the configured deadline,
+when the probe cannot complete,
+then the record fails closed as Unresolved (or loader-default with no
+commit), never as a fabricated resolved input.
+```
+
 ## Test Mapping
 
 - `crates/ripr/src/lsp/capabilities.rs::tests::configuration_mode_follows_workspace_capabilities`
@@ -233,6 +301,28 @@ and no workspace/configuration request is ever sent.
   released: an ambiguous-root start defers the pull, selecting a single root
   runs it with the new root's `scopeUri`, and a settings-changing apply must
   reach the refresh path without deadlocking on the transition guard.
+- #2303 amendment:
+  `crates/ripr/src/git.rs::tests::deadline_kills_and_reaps_a_hung_invocation`,
+  `zero_deadline_errors_before_spawning`,
+  `cancellation_wins_over_a_long_deadline`, and
+  `output_larger_than_the_pipe_buffer_does_not_deadlock` — the shared
+  deadline-aware git invocation contract.
+- `crates/ripr/src/lsp/config.rs::tests::git_timeout_ms_applies_from_initialization_options`,
+  `git_timeout_ms_defaults_to_thirty_seconds`,
+  `git_timeout_ms_malformed_initialization_value_keeps_default`,
+  `validated_pulled_options_rejects_wrong_typed_git_timeout_ms`,
+  `session_value_sources_disclose_git_timeout_ms_origin`, and
+  `effective_settings_eq_compares_git_timeout` — the sixth governed key.
+- `crates/ripr/src/lsp/diagnostics.rs::git_timeout_error_converts_to_a_committed_limited_snapshot`
+  and `non_timeout_analysis_errors_are_not_converted` — the limited-snapshot
+  conversion and its named-error guard.
+- `crates/ripr/src/lsp/git_inputs.rs::tests::timed_out_probe_fails_closed_as_unresolved`
+  — the scheduler probe fail-closed contract.
+- `crates/ripr/src/analysis/diff/load.rs::tests::zero_deadline_diff_load_fails_with_the_named_timeout_error`
+  and `zero_deadline_base_probes_fail_closed_instead_of_hanging` — the
+  diff-load named error and probe fail-closed behavior.
+- `crates/ripr/src/app/check.rs::tests::cli_check_input_carries_no_git_deadline`
+  — the CLI no-drift contract (no deadline, unbounded, byte-identical).
 
 ## Implementation Mapping
 
@@ -246,6 +336,14 @@ and no workspace/configuration request is ever sent.
 - `crates/ripr/src/lsp/backend.rs` — mode negotiation at `initialize`, first
   pull at `initialized`, coalesced re-pull with epoch guard, deferred-pull
   retry on root selection, additive `input_authority` status fields.
+- #2303 amendment: `crates/ripr/src/git.rs` — the shared deadline-aware git
+  invocation authority (`run_git_output_with_deadline`,
+  `GIT_INVOCATION_TIMEOUT_PREFIX`, `poll_child`);
+  `crates/ripr/src/analysis/diff/load.rs` — deadline threading through the
+  diff-load exports; `crates/ripr/src/lsp/diagnostics.rs` — the
+  limited-snapshot conversion; `crates/ripr/src/lsp/git_inputs.rs` — the
+  fail-closed probe deadline; `crates/ripr/src/lsp/config.rs` — the
+  `gitTimeoutMs` governed key.
 
 ## Metrics
 

@@ -5,9 +5,17 @@ use crate::config::{
 };
 use serde_json::Value;
 use std::path::Path;
+use std::time::Duration;
 use tower_lsp_server::ls_types::{InitializeParams, PositionEncodingKind};
 
 use super::client_features::ClientFeatureProfile;
+
+/// Default cooperative deadline for each git invocation in the LSP refresh
+/// path (#2303), in milliseconds. Mirrors the `[perl] timeout_ms` 30s
+/// precedent (`config.rs`): generous enough for cold caches on large
+/// repositories, bounded enough that a hung git cannot pin a refresh worker
+/// forever. Overridable per session via the `gitTimeoutMs` option.
+pub(super) const DEFAULT_LSP_GIT_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
@@ -34,6 +42,13 @@ pub(super) struct LspAnalysisConfig {
     /// Defaults to `actionable`; valid initialization options override the
     /// repository setting, while unknown options retain that resolved value.
     pub(super) diagnostic_profile: LspDiagnosticProfile,
+    /// Cooperative per-invocation git deadline for the refresh path (#2303):
+    /// the scheduler's Git-input probe and the diff load inside analysis
+    /// both run under this bound, and an exceeded deadline produces the
+    /// named `git_invocation_timeout` error / a fail-closed probe record.
+    /// Defaults to [`DEFAULT_LSP_GIT_TIMEOUT_MS`]; the `gitTimeoutMs`
+    /// session option overrides it.
+    pub(super) git_timeout: Duration,
     /// The position encoding negotiated at `initialize` from the client's
     /// `general.positionEncodings` (#1626 PR B / #1749). Defaults to UTF-16 and
     /// is preserved across repository-config and session-option reloads.
@@ -52,6 +67,7 @@ impl Default for LspAnalysisConfig {
             pulled_options: None,
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
             diagnostic_profile: LspDiagnosticProfile::default(),
+            git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
             position_encoding: PositionEncodingKind::UTF16,
         }
     }
@@ -138,9 +154,10 @@ impl LspAnalysisConfig {
             && self.include_unchanged_tests == other.include_unchanged_tests
             && self.enable_seam_diagnostics == other.enable_seam_diagnostics
             && self.diagnostic_profile == other.diagnostic_profile
+            && self.git_timeout == other.git_timeout
     }
 
-    /// Per-field source disclosure for the five governed session keys
+    /// Per-field source disclosure for the six governed session keys
     /// (`pulled` | `initialization` | `repo` | `default`), surfaced in the
     /// analysis status payload so defaults never masquerade as accepted
     /// requested settings (#2031).
@@ -148,11 +165,13 @@ impl LspAnalysisConfig {
     /// Known limitation: `seam_diagnostics` is attributed `repo` whenever a
     /// `ripr.toml` was loaded, because the repository default and the
     /// built-in default coincide and cannot be distinguished after parsing.
+    /// `git_timeout_ms` has no `ripr.toml` slot (#2303), so it can only be
+    /// `pulled`, `initialization`, or `default`.
     pub(super) fn session_value_sources(&self) -> serde_json::Map<String, Value> {
         let session = self.session_options.as_ref().and_then(Value::as_object);
         let pulled = self.pulled_options.as_ref().and_then(Value::as_object);
         let repo_config = self.repo_config();
-        let entries: [(&str, &str, bool); 5] = [
+        let entries: [(&str, &str, bool); 6] = [
             ("base_ref", "baseRef", false),
             (
                 "check_mode",
@@ -175,6 +194,7 @@ impl LspAnalysisConfig {
                 "diagnosticProfile",
                 repo_config.lsp().diagnostic_profile().is_some(),
             ),
+            ("git_timeout_ms", "gitTimeoutMs", false),
         ];
         let mut sources = serde_json::Map::new();
         for (payload_key, option_key, repo_explicit) in entries {
@@ -246,6 +266,7 @@ impl LspAnalysisConfig {
                 .seam_diagnostics()
                 .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
             diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
+            git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
             repo_config,
             session_options: None,
             pulled_options: None,
@@ -260,6 +281,7 @@ impl LspAnalysisConfig {
             mode: self.mode.clone(),
             format: OutputFormat::Json,
             include_unchanged_tests: self.include_unchanged_tests,
+            git_timeout: Some(self.git_timeout),
             ..CheckInput::default()
         }
     }
@@ -319,6 +341,13 @@ fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::M
     {
         config.diagnostic_profile = profile;
     }
+
+    // Lenient (#2303): a malformed initialization/pushed value is ignored and
+    // the current deadline (30s default) stays in effect; the pull path
+    // validates the same key fail-closed in `validate_pulled_value`.
+    if let Some(git_timeout_ms) = options.get("gitTimeoutMs").and_then(Value::as_u64) {
+        config.git_timeout = Duration::from_millis(git_timeout_ms);
+    }
 }
 
 fn supported_session_options(
@@ -334,7 +363,12 @@ fn supported_session_options(
 fn is_supported_session_option(key: &str) -> bool {
     matches!(
         key,
-        "baseRef" | "checkMode" | "includeUnchangedTests" | "seamDiagnostics" | "diagnosticProfile"
+        "baseRef"
+            | "checkMode"
+            | "includeUnchangedTests"
+            | "seamDiagnostics"
+            | "diagnosticProfile"
+            | "gitTimeoutMs"
     )
 }
 
@@ -398,6 +432,7 @@ fn validate_pulled_value(key: &str, value: &Value) -> Result<(), String> {
         "diagnosticProfile" => value
             .as_str()
             .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
+        "gitTimeoutMs" => value.as_u64().is_some(),
         _ => true,
     };
     if valid {
@@ -881,6 +916,140 @@ diagnostic_profile = "full"
                 .and_then(Value::as_str),
             Some("default")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_applies_from_initialization_options() -> Result<(), String> {
+        // #2303: a valid `gitTimeoutMs` session value sets the cooperative
+        // per-invocation git deadline, and `check_input` is the one place
+        // that threads it into the analysis input.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        );
+        if config.git_timeout != Duration::from_secs(45) {
+            return Err(format!(
+                "expected a 45s deadline, got {:?}",
+                config.git_timeout
+            ));
+        }
+        let input = config.check_input(Path::new("/workspace"));
+        if input.git_timeout != Some(Duration::from_secs(45)) {
+            return Err(format!(
+                "check_input must carry the configured deadline, got {:?}",
+                input.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_defaults_to_thirty_seconds() -> Result<(), String> {
+        let config = LspAnalysisConfig::default();
+        if config.git_timeout != Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS) {
+            return Err(format!(
+                "expected the 30s default, got {:?}",
+                config.git_timeout
+            ));
+        }
+        let input = config.check_input(Path::new("/workspace"));
+        if input.git_timeout != Some(Duration::from_secs(30)) {
+            return Err(format!(
+                "default check_input must carry the 30s deadline, got {:?}",
+                input.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_malformed_initialization_value_keeps_default() -> Result<(), String> {
+        // #2303: the initialization/push path is lenient — a malformed value
+        // is ignored and the 30s default stays in effect.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": "fast"})),
+        );
+        if config.git_timeout != Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS) {
+            return Err(format!(
+                "a malformed value must keep the 30s default, got {:?}",
+                config.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_wrong_typed_git_timeout_ms() -> Result<(), String> {
+        // #2303: the pull path is fail-closed — a supported key with the
+        // wrong JSON type fails the whole pull instead of being silently
+        // ignored.
+        let ok = validated_pulled_options(&[json!({"gitTimeoutMs": 45_000})])?;
+        if ok.is_none() {
+            return Err("a numeric gitTimeoutMs pull must validate".to_string());
+        }
+        let err = match validated_pulled_options(&[json!({"gitTimeoutMs": "45000"})]) {
+            Err(err) => err,
+            Ok(_) => return Err("a string gitTimeoutMs must fail the pull".to_string()),
+        };
+        if !err.contains("gitTimeoutMs") {
+            return Err(format!("the failure must name the key, got: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn session_value_sources_disclose_git_timeout_ms_origin() -> Result<(), String> {
+        // #2303: the default, initialization, and pulled origins are all
+        // distinguishable for the new key; there is no `ripr.toml` slot.
+        let default_sources = LspAnalysisConfig::default().session_value_sources();
+        if default_sources
+            .get("git_timeout_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err("unset gitTimeoutMs must disclose as default".to_string());
+        }
+        let init_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        )
+        .session_value_sources();
+        if init_sources.get("git_timeout_ms").and_then(Value::as_str) != Some("initialization") {
+            return Err("initialization gitTimeoutMs must disclose as initialization".to_string());
+        }
+        let pulled_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        )
+        .with_pulled_options(Some(&json!({"gitTimeoutMs": 60_000})))
+        .session_value_sources();
+        if pulled_sources.get("git_timeout_ms").and_then(Value::as_str) != Some("pulled") {
+            return Err("pulled gitTimeoutMs must disclose as pulled".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn effective_settings_eq_compares_git_timeout() -> Result<(), String> {
+        // #2303: a re-pull that changes only the deadline is NOT a no-op —
+        // it must reschedule analysis like any other effective change.
+        let base = LspAnalysisConfig::default();
+        let changed = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        );
+        if base.effective_settings_eq(&changed) {
+            return Err("a changed deadline must not compare equal".to_string());
+        }
+        let same = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 30_000})),
+        );
+        if !base.effective_settings_eq(&same) {
+            return Err("an explicit 30s must equal the default".to_string());
+        }
         Ok(())
     }
 }

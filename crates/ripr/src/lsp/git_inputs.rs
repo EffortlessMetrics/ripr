@@ -86,10 +86,21 @@ impl ResolvedGitInputs {
     /// resolution site for the LSP refresh path: one bounded probe runs per
     /// call — a single `git rev-parse` for a requested base, or the loader's
     /// default-base candidate probe when no base was requested.
-    pub(super) fn resolve(root: &Path, requested_base: Option<&str>) -> Self {
+    ///
+    /// `git_timeout` is the cooperative per-invocation deadline (#2303),
+    /// sourced from the `gitTimeoutMs` session option on the production
+    /// scheduler path. A probe that exceeds the deadline fails closed: the
+    /// requested-base path records `Unresolved` and the default-base path
+    /// records the loader-default state with no commit — a timed-out probe
+    /// is never mistaken for a resolved input.
+    pub(super) fn resolve(
+        root: &Path,
+        requested_base: Option<&str>,
+        git_timeout: Option<std::time::Duration>,
+    ) -> Self {
         let (resolved_base, resolution) = match requested_base {
             Some(base) => {
-                let resolved = crate::analysis::resolve_base_commit(root, Some(base));
+                let resolved = crate::analysis::resolve_base_commit(root, Some(base), git_timeout);
                 let resolution = if resolved.is_some() {
                     GitInputResolution::Resolved
                 } else {
@@ -98,7 +109,7 @@ impl ResolvedGitInputs {
                 (resolved, resolution)
             }
             None => {
-                let resolved = crate::analysis::resolve_default_base_commit(root)
+                let resolved = crate::analysis::resolve_default_base_commit(root, git_timeout)
                     .ok()
                     .map(|(_base, commit)| commit);
                 (resolved, GitInputResolution::LoaderDefault)
@@ -171,11 +182,11 @@ mod tests {
     -> Result<(), String> {
         let root = unique_lsp_test_root("git-inputs-resolved")?;
         init_repo(root.path())?;
-        let record = ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let record = ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         if record.resolution() != GitInputResolution::Resolved {
             return Err("requested base must resolve".to_string());
         }
-        let expected = crate::analysis::resolve_base_commit(root.path(), Some("HEAD"))
+        let expected = crate::analysis::resolve_base_commit(root.path(), Some("HEAD"), None)
             .ok_or_else(|| "analysis resolver must resolve HEAD".to_string())?;
         if record.resolved_base() != Some(expected.as_str()) {
             return Err(format!(
@@ -199,11 +210,11 @@ mod tests {
         // Pin the default branch name so the loader's default-base fallback
         // resolves deterministically regardless of host git defaults.
         run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
-        let record = ResolvedGitInputs::resolve(root.path(), None);
+        let record = ResolvedGitInputs::resolve(root.path(), None, None);
         if record.resolution() != GitInputResolution::LoaderDefault {
             return Err("unrequested base must record the loader-default state".to_string());
         }
-        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path(), None)
             .map_err(|error| format!("fixture default base must resolve: {error}"))?;
         if record.resolved_base() != Some(expected.as_str()) {
             return Err(format!(
@@ -219,7 +230,7 @@ mod tests {
 
     #[test]
     fn unrequested_base_fails_closed_when_no_default_base_resolves() {
-        let record = ResolvedGitInputs::resolve(Path::new("/not-a-repo"), None);
+        let record = ResolvedGitInputs::resolve(Path::new("/not-a-repo"), None, None);
         assert_eq!(record.resolution(), GitInputResolution::LoaderDefault);
         assert_eq!(record.resolved_base(), None);
         assert_eq!(record.requested_base(), None);
@@ -227,16 +238,56 @@ mod tests {
 
     #[test]
     fn missing_ref_fails_closed_as_unresolved() {
-        let record = ResolvedGitInputs::resolve(Path::new("/not-a-repo"), Some("missing-ref"));
+        let record =
+            ResolvedGitInputs::resolve(Path::new("/not-a-repo"), Some("missing-ref"), None);
         assert_eq!(record.resolution(), GitInputResolution::Unresolved);
         assert_eq!(record.resolved_base(), None);
+    }
+
+    #[test]
+    fn timed_out_probe_fails_closed_as_unresolved() -> Result<(), String> {
+        // #2303: a zero deadline fails every probe before spawning, so this
+        // pins the timeout fail-closed contract deterministically — no hung
+        // git required. A probe that cannot complete in time is recorded
+        // exactly like an unresolvable ref, never as a fabricated commit.
+        let root = unique_lsp_test_root("git-inputs-probe-timeout")?;
+        init_repo(root.path())?;
+        let record =
+            ResolvedGitInputs::resolve(root.path(), Some("HEAD"), Some(std::time::Duration::ZERO));
+        if record.resolution() != GitInputResolution::Unresolved {
+            return Err(format!(
+                "a timed-out probe must record Unresolved, got {}",
+                record.resolution().as_str()
+            ));
+        }
+        if record.resolved_base().is_some() {
+            return Err("a timed-out probe must not fabricate a commit".to_string());
+        }
+        // The default-base path fails closed the same way: loader-default
+        // state with no resolved commit.
+        let default_record =
+            ResolvedGitInputs::resolve(root.path(), None, Some(std::time::Duration::ZERO));
+        if default_record.resolution() != GitInputResolution::LoaderDefault {
+            return Err("unrequested base must keep the loader-default state".to_string());
+        }
+        if default_record.resolved_base().is_some() {
+            return Err("a timed-out default-base probe must carry no commit".to_string());
+        }
+        // Without a deadline the same workspace resolves, proving the
+        // failure above is the deadline and not the fixture.
+        if ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None).resolution()
+            != GitInputResolution::Resolved
+        {
+            return Err("unbounded probe must resolve in the same repo".to_string());
+        }
+        Ok(())
     }
 
     #[test]
     fn governs_binds_record_to_root_and_requested_base() -> Result<(), String> {
         let root = unique_lsp_test_root("git-inputs-governs")?;
         init_repo(root.path())?;
-        let record = ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let record = ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         if !record.governs(root.path(), Some("HEAD")) {
             return Err("record must govern its own inputs".to_string());
         }
@@ -253,13 +304,13 @@ mod tests {
     fn dirty_tracked_worktree_does_not_change_the_resolved_inputs() -> Result<(), String> {
         let root = unique_lsp_test_root("git-inputs-dirty")?;
         init_repo(root.path())?;
-        let clean = ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let clean = ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         std::fs::write(
             root.path().join("lib.rs"),
             "pub fn gate() -> bool {\n    false\n}\n",
         )
         .map_err(|error| format!("dirty the worktree: {error}"))?;
-        let dirty = ResolvedGitInputs::resolve(root.path(), Some("HEAD"));
+        let dirty = ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         if clean != dirty {
             return Err(
                 "uncommitted edits must not alter resolved base identity; the diff path \

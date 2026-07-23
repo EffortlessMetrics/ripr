@@ -36,6 +36,7 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         &options.root,
         options.base.as_deref(),
         options.diff_file.as_ref(),
+        options.git_timeout,
     )?;
     cancellation::checkpoint()?;
     run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
@@ -49,7 +50,8 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy(
     if options.diff_file.is_some() {
         return Err("worktree diff mode cannot be combined with --diff".to_string());
     }
-    let diff_text = diff::load_worktree_diff(&options.root, options.base.as_deref())?;
+    let diff_text =
+        diff::load_worktree_diff(&options.root, options.base.as_deref(), options.git_timeout)?;
     cancellation::checkpoint()?;
     run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
 }
@@ -648,6 +650,7 @@ mod tests {
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -671,6 +674,7 @@ mod tests {
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -708,6 +712,7 @@ mod tests {
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -808,6 +813,7 @@ mod tests {
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: Some(facts),
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -875,6 +881,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript, LanguageId::Python],
@@ -927,6 +934,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Python],
@@ -980,6 +988,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript],
@@ -1039,6 +1048,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1095,6 +1105,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1135,6 +1146,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -1177,6 +1189,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1217,6 +1230,7 @@ index 0000000..1111111 100644
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
+                git_timeout: None,
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript, LanguageId::Python],

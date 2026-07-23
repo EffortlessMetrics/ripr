@@ -74,6 +74,11 @@ pub struct CheckInput {
     /// suppressed in the output; a missing or malformed file fails the run.
     /// When `None`, check output is unchanged.
     pub suppression_policy: Option<PathBuf>,
+    /// Cooperative per-invocation git deadline for the diff-load path
+    /// (#2303). `None` (the default) keeps git invocations unbounded — the
+    /// CLI behavior. Only the LSP refresh path populates this, from the
+    /// `gitTimeoutMs` session option.
+    pub git_timeout: Option<std::time::Duration>,
 }
 
 impl Default for CheckInput {
@@ -87,6 +92,7 @@ impl Default for CheckInput {
             include_unchanged_tests: true,
             perl_facts_path: None,
             suppression_policy: None,
+            git_timeout: None,
         }
     }
 }

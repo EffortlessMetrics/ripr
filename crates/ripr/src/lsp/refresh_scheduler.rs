@@ -236,8 +236,11 @@ impl RefreshScheduler {
             _ => None,
         }
         .unwrap_or_else(|| {
-            let record =
-                super::git_inputs::ResolvedGitInputs::resolve(&root, config.base_ref.as_deref());
+            let record = super::git_inputs::ResolvedGitInputs::resolve(
+                &root,
+                config.base_ref.as_deref(),
+                Some(config.git_timeout),
+            );
             state.telemetry.git_input_resolutions += 1;
             state.episode_git_inputs = Some((workspace_revision, record.clone()));
             record
@@ -912,7 +915,7 @@ mod tests {
             .git_inputs
             .resolved_base()
             .ok_or_else(|| "loader-default resolution must produce a SHA".to_string())?;
-        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path())
+        let (_base, expected) = crate::analysis::resolve_default_base_commit(root.path(), None)
             .map_err(|error| format!("fixture default base must resolve: {error}"))?;
         if sha != expected {
             return Err(format!(
@@ -1211,9 +1214,10 @@ mod tests {
         // The analysis path reports the named base failure through the
         // unchanged load_diff error surface; the scheduler does not retry or
         // synthesize a conflicting error.
-        let analysis_error = crate::analysis::load_diff(root.path(), Some("missing-ref"), None)
-            .err()
-            .ok_or_else(|| "analysis must fail closed on a missing base".to_string())?;
+        let analysis_error =
+            crate::analysis::load_diff(root.path(), Some("missing-ref"), None, None)
+                .err()
+                .ok_or_else(|| "analysis must fail closed on a missing base".to_string())?;
         if !analysis_error.contains("missing-ref") {
             return Err(format!(
                 "analysis error must name the ref: {analysis_error}"

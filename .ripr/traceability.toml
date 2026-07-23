@@ -7299,6 +7299,22 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::pull_mode_is_pending_until_the_first_pull_resolves",
   "crates/ripr/src/lsp/tests.rs::framed_lsp_configuration_pull_applies_and_discloses_pull_state",
   "crates/ripr/src/lsp/tests.rs::framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_release",
+  "crates/ripr/src/git.rs::tests::deadline_kills_and_reaps_a_hung_invocation",
+  "crates/ripr/src/git.rs::tests::zero_deadline_errors_before_spawning",
+  "crates/ripr/src/git.rs::tests::cancellation_wins_over_a_long_deadline",
+  "crates/ripr/src/git.rs::tests::output_larger_than_the_pipe_buffer_does_not_deadlock",
+  "crates/ripr/src/lsp/config.rs::tests::git_timeout_ms_applies_from_initialization_options",
+  "crates/ripr/src/lsp/config.rs::tests::git_timeout_ms_defaults_to_thirty_seconds",
+  "crates/ripr/src/lsp/config.rs::tests::git_timeout_ms_malformed_initialization_value_keeps_default",
+  "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_wrong_typed_git_timeout_ms",
+  "crates/ripr/src/lsp/config.rs::tests::session_value_sources_disclose_git_timeout_ms_origin",
+  "crates/ripr/src/lsp/config.rs::tests::effective_settings_eq_compares_git_timeout",
+  "crates/ripr/src/lsp/diagnostics.rs::git_timeout_error_converts_to_a_committed_limited_snapshot",
+  "crates/ripr/src/lsp/diagnostics.rs::non_timeout_analysis_errors_are_not_converted",
+  "crates/ripr/src/lsp/git_inputs.rs::tests::timed_out_probe_fails_closed_as_unresolved",
+  "crates/ripr/src/analysis/diff/load.rs::tests::zero_deadline_diff_load_fails_with_the_named_timeout_error",
+  "crates/ripr/src/analysis/diff/load.rs::tests::zero_deadline_base_probes_fail_closed_instead_of_hanging",
+  "crates/ripr/src/app/check.rs::tests::cli_check_input_carries_no_git_deadline",
 ]
 fixtures = []
 code = [
