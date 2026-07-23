@@ -7146,6 +7146,7 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::hover_for_position_uses_latest_matching_diagnostic",
   "crates/ripr/src/lsp/tests.rs::hover_for_position_shows_snapshot_age_and_refresh_duration",
   "crates/ripr/src/lsp/tests.rs::hover_for_position_adds_snapshot_status_to_seam_hover",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save",
 ]
 fixtures = []
 code = [

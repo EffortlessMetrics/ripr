@@ -15092,6 +15092,478 @@ async fn externally_changed_disk_content_does_not_falsely_clear_quarantine() -> 
     Ok(())
 }
 
+// ---- Framed saved-workspace session end to end (#1622 criterion 6) ----
+
+/// Read framed server messages until a committed refresh round has fully
+/// landed on the wire: the `window/logMessage` completion line containing
+/// `log_needle` AND a `ripr/analysisStatus` notification disclosing
+/// `expected_run_status` (the committed status is published after the
+/// completion log, so either may arrive first). Answers every
+/// `window/workDoneProgress/create` request so the refresh pipeline cannot
+/// stall. Returns the notifications collected along the way.
+async fn read_lsp_notifications_until_refresh_settled<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    log_needle: &str,
+    expected_run_status: &str,
+) -> Result<Vec<serde_json::Value>, String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut notifications = Vec::new();
+    let mut log_seen = false;
+    let mut status_seen = false;
+    tokio::time::timeout(Duration::from_mins(1), async {
+        while !(log_seen && status_seen) {
+            let message = read_lsp_message(reader).await?;
+            match message.get("method").and_then(serde_json::Value::as_str) {
+                Some("window/workDoneProgress/create") => {
+                    let request_id = message
+                        .get("id")
+                        .cloned()
+                        .ok_or_else(|| "workDoneProgress/create request carried no id".to_string())?;
+                    write_lsp_message(
+                        writer,
+                        serde_json::json!({"jsonrpc": "2.0", "id": request_id, "result": null}),
+                    )
+                    .await?;
+                }
+                Some("window/logMessage") => {
+                    if message["params"]["message"]
+                        .as_str()
+                        .is_some_and(|text| text.contains(log_needle))
+                    {
+                        log_seen = true;
+                    }
+                    notifications.push(message);
+                }
+                Some("ripr/analysisStatus") => {
+                    if message["params"]["run_status"].as_str() == Some(expected_run_status) {
+                        status_seen = true;
+                    }
+                    notifications.push(message);
+                }
+                Some(_) => notifications.push(message),
+                None => {}
+            }
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|_elapsed| {
+        format!(
+            "timed out waiting for refresh completion log and run_status {expected_run_status:?} (log_seen={log_seen}, status_seen={status_seen})"
+        )
+    })??;
+    Ok(notifications)
+}
+
+/// Send one `textDocument/diagnostic` pull for `uri` and read the response,
+/// answering any `window/workDoneProgress/create` request arriving in
+/// between. Returns the response `result` payload (the diagnostic report
+/// object).
+async fn framed_pull_document_report<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    id: u64,
+    uri: &str,
+) -> Result<serde_json::Value, String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    write_lsp_message(
+        writer,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "textDocument/diagnostic",
+            "params": { "textDocument": { "uri": uri } }
+        }),
+    )
+    .await?;
+    loop {
+        let message = read_lsp_message(reader).await?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("window/workDoneProgress/create")
+        {
+            let request_id = message
+                .get("id")
+                .cloned()
+                .ok_or_else(|| "workDoneProgress/create request carried no id".to_string())?;
+            write_lsp_message(
+                writer,
+                serde_json::json!({"jsonrpc": "2.0", "id": request_id, "result": null}),
+            )
+            .await?;
+            continue;
+        }
+        if message.get("method").is_none()
+            && message.get("id").and_then(serde_json::Value::as_u64) == Some(id)
+        {
+            if message.get("error").is_some() {
+                return Err(format!("document diagnostic pull failed: {message}"));
+            }
+            return Ok(message["result"].clone());
+        }
+    }
+}
+
+#[test]
+fn framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save() -> Result<(), String> {
+    // Issue #1622 criterion 6 (RIPR-SPEC-0129): the saved-workspace journey
+    // over the real tower-lsp-server framing — initialize, didOpen, didChange
+    // (dirty), didSave, pull diagnostic, hover, explicit refresh, shutdown,
+    // exit — against a real fixture workspace. The dirty-buffer and save
+    // semantics themselves are pinned in-process by the quarantine tests
+    // above; this session proves the wire route chains them without ever
+    // presenting the unsaved buffer as the current diagnostics authority.
+    work_done_progress_runtime()?.block_on(async {
+        // A writable copy of the boundary_gap fixture with its own git HEAD,
+        // same as the component-degradation wire test: the on-disk fixture
+        // resolves `HEAD` through the enclosing repository, which a temp
+        // copy does not have.
+        let temp = unique_lsp_test_root("saved-workspace-e2e")?;
+        let root = temp.path().join("workspace");
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+        copy_fixture_tree(&fixture, &root)?;
+        run_lsp_scope_git(&root, &["init", "-q"])?;
+        run_lsp_scope_git(&root, &["add", "-A"])?;
+        run_lsp_scope_git(
+            &root,
+            &[
+                "-c",
+                "user.email=ripr-test@example.com",
+                "-c",
+                "user.name=ripr-test",
+                "commit",
+                "-qm",
+                "fixture baseline",
+            ],
+        )?;
+        let lib_path = root.join("src/lib.rs");
+        let saved_text = std::fs::read_to_string(&lib_path)
+            .map_err(|err| format!("read fixture lib.rs failed: {err}"))?;
+        let lib_uri = file_uri_for_path(&lib_path)?;
+        let text_uri = lib_uri.as_str().to_string();
+
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (mut client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+
+        // initialize: negotiate the pull-diagnostic route and work-done
+        // progress against the real workspace root.
+        let root_uri = file_uri_for_path(&root)?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD",
+                        "checkMode": "instant",
+                        "diagnosticProfile": "full"
+                    },
+                    "capabilities": {
+                        "textDocument": {
+                            "diagnostic": {"dynamicRegistration": false}
+                        },
+                        "window": {"workDoneProgress": true}
+                    }
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        if initialize.get("error").is_some() {
+            return Err(format!("initialize failed: {initialize}"));
+        }
+        if initialize["result"]["capabilities"]["diagnosticProvider"].is_null() {
+            return Err(format!(
+                "the pull-diagnostic route must be negotiated: {initialize}"
+            ));
+        }
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await?;
+
+        // didOpen with the persisted bytes: the interactive refresh analyzes
+        // the saved state and discloses its deferred seam inventory instead
+        // of presenting a partial run as complete.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": text_uri,
+                        "languageId": "rust",
+                        "version": 1,
+                        "text": saved_text
+                    }
+                }
+            }),
+        )
+        .await?;
+        let opened = read_lsp_notifications_until_refresh_settled(
+            &mut client_read,
+            &mut client_write,
+            "ripr analysis refresh completed in",
+            "seams_deferred",
+        )
+        .await?;
+        if !analysis_status_params(&opened)
+            .iter()
+            .any(|status| status["run_status"].as_str() == Some("seams_deferred"))
+        {
+            return Err(format!(
+                "the didOpen refresh must disclose seams_deferred: {opened:?}"
+            ));
+        }
+
+        // Pull against the analyzed saved content: the buffer matches it, so
+        // the document is served under a current (non-quarantined) result id.
+        // The item set is honestly empty here — the diff is clean and the
+        // seam inventory is deferred — and the status above discloses that.
+        let baseline =
+            framed_pull_document_report(&mut client_read, &mut client_write, 2, &text_uri).await?;
+        let (kind, _) = report_kind_and_items(&baseline);
+        if kind != Some("full") {
+            return Err(format!("expected a full baseline report: {baseline}"));
+        }
+        let baseline_id = baseline
+            .get("resultId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("baseline report carried no resultId: {baseline}"))?;
+        if baseline_id.ends_with(":quarantined") {
+            return Err(format!(
+                "a buffer matching the analyzed saved content must be served: {baseline}"
+            ));
+        }
+
+        // didChange: the buffer diverges from the analyzed saved content.
+        let dirty_text = format!("{saved_text}// unsaved buffer note\n");
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": { "uri": text_uri, "version": 2 },
+                    "contentChanges": [{ "text": dirty_text }]
+                }
+            }),
+        )
+        .await?;
+
+        // Pull withdraws the document's line-local diagnostics under a
+        // distinct quarantined result id: the unsaved buffer is never
+        // presented as the current diagnostics authority.
+        let mut next_id = 3_u64;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let report = framed_pull_document_report(
+                    &mut client_read,
+                    &mut client_write,
+                    next_id,
+                    &text_uri,
+                )
+                .await?;
+                next_id += 1;
+                let (kind, items) = report_kind_and_items(&report);
+                let quarantined = report
+                    .get("resultId")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|id| id.ends_with(":quarantined"));
+                if kind == Some("full") && items == 0 && quarantined {
+                    return Ok::<(), String>(());
+                }
+            }
+        })
+        .await
+        .map_err(|_elapsed| {
+            "timed out waiting for the dirty document's withdrawn report".to_string()
+        })??;
+
+        // didSave: the client persists the buffer (the writable fixture copy
+        // mirrors it to disk, as the in-process quarantine fixtures do) and
+        // the save schedules an interactive refresh.
+        std::fs::write(&lib_path, &dirty_text)
+            .map_err(|err| format!("mirror save failed: {err}"))?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "text": dirty_text
+                }
+            }),
+        )
+        .await?;
+        let saved = read_lsp_notifications_until_refresh_settled(
+            &mut client_read,
+            &mut client_write,
+            "ripr analysis refresh completed in",
+            "seams_deferred",
+        )
+        .await?;
+        if !analysis_status_params(&saved)
+            .iter()
+            .any(|status| status["run_status"].as_str() == Some("seams_deferred"))
+        {
+            return Err(format!(
+                "the didSave refresh must disclose seams_deferred: {saved:?}"
+            ));
+        }
+
+        // The saved content is analyzed: the withdrawal lifts and pull
+        // serves the document under a current result id again — the
+        // saved-state set plus the disclosed seams_deferred limitation.
+        let re_served =
+            framed_pull_document_report(&mut client_read, &mut client_write, next_id, &text_uri)
+                .await?;
+        next_id += 1;
+        let (kind, _) = report_kind_and_items(&re_served);
+        if kind != Some("full") {
+            return Err(format!("expected a full re-served report: {re_served}"));
+        }
+        let re_served_id = re_served
+            .get("resultId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("re-served report carried no resultId: {re_served}"))?;
+        if re_served_id.ends_with(":quarantined") {
+            return Err(format!(
+                "the analyzed save must lift the withdrawal: {re_served}"
+            ));
+        }
+
+        // hover responds — content or an honest status payload.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": next_id,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "position": { "line": 1, "character": 4 }
+                }
+            }),
+        )
+        .await?;
+        let hover = read_lsp_response(&mut client_read, next_id).await?;
+        next_id += 1;
+        let hover_value = hover["result"]["contents"]["value"]
+            .as_str()
+            .ok_or_else(|| format!("expected hover markdown value: {hover}"))?;
+        if hover_value.is_empty() {
+            return Err("hover must answer with content or an honest status".to_string());
+        }
+
+        // Explicit refresh: the full scope runs the deferred seam inventory
+        // and the completed run is disclosed as full.
+        let refresh_notifications =
+            run_wire_refresh_collecting(&mut client_read, &mut client_write, next_id).await?;
+        next_id += 1;
+        let statuses = analysis_status_params(&refresh_notifications);
+        if statuses
+            .last()
+            .and_then(|status| status["run_status"].as_str())
+            != Some("full")
+        {
+            return Err(format!(
+                "the explicit refresh must disclose a full run: {statuses:?}"
+            ));
+        }
+
+        // Pull now delivers a current diagnostic for the saved content.
+        let served =
+            framed_pull_document_report(&mut client_read, &mut client_write, next_id, &text_uri)
+                .await?;
+        next_id += 1;
+        let (kind, items) = report_kind_and_items(&served);
+        if kind != Some("full") || items == 0 {
+            return Err(format!(
+                "expected current diagnostics for the saved content: {served}"
+            ));
+        }
+        if served
+            .get("resultId")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| id.ends_with(":quarantined"))
+        {
+            return Err(format!("served report must not be quarantined: {served}"));
+        }
+        let served_items = served
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("expected report items: {served}"))?;
+        if !served_items.iter().all(|item| {
+            item.get("message")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|message| !message.is_empty())
+                && item.get("range").is_some()
+        }) {
+            return Err(format!(
+                "served diagnostics must carry a message and a range: {served}"
+            ));
+        }
+
+        // shutdown → exit completes cleanly.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": next_id,
+                "method": "shutdown",
+                "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, next_id).await?;
+        if shutdown.get("error").is_some() {
+            return Err(format!("shutdown failed: {shutdown}"));
+        }
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        drop(temp);
+        Ok(())
+    })
+}
+
 // ---- RIPR-SPEC-0137: redacted protocol tracing ($/setTrace, $/logTrace) ----
 
 /// `$ /logTrace` params collected from framed messages (method key without a
