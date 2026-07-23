@@ -153,6 +153,18 @@ real handlers. The capability is advertised as `capability_only`.
 - A VS Code client that advertises `experimental.riprEditor` with
   `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
   code actions containing `ripr.copyContext` commands.
+- Push and pull diagnostic delivery produce the same code-action
+  availability for the same negotiated client capabilities (#1628
+  residual): a client holding the pulled `textDocument/diagnostic` set and
+  a client holding the pushed `textDocument/publishDiagnostics` set receive
+  the same action availability (titles, kinds, commands, disabled states,
+  and the versioned `data.action_id` / `data.disabled_reason` identities)
+  from `textDocument/codeAction`, because both transports serve clones of
+  the same committed `Diagnostic` values through the stored delivery
+  selection (#1973). Parity holds within each negotiated profile; the
+  omit-vs-disabled difference (#1776/#1892) lives between profiles, not
+  between transports. A divergence is a transport defect, not a profile
+  difference.
 - A headless agent client sees `experimental.riprAgent` advertised with
   `supported_requests: []` and `implementation_state: "capability_only"`
   until #1602/#1603 land real handlers.
@@ -178,6 +190,12 @@ real handlers. The capability is advertised as `capability_only`.
   under `context.only`, and the named suppression reasons (`stale_snapshot`,
   `verification_route_unavailable`, `receipt_route_unavailable`,
   `preview_or_static_limitation`).
+- `tests.rs::push_and_pull_delivery_yield_identical_code_action_availability`
+  verifies push/pull action-availability parity end-to-end (#1628
+  residual): two in-process sessions per negotiated profile (generic,
+  VS Code, disabled-support) must deliver identical diagnostics and produce
+  identical ordered action-availability signatures, with anti-vacuity
+  guards against empty delivered sets and a withheld snapshot.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 

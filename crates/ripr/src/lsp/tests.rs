@@ -4824,6 +4824,438 @@ fn seam_code_actions_cross_language_unresolved_yields_disabled_preview_limitatio
     Ok(())
 }
 
+/// Negotiated-profile legs for the push/pull action-availability parity
+/// test (#1628 residual, RIPR-SPEC-0129): a real client session is either
+/// push or pull, so parity is checked cross-session with the same
+/// `riprEditor` negotiation on both transports.
+#[derive(Clone, Copy)]
+enum PushPullParityProfile {
+    /// Layer 1 baseline: no `riprEditor` block, so the omit policy (#1776)
+    /// strips every client-command action on both transports.
+    Generic,
+    /// The VS Code command list parsed from `client.ts` (#1776).
+    VsCode,
+    /// The VS Code list minus one command plus `CodeAction.disabled`
+    /// support: the missing command arrives inert (#1892).
+    DisabledSupport,
+}
+
+impl PushPullParityProfile {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::VsCode => "vscode",
+            Self::DisabledSupport => "disabled-support",
+        }
+    }
+}
+
+/// The initialize negotiation for one parity session: the profile's
+/// `riprEditor` block (when any), plus the pull capability for pull
+/// sessions. The root URI selects the temp workspace root so the
+/// health/root gate admits the committed snapshot.
+fn push_pull_parity_initialize_params(
+    root: &TempLspRoot,
+    profile: PushPullParityProfile,
+    pull: bool,
+) -> Result<InitializeParams, String> {
+    let mut capabilities = serde_json::json!({});
+    if pull {
+        capabilities["textDocument"]["diagnostic"] = serde_json::json!({});
+        capabilities["window"]["workDoneProgress"] = serde_json::json!(true);
+    }
+    let mut commands = None;
+    match profile {
+        PushPullParityProfile::Generic => {}
+        PushPullParityProfile::VsCode => {
+            commands = Some(vscode_advertised_client_commands()?);
+        }
+        PushPullParityProfile::DisabledSupport => {
+            capabilities["textDocument"]["codeAction"]["disabledSupport"] = serde_json::json!(true);
+            let advertised = vscode_advertised_client_commands()?;
+            let reduced = advertised
+                .iter()
+                .filter(|command| command.as_str() != COPY_CONTEXT_COMMAND)
+                .cloned()
+                .collect::<Vec<_>>();
+            if reduced.len() + 1 != advertised.len() {
+                return Err(format!(
+                    "expected {COPY_CONTEXT_COMMAND} in the VS Code advertisement"
+                ));
+            }
+            commands = Some(reduced);
+        }
+    }
+    if let Some(commands) = commands {
+        capabilities["experimental"] = serde_json::json!({
+            "riprEditor": {
+                "version": "0.10.0",
+                "commands": commands,
+                "guardedTestEdit": false
+            }
+        });
+    }
+    let negotiated: InitializeParams = serde_json::from_value(serde_json::json!({
+        "capabilities": capabilities
+    }))
+    .map_err(|err| format!("parity fixture params must parse: {err}"))?;
+    let mut params = initialize_params(None, Some(file_uri_for_path(root.path())?));
+    params.capabilities = negotiated.capabilities;
+    Ok(params)
+}
+
+/// Commit the gap parity fixture to one session and open the health gate
+/// exactly as a published refresh would. The diagnostic is marked
+/// `headline_eligible` (the producer-owned signal the delivery budget
+/// reads, #1973) so both transports serve it; an empty served set would
+/// make the parity comparison vacuous.
+fn commit_push_pull_parity_fixture(
+    backend: &Backend,
+    root: &TempLspRoot,
+) -> Result<(tower_lsp_server::ls_types::Uri, u32), String> {
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    diagnostic
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "missing diagnostic data".to_string())?
+        .insert("headline_eligible".to_string(), serde_json::json!(true));
+    let line = diagnostic.range.start.line;
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+    backend
+        .refresh_plan(WorkspaceDiagnostics {
+            snapshot,
+            batches: vec![DiagnosticBatch {
+                uri: uri.clone(),
+                diagnostics: vec![diagnostic],
+            }],
+        })
+        .ok_or_else(|| "expected committed parity snapshot".to_string())?;
+    // Without a recorded success the code-action handler withholds the
+    // snapshot (health gate) and both transports degrade to the
+    // refresh-only fallback — parity would pass vacuously.
+    let request = RefreshRequest {
+        generation: 1,
+        authority_epoch: 0,
+        input_identity: LspAnalysisInputIdentity::from_refresh_inputs(
+            root.path().to_path_buf(),
+            1,
+            &LspAnalysisConfig::default(),
+        ),
+        git_inputs: crate::lsp::git_inputs::ResolvedGitInputs::resolve(root.path(), None),
+        root: root.path().to_path_buf(),
+        config: LspAnalysisConfig::default(),
+        workspace_revision: 1,
+        scope: RefreshScope::Interactive,
+        reason: RefreshReason::DidSave,
+        cancellation: AnalysisCancellationToken::new(),
+    };
+    backend.record_health_outcome(&request, RefreshAttemptOutcome::Published);
+    Ok((uri, line))
+}
+
+/// The ordered availability signature of one code-action response (#1628
+/// residual): per action, title, kind, command id (or `none`), the human
+/// disabled reason (or `none`), the versioned `data.action_id`, and the
+/// machine `data.disabled_reason` (or `none`). `data.action_id` fingerprints
+/// the action class, addressed identity, command id, and action name —
+/// never the session root — so identical delivered sets produce identical
+/// signatures across two sessions.
+fn action_availability_signature(actions: &[CodeActionOrCommand]) -> Result<Vec<String>, String> {
+    let mut signature = Vec::new();
+    for action in code_action_literals(actions)? {
+        let kind = action
+            .kind
+            .as_ref()
+            .ok_or_else(|| format!("action {} must carry a kind", action.title))?;
+        let command = action
+            .command
+            .as_ref()
+            .map(|command| command.command.as_str())
+            .unwrap_or("none");
+        let disabled = action
+            .disabled
+            .as_ref()
+            .map(|disabled| disabled.reason.as_str())
+            .unwrap_or("none");
+        let data = action
+            .data
+            .as_ref()
+            .ok_or_else(|| format!("action {} must carry data", action.title))?;
+        let action_id = data["action_id"]
+            .as_str()
+            .ok_or_else(|| format!("action {} must carry a string action_id", action.title))?;
+        let machine_reason = data["disabled_reason"].as_str().unwrap_or("none");
+        signature.push(format!(
+            "{}|{}|{command}|{disabled}|{action_id}|{machine_reason}",
+            action.title,
+            kind.as_str()
+        ));
+    }
+    Ok(signature)
+}
+
+/// Anti-vacuity guard for one parity leg (#1628 residual): the health/root
+/// gate must have admitted the committed snapshot — the refresh action's
+/// data names the live snapshot input identity only when it did — so a gate
+/// regression cannot make both transports agree on the refresh-only
+/// fallback and pass vacuously.
+fn assert_parity_snapshot_admitted(
+    actions: &[CodeActionOrCommand],
+    leg: &str,
+    transport: &str,
+) -> Result<(), String> {
+    let literals = code_action_literals(actions)?;
+    let refresh = literals
+        .iter()
+        .find(|action| {
+            action
+                .kind
+                .as_ref()
+                .is_some_and(|kind| kind.as_str() == "source.ripr.refresh")
+        })
+        .ok_or_else(|| format!("{leg}/{transport}: refresh action missing"))?;
+    let input_identity = refresh
+        .data
+        .as_ref()
+        .and_then(|data| data["input_identity"].as_str())
+        .ok_or_else(|| {
+            format!(
+                "{leg}/{transport}: refresh action carries no snapshot input identity; the health/root gate withheld the snapshot"
+            )
+        })?;
+    if !input_identity.starts_with("input:") {
+        return Err(format!(
+            "{leg}/{transport}: unexpected input identity {input_identity}"
+        ));
+    }
+    Ok(())
+}
+
+/// The enhanced-profile legs must surface diagnostic-addressing gap actions
+/// (more than the refresh fallback) so the parity comparison covers real
+/// availability, not the empty intersection.
+fn assert_gap_actions_present(actions: &[CodeActionOrCommand], leg: &str) -> Result<(), String> {
+    let literals = code_action_literals(actions)?;
+    if literals.len() < 2 {
+        return Err(format!(
+            "{leg}: expected more than the refresh action for an enhanced profile"
+        ));
+    }
+    let gap_actions = literals
+        .iter()
+        .filter(|action| {
+            action
+                .data
+                .as_ref()
+                .and_then(|data| data["gap_id"].as_str())
+                == Some("gap:py:pricing")
+        })
+        .count();
+    if gap_actions == 0 {
+        return Err(format!(
+            "{leg}: no action addresses the gap diagnostic; parity would be vacuous"
+        ));
+    }
+    Ok(())
+}
+
+async fn run_push_pull_parity_leg(profile: PushPullParityProfile) -> Result<(), String> {
+    let leg = profile.label();
+
+    // Pull session: the pulled full-report items are the delivered set.
+    let pull_root = unique_lsp_test_root(&format!("push-pull-parity-{leg}-pull"))?;
+    let (pull_service, _pull_socket) =
+        LspService::new(|client| Backend::new(client, pull_root.path().to_path_buf()));
+    let pull_backend = pull_service.inner();
+    pull_backend
+        .initialize(push_pull_parity_initialize_params(
+            &pull_root, profile, true,
+        )?)
+        .await
+        .map_err(|err| format!("{leg}: pull initialize failed: {err}"))?;
+    let (pull_uri, line) = commit_push_pull_parity_fixture(pull_backend, &pull_root)?;
+    let pull_report = pull_backend
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier {
+                uri: pull_uri.clone(),
+            },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await
+        .map_err(|err| format!("{leg}: document pull failed: {err}"))?;
+    let pull_json = serde_json::to_value(pull_report)
+        .map_err(|err| format!("{leg}: serialize pull report failed: {err}"))?;
+    if pull_json.get("kind").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!("{leg}: expected full pull report: {pull_json}"));
+    }
+    let pull_items = pull_json
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("{leg}: full pull report carried no items: {pull_json}"))?;
+    if pull_items.is_empty() {
+        return Err(format!(
+            "{leg}: pull delivered an empty set; parity would be vacuous"
+        ));
+    }
+    let pull_diagnostics: Vec<Diagnostic> =
+        serde_json::from_value(serde_json::Value::Array(pull_items.clone()))
+            .map_err(|err| format!("{leg}: pulled items must decode as diagnostics: {err}"))?;
+
+    // Push session: the delivered set is exactly what the publish loop
+    // sends — the committed snapshot's stored-selection set for the URI
+    // (the same computation the module-private
+    // `committed_served_diagnostics_for_uri` runs, re-implemented here).
+    let push_root = unique_lsp_test_root(&format!("push-pull-parity-{leg}-push"))?;
+    let (push_service, _push_socket) =
+        LspService::new(|client| Backend::new(client, push_root.path().to_path_buf()));
+    let push_backend = push_service.inner();
+    push_backend
+        .initialize(push_pull_parity_initialize_params(
+            &push_root, profile, false,
+        )?)
+        .await
+        .map_err(|err| format!("{leg}: push initialize failed: {err}"))?;
+    let (push_uri, push_line) = commit_push_pull_parity_fixture(push_backend, &push_root)?;
+    let push_snapshot = push_backend
+        .latest_analysis_snapshot()
+        .ok_or_else(|| format!("{leg}: push session committed no snapshot"))?;
+    let push_diagnostics = push_snapshot.served_diagnostics_for_uri(&push_uri);
+    if push_diagnostics.is_empty() {
+        return Err(format!(
+            "{leg}: push delivered an empty set; parity would be vacuous"
+        ));
+    }
+    let push_items = push_diagnostics
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| format!("{leg}: serialize push set failed: {err}"))?;
+
+    // Precondition (anti-vacuous): the two transports deliver identical
+    // diagnostics — including the producer-owned `data` blocks the action
+    // constructors resolve against. Wire-level membership parity is pinned
+    // separately (#1973); this precondition keeps the action comparison
+    // below honest about comparing the same inputs.
+    if *pull_items != push_items {
+        return Err(format!(
+            "{leg}: push and pull delivered different diagnostics:\npull={}\npush={}",
+            pretty_json(&serde_json::Value::Array(pull_items.clone())),
+            pretty_json(&serde_json::Value::Array(push_items.clone()))
+        ));
+    }
+
+    // Action availability per transport, through the real handler.
+    let pull_actions = pull_backend
+        .code_action(code_action_params_for(pull_uri, line, pull_diagnostics)?)
+        .await
+        .map_err(|err| format!("{leg}: pull code_action failed: {err}"))?
+        .ok_or_else(|| format!("{leg}: pull code_action returned no response"))?;
+    let push_actions = push_backend
+        .code_action(code_action_params_for(
+            push_uri,
+            push_line,
+            push_diagnostics,
+        )?)
+        .await
+        .map_err(|err| format!("{leg}: push code_action failed: {err}"))?
+        .ok_or_else(|| format!("{leg}: push code_action returned no response"))?;
+    let pull_signature = action_availability_signature(&pull_actions)?;
+    let push_signature = action_availability_signature(&push_actions)?;
+    if pull_signature != push_signature {
+        return Err(format!(
+            "{leg}: push/pull action availability diverged:\npull={pull_signature:?}\npush={push_signature:?}"
+        ));
+    }
+    assert_parity_snapshot_admitted(&pull_actions, leg, "pull")?;
+    assert_parity_snapshot_admitted(&push_actions, leg, "push")?;
+
+    match profile {
+        PushPullParityProfile::Generic => {
+            // Omit policy (#1776): only server-executed (or command-less)
+            // actions survive on both transports.
+            for action in code_action_literals(&pull_actions)? {
+                if let Some(command) = &action.command
+                    && !SERVER_EXECUTED_COMMANDS.contains(&command.command.as_str())
+                {
+                    return Err(format!(
+                        "{leg}: unenhanced client received client command {}",
+                        command.command
+                    ));
+                }
+            }
+        }
+        PushPullParityProfile::VsCode => {
+            assert_gap_actions_present(&pull_actions, leg)?;
+        }
+        PushPullParityProfile::DisabledSupport => {
+            assert_gap_actions_present(&pull_actions, leg)?;
+            // The dropped command arrives inert with the machine reason
+            // named (#1892) on both transports.
+            let disabled_missing = code_action_literals(&pull_actions)?
+                .iter()
+                .filter(|action| {
+                    action.disabled.is_some()
+                        && action
+                            .data
+                            .as_ref()
+                            .and_then(|data| data["disabled_reason"].as_str())
+                            == Some("client_capability_missing")
+                })
+                .count();
+            if disabled_missing == 0 {
+                return Err(format!(
+                    "{leg}: expected inert actions naming client_capability_missing"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn push_and_pull_delivery_yield_identical_code_action_availability() -> Result<(), String> {
+    // Push/pull action-availability parity (#1628 residual,
+    // RIPR-SPEC-0129): both transports serve clones of the same committed
+    // `Diagnostic` values through the stored delivery selection (#1973), so
+    // for the same negotiated client capabilities the push-held and
+    // pull-held diagnostic sets must produce identical
+    // `textDocument/codeAction` availability. A real client is either push
+    // or pull, so each leg runs two in-process sessions with the same
+    // `riprEditor` negotiation and compares the ordered availability
+    // signature (title, kind, command, disabled state, `data.action_id`,
+    // `data.disabled_reason`). Parity holds within each profile; the
+    // omit-vs-disabled difference (#1776/#1892) lives between profiles, not
+    // between transports. A divergence here is a transport bug, not a
+    // profile difference.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        for profile in [
+            PushPullParityProfile::Generic,
+            PushPullParityProfile::VsCode,
+            PushPullParityProfile::DisabledSupport,
+        ] {
+            run_push_pull_parity_leg(profile).await?;
+        }
+        Ok(())
+    })
+}
+
 #[test]
 fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Result<(), String> {
     let mut seam = sample_classified_seam();
