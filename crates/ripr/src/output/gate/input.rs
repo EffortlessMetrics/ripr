@@ -319,10 +319,7 @@ fn mutation_confidence_effect(outcome: Option<&str>) -> &'static str {
     }
 }
 fn is_runtime_gap_outcome(outcome: &str) -> bool {
-    outcome == "missed"
-        || outcome == "not_caught"
-        || outcome == "uncaught"
-        || outcome == format!("{}{}", "sur", "vived")
+    outcome == "missed" || outcome == "not_caught" || outcome == "uncaught" || outcome == "survived" // ripr-allow: static-language: runtime mutation-calibration import vocabulary, not static output
 }
 pub(super) fn baseline_index_from_value(value: &Value) -> BaselineIndex {
     let mut index = BaselineIndex::default();

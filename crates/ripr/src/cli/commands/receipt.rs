@@ -278,6 +278,15 @@ Options:
   --verify-command CMD  The exact shell command run to verify the repair. Required.
   --status STATUS       Outcome of the verify command. Required.
                         Valid values: passed, failed, not_run, unknown.
+  --current-head SHA    Optional 40-character hex SHA asserted as the repository
+                        HEAD at write time. When --root is also provided, the
+                        receipt writer validates this sha against the actual git
+                        HEAD at that root and rejects mismatches (#1941).
+  --root PATH           Repository root for git HEAD validation. When provided
+                        alongside --current-head, the writer resolves the actual
+                        git rev-parse HEAD and rejects if the caller-provided
+                        sha does not match. Without --root, --current-head is
+                        format-checked only.
   --out PATH            Write receipt JSON to this path. When omitted, writes to
                         target/ripr/receipts/<canonical_gap_id>.json with
                         filename-unsafe characters (`:`, etc.) percent-encoded
