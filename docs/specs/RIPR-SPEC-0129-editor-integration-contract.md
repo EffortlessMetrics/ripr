@@ -1,6 +1,13 @@
 # RIPR-SPEC-0129: Editor integration contract and support matrix
 
-Status: proposed
+Status: accepted
+
+Ratified with the following explicitly pending items, which do not block
+acceptance of the contract itself: real install-to-repair proof
+(#1579/#1630), the first real `riprAgent` handlers (#1602/#1603),
+workspace-trust enforcement (#1623), and managed server provisioning
+(#1624). Support tiers are unchanged — every layer stays `preview` or
+`reserved`, and no tier promotion rests on synthetic fixtures alone.
 
 This specification defines the three-layer editor integration contract and
 the support matrix that ratifies which client classes ripr supports and
@@ -254,6 +261,12 @@ does not advertise fails the parity tests.
   workspace-folder support. Their deeper semantics are owned by the
   linked child issues (#1625 saved-workspace sync, #1626 positions,
   RIPR-SPEC-0139 workspace roots), not re-specified here.
+- `tests.rs::framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save`
+  is the saved-workspace end-to-end fixture (#1622): one framed session
+  chains initialize → didOpen → didChange (dirty) → didSave → pull
+  diagnostic-or-disclosed-limitation → hover → refresh → shutdown/exit
+  against a real fixture workspace, proving the wire route never presents
+  the unsaved buffer as the current diagnostics authority.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
