@@ -19,6 +19,10 @@
 # dependency only in the scoped parser PR. The ADR's original `ruff_python_parser`
 # pick was superseded after discovering that crate is `publish = false` inside
 # the astral-sh/ruff workspace and unavailable on crates.io.
+# rayon|production_parallelism|analysis|Issue #2300 approves data-parallel
+# ra_ap_syntax parsing in the facts index build; the parallel collect preserves
+# input order and byte-identical output. Add the Cargo dependency only in the
+# scoped parallelism PR.
 
 Cargo.lock|rust_workspace_lockfile|rust|Pinned Cargo dependency graph.
 Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.

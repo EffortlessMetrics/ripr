@@ -10,6 +10,12 @@ name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
   "crates/ripr/src/analysis/facts/build.rs::tests::build_index_from_loaded_files_misses_when_content_changes",
+  "crates/ripr/src/analysis/facts/build.rs::tests::build_index_preserves_input_order_across_parallel_batches",
+  "crates/ripr/src/analysis/facts/build.rs::tests::build_index_is_byte_identical_across_repeated_parallel_runs",
+  "crates/ripr/src/analysis/facts/build.rs::tests::build_index_reports_first_error_in_input_order",
+  "crates/ripr/src/analysis/facts/build.rs::tests::build_index_observes_cancelled_token_before_parsing",
+  "crates/ripr/src/analysis/facts/build.rs::tests::cached_build_reports_first_error_in_input_order",
+  "crates/ripr/src/analysis/facts/build.rs::tests::cached_build_matches_uncached_index_for_same_sources",
   "crates/ripr/src/analysis/seam_cache.rs::tests::given_file_content_changes_when_file_facts_load_then_miss_is_returned",
   "crates/ripr/src/analysis/seam_cache.rs::tests::workspace_manifest_and_lockfile_changes_change_cache_identity",
   "crates/ripr/src/analysis/classify/flow.rs",
