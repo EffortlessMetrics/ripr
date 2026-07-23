@@ -133,6 +133,11 @@ pub(super) struct GateSummary {
     pub(super) unknown_confidence: usize,
 }
 
+/// Decision-payload value recorded when a baseline match succeeded only via
+/// the legacy `path:line:static_class` fallback selector (issue #1934,
+/// RIPR-SPEC-0014 § Baseline Comparison).
+pub(super) const BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS: &str = "legacy_path_line_class";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct GateDecision {
     pub(super) id: String,
@@ -155,6 +160,11 @@ pub(super) struct GateDecision {
     /// Always `true` for diff-scoped modes (no baseline).
     /// Used when computing `new_unsuppressed.count` in baseline mode.
     pub(super) is_baseline_new: bool,
+    /// `Some("legacy_path_line_class")` when the baseline matched only via
+    /// the legacy path/line/static_class fallback selector; `None` for
+    /// canonical identity matches and for baseline-new candidates. Rendered
+    /// only when `Some`, so non-fallback decisions stay byte-identical.
+    pub(super) baseline_match_kind: Option<String>,
     pub(super) delta_attribution: Option<DeltaAttribution>,
     pub(super) causal_delta: Option<CanonicalDelta>,
 }

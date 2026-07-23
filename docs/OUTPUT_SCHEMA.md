@@ -7690,6 +7690,14 @@ Field contract:
 - `decisions[].policy.baseline_identity` - identity used for baseline
   comparison. Matching prefers `canonical_gap_id` before legacy seam, source,
   ID, dedupe-key, and path/line/static-class fallback identities.
+- `decisions[].baseline_match_kind` - optional disclosure recorded when the
+  baseline match happened only through the legacy path/line/static-class
+  fallback identity. The sole allowed value is `"legacy_path_line_class"`.
+  The field is omitted for canonical identity matches and for baseline-new
+  candidates, so their rendered decisions stay byte-identical. During the
+  compatibility window a fallback-only match still suppresses blocking but
+  also produces a report-level warning naming the candidate and the matched
+  legacy identity.
 - `decisions[].evidence` - static evidence and optional calibration confidence
   effects used for the candidate.
 - `decisions[].repair_route` - uniform failure-time route object, present on

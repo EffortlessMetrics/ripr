@@ -456,6 +456,148 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
 }
 
 #[test]
+fn gate_baseline_fallback_only_match_discloses_warning_and_match_kind() -> Result<(), String> {
+    let dir = temp_dir("gate-baseline-fallback-only")?;
+    let baseline = write_temp_json(
+        &dir,
+        "baseline.json",
+        r#"{
+              "schema_version": "0.1",
+              "kind": "gate_baseline",
+              "entries": [
+                {
+                  "identity": {
+                    "canonical_gap_id": "gap:stale-reviewed-debt",
+                    "fallback": "src/pricing.rs:88:weakly_gripped"
+                  }
+                }
+              ]
+            }"#,
+    )?;
+    let mut input = fixture_input(GateMode::BaselineCheck);
+    input.baseline = Some(baseline);
+
+    let report = build_gate_decision_report(&input)?;
+    let rendered = render_gate_decision_json(&report)?;
+    let value: Value = serde_json::from_str(&rendered)
+        .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
+    let markdown = render_gate_decision_markdown(&report);
+
+    // Disclose-first (issue #1934): the fallback-only match still suppresses
+    // blocking during the compatibility window, but it cannot stay silent.
+    assert_eq!(report.status, "advisory");
+    assert_eq!(report.summary.blocking, 0);
+    assert!(!report.decisions[0].is_baseline_new);
+    assert_eq!(
+        report.decisions[0].baseline_match_kind.as_deref(),
+        Some("legacy_path_line_class")
+    );
+    assert_eq!(
+        value["decisions"][0]["baseline_match_kind"],
+        "legacy_path_line_class"
+    );
+    let warning = report
+        .warnings
+        .iter()
+        .find(|warning| {
+            warning.contains("matched baseline evidence by fallback path/line/static_class")
+        })
+        .ok_or_else(|| {
+            format!(
+                "expected a fallback-match disclosure warning, got {:?}",
+                report.warnings
+            )
+        })?;
+    assert!(
+        warning.contains("ripr-review-8f7fa8644fd12280"),
+        "warning must name the candidate, got {warning:?}"
+    );
+    assert!(
+        warning.contains("src/pricing.rs:88:weakly_gripped"),
+        "warning must name the matched legacy identity, got {warning:?}"
+    );
+    assert!(
+        markdown.contains("matched baseline evidence by fallback path/line/static_class"),
+        "fallback disclosure must be visible in human output"
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_baseline_canonical_match_has_no_fallback_disclosure() -> Result<(), String> {
+    let dir = temp_dir("gate-baseline-canonical-precedence")?;
+    // The baseline entry carries both the canonical identity and the legacy
+    // fallback selector; the canonical hit must win and stay silent.
+    let baseline = write_temp_json(
+        &dir,
+        "baseline.json",
+        r#"{
+              "schema_version": "0.1",
+              "kind": "gate_baseline",
+              "entries": [
+                {
+                  "identity": {
+                    "canonical_gap_id": "gap:dedf923a13a00573",
+                    "fallback": "src/pricing.rs:88:weakly_gripped"
+                  }
+                }
+              ]
+            }"#,
+    )?;
+    let mut input = fixture_input(GateMode::BaselineCheck);
+    input.baseline = Some(baseline);
+
+    let report = build_gate_decision_report(&input)?;
+    let rendered = render_gate_decision_json(&report)?;
+
+    assert_eq!(report.status, "advisory");
+    assert!(!report.decisions[0].is_baseline_new);
+    assert_eq!(report.decisions[0].baseline_match_kind, None);
+    assert!(
+        report.warnings.is_empty(),
+        "canonical match must not warn, got {:?}",
+        report.warnings
+    );
+    assert!(
+        !rendered.contains("\"baseline_match_kind\""),
+        "canonical-match decisions must render byte-identical (no baseline_match_kind key)"
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_baseline_new_candidate_has_no_fallback_disclosure() -> Result<(), String> {
+    let dir = temp_dir("gate-baseline-new-no-disclosure")?;
+    let baseline = write_temp_json(
+        &dir,
+        "baseline.json",
+        r#"{"schema_version": "0.1", "kind": "gate_baseline", "entries": []}"#,
+    )?;
+    let mut input = fixture_input(GateMode::BaselineCheck);
+    input.baseline = Some(baseline);
+
+    let report = build_gate_decision_report(&input)?;
+    let rendered = render_gate_decision_json(&report)?;
+
+    assert_eq!(report.status, "blocked");
+    assert!(report.decisions[0].is_baseline_new);
+    assert_eq!(report.decisions[0].baseline_match_kind, None);
+    assert!(
+        report.warnings.is_empty(),
+        "baseline-new candidate must not warn, got {:?}",
+        report.warnings
+    );
+    assert!(
+        !rendered.contains("\"baseline_match_kind\""),
+        "baseline-new decisions must render byte-identical (no baseline_match_kind key)"
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
 fn gate_baseline_index_reads_all_canonical_gap_identity_shapes() {
     let value = json!({
       "entries": [
@@ -1359,6 +1501,58 @@ fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String
             &expected_dir.join("gate-decision.md"),
             &rendered_md,
             &format!("{} Markdown", case.name),
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Adversarial baseline-fallback corpus (issue #1934, RIPR-SPEC-0014 §
+/// Baseline Comparison): each scenario pins whether a legacy
+/// `path:line:static_class` fallback-only match is disclosed (warning +
+/// `baseline_match_kind`) or a canonical match stays silent. See
+/// `fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline/README.md`.
+#[test]
+fn baseline_fallback_disclosure_fixture_matrix_matches_checked_outputs() -> Result<(), String> {
+    let corpus = PathBuf::from("fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline");
+    for scenario in [
+        "fallback-only-new-canonical",
+        "line-moved-canonical-match",
+        "two-gaps-one-line-same-class",
+        "missing-canonical-identity",
+        "mixed-canonical-and-legacy-entries",
+    ] {
+        let dir = corpus.join(scenario);
+        let input = GateEvaluateInput {
+            root: repo_root(),
+            repo_exposure: None,
+            pr_guidance: Some(dir.join("pr-guidance.json")),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: Some(dir.join("baseline.json")),
+            mode: GateMode::BaselineCheck,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: None,
+        };
+        let mut report = build_gate_decision_report(&input)?;
+        report.root = ".".to_string();
+        let rendered_json = render_gate_decision_json(&report)?;
+        let rendered_md = render_gate_decision_markdown(&report);
+        assert_repo_fixture(
+            &dir.join("gate-decision.json"),
+            &rendered_json,
+            &format!("{scenario} JSON"),
+        )?;
+        assert_repo_fixture(
+            &dir.join("gate-decision.md"),
+            &rendered_md,
+            &format!("{scenario} Markdown"),
         )?;
     }
 
@@ -2876,3 +3070,25 @@ const GAP_LEDGER_REPORT_ONLY_JSON: &str = r#"{
         }
       ]
     }"#;
+
+#[test]
+fn fallback_identity_for_normalizes_like_the_baseline_writers() -> Result<(), String> {
+    // #2285 review: baseline writers normalize `\` -> `/` and strip `./`
+    // (baseline_update.rs / baseline_delta.rs); the gate's fallback identity
+    // must match that form or a legacy entry misses a compatibility match.
+    let expected = Some("src/pricing.rs:88:weakly_exposed".to_string());
+    for raw in [
+        "src/pricing.rs",
+        "./src/pricing.rs",
+        r"src\pricing.rs",
+        r".\src\pricing.rs",
+    ] {
+        let actual = fallback_identity_for(Some(raw), Some(88), Some("weakly_exposed"));
+        if actual != expected {
+            return Err(format!(
+                "fallback identity for {raw:?} must normalize to {expected:?}, got {actual:?}"
+            ));
+        }
+    }
+    Ok(())
+}

@@ -209,6 +209,26 @@ Canonical gap identity is semantic evidence identity, not a new policy mode.
 When present it lets reviewed baseline debt survive line movement and ordinary
 refactors without making generated workflows blocking by default.
 
+Rule 5 is the legacy fallback selector. It is the least stable identity: a
+stale entry left behind by a source edit, or a genuinely different gap that
+shares the anchor, collides with it. A baseline match that succeeds only via
+rule 5 is a legacy compatibility event and must not stay silent:
+
+- The match still suppresses blocking during the compatibility window
+  (`is_baseline_new` remains `false`). Flipping fallback-only matches to new
+  is a deferred deprecation decision; the destination is canonical-only
+  matching, after which a fallback-only collision blocks like any other new
+  candidate.
+- The evaluator must emit a report-level warning naming the candidate and the
+  matched legacy identity.
+- The evaluator must record `baseline_match_kind: "legacy_path_line_class"`
+  on the decision payload. The field is additive: canonical matches (rules
+  1-4) and baseline-new candidates omit it, so their rendered decisions stay
+  byte-identical.
+
+A match on any of rules 1-4 is a canonical identity match and carries no
+fallback disclosure, even when the fallback selector would also have matched.
+
 If the baseline is required but missing, unreadable, malformed, or produced by
 an incompatible schema, the evaluator returns `config_error`. It must not guess
 a baseline from the current artifact.

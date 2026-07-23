@@ -193,6 +193,26 @@ pub(crate) fn build_gate_decision_report(
         })
         .collect::<Vec<_>>();
     decisions.sort_by(|left, right| left.id.cmp(&right.id));
+    // DISCLOSE-FIRST (issue #1934, RIPR-SPEC-0014 § Baseline Comparison):
+    // every fallback-only baseline match is a reviewable compatibility event.
+    // Blocking stays suppressed during the compatibility window, but the
+    // match can no longer remain silent. Mirrors the baseline-debt-delta
+    // warning vocabulary (RIPR-SPEC-0016).
+    for decision in &decisions {
+        if decision.baseline_match_kind.as_deref()
+            == Some(BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS)
+            && let Some(identity) = fallback_identity_for(
+                decision.placement.path.as_deref(),
+                decision.placement.line,
+                decision.static_class.as_deref(),
+            )
+        {
+            warnings.push(format!(
+                "gate candidate {} matched baseline evidence by fallback path/line/static_class identity `{identity}`; disclosed as baseline_match_kind=legacy_path_line_class — a legacy compatibility match, not a canonical identity match",
+                decision.source_id
+            ));
+        }
+    }
     let summary = summarize_decisions(&decisions);
     let new_unsuppressed = compute_new_unsuppressed(
         &decisions,
@@ -501,9 +521,23 @@ fn gate_decision(
     let eligible = candidate_is_policy_eligible(candidate);
     let identity_candidates = baseline_identity_candidates(candidate);
     let baseline_identity = identity_candidates.first().cloned();
-    let is_baseline_new = !identity_candidates
+    let fallback_identity = baseline_fallback_identity(candidate);
+    let canonical_hit = identity_candidates
         .iter()
+        .filter(|identity| fallback_identity.as_ref() != Some(*identity))
         .any(|identity| baseline.identities.contains(identity));
+    let fallback_hit = fallback_identity
+        .as_ref()
+        .is_some_and(|identity| baseline.identities.contains(identity));
+    let is_baseline_new = !canonical_hit && !fallback_hit;
+    // DISCLOSE-FIRST (issue #1934, RIPR-SPEC-0014 § Baseline Comparison): a
+    // fallback-only match still suppresses blocking during the legacy
+    // compatibility window, but it can no longer stay silent — the decision
+    // carries `baseline_match_kind` and the report emits a warning (see
+    // build_gate_decision_report). Flipping fallback-only matches to
+    // `is_baseline_new = true` is the deferred deprecation question.
+    let baseline_match_kind = (!canonical_hit && fallback_hit)
+        .then(|| BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS.to_string());
     let acknowledgement_label = acknowledgement_label(policy, labels);
     let causal_attribution = causal_delta
         .map(|authority| authority.attribution_for(candidate.canonical_gap_id.as_deref()));
@@ -590,6 +624,7 @@ fn gate_decision(
         },
         repair_route,
         is_baseline_new,
+        baseline_match_kind,
         delta_attribution: causal_attribution,
         causal_delta: causal_projection
             .and_then(|projection| projection.delta_for(candidate.canonical_gap_id.as_deref()))
@@ -674,16 +709,7 @@ fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
 /// a review card does not reclassify existing reviewed debt as new.
 fn baseline_identity_candidates(candidate: &GateCandidate) -> Vec<String> {
     let mut identities = Vec::new();
-    let fallback = match (
-        candidate.placement.path.as_deref(),
-        candidate.placement.line,
-    ) {
-        (Some(path), Some(line)) => Some(format!(
-            "{path}:{line}:{}",
-            candidate.static_class.as_deref().unwrap_or("unknown")
-        )),
-        _ => None,
-    };
+    let fallback = baseline_fallback_identity(candidate);
     for identity in [
         candidate.canonical_gap_id.clone(),
         candidate.gap_id.clone(),
@@ -699,6 +725,37 @@ fn baseline_identity_candidates(candidate: &GateCandidate) -> Vec<String> {
         }
     }
     identities
+}
+
+/// The legacy `path:line:static_class` baseline selector — the least stable
+/// identity. A distinct gap that shares the anchor, or a stale entry left
+/// behind by a source edit, collides with it. A baseline match on this
+/// selector alone is a legacy compatibility event that must be disclosed
+/// (issue #1934, RIPR-SPEC-0014 § Baseline Comparison).
+fn baseline_fallback_identity(candidate: &GateCandidate) -> Option<String> {
+    fallback_identity_for(
+        candidate.placement.path.as_deref(),
+        candidate.placement.line,
+        candidate.static_class.as_deref(),
+    )
+}
+
+fn fallback_identity_for(
+    path: Option<&str>,
+    line: Option<u64>,
+    static_class: Option<&str>,
+) -> Option<String> {
+    match (path, line) {
+        // Normalize exactly like the baseline writers
+        // (`baseline_update.rs` / `baseline_delta.rs`): a candidate reported
+        // as `./src/x.rs` or `src\x.rs` must still match the legacy entry.
+        (Some(path), Some(line)) => Some(format!(
+            "{}:{line}:{}",
+            path.replace('\\', "/").trim_start_matches("./"),
+            static_class.unwrap_or("unknown")
+        )),
+        _ => None,
+    }
 }
 
 fn stable_identity(candidate: &GateCandidate) -> String {

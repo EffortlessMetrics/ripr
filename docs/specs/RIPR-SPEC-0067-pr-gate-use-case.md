@@ -294,6 +294,7 @@ The eligibility decision has this closed outcome table:
 | Unsupported preview-language authority | Advisory only; it cannot gain blocking authority through projection. |
 | Explicit advisory mode | Never blocks, including for an otherwise complete route. |
 | Explicit calibrated blocking mode | Blocks only a complete, current, full-scope, policy-eligible decision. |
+| Baseline match only via the legacy path/line/static_class fallback | Disclosed compatibility event: a report-level warning plus decision `baseline_match_kind: "legacy_path_line_class"`; the candidate stays non-new and non-blocking during the compatibility window and must never match silently (RIPR-SPEC-0014 § Baseline Comparison). |
 
 This contract does not make the default-generated workflow blocking. The
 gap-ledger producer now carries an optional typed `GapRecord.seam_id` and an

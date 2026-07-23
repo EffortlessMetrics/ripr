@@ -278,6 +278,17 @@ fn decision_json(decision: &GateDecision) -> Value {
     {
         object.insert("gap_kind".to_string(), Value::String(gap_kind.clone()));
     }
+    // Additive (issue #1934): present only on legacy fallback-only baseline
+    // matches, so canonical-match and baseline-new decisions render
+    // byte-identical to before the disclosure existed.
+    if let Some(match_kind) = &decision.baseline_match_kind
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "baseline_match_kind".to_string(),
+            Value::String(match_kind.clone()),
+        );
+    }
     value
 }
 
