@@ -291,6 +291,7 @@ reads six keys; everything else is ignored. The schema lives in
 | `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
 | `diagnosticProfile` | string | `ripr.toml` `lsp.diagnostic_profile`, otherwise `actionable` | `actionable` publishes only producer-backed bounded finding routes; `full` preserves audit/debug finding and seam visibility. Unknown initialization values fall back to the repository/default profile. |
 | `gitTimeoutMs` | number | `30000` | Cooperative deadline in milliseconds for each git invocation in the refresh path (Git-input probe and diff load). An exceeded deadline terminates the git process and commits a limited snapshot naming `git_invocation_timeout`; a timed-out probe fails closed as unresolved. Malformed initialization values are ignored (the default stays). No `ripr.toml` slot. |
+| `refreshDeadlineMs` | number | `600000` | Physical deadline in milliseconds for one whole refresh analysis attempt. An attempt that exceeds the deadline is cancelled cooperatively at analysis checkpoints and dropped fail-closed with the named `deadline_exceeded` outcome and an "analysis deadline exceeded" progress end — no limited snapshot is committed. A deadline cancel loses to an earlier supersede or client cancel (first-cancel-wins). Malformed initialization values are ignored (the default stays). No `ripr.toml` slot. |
 
 Initialization options are treated as explicit LSP settings and override
 `ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
@@ -306,9 +307,9 @@ server negotiates **pull mode** (RIPR-SPEC-0136) and requests the bounded
 workspace/configuration ← [{ "scopeUri": <selected root URI>, "section": "ripr" }]
 ```
 
-The section carries the same six governed keys as `initializationOptions`
+The section carries the same seven governed keys as `initializationOptions`
 (`baseRef`, `checkMode`, `includeUnchangedTests`, `seamDiagnostics`,
-`diagnosticProfile`, `gitTimeoutMs`) and nothing else. The response is
+`diagnosticProfile`, `gitTimeoutMs`, `refreshDeadlineMs`) and nothing else. The response is
 validated before it is
 applied; a supported key with the wrong JSON type or an unknown enum literal
 fails the whole pull (fail-closed), while unrecognized keys are ignored.
@@ -332,7 +333,7 @@ Fallback, negotiated from capabilities only (never the client name):
 - `initialization_only` — neither transport; only `initializationOptions`
   apply.
 
-All three transports can supply exactly the same six governed keys. The
+All three transports can supply exactly the same seven governed keys. The
 `ripr.collectWorkspaceStatus` payload discloses the negotiated
 `configuration_mode`, the per-field source of each governed value
 (`pulled` | `initialization` | `repo` | `default`), and the last pull state
@@ -370,6 +371,7 @@ download → `PATH`), see
 | `ripr.check.mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Editor-side analysis mode. Forwarded as `initializationOptions.checkMode`. |
 | `ripr.baseRef` | string | `"origin/main"` | Git base ref used by editor diagnostics and the context commands. Forwarded as `initializationOptions.baseRef`. |
 | `ripr.gitTimeoutMs` | number | `30000` | Cooperative per-invocation git deadline for the server refresh path. Served to the server through the `workspace/configuration` pull; an exceeded deadline commits a limited snapshot naming `git_invocation_timeout`. |
+| `ripr.refreshDeadlineMs` | number | `600000` | Physical deadline for one whole server refresh analysis attempt. Served to the server through the `workspace/configuration` pull; an exceeded deadline drops the attempt fail-closed with the named `deadline_exceeded` outcome (no limited snapshot is committed). |
 
 The editor default matches the CLI and direct LSP missing-config default:
 `draft`.

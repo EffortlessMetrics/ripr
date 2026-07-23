@@ -54,6 +54,7 @@ pub(super) enum RefreshAttemptOutcome {
     Published,
     Failed,
     Cancelled,
+    DeadlineExceeded,
     Superseded,
     NotStarted,
 }
@@ -64,6 +65,7 @@ impl RefreshAttemptOutcome {
             Self::Published => "published",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::DeadlineExceeded => "deadline_exceeded",
             Self::Superseded => "superseded",
             Self::NotStarted => "not_started",
         }
@@ -467,6 +469,13 @@ impl RefreshScheduler {
                 }
             }
             RefreshAttemptOutcome::Cancelled => {
+                state.telemetry.active_attempts_cooperatively_cancelled += 1;
+            }
+            RefreshAttemptOutcome::DeadlineExceeded => {
+                // A deadline-expired attempt (#1972) is a cooperative,
+                // fail-closed drop; count it with cooperative cancels — the
+                // distinct name is carried by the outcome string in the
+                // attempt log, not by a new telemetry field.
                 state.telemetry.active_attempts_cooperatively_cancelled += 1;
             }
             RefreshAttemptOutcome::Superseded => {

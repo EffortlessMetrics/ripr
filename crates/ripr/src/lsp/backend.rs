@@ -173,6 +173,18 @@ pub(super) struct RefreshTransaction {
     pub(super) pending_entered: Vec<Uri>,
 }
 
+/// Aborts a spawned deadline timer on drop (#1972): the explicit `drop` after
+/// the blocking await is the normal path, but if the refresh-worker future is
+/// itself dropped mid-await (shutdown, supersede-adjacent paths), the timer
+/// task must not outlive the attempt and fire into a dead token later.
+struct AbortTimerOnDrop<T>(tokio::task::JoinHandle<T>);
+
+impl<T> Drop for AbortTimerOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 impl Backend {
     pub(super) fn new(client: Client, root: PathBuf) -> Self {
         Self {
@@ -379,7 +391,19 @@ impl Backend {
         let cancellation = request.cancellation.clone();
         let execution_gate = self.refresh_scheduler.execution_gate();
         let analysis_root = root.clone();
-        let diagnostics = match tokio::task::spawn_blocking(move || {
+        // Physical deadline (#1972): arm a timer for this attempt. On expiry
+        // the attempt's token is cancelled with the named `DeadlineExceeded`
+        // kind; the blocking closure exits cooperatively at its checkpoints
+        // and the refresh is dropped fail-closed. First-cancel-wins means a
+        // deadline cancel loses to an earlier supersede/client cancel. The
+        // timer is aborted as soon as the blocking await returns, either way.
+        let deadline = request.config.refresh_deadline;
+        let deadline_token = request.cancellation.clone();
+        let deadline_timer = AbortTimerOnDrop(tokio::spawn(async move {
+            tokio::time::sleep(deadline).await;
+            deadline_token.cancel(AnalysisAbortKind::DeadlineExceeded);
+        }));
+        let diagnostics_result = tokio::task::spawn_blocking(move || {
             let _execution = match execution_gate.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
@@ -394,8 +418,9 @@ impl Backend {
                 &cancellation,
             )
         })
-        .await
-        {
+        .await;
+        drop(deadline_timer);
+        let diagnostics = match diagnostics_result {
             Ok(Ok(mut diagnostics)) => {
                 diagnostics.snapshot.input_identity = Some(request.input_identity.clone());
                 diagnostics
@@ -1255,6 +1280,7 @@ impl Backend {
                 AnalysisProgressEnd::Failed(kind)
             }
             RefreshAttemptOutcome::Cancelled => AnalysisProgressEnd::Cancelled,
+            RefreshAttemptOutcome::DeadlineExceeded => AnalysisProgressEnd::DeadlineExceeded,
             RefreshAttemptOutcome::Superseded => AnalysisProgressEnd::Superseded,
             RefreshAttemptOutcome::NotStarted => AnalysisProgressEnd::NotStarted,
         }
@@ -1369,6 +1395,12 @@ impl Backend {
                 // the completed snapshot. Keep that richer state here.
             }
             RefreshAttemptOutcome::Cancelled => health.state = AnalysisAttemptState::Cancelled,
+            // A deadline-expired attempt is a fail-closed dropped refresh
+            // (#1972); reuse the existing cancelled health state — no new
+            // run-status or attempt-state string.
+            RefreshAttemptOutcome::DeadlineExceeded => {
+                health.state = AnalysisAttemptState::Cancelled;
+            }
             RefreshAttemptOutcome::Superseded => health.state = AnalysisAttemptState::Superseded,
             RefreshAttemptOutcome::NotStarted => health.state = AnalysisAttemptState::Stopped,
         }
@@ -2845,6 +2877,9 @@ fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
     match request.cancellation.checkpoint() {
         Err(error) if error.kind == AnalysisAbortKind::Cancelled => {
             RefreshAttemptOutcome::Cancelled
+        }
+        Err(error) if error.kind == AnalysisAbortKind::DeadlineExceeded => {
+            RefreshAttemptOutcome::DeadlineExceeded
         }
         Err(_) => RefreshAttemptOutcome::Superseded,
         Ok(()) => RefreshAttemptOutcome::Superseded,
@@ -7433,6 +7468,116 @@ mod work_done_progress_guard_tests {
                 .count();
             if ends_after != 2 {
                 return Err("terminal end must stay exactly-once after guard drop".to_string());
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn deadline_expiry_drops_refresh_with_named_outcome_and_one_progress_end() -> Result<(), String>
+    {
+        // #1972: a test-armed token stands in for the physical deadline timer
+        // (a real millisecond-overrun through the full loop needs a selected
+        // workspace-root authority, which no backend test drives today). The
+        // terminal chain is pinned end to end: named outcome, distinct
+        // progress-end message, exactly-once end, idle scheduler.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to start test runtime: {err}"))?;
+        runtime.block_on(async {
+            let (service, _socket) =
+                LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+            let backend = service.inner();
+            let sink = backend.install_progress_recorder();
+
+            let decision = backend.refresh_scheduler.request(
+                PathBuf::from("/workspace"),
+                LspAnalysisConfig::default(),
+                1,
+                0,
+                RefreshScope::Interactive,
+                RefreshReason::DidSave,
+            );
+            let RefreshDecision::Start(request) = &decision else {
+                return Err(format!("expected Start decision, got {decision:?}"));
+            };
+            let request = request.as_ref().clone();
+            backend.emit_progress_for_decision(&decision).await;
+
+            // The deadline timer fired: the attempt token carries the named
+            // DeadlineExceeded kind.
+            if !request
+                .cancellation
+                .cancel(AnalysisAbortKind::DeadlineExceeded)
+            {
+                return Err("deadline cancel must win on a fresh attempt token".to_string());
+            }
+            let outcome = cancellation_outcome(&request);
+            if outcome != RefreshAttemptOutcome::DeadlineExceeded {
+                return Err(format!(
+                    "expiry must produce the named DeadlineExceeded outcome, got {outcome:?}"
+                ));
+            }
+            if outcome.as_str() != "deadline_exceeded" {
+                return Err(format!(
+                    "the outcome must be named deadline_exceeded, got {}",
+                    outcome.as_str()
+                ));
+            }
+
+            backend.end_progress_for_attempt(&request, outcome).await;
+            for _ in 0..20 {
+                tokio::task::yield_now().await;
+                if sink
+                    .events()
+                    .iter()
+                    .any(|event| matches!(event, ProgressEvent::End { .. }))
+                {
+                    break;
+                }
+            }
+            let ends: Vec<String> = sink
+                .events()
+                .iter()
+                .filter_map(|event| match event {
+                    ProgressEvent::End { message, .. } => Some(message.clone()),
+                    _ => None,
+                })
+                .collect();
+            if ends != vec!["analysis deadline exceeded".to_string()] {
+                return Err(format!(
+                    "expiry must end progress exactly once with the deadline message: {ends:?}"
+                ));
+            }
+            // Exactly-once: a repeated terminal end for the same attempt is a no-op.
+            backend.end_progress_for_attempt(&request, outcome).await;
+            let ends_after = sink
+                .events()
+                .iter()
+                .filter(|event| matches!(event, ProgressEvent::End { .. }))
+                .count();
+            if ends_after != 1 {
+                return Err("deadline end must stay exactly-once".to_string());
+            }
+
+            // Fail-closed drop: finishing the attempt frees the scheduler, so
+            // the next request starts instead of queueing behind the corpse.
+            if backend.refresh_scheduler.finish(&request, false).is_some() {
+                return Err("no pending request should follow the dropped attempt".to_string());
+            }
+            let next = backend.refresh_scheduler.request(
+                PathBuf::from("/workspace"),
+                LspAnalysisConfig::default(),
+                2,
+                0,
+                RefreshScope::Interactive,
+                RefreshReason::DidSave,
+            );
+            if !matches!(next, RefreshDecision::Start(_)) {
+                return Err(format!(
+                    "scheduler must be idle after the dropped attempt, got {next:?}"
+                ));
             }
             Ok(())
         })

@@ -181,6 +181,9 @@ pub(crate) fn inventory_classified_seams_at_with_config(
             collect_started.elapsed(),
         );
         let cache_started = Instant::now();
+        // Cooperative cancellation (#1972): a superseded or
+        // deadline-expired refresh stops before the cache load path.
+        cancellation::checkpoint()?;
         match cache.load_classified_seams(&key) {
             CacheLoad::Hit((cached, cached_limit_info)) => {
                 trace_latency_phase("cache_load", "hit", cache_started.elapsed());
@@ -225,6 +228,9 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         &format!("start_files_{}", state.files.len()),
         Duration::ZERO,
     );
+    // Cooperative cancellation (#1972): a superseded or deadline-expired
+    // refresh stops before the post-collect cache load.
+    cancellation::checkpoint()?;
     match cache.load_classified_seams(&key) {
         CacheLoad::Hit((cached, cached_limit_info)) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());

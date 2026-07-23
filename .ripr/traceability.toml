@@ -7316,6 +7316,17 @@ tests = [
   "crates/ripr/src/analysis/diff/load.rs::tests::zero_deadline_diff_load_fails_with_the_named_timeout_error",
   "crates/ripr/src/analysis/diff/load.rs::tests::zero_deadline_base_probes_fail_closed_instead_of_hanging",
   "crates/ripr/src/app/check.rs::tests::cli_check_input_carries_no_git_deadline",
+  "crates/ripr/src/analysis/cancellation.rs::tests::deadline_exceeded_is_reported_by_checkpoint",
+  "crates/ripr/src/analysis/cancellation.rs::tests::deadline_cancel_loses_to_an_earlier_superseded",
+  "crates/ripr/src/lsp/config.rs::tests::refresh_deadline_ms_applies_from_initialization_options",
+  "crates/ripr/src/lsp/config.rs::tests::refresh_deadline_ms_defaults_to_ten_minutes",
+  "crates/ripr/src/lsp/config.rs::tests::refresh_deadline_ms_malformed_initialization_value_keeps_default",
+  "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_wrong_typed_refresh_deadline_ms",
+  "crates/ripr/src/lsp/config.rs::tests::session_value_sources_disclose_refresh_deadline_ms_origin",
+  "crates/ripr/src/lsp/config.rs::tests::effective_settings_eq_compares_refresh_deadline",
+  "crates/ripr/src/analysis/language/rust.rs::tests::pre_cancelled_token_stops_the_diff_file_load_loop",
+  "crates/ripr/src/analysis/language/rust.rs::tests::pre_cancelled_token_stops_the_classify_loop",
+  "crates/ripr/src/lsp/backend.rs::work_done_progress_guard_tests::deadline_expiry_drops_refresh_with_named_outcome_and_one_progress_end",
 ]
 fixtures = []
 code = [

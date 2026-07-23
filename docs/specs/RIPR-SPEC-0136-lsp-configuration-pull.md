@@ -14,12 +14,16 @@ Linked issues:
 - [#2303](https://github.com/EffortlessMetrics/ripr-swarm/issues/2303) -
   amendment: add a sixth governed session key, `gitTimeoutMs`, the
   cooperative per-invocation git deadline for the refresh path.
+- [#1972](https://github.com/EffortlessMetrics/ripr-swarm/issues/1972) -
+  amendment: add a seventh governed session key, `refreshDeadlineMs`, the
+  physical deadline for one whole refresh analysis attempt.
 
 Support-tier impact:
 
 - No tier change. This spec adds one LSP transport for the governed session
   keys (five at ratification; the #2303 amendment adds a sixth,
-  `gitTimeoutMs`) plus additive status disclosure fields. It does not
+  `gitTimeoutMs`; the #1972 amendment adds a seventh, `refreshDeadlineMs`)
+  plus additive status disclosure fields. It does not
   change any classification, finding set, ExposureClass, probe family,
   confidence score, `repair_packet_ready` authority, output schema version,
   or pass/fail behavior.
@@ -67,7 +71,7 @@ ConfigurationItem { scope_uri: <selected root URI>, section: "ripr" }
 The section contains exactly the governed session keys allowlisted for
 initialization options: `baseRef`, `checkMode`, `includeUnchangedTests`,
 `seamDiagnostics`, `diagnosticProfile`, and — per the #2303 amendment —
-`gitTimeoutMs`.
+`gitTimeoutMs`, and — per the #1972 amendment — `refreshDeadlineMs`.
 
 The response is validated before anything is applied:
 
@@ -125,7 +129,8 @@ the last-known-good pulled layer is retained as stale. Defaults never
 masquerade as accepted requested settings: the status payload carries the
 negotiated `configuration_mode`, a per-field source map
 (`pulled` | `initialization` | `repo` | `default`) for the governed keys
-(six per the #2303 amendment), and the last pull state, epoch, failure, and
+(six per the #2303 amendment, seven per the #1972 amendment), and the last
+pull state, epoch, failure, and
 recovery route. All status fields are additive and snake_case.
 
 A pull is a pure LSP round-trip: it never launches analysis, git, network
@@ -139,7 +144,8 @@ Clients without `workspace.configuration` support keep today's behavior:
 `workspace/didChangeConfiguration` keeps applying pushed values
 (push fallback), and clients that neither pull nor push usable values run
 initialization-only. Each transport can supply exactly the same governed
-keys (six per the #2303 amendment); no transport can set anything else.
+keys (six per the #2303 amendment, seven per the #1972 amendment); no
+transport can set anything else.
 
 ### Cooperative git invocation deadline (#2303 amendment)
 
@@ -175,6 +181,48 @@ Semantics:
   `ripr.toml` slot, so its disclosed source is only `pulled`,
   `initialization`, or `default`.
 
+### Physical refresh analysis deadline (#1972 amendment)
+
+The seventh governed key, `refreshDeadlineMs` (non-negative integer,
+default `600000`), bounds one whole refresh analysis attempt. Where
+`gitTimeoutMs` bounds a single git invocation, this bounds the attempt
+end to end so a pathological diff load or classify loop cannot pin a
+refresh worker past the point where a dropped result is still actionable.
+It is a resource bound, not an analysis input — it never changes what the
+analysis computes, only whether an over-running attempt is abandoned. The
+CLI passes no token and the checkpoints are no-ops there, so CLI behavior
+is byte-identical to the pre-#1972 behavior.
+
+Semantics:
+
+- when an attempt starts, the refresh path arms a timer for the configured
+  deadline; on expiry the attempt's cooperative cancellation token is
+  cancelled with the named `DeadlineExceeded` abort kind, and the timer is
+  aborted as soon as the attempt's analysis returns, either way;
+- cancellation is cooperative only: the blocking analysis closure is never
+  aborted from outside; it exits at checkpoints in the long-running loops
+  (the diff file-load loop and the probe/classify loop in the Rust
+  adapter, the workspace preview walk, and the seam-cache load
+  boundaries), and commit/publish stays async-side behind the existing
+  currency guard;
+- first-cancel-wins: a deadline cancel loses to an earlier supersede or
+  client cancel, so the original outcome is preserved;
+- an expired deadline drops the refresh fail-closed with the named
+  `deadline_exceeded` attempt outcome — NO limited snapshot is committed,
+  no new `run_status` string is introduced, and the component-outcome
+  schema is unchanged. This is deliberately different from the #2303
+  `git_invocation_timeout` limited-snapshot conversion: a whole-attempt
+  overrun has no bounded partial result worth committing;
+- the progress end for the attempt maps the new kind to the distinct
+  message "analysis deadline exceeded" (the existing exactly-once progress
+  registry is unchanged), and the scheduler returns to idle so the next
+  request starts;
+- initialization and pushed values are lenient (a malformed
+  `refreshDeadlineMs` is ignored, keeping the current value); pulled
+  values validate fail-closed (a non-integer fails the whole pull).
+  `refreshDeadlineMs` has no `ripr.toml` slot, so its disclosed source is
+  only `pulled`, `initialization`, or `default`.
+
 ## Required Evidence
 
 - Capability predicate `client_supports_configuration_pull` and mode
@@ -197,12 +245,14 @@ Semantics:
 - New output schema versions, or changes to `ripr.toml` parsing. (The
   ratified text also excluded new governed configuration keys; the #2303
   amendment deliberately adds exactly one, `gitTimeoutMs`, with the
-  semantics above.)
+  semantics above, and the #1972 amendment deliberately adds exactly one
+  more, `refreshDeadlineMs`, with the semantics above.)
 - Dynamic registration for `workspace/didChangeConfiguration`.
 - Per-resource `scope_uri` pulls; the scope is always the selected root URI.
 - Editor extension behavior changes; the extension keeps sending
   initialization options and pushed settings. (The #2303 amendment adds one
-  additive contributed setting declaration, `ripr.gitTimeoutMs`, so
+  additive contributed setting declaration, `ripr.gitTimeoutMs`, and the
+  #1972 amendment adds one more, `ripr.refreshDeadlineMs`, so
   pull-mode clients can serve the key; it wires no new extension logic.)
 
 ## Acceptance Examples
@@ -271,6 +321,32 @@ then the record fails closed as Unresolved (or loader-default with no
 commit), never as a fabricated resolved input.
 ```
 
+### Refresh deadline drops an over-running attempt fail-closed (#1972 amendment)
+
+```text
+Given initializationOptions refreshDeadlineMs = 120000,
+when the session applies the option,
+then each refresh analysis attempt is bounded at 120s,
+and input_authority.session_value_sources.refresh_deadline_ms is
+"initialization".
+
+Given a pull returns {"refreshDeadlineMs": "120000"} (wrong JSON type),
+when the response is validated,
+then the whole pull fails closed and the previous deadline stays in effect.
+
+Given a refresh analysis attempt exceeds the configured deadline,
+when the attempt token is cancelled with the DeadlineExceeded kind,
+then the blocking analysis exits cooperatively at its next checkpoint,
+the refresh is dropped fail-closed with the named deadline_exceeded
+outcome (no limited snapshot is committed and no new run_status string
+appears), exactly one progress end reports "analysis deadline exceeded",
+and the scheduler returns to idle so the next request starts.
+
+Given an attempt already superseded by a newer request,
+when its deadline later expires,
+then the recorded outcome stays superseded (first-cancel-wins).
+```
+
 ## Test Mapping
 
 - `crates/ripr/src/lsp/capabilities.rs::tests::configuration_mode_follows_workspace_capabilities`
@@ -323,6 +399,23 @@ commit), never as a fabricated resolved input.
   diff-load named error and probe fail-closed behavior.
 - `crates/ripr/src/app/check.rs::tests::cli_check_input_carries_no_git_deadline`
   — the CLI no-drift contract (no deadline, unbounded, byte-identical).
+- #1972 amendment:
+  `crates/ripr/src/analysis/cancellation.rs::tests::deadline_exceeded_is_reported_by_checkpoint`
+  and `deadline_cancel_loses_to_an_earlier_superseded` — the named abort
+  kind and first-cancel-wins.
+- `crates/ripr/src/lsp/config.rs::tests::refresh_deadline_ms_applies_from_initialization_options`,
+  `refresh_deadline_ms_defaults_to_ten_minutes`,
+  `refresh_deadline_ms_malformed_initialization_value_keeps_default`,
+  `validated_pulled_options_rejects_wrong_typed_refresh_deadline_ms`,
+  `session_value_sources_disclose_refresh_deadline_ms_origin`, and
+  `effective_settings_eq_compares_refresh_deadline` — the seventh governed
+  key.
+- `crates/ripr/src/analysis/language/rust.rs::tests::pre_cancelled_token_stops_the_diff_file_load_loop`
+  and `pre_cancelled_token_stops_the_classify_loop` — the new cooperative
+  checkpoints in the two uncovered analysis loops.
+- `crates/ripr/src/lsp/backend.rs::work_done_progress_guard_tests::deadline_expiry_drops_refresh_with_named_outcome_and_one_progress_end`
+  — the terminal chain: named `deadline_exceeded` outcome, exactly one
+  "analysis deadline exceeded" progress end, idle scheduler.
 
 ## Implementation Mapping
 
@@ -344,6 +437,19 @@ commit), never as a fabricated resolved input.
   limited-snapshot conversion; `crates/ripr/src/lsp/git_inputs.rs` — the
   fail-closed probe deadline; `crates/ripr/src/lsp/config.rs` — the
   `gitTimeoutMs` governed key.
+- #1972 amendment: `crates/ripr/src/analysis/cancellation.rs` — the
+  `DeadlineExceeded` abort kind; `crates/ripr/src/lsp/config.rs` — the
+  `refreshDeadlineMs` governed key (`DEFAULT_LSP_REFRESH_DEADLINE_MS`);
+  `crates/ripr/src/lsp/backend.rs` — deadline arming in
+  `run_refresh_request`, the named `cancellation_outcome` arm, and the
+  progress-end mapping; `crates/ripr/src/lsp/refresh_scheduler.rs` — the
+  `DeadlineExceeded` attempt outcome;
+  `crates/ripr/src/lsp/progress.rs` — the "analysis deadline exceeded" end
+  message; `crates/ripr/src/analysis/language/rust.rs`,
+  `crates/ripr/src/analysis/workspace/discover.rs`, and
+  `crates/ripr/src/analysis/seam_inventory.rs` — the new cooperative
+  checkpoints; `editors/vscode/package.json` — the additive
+  `ripr.refreshDeadlineMs` setting declaration.
 
 ## Metrics
 

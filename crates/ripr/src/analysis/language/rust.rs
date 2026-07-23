@@ -13,6 +13,7 @@ use super::super::{
     AnalysisOptions, classifier, classify, diff::ChangedFile, probes, rust_index, workspace,
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
+use crate::analysis::cancellation;
 use crate::analysis::facts::{FunctionSummary, RustIndex};
 use crate::config::OraclePolicy;
 use crate::domain::{ExposureClass, Finding, Probe, StaticLimitKind, StopReason};
@@ -1121,6 +1122,11 @@ impl RustAdapter {
         let loaded_files = index_files
             .iter()
             .map(|file| {
+                // Cooperative cancellation (#1972): a superseded or
+                // deadline-expired LSP refresh stops the load loop instead
+                // of reading the whole working set. No-op without a token
+                // (CLI path).
+                cancellation::checkpoint()?;
                 let full = options.root.join(file);
                 let bytes = std::fs::read(&full)
                     .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
@@ -1148,8 +1154,13 @@ impl RustAdapter {
             if rust_index::is_test_file(&changed.path) {
                 continue;
             }
+            // Cooperative cancellation (#1972): check once per changed file
+            // and once per probe so a superseded or deadline-expired refresh
+            // exits the classify loop promptly.
+            cancellation::checkpoint()?;
             let probes = probes::probes_for_file(&options.root, changed, &index);
             for probe in probes {
+                cancellation::checkpoint()?;
                 let mut finding = classifier::classify_probe(&probe, &index);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
@@ -1302,6 +1313,7 @@ mod tests {
         replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
         select_partial_diff_partition, sha256_hex, transitive_reach_limit_kind,
     };
+    use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
     use crate::analysis::facts::{CallFact, FunctionSummary, LiteralFact, RustIndex, TestSummary};
     use crate::analysis::language::{LanguageAdapter, LanguageId};
@@ -2646,5 +2658,89 @@ let _ = (result, note, raw);"##,
             result, None,
             "Exposed class must not receive cross-language static_limit_kind regardless of FFI"
         );
+    }
+
+    fn changed_lib_rs_diff() -> Vec<ChangedFile> {
+        diff::parse_unified_diff(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -1,3 +1,3 @@\n\
+             pub fn gate_state(flag: bool) -> bool {\n\
+             -    if flag { true } else { false }\n\
+             +    if flag { false } else { true }\n\
+             }\n",
+        )
+    }
+
+    fn analyze_diff_error_with_cancelled_token(root: PathBuf) -> Result<String, String> {
+        // #1972: a token cancelled before analysis starts (e.g. an expired
+        // physical refresh deadline) must surface as a prompt cooperative
+        // cancellation error, not a completed or partial result.
+        let token = cancellation::AnalysisCancellationToken::new();
+        if !token.cancel(cancellation::AnalysisAbortKind::DeadlineExceeded) {
+            return Err("test setup: deadline cancel must win on a fresh token".to_string());
+        }
+        let changed_files = changed_lib_rs_diff();
+        let options = AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Ready,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+        };
+        let policy = OraclePolicy::default();
+        let result = cancellation::with_token(&token, || {
+            RustAdapter.analyze_diff(&options, &policy, &changed_files)
+        });
+        match result {
+            Err(error) => Ok(error),
+            Ok(_) => Err("a pre-cancelled token must not produce a result".to_string()),
+        }
+    }
+
+    #[test]
+    fn pre_cancelled_token_stops_the_diff_file_load_loop() -> Result<(), String> {
+        // The changed file exists on disk, so it is selected into the index
+        // working set; the load loop's per-file checkpoint is the first
+        // checkpoint in program order and must surface the cancellation.
+        let root = temp_root("cancel-load-loop")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='cancel-load'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )?;
+        let error = analyze_diff_error_with_cancelled_token(root)?;
+        if !error.contains("DeadlineExceeded") {
+            return Err(format!(
+                "expected a deadline-exceeded cancellation from the load loop, got: {error}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pre_cancelled_token_stops_the_classify_loop() -> Result<(), String> {
+        // The changed file is absent from the on-disk workspace, so the index
+        // working set is empty and the load loop never iterates; the first
+        // checkpoint hit is the classify loop's per-file checkpoint.
+        let root = temp_root("cancel-classify-loop")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='cancel-classify'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        let error = analyze_diff_error_with_cancelled_token(root)?;
+        if !error.contains("DeadlineExceeded") {
+            return Err(format!(
+                "expected a deadline-exceeded cancellation from the classify loop, got: {error}"
+            ));
+        }
+        Ok(())
     }
 }

@@ -175,6 +175,11 @@
           "default": 30000,
           "description": "Deadline in milliseconds for each git invocation in the ripr language server's refresh path. A git command that exceeds the deadline is terminated and the refresh commits a limited snapshot naming git_invocation_timeout; run the ripr.refreshDiagnostics command to retry."
         },
+        "ripr.refreshDeadlineMs": {
+          "type": "number",
+          "default": 600000,
+          "description": "Physical deadline in milliseconds for one whole refresh analysis attempt in the ripr language server. An attempt that exceeds the deadline is dropped fail-closed with the named deadline_exceeded outcome and an 'analysis deadline exceeded' progress end — no limited snapshot is committed; the next save or the ripr.refreshDiagnostics command starts a fresh attempt."
+        },
         "ripr.trace.server": {
           "type": "string",
           "enum": [

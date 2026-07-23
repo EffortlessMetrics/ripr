@@ -69,7 +69,8 @@ impl AnalysisProgressPhase {
 
 /// Terminal state for one progress token. Every accepted generation ends
 /// with exactly one of these on every path — completion, failure,
-/// cancellation, supersession, root invalidation, or a pre-start stop.
+/// cancellation, deadline expiry, supersession, root invalidation, or a
+/// pre-start stop.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum AnalysisProgressEnd {
     /// Snapshot published with run status `full`.
@@ -83,6 +84,9 @@ pub(super) enum AnalysisProgressEnd {
     /// may contain paths).
     Failed(Option<String>),
     Cancelled,
+    /// The physical refresh deadline (#1972) expired mid-attempt; the
+    /// refresh was dropped fail-closed with no committed limited snapshot.
+    DeadlineExceeded,
     Superseded,
     NotStarted,
 }
@@ -95,6 +99,7 @@ impl AnalysisProgressEnd {
             Self::Failed(Some(kind)) => format!("analysis failed ({kind})"),
             Self::Failed(None) => "analysis failed".to_string(),
             Self::Cancelled => "analysis cancelled".to_string(),
+            Self::DeadlineExceeded => "analysis deadline exceeded".to_string(),
             Self::Superseded => "analysis superseded by a newer request".to_string(),
             Self::NotStarted => "analysis did not start".to_string(),
         }

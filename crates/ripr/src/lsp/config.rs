@@ -17,6 +17,15 @@ use super::client_features::ClientFeatureProfile;
 /// forever. Overridable per session via the `gitTimeoutMs` option.
 pub(super) const DEFAULT_LSP_GIT_TIMEOUT_MS: u64 = 30_000;
 
+/// Default physical deadline for one LSP refresh analysis run (#1972), in
+/// milliseconds. The git timeout bounds one invocation; this bounds the whole
+/// analysis attempt so a pathological diff load or classify loop cannot pin a
+/// refresh worker past the point where a dropped result is still actionable.
+/// An exceeded deadline is a fail-closed drop with the named
+/// `DeadlineExceeded` outcome, never a committed limited snapshot.
+/// Overridable per session via the `refreshDeadlineMs` option.
+pub(super) const DEFAULT_LSP_REFRESH_DEADLINE_MS: u64 = 600_000;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
@@ -49,6 +58,13 @@ pub(super) struct LspAnalysisConfig {
     /// Defaults to [`DEFAULT_LSP_GIT_TIMEOUT_MS`]; the `gitTimeoutMs`
     /// session option overrides it.
     pub(super) git_timeout: Duration,
+    /// Physical deadline for one refresh analysis attempt (#1972). The
+    /// scheduler arms a timer when an attempt starts; on expiry the attempt's
+    /// cancellation token is cancelled with `DeadlineExceeded` and the
+    /// refresh is dropped fail-closed (no committed limited snapshot).
+    /// Defaults to [`DEFAULT_LSP_REFRESH_DEADLINE_MS`]; the
+    /// `refreshDeadlineMs` session option overrides it.
+    pub(super) refresh_deadline: Duration,
     /// The position encoding negotiated at `initialize` from the client's
     /// `general.positionEncodings` (#1626 PR B / #1749). Defaults to UTF-16 and
     /// is preserved across repository-config and session-option reloads.
@@ -68,6 +84,7 @@ impl Default for LspAnalysisConfig {
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
             diagnostic_profile: LspDiagnosticProfile::default(),
             git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
+            refresh_deadline: Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS),
             position_encoding: PositionEncodingKind::UTF16,
         }
     }
@@ -155,9 +172,10 @@ impl LspAnalysisConfig {
             && self.enable_seam_diagnostics == other.enable_seam_diagnostics
             && self.diagnostic_profile == other.diagnostic_profile
             && self.git_timeout == other.git_timeout
+            && self.refresh_deadline == other.refresh_deadline
     }
 
-    /// Per-field source disclosure for the six governed session keys
+    /// Per-field source disclosure for the seven governed session keys
     /// (`pulled` | `initialization` | `repo` | `default`), surfaced in the
     /// analysis status payload so defaults never masquerade as accepted
     /// requested settings (#2031).
@@ -165,13 +183,14 @@ impl LspAnalysisConfig {
     /// Known limitation: `seam_diagnostics` is attributed `repo` whenever a
     /// `ripr.toml` was loaded, because the repository default and the
     /// built-in default coincide and cannot be distinguished after parsing.
-    /// `git_timeout_ms` has no `ripr.toml` slot (#2303), so it can only be
-    /// `pulled`, `initialization`, or `default`.
+    /// `git_timeout_ms` and `refresh_deadline_ms` have no `ripr.toml` slot
+    /// (#2303, #1972), so they can only be `pulled`, `initialization`, or
+    /// `default`.
     pub(super) fn session_value_sources(&self) -> serde_json::Map<String, Value> {
         let session = self.session_options.as_ref().and_then(Value::as_object);
         let pulled = self.pulled_options.as_ref().and_then(Value::as_object);
         let repo_config = self.repo_config();
-        let entries: [(&str, &str, bool); 6] = [
+        let entries: [(&str, &str, bool); 7] = [
             ("base_ref", "baseRef", false),
             (
                 "check_mode",
@@ -195,6 +214,7 @@ impl LspAnalysisConfig {
                 repo_config.lsp().diagnostic_profile().is_some(),
             ),
             ("git_timeout_ms", "gitTimeoutMs", false),
+            ("refresh_deadline_ms", "refreshDeadlineMs", false),
         ];
         let mut sources = serde_json::Map::new();
         for (payload_key, option_key, repo_explicit) in entries {
@@ -267,6 +287,7 @@ impl LspAnalysisConfig {
                 .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
             diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
             git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
+            refresh_deadline: Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS),
             repo_config,
             session_options: None,
             pulled_options: None,
@@ -348,6 +369,13 @@ fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::M
     if let Some(git_timeout_ms) = options.get("gitTimeoutMs").and_then(Value::as_u64) {
         config.git_timeout = Duration::from_millis(git_timeout_ms);
     }
+
+    // Lenient (#1972): a malformed initialization/pushed value is ignored and
+    // the current physical deadline (600s default) stays in effect; the pull
+    // path validates the same key fail-closed in `validate_pulled_value`.
+    if let Some(refresh_deadline_ms) = options.get("refreshDeadlineMs").and_then(Value::as_u64) {
+        config.refresh_deadline = Duration::from_millis(refresh_deadline_ms);
+    }
 }
 
 fn supported_session_options(
@@ -369,6 +397,7 @@ fn is_supported_session_option(key: &str) -> bool {
             | "seamDiagnostics"
             | "diagnosticProfile"
             | "gitTimeoutMs"
+            | "refreshDeadlineMs"
     )
 }
 
@@ -433,6 +462,7 @@ fn validate_pulled_value(key: &str, value: &Value) -> Result<(), String> {
             .as_str()
             .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
         "gitTimeoutMs" => value.as_u64().is_some(),
+        "refreshDeadlineMs" => value.as_u64().is_some(),
         _ => true,
     };
     if valid {
@@ -1049,6 +1079,135 @@ diagnostic_profile = "full"
         );
         if !base.effective_settings_eq(&same) {
             return Err("an explicit 30s must equal the default".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_applies_from_initialization_options() -> Result<(), String> {
+        // #1972: a valid `refreshDeadlineMs` session value sets the physical
+        // deadline for one refresh analysis attempt.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        );
+        if config.refresh_deadline != Duration::from_mins(2) {
+            return Err(format!(
+                "expected a 120s deadline, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_defaults_to_ten_minutes() -> Result<(), String> {
+        let config = LspAnalysisConfig::default();
+        if config.refresh_deadline != Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS) {
+            return Err(format!(
+                "expected the 600s default, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_malformed_initialization_value_keeps_default() -> Result<(), String> {
+        // #1972: the initialization/push path is lenient — a malformed value
+        // is ignored and the 600s default stays in effect.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": "soon"})),
+        );
+        if config.refresh_deadline != Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS) {
+            return Err(format!(
+                "a malformed value must keep the 600s default, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_wrong_typed_refresh_deadline_ms() -> Result<(), String> {
+        // #1972: the pull path is fail-closed — a supported key with the
+        // wrong JSON type fails the whole pull instead of being silently
+        // ignored.
+        let ok = validated_pulled_options(&[json!({"refreshDeadlineMs": 120_000})])?;
+        if ok.is_none() {
+            return Err("a numeric refreshDeadlineMs pull must validate".to_string());
+        }
+        let err = match validated_pulled_options(&[json!({"refreshDeadlineMs": "120000"})]) {
+            Err(err) => err,
+            Ok(_) => return Err("a string refreshDeadlineMs must fail the pull".to_string()),
+        };
+        if !err.contains("refreshDeadlineMs") {
+            return Err(format!("the failure must name the key, got: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn session_value_sources_disclose_refresh_deadline_ms_origin() -> Result<(), String> {
+        // #1972: the default, initialization, and pulled origins are all
+        // distinguishable for the new key; there is no `ripr.toml` slot.
+        let default_sources = LspAnalysisConfig::default().session_value_sources();
+        if default_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err("unset refreshDeadlineMs must disclose as default".to_string());
+        }
+        let init_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        )
+        .session_value_sources();
+        if init_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("initialization")
+        {
+            return Err(
+                "initialization refreshDeadlineMs must disclose as initialization".to_string(),
+            );
+        }
+        let pulled_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        )
+        .with_pulled_options(Some(&json!({"refreshDeadlineMs": 180_000})))
+        .session_value_sources();
+        if pulled_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("pulled")
+        {
+            return Err("pulled refreshDeadlineMs must disclose as pulled".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn effective_settings_eq_compares_refresh_deadline() -> Result<(), String> {
+        // #1972: a re-pull that changes only the physical deadline is NOT a
+        // no-op — it must reschedule analysis like any other effective change.
+        let base = LspAnalysisConfig::default();
+        let changed = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        );
+        if base.effective_settings_eq(&changed) {
+            return Err("a changed deadline must not compare equal".to_string());
+        }
+        let same = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 600_000})),
+        );
+        if !base.effective_settings_eq(&same) {
+            return Err("an explicit 600s must equal the default".to_string());
         }
         Ok(())
     }

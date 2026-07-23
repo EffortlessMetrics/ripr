@@ -16,6 +16,7 @@ use std::sync::{
 const ACTIVE: u8 = 0;
 const SUPERSEDED: u8 = 1;
 const CANCELLED: u8 = 2;
+const DEADLINE_EXCEEDED: u8 = 3;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AnalysisCancellationToken(Arc<AtomicU8>);
@@ -32,6 +33,7 @@ impl Eq for AnalysisCancellationToken {}
 pub(crate) enum AnalysisAbortKind {
     Superseded,
     Cancelled,
+    DeadlineExceeded,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,6 +56,7 @@ impl AnalysisCancellationToken {
         let value = match kind {
             AnalysisAbortKind::Superseded => SUPERSEDED,
             AnalysisAbortKind::Cancelled => CANCELLED,
+            AnalysisAbortKind::DeadlineExceeded => DEADLINE_EXCEEDED,
         };
         self.0
             .compare_exchange(ACTIVE, value, Ordering::AcqRel, Ordering::Acquire)
@@ -67,6 +70,9 @@ impl AnalysisCancellationToken {
             }),
             CANCELLED => Err(AnalysisCancellation {
                 kind: AnalysisAbortKind::Cancelled,
+            }),
+            DEADLINE_EXCEEDED => Err(AnalysisCancellation {
+                kind: AnalysisAbortKind::DeadlineExceeded,
             }),
             _ => Ok(()),
         }
@@ -123,6 +129,45 @@ mod tests {
             .is_err_and(|error| error.contains("Superseded"))
         {
             return Err(format!("expected superseded cancellation, got {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn deadline_exceeded_is_reported_by_checkpoint() -> Result<(), String> {
+        let token = AnalysisCancellationToken::new();
+        if !token.cancel(AnalysisAbortKind::DeadlineExceeded) {
+            return Err("deadline cancellation should win on an active token".to_string());
+        }
+        let result = with_token(&token, checkpoint);
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("DeadlineExceeded"))
+        {
+            return Err(format!(
+                "expected deadline-exceeded cancellation, got {result:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn deadline_cancel_loses_to_an_earlier_superseded() -> Result<(), String> {
+        let token = AnalysisCancellationToken::new();
+        if !token.cancel(AnalysisAbortKind::Superseded) {
+            return Err("first cancellation should win".to_string());
+        }
+        if token.cancel(AnalysisAbortKind::DeadlineExceeded) {
+            return Err("deadline cancel must lose to an earlier superseded".to_string());
+        }
+        let result = with_token(&token, checkpoint);
+        if !result
+            .as_ref()
+            .is_err_and(|error| error.contains("Superseded"))
+        {
+            return Err(format!(
+                "expected the earlier superseded outcome to be preserved, got {result:?}"
+            ));
         }
         Ok(())
     }

@@ -39,6 +39,12 @@ fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) 
         return;
     };
     for entry in entries.flatten() {
+        // Cooperative cancellation (#1972): the preview walk cannot
+        // propagate an error, so a cancelled refresh stops the traversal
+        // early instead of walking the whole tree. No-op without a token.
+        if cancellation::checkpoint().is_err() {
+            return;
+        }
         let path = entry.path();
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
