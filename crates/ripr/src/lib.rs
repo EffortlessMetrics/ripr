@@ -60,6 +60,7 @@ compile_error!(
 pub(crate) mod agent;
 #[doc(hidden)]
 pub mod analysis;
+pub(crate) mod git;
 // Kept public for compatibility; prefer the crate-root re-exports for new
 // integrations.
 #[doc(hidden)]
