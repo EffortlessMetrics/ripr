@@ -1903,3 +1903,18 @@ if you wrote fix and test together, you have only run one of the two arms.
 This is the guard-disable-experiment discipline applied to prose: every
 behavioral claim in a PR description should name a run that could have
 contradicted it.
+
+## 2026-07-23: Merge-then-cleanup must be `&&`-chained, and red-arm experiments must not use `git checkout --`
+
+Two self-inflicted recovery incidents in one day, same family:
+
+1. `gh pr merge N && gh-cleanup; git branch -D ...` — the cleanup ran on `;` even when the merge was refused (unresolved threads, GitHub recompute lag), deleting the local branch and worktree out from under an open PR. Three recoveries. Chain cleanup behind the merge's exit code with `&&`, or run cleanup only after confirming `state: MERGED`.
+2. During a red-arm experiment (revert the fix, watch the test fail), restoring with `git checkout -- <file>` also reverted the *uncommitted fix itself* when the fix had not been committed yet — twice. For uncommitted work, snapshot with `git stash` (and `git stash pop`), or re-apply the edit explicitly, never `checkout --`. After any red arm, re-run the full target suite and read `git status` before believing "restored".
+
+The lesson: a recovery command restores the LAST COMMITTED state, not the state you were just working in. Any destructive-restore step in an experiment protocol needs the uncommitted-delta question answered first: "what is the nearest committed checkpoint, and is everything I care about behind it?"
+
+## 2026-07-23: mergeState BLOCKED is usually recompute lag, not a policy wall — and auto-merge rides it out
+
+Branch protection here is one required check (`Ripr Rust Small Result`), `strict: false` (no up-to-date requirement). Several merges were refused with `BLOCKED` while the required check was green and `mergeable: MERGEABLE`: GitHub's mergeState computation lags a fresh check completion or a main move. The earlier habit of attributing every BLOCKED to a stale base (and rebasing reflexively) was partly superstition — strict:false means old-head checks stay valid.
+
+The working protocol: check the required check + `mergeable` + unresolved threads. If all green and BLOCKED persists, `gh pr merge N --squash --auto --delete-branch` queues the merge and it fires when GitHub's state settles (#2287). Rebase for content reasons (real single-writer collisions, golden freshness), not to placate a lagging state machine.
