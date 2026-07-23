@@ -32,9 +32,33 @@ mod targeted_test;
 mod test_oracles;
 
 pub(crate) use annotations::ripr_annotations;
+#[cfg(test)]
 pub(crate) use badges::{
-    badge_artifacts, badge_basis, check_badge_endpoints, repo_badge_artifacts, ripr_plus,
-    update_badge_endpoints,
+    BADGE_ENDPOINT_FILES, BadgeArtifactJob, BadgeBasisReport, BadgeBasisSignal,
+    BadgeCanonicalProjection, BadgeCountBreakdown, BadgeEndpointSnapshot, BadgeNativeAuditSnapshot,
+    BadgeNativeSlot, REPO_BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS, REPO_BADGE_ARTIFACT_TIMEOUT_ENV,
+    RepoBadgeArtifactOptions, badge_artifact_command_args, badge_artifact_command_label,
+    badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_impl_with_runners,
+    badge_artifacts_summary_markdown, badge_basis_canonical_projection,
+    badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
+    badge_basis_report_json, badge_basis_report_markdown, badge_basis_seam_native_counts,
+    badge_endpoint_violation, badge_native_audit_snapshot, check_badge_diff_policy_with_context,
+    compute_badge_endpoint_violations, copy_badge_endpoints_from_reports, error_ripr_plus_receipt,
+    extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+    limited_badge_artifacts_json, limited_badge_artifacts_markdown,
+    parse_repo_badge_artifact_options, parse_repo_exposure_summary_counts,
+    read_repo_exposure_summary_artifact, repo_badge_artifact_command_args,
+    repo_badge_artifact_jobs, repo_badge_artifact_stdout_from_output,
+    repo_badge_artifact_timeout_ms_from_env, repo_badge_artifacts_summary_markdown,
+    ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
+    ripr_plus_receipt_from_repo_badge_json, ripr_plus_receipt_from_repo_exposure_summary_json,
+    ripr_plus_receipt_from_repo_exposure_summary_json_with_source, ripr_plus_receipt_markdown,
+    run_repo_badge_artifact_command, validate_shields_endpoint_bytes,
+    write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
+};
+pub(crate) use badges::{
+    badge_artifacts, badge_basis, check_badge_diff_policy, check_badge_endpoints,
+    repo_badge_artifacts, ripr_plus, update_badge_endpoints,
 };
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
 pub(crate) use ci_budget::ci_budget;
