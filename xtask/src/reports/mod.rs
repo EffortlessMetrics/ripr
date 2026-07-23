@@ -83,6 +83,13 @@ pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use metrics::metrics_report;
 pub(crate) use module_health::module_health;
 pub(crate) use mutation::mutation_calibration;
+#[cfg(test)]
+pub(crate) use mutation::{
+    MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, MutationOutcomeRecord,
+    build_mutation_calibration_report, mutation_calibration_report_json,
+    mutation_calibration_report_markdown, parse_mutation_calibration_args,
+    parse_mutation_outcomes_json, read_mutation_input_json,
+};
 pub(crate) use operator::operator_cockpit_report;
 pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
@@ -100,6 +107,12 @@ pub(crate) use repo::{
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use rust_repair_trust::rust_repair_trust_report;
 pub(crate) use sarif::sarif_policy;
+#[cfg(test)]
+pub(crate) use sarif::{
+    SarifMissingBaseline, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
+    build_sarif_policy_report, parse_sarif_policy_args, parse_sarif_policy_results,
+    sarif_policy_report_json, sarif_policy_report_markdown,
+};
 pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};

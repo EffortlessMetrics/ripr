@@ -129,6 +129,11 @@ owner = "devtools"
 reason = "The static-language checker implementation contains the literal prohibited term list and the regression tests that exercise it."
 
 [[allow]]
+path = "xtask/src/reports/mutation.rs"
+owner = "devtools"
+reason = "The mutation calibration importer (moved verbatim out of main.rs in the #2119 decomposition) matches literal cargo-mutants runtime outcome labels when joining supplied runtime data, so it must name the prohibited terms."
+
+[[allow]]
 path = "xtask/src/tests.rs"
 owner = "devtools"
 reason = "The regression tests for the static-language checker (moved verbatim out of main.rs in the #2119 decomposition) intentionally contain the literal prohibited terms they exercise."
