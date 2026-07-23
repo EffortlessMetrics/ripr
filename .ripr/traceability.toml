@@ -7045,6 +7045,7 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_no_snapshot_returns_no_snapshot_status",
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_counts",
   "crates/ripr/src/lsp/tests.rs::workspace_status_budget_identity_changes_with_diagnostic_snapshot",
+  "crates/ripr/tests/lsp_lifecycle.rs::compat_journey_collect_workspace_status_over_real_wire",
 ]
 fixtures = []
 code = [

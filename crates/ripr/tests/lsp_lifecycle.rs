@@ -12,7 +12,12 @@
 //! 5. `shutdown` returns a `null` result and transitions state;
 //! 6. requests after `shutdown` fail `-32600` (InvalidRequest per LSP);
 //! 7. the `exit` notification terminates the process;
-//! 8. stdin EOF / malformed frames do not hang the server.
+//! 8. stdin EOF / malformed frames do not hang the server;
+//! 9. transport/typed-payload bounds stay bounded under adversarial input
+//!    (issue #2034);
+//! 10. the compatibility-command journey (`initialize` → server-executed
+//!     collect commands → `shutdown`/`exit`) runs over the real wire and
+//!     emits a bounded receipt (issue #1930).
 //!
 //! Named limitations (verified against tower-lsp-server 0.23, the transport
 //! stack in `crates/ripr/src/lsp.rs`):
@@ -34,11 +39,14 @@
 //! failing test cannot orphan a process that would hold a file lock on the
 //! binary and break later builds.
 
+use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Generous per-read budget so a hung server fails fast with a clear
 /// message instead of blocking CI; far above healthy response latency.
@@ -954,4 +962,403 @@ fn shutdown_and_eof_during_request_load_exits_zero() -> Result<(), String> {
     Err(format!(
         "expected exit code 0 for exit during request load, got: {status}"
     ))
+}
+
+// ── 10. Compatibility-command journey + receipt (issue #1930) ──
+//
+// Sections 1–9 pin lifecycle and transport conformance; this section pins
+// the *compatibility-command journey* over the real binary: initialize
+// against a real fixture workspace with its own git history (the framed
+// `lsp/tests.rs` fixture recipe), drive the server-executed compatibility
+// commands through `workspace/executeCommand`, and require typed,
+// non-vacuous payloads on the wire. Before any analysis ran, the workspace
+// status must disclose the honest no-snapshot shape — explicit
+// `no_snapshot`, never fabricated populated counts. The journey ends with a
+// bounded receipt under `target/ripr/reports/` (git-ignored) recording
+// binary identity, fixture identity, the ordered protocol sequence, and
+// the shutdown result.
+
+/// Server-executed compatibility command ids in the exact order
+/// `lsp/capabilities.rs` advertises them via `executeCommandProvider`.
+const EXPECTED_SERVER_EXECUTED_COMMANDS: [&str; 7] = [
+    "ripr.refresh",
+    "ripr.collectContext",
+    "ripr.collectEvidenceContext",
+    "ripr.collectWorkspaceStatus",
+    "ripr.collectRepairPacket",
+    "ripr.collectTopLimitation",
+    "ripr.collectReceiptStatus",
+];
+
+/// Receipt destination relative to the workspace root. `target/` is
+/// git-ignored, so the receipt may carry machine-local paths; it is test
+/// evidence, not a committed artifact.
+const COMPAT_JOURNEY_RECEIPT: &str = "target/ripr/reports/lsp-compat-journey-receipt.json";
+
+/// A unique temp fixture root, removed on drop so a failing journey cannot
+/// leak the analysis output the server writes under the root.
+struct CompatFixtureRoot {
+    path: PathBuf,
+}
+
+impl Drop for CompatFixtureRoot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn unique_compat_fixture_root(name: &str) -> Result<CompatFixtureRoot, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("ripr-lsp-{name}-{}-{stamp}", std::process::id()));
+    fs::create_dir_all(&path).map_err(|err| format!("create compat fixture root failed: {err}"))?;
+    Ok(CompatFixtureRoot { path })
+}
+
+/// The fixture recipe from the framed `lsp/tests.rs` tests: a package with
+/// one production function and one unrelated test.
+fn write_compat_fixture(root: &Path) -> Result<(), String> {
+    fs::create_dir_all(root.join("src"))
+        .map_err(|err| format!("create fixture src failed: {err}"))?;
+    fs::create_dir_all(root.join("tests"))
+        .map_err(|err| format!("create fixture tests failed: {err}"))?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"lsp-compat-journey\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write fixture manifest failed: {err}"))?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool { flag }\n",
+    )
+    .map_err(|err| format!("write fixture production file failed: {err}"))?;
+    fs::write(
+        root.join("tests/end_to_end.rs"),
+        "#[test]\nfn unchanged_test_helper() {\n    assert_eq!(true, true);\n}\n",
+    )
+    .map_err(|err| format!("write fixture test file failed: {err}"))
+}
+
+fn run_compat_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("run git {args:?} failed: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
+}
+
+/// Minimal `file://` URI for an absolute fixture path; temp roots on the
+/// test host need no encoding beyond spaces.
+fn compat_file_uri(path: &Path) -> Result<String, String> {
+    if !path.is_absolute() {
+        return Err(format!("fixture root must be absolute: {}", path.display()));
+    }
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("fixture root is not UTF-8: {}", path.display()))?;
+    Ok(format!("file://{}", text.replace(' ', "%20")))
+}
+
+/// Process-local digest of the committed fixture contents. `DefaultHasher`
+/// is stable within one toolchain build but not across versions, which is
+/// sufficient for a git-ignored receipt under `target/`.
+fn compat_fixture_digest(root: &Path) -> Result<String, String> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for relative in ["Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"] {
+        let bytes = fs::read(root.join(relative))
+            .map_err(|err| format!("read fixture file {relative} failed: {err}"))?;
+        relative.hash(&mut hasher);
+        bytes.hash(&mut hasher);
+    }
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+fn ripr_binary_version() -> Result<String, String> {
+    let binary = env!("CARGO_BIN_EXE_ripr");
+    let output = Command::new(binary)
+        .arg("--version")
+        .output()
+        .map_err(|err| format!("run `{binary} --version` failed: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`{binary} --version` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Runs one server-executed compatibility command over the wire and
+/// returns its typed result payload, failing on a protocol error.
+fn execute_compat_command(
+    session: &mut LspSession,
+    command: &str,
+) -> Result<serde_json::Value, String> {
+    let response = session.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": command, "arguments": []}),
+    )?;
+    Ok(expect_result(&response, command)?.clone())
+}
+
+/// The typed envelope every `ripr.collectWorkspaceStatus` payload must
+/// carry, in both the no-snapshot and committed-snapshot shapes.
+fn check_workspace_status_envelope(payload: &serde_json::Value, phase: &str) -> Result<(), String> {
+    for (key, expected) in [
+        ("kind", "workspace_status"),
+        ("tool", "ripr"),
+        ("schema_version", "0.1"),
+    ] {
+        let actual = payload.get(key).and_then(serde_json::Value::as_str);
+        if actual != Some(expected) {
+            return Err(format!(
+                "{phase}: workspace status `{key}` must be {expected:?}, got: {payload}"
+            ));
+        }
+    }
+    if !payload
+        .get("run_status")
+        .is_some_and(serde_json::Value::is_string)
+    {
+        return Err(format!(
+            "{phase}: workspace status must carry a typed `run_status`: {payload}"
+        ));
+    }
+    Ok(())
+}
+
+fn write_compat_journey_receipt(receipt: &serde_json::Value) -> Result<PathBuf, String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(COMPAT_JOURNEY_RECEIPT);
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("receipt path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|err| format!("create receipt dir failed: {err}"))?;
+    let rendered = serde_json::to_string_pretty(receipt)
+        .map_err(|err| format!("render receipt failed: {err}"))?;
+    fs::write(&path, format!("{rendered}\n"))
+        .map_err(|err| format!("write receipt {} failed: {err}", path.display()))?;
+    Ok(path)
+}
+
+#[test]
+fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String> {
+    // Fixture workspace with its own git history: a committed base plus a
+    // committed production change, so the base..HEAD analysis run by
+    // `ripr.refresh` has real input.
+    let root = unique_compat_fixture_root("compat-journey")?;
+    write_compat_fixture(&root.path)?;
+    run_compat_git(&root.path, &["init"])?;
+    run_compat_git(
+        &root.path,
+        &["config", "user.email", "ripr@example.invalid"],
+    )?;
+    run_compat_git(&root.path, &["config", "user.name", "RIPR Test"])?;
+    run_compat_git(
+        &root.path,
+        &["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"],
+    )?;
+    run_compat_git(&root.path, &["commit", "-m", "base"])?;
+    fs::write(
+        root.path.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+    run_compat_git(&root.path, &["add", "src/lib.rs"])?;
+    run_compat_git(&root.path, &["commit", "-m", "change production"])?;
+    let root_uri = compat_file_uri(&root.path)?;
+    let fixture_digest = compat_fixture_digest(&root.path)?;
+
+    let mut protocol_sequence: Vec<String> = Vec::new();
+    let mut session = LspSession::spawn()?;
+
+    // Step 1: initialize against the fixture root. The advertised
+    // `executeCommandProvider` set is the typed compatibility surface.
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    protocol_sequence.push("initialize".to_string());
+    let initialize_result = expect_result(&initialize, "initialize")?;
+    let advertised: Vec<&str> = initialize_result
+        .pointer("/capabilities/executeCommandProvider/commands")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!("initialize must advertise executeCommandProvider commands: {initialize}")
+        })?
+        .iter()
+        .map(serde_json::Value::as_str)
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| format!("advertised commands must be strings: {initialize}"))?;
+    if advertised != EXPECTED_SERVER_EXECUTED_COMMANDS {
+        return Err(format!(
+            "server-executed command set drifted: expected {EXPECTED_SERVER_EXECUTED_COMMANDS:?}, got {advertised:?}"
+        ));
+    }
+    session.notify("initialized", Some(serde_json::json!({})))?;
+    protocol_sequence.push("initialized".to_string());
+
+    // Step 2: workspace status before any analysis ran must disclose the
+    // honest no-snapshot shape — typed, explicit, never fabricated counts.
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    protocol_sequence.push("workspace/executeCommand ripr.collectWorkspaceStatus".to_string());
+    check_workspace_status_envelope(&status, "pre-refresh")?;
+    if status
+        .pointer("/diagnostic_budget_state/reason")
+        .and_then(serde_json::Value::as_str)
+        != Some("no_snapshot")
+    {
+        return Err(format!(
+            "pre-refresh: diagnostic budget state must disclose `no_snapshot`, got: {status}"
+        ));
+    }
+    for key in ["diagnostics", "snapshot_age_ms", "top_actionable_packet"] {
+        if !status.get(key).is_some_and(serde_json::Value::is_null) {
+            return Err(format!(
+                "pre-refresh: `{key}` must be null without a snapshot, got: {status}"
+            ));
+        }
+    }
+
+    // Step 3: explicit refresh is the demand path that commits the first
+    // snapshot (RIPR-SPEC-0105); its result is null.
+    let refresh = session.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    protocol_sequence.push("workspace/executeCommand ripr.refresh".to_string());
+    let refresh_result = expect_result(&refresh, "ripr.refresh")?;
+    if !refresh_result.is_null() {
+        return Err(format!(
+            "ripr.refresh must return a null result, got: {refresh}"
+        ));
+    }
+
+    // Step 4: workspace status with a committed snapshot carries typed
+    // counts and no longer reports `no_snapshot`.
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    protocol_sequence.push("workspace/executeCommand ripr.collectWorkspaceStatus".to_string());
+    check_workspace_status_envelope(&status, "post-refresh")?;
+    let diagnostics = status
+        .get("diagnostics")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| format!("post-refresh: diagnostics must be an object: {status}"))?;
+    for key in ["total", "files", "findings"] {
+        if !diagnostics.get(key).is_some_and(serde_json::Value::is_u64) {
+            return Err(format!(
+                "post-refresh: diagnostics.{key} must be a count, got: {status}"
+            ));
+        }
+    }
+    if status
+        .pointer("/diagnostic_budget_state/reason")
+        .and_then(serde_json::Value::as_str)
+        == Some("no_snapshot")
+    {
+        return Err(format!(
+            "post-refresh: budget state must not stay `no_snapshot` after a committed snapshot: {status}"
+        ));
+    }
+
+    // Step 5: the remaining cheap server-executed compatibility commands
+    // return typed payloads on the same wire.
+    let limitation = execute_compat_command(&mut session, "ripr.collectTopLimitation")?;
+    protocol_sequence.push("workspace/executeCommand ripr.collectTopLimitation".to_string());
+    for key in ["status", "run_status"] {
+        if !limitation
+            .get(key)
+            .is_some_and(serde_json::Value::is_string)
+        {
+            return Err(format!(
+                "top limitation must carry a typed `{key}`, got: {limitation}"
+            ));
+        }
+    }
+    let receipt_status = execute_compat_command(&mut session, "ripr.collectReceiptStatus")?;
+    protocol_sequence.push("workspace/executeCommand ripr.collectReceiptStatus".to_string());
+    if receipt_status
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        != Some("receipt_status")
+    {
+        return Err(format!(
+            "receipt status must carry kind `receipt_status`, got: {receipt_status}"
+        ));
+    }
+    if !receipt_status
+        .get("receipt_status")
+        .is_some_and(serde_json::Value::is_string)
+    {
+        return Err(format!(
+            "receipt status must carry a typed `receipt_status` field, got: {receipt_status}"
+        ));
+    }
+
+    // Step 6: shutdown + exit, recording the termination result.
+    let shutdown = session.request("shutdown", serde_json::Value::Null)?;
+    protocol_sequence.push("shutdown".to_string());
+    let shutdown_result = expect_result(&shutdown, "shutdown")?;
+    if !shutdown_result.is_null() {
+        return Err(format!(
+            "LSP requires a null result for `shutdown`, got: {shutdown}"
+        ));
+    }
+    session.notify("exit", None)?;
+    protocol_sequence.push("exit".to_string());
+    let exit_status = session.wait_exit(EXIT_TIMEOUT)?;
+    if !exit_status.success() {
+        return Err(format!(
+            "expected exit code 0 after `exit` notification, got: {exit_status}"
+        ));
+    }
+
+    // Step 7: bounded receipt (git-ignored `target/`), echoed to captured
+    // test stdout for `cargo test -- --nocapture` inspection.
+    let receipt = serde_json::json!({
+        "schema_version": "0.1",
+        "kind": "lsp_compat_journey_receipt",
+        "issue": 1930,
+        "binary": {
+            "path": env!("CARGO_BIN_EXE_ripr"),
+            "version": ripr_binary_version()?,
+        },
+        "fixture": {
+            "recipe": "cargo-package-base-plus-committed-production-change",
+            "root": root.path.display().to_string(),
+            "content_digest": fixture_digest,
+            "files": ["Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"],
+        },
+        "protocol_sequence": protocol_sequence,
+        "shutdown": {
+            "exit_code": exit_status.code().unwrap_or(-1),
+            "clean": true,
+        },
+        "limits_note": "Test-harness receipt under git-ignored target/; records harness identity, not a committed artifact.",
+    });
+    let receipt_path = write_compat_journey_receipt(&receipt)?;
+    println!(
+        "compat journey receipt written to {}",
+        receipt_path.display()
+    );
+    println!("{receipt}");
+    Ok(())
 }
