@@ -49,6 +49,41 @@ extension's `RIPR_CLIENT_COMMANDS` advertisement covers every `ripr.*`
 command the extension registers, so the filter strips nothing from the
 enhanced client.
 
+Omit-vs-disabled policy (#1892): a Layer 1 client that advertises
+`CodeAction.disabled` support receives a suppressed client-command action
+inert instead of omitted — the command and edit are stripped (a disabled
+action that still executes is the cardinal-sin flip), the kind is retained
+so the `CodeActionContext.only` filter keeps working, `disabled.reason`
+carries the human explanation, and `data.disabled_reason` names the
+machine reason from a closed vocabulary. A client without disabled support
+keeps the fail-closed omission. Server-executed commands stay
+unconditional in both forms.
+
+Code action data contract (#1892): every ripr code action carries a
+bounded, versioned `CodeAction.data` payload
+(`schema_version: "ripr-code-action-data-v1"`) with a deterministic
+fingerprinted `action_id` (action class + canonical addressed identity +
+command id + action name — never title text), the action class and kind,
+the stable snake_case `action_name` machine identity (which keeps
+constructors that share one command id on one diagnostic fingerprinting
+distinctly), the addressed identity fields (`diagnostic_id`,
+`canonical_gap_id`, `gap_id`, `seam_id`, `finding_id` as applicable), the
+snapshot `input_identity`, the `required_client_capability` (the
+client-command id, or `"server"` for server-executed commands), and
+`disabled_reason` only when disabled.
+Diagnostic-addressing actions attach the addressed diagnostic in
+`CodeAction.diagnostics`. The payload carries no absolute paths, no
+fix-instruction summaries, and no retrieval references — those belong to
+`codeAction/resolve` (#1751). Disabled reasons are a closed vocabulary in
+`lsp/action_contract.rs`; only reasons with a real producer are emitted —
+today `stale_snapshot`, `client_capability_missing`,
+`verification_route_unavailable`, `receipt_route_unavailable`, and
+`preview_or_static_limitation` — while the reserved members
+(`stale_document`, `workspace_root_blocked`, `fix_site_unavailable`,
+`exact_replacement_unavailable`, `ambiguous_fix_site`,
+`outside_allowed_edit_surface`, `configuration_invalid`) stay unemittable
+until their named producers land.
+
 ### Layer 2 — Enhanced VS Code
 
 The ripr VS Code extension, which advertises `experimental.riprEditor`
@@ -102,6 +137,14 @@ real handlers. The capability is advertised as `capability_only`.
   `ripr.openRelatedTest` command IDs in code actions — only server-executed
   commands. The `source.ripr.*` kind strings still appear as kind metadata
   for every client; they carry no negotiation requirement.
+- A standard LSP client that advertises `CodeAction.disabled` support (but
+  no `experimental.riprEditor`) instead receives the otherwise-suppressed
+  client-command actions inert (#1892): each carries its kind, the
+  addressed diagnostic, a versioned `data` payload naming `disabled_reason:
+  "client_capability_missing"`, and no command or edit — so the action is
+  visible but cannot execute. Server-executed actions (e.g. Refresh
+  Analysis) stay active; only the client-command actions that the omission
+  path would have stripped are disabled.
 - A VS Code client that advertises `experimental.riprEditor` with
   `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
   code actions containing `ripr.copyContext` commands.
@@ -122,6 +165,14 @@ real handlers. The capability is advertised as `capability_only`.
   the extension registers but does not advertise fails the parity tests.
   Further `tests.rs` tests verify `CodeActionContext.only` honoring (#1750)
   and the emitted-kinds ⊆ advertised-kinds parity invariant.
+- `action_contract.rs` tests verify the versioned data payload shape, the
+  deterministic `action_id`, and the closed disabled-reason vocabulary
+  (#1892); `actions.rs` tests verify the fail-closed emit guard; further
+  `tests.rs` tests verify the omit-vs-disabled policy both directions, the
+  disabled-never-executes invariant across scenarios, the kind retention
+  under `context.only`, and the named suppression reasons (`stale_snapshot`,
+  `verification_route_unavailable`, `receipt_route_unavailable`,
+  `preview_or_static_limitation`).
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
@@ -129,7 +180,10 @@ real handlers. The capability is advertised as `capability_only`.
 
 - `crates/ripr/src/lsp/capabilities.rs` — capability advertisement
 - `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
-- `crates/ripr/src/lsp/actions.rs` — code action kind classification
+- `crates/ripr/src/lsp/actions.rs` — code action kind classification and
+  the omit-vs-disabled client-command policy (#1776, #1892)
+- `crates/ripr/src/lsp/action_contract.rs` — versioned `CodeAction.data`
+  payload and the closed disabled-reason vocabulary (#1892)
 - `crates/ripr/src/lsp/client_features.rs` — negotiated
   `ClientFeatureProfile` consumed by the code-action command filter (#1776)
 - `editors/vscode/src/client.ts` — VS Code client capability advertisement
@@ -165,6 +219,20 @@ client supports:
   keeps only that subtree). An absent `only` leaves the response
   unfiltered, and an action with no kind fails closed. The kind filter
   compounds with the negotiated client-command filter.
+- Every code action carries the versioned `ripr-code-action-data-v1` data
+  payload, and diagnostic-addressing actions attach the addressed
+  diagnostic (#1892). The #1776 client-command filter becomes the
+  omit-vs-disabled policy: `CodeAction.disabled`-capable clients receive
+  suppressed client-command actions inert (command and edit stripped, kind
+  retained, `client_capability_missing` named); clients without disabled
+  support keep the fail-closed omission. The same disabled form names the
+  staleness and limitation suppressions that previously omitted silently:
+  `stale_snapshot` (stale gap diagnostic),
+  `verification_route_unavailable` / `receipt_route_unavailable` (gap
+  record without a safe verify/receipt command), and
+  `preview_or_static_limitation` (cross-language unresolved target). The
+  backend health/root gate stays omit-only: without a snapshot no
+  diagnostic-addressing action can be constructed.
 
 The server does NOT:
 - Emit unknown command IDs to a client that has not negotiated them.

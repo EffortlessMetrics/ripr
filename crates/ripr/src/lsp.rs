@@ -1,3 +1,4 @@
+mod action_contract;
 mod actions;
 mod agent_protocol;
 mod backend;

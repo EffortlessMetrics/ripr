@@ -4177,6 +4177,653 @@ fn gap_kind_parity_request() -> Result<(TempLspRoot, CodeActionParams, AnalysisS
     Ok((root, params, snapshot))
 }
 
+/// A negotiated profile that advertises `CodeAction.disabled` support plus
+/// exactly `commands` in its `riprEditor` block (#1892).
+fn client_features_with_disabled_support(
+    commands: &[&str],
+) -> Result<ClientFeatureProfile, String> {
+    let params: InitializeParams = serde_json::from_value(serde_json::json!({
+        "capabilities": {
+            "textDocument": {
+                "codeAction": {
+                    "disabledSupport": true
+                }
+            },
+            "experimental": {
+                "riprEditor": {
+                    "version": "0.10.0",
+                    "commands": commands,
+                    "guardedTestEdit": false
+                }
+            }
+        }
+    }))
+    .map_err(|err| format!("fixture params must parse: {err}"))?;
+    let profile = ClientFeatureProfile::from_initialize_params(&params);
+    if !profile.code_action_disabled {
+        return Err("fixture must negotiate CodeAction.disabled support".to_string());
+    }
+    Ok(profile)
+}
+
+/// Collect every `CodeAction` literal, failing on a bare `Command` entry.
+fn code_action_literals(
+    actions: &[CodeActionOrCommand],
+) -> Result<Vec<&tower_lsp_server::ls_types::CodeAction>, String> {
+    let mut literals = Vec::new();
+    for action in actions {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return Err("expected code action literal".to_string());
+        };
+        literals.push(action);
+    }
+    Ok(literals)
+}
+
+/// The disabled-action invariants (#1892, RIPR-SPEC-0129): a disabled action
+/// never carries a command or edit (a disabled action that still executes is
+/// the cardinal-sin flip), is never preferred, keeps its kind for the
+/// `context.only` filter, names a human reason, and names a machine reason
+/// from the closed emitted vocabulary.
+fn assert_disabled_action_invariants(
+    action: &tower_lsp_server::ls_types::CodeAction,
+) -> Result<(), String> {
+    if action.command.is_some() || action.edit.is_some() {
+        return Err(format!(
+            "disabled action {} must not carry a command or edit",
+            action.title
+        ));
+    }
+    if action.is_preferred == Some(true) {
+        return Err(format!(
+            "disabled action {} must never be preferred",
+            action.title
+        ));
+    }
+    if action.kind.is_none() {
+        return Err(format!(
+            "disabled action {} must retain its kind",
+            action.title
+        ));
+    }
+    let Some(disabled) = &action.disabled else {
+        return Err(format!("action {} is not disabled", action.title));
+    };
+    if disabled.reason.trim().is_empty() {
+        return Err(format!(
+            "disabled action {} must carry a human reason",
+            action.title
+        ));
+    }
+    let reason = action
+        .data
+        .as_ref()
+        .and_then(|data| data.get("disabled_reason"))
+        .and_then(|reason| reason.as_str())
+        .ok_or_else(|| {
+            format!(
+                "disabled action {} must name a machine reason",
+                action.title
+            )
+        })?;
+    if !super::action_contract::EMITTED_DISABLED_REASONS
+        .iter()
+        .any(|candidate| candidate.as_str() == reason)
+    {
+        return Err(format!(
+            "disabled action {} names {reason}, which is outside the emitted closed vocabulary",
+            action.title
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_response_actions_carry_versioned_data_payloads() -> Result<(), String> {
+    // #1892, RIPR-SPEC-0129: every emitted action carries the versioned data
+    // payload (schema, deterministic fingerprinted action_id, class, kind,
+    // addressed identity, required capability); diagnostic-addressing
+    // actions attach the addressed diagnostic; the refresh action names the
+    // server as its required capability.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let seam_id = seam_snapshot
+        .classified_seams
+        .first()
+        .map(|seam| seam.seam.id().as_str().to_string())
+        .ok_or_else(|| "seam scenario must carry a seam".to_string())?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    if actions.len() < 2 {
+        return Err(format!(
+            "seam scenario should emit several actions, got {}",
+            actions.len()
+        ));
+    }
+    let mut action_ids = BTreeSet::new();
+    for action in code_action_literals(&actions)? {
+        let data = action
+            .data
+            .as_ref()
+            .ok_or_else(|| format!("action {} must carry data", action.title))?;
+        if data["schema_version"] != super::action_contract::RIPR_CODE_ACTION_DATA_SCHEMA_VERSION {
+            return Err(format!("action {} schema version drifted", action.title));
+        }
+        let action_id = data["action_id"]
+            .as_str()
+            .ok_or_else(|| format!("action {} must carry a string action_id", action.title))?;
+        if !action_id.starts_with("fnv1a64:") {
+            return Err(format!(
+                "action {} action_id must be a config fingerprint: {action_id}",
+                action.title
+            ));
+        }
+        if !action_ids.insert(action_id.to_string()) {
+            return Err(format!("duplicate action_id in one response: {action_id}"));
+        }
+        let kind = action
+            .kind
+            .as_ref()
+            .ok_or_else(|| format!("action {} must carry a kind", action.title))?;
+        if data["action_kind"] != kind.as_str() {
+            return Err(format!(
+                "action {} data action_kind must mirror its kind",
+                action.title
+            ));
+        }
+        if data.get("disabled_reason").is_some() {
+            return Err(format!(
+                "enabled action {} must not carry disabled_reason",
+                action.title
+            ));
+        }
+        let capability = data["required_client_capability"]
+            .as_str()
+            .ok_or_else(|| format!("action {} must name its required capability", action.title))?;
+        if action.title == "Refresh Analysis - Saved Workspace Check" {
+            if capability != "server" {
+                return Err("refresh is server-executed and must require \"server\"".to_string());
+            }
+            if action.diagnostics.is_some() {
+                return Err("refresh addresses no diagnostic".to_string());
+            }
+            let input_identity = data["input_identity"]
+                .as_str()
+                .ok_or_else(|| "refresh data must carry the snapshot input identity".to_string())?;
+            if !input_identity.starts_with("input:fnv1a64:") {
+                return Err(format!(
+                    "input identity must be the snapshot stable_id: {input_identity}"
+                ));
+            }
+        } else {
+            let diagnostics = action.diagnostics.as_ref().ok_or_else(|| {
+                format!(
+                    "diagnostic-addressing action {} must attach the diagnostic",
+                    action.title
+                )
+            })?;
+            if diagnostics.len() != 1 {
+                return Err(format!(
+                    "action {} must attach exactly the addressed diagnostic",
+                    action.title
+                ));
+            }
+            if data["seam_id"] != seam_id {
+                return Err(format!(
+                    "action {} must carry the addressed seam identity",
+                    action.title
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_carry_distinct_action_ids_and_names() -> Result<(), String> {
+    // #1892 review (action_id collisions): several constructors share one
+    // command id on one diagnostic — the copy_context sites all use
+    // COPY_CONTEXT_COMMAND, and the pytest-skeleton / repair-card pair both
+    // use COPY_TARGETED_TEST_BRIEF_COMMAND — so the stable action_name must
+    // keep every action_id in one response distinct.
+    let vscode = vscode_client_features()?;
+    let (_gap_root, gap_params, gap_snapshot) = gap_kind_parity_request()?;
+    let actions = code_action_response(&gap_params, Some(&gap_snapshot), &vscode);
+    let literals = code_action_literals(&actions)?;
+    if literals.len() < 4 {
+        return Err(format!(
+            "gap scenario should emit several actions, got {}",
+            literals.len()
+        ));
+    }
+    let shared_context_command = literals
+        .iter()
+        .filter(|action| {
+            action
+                .command
+                .as_ref()
+                .is_some_and(|command| command.command == COPY_CONTEXT_COMMAND)
+        })
+        .count();
+    if shared_context_command < 2 {
+        return Err(format!(
+            "gap scenario should resolve at least two copy_context actions, got {shared_context_command}"
+        ));
+    }
+    let mut action_ids = BTreeSet::new();
+    let mut action_names = BTreeSet::new();
+    for action in &literals {
+        let data = action
+            .data
+            .as_ref()
+            .ok_or_else(|| format!("action {} must carry data", action.title))?;
+        let name = data["action_name"]
+            .as_str()
+            .ok_or_else(|| format!("action {} must carry action_name", action.title))?;
+        if !action_names.insert(name.to_string()) {
+            return Err(format!(
+                "duplicate action_name {name} in one response (action {})",
+                action.title
+            ));
+        }
+        let action_id = data["action_id"]
+            .as_str()
+            .ok_or_else(|| format!("action {} must carry action_id", action.title))?;
+        if !action_ids.insert(action_id.to_string()) {
+            return Err(format!(
+                "duplicate action_id {action_id} in one response (action {})",
+                action.title
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_response_disabled_capable_client_receives_inert_client_command_actions()
+-> Result<(), String> {
+    // Omit-vs-disabled policy (#1892, RIPR-SPEC-0129): a client advertising
+    // `CodeAction.disabled` support but no riprEditor commands receives every
+    // client-command action inert instead of omitted; a client without
+    // disabled support keeps the fail-closed omission (#1776).
+    let disabled_capable = client_features_with_disabled_support(&[])?;
+    let unenhanced = ClientFeatureProfile::unsupported();
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+
+    let omitted = code_action_response(&seam_params, Some(&seam_snapshot), &unenhanced);
+    assert_eq!(
+        omitted.len(),
+        1,
+        "a client without disabled support keeps the omission (refresh only)"
+    );
+
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &disabled_capable);
+    let literals = code_action_literals(&actions)?;
+    let disabled = literals
+        .iter()
+        .filter(|action| action.disabled.is_some())
+        .collect::<Vec<_>>();
+    if disabled.len() < 2 {
+        return Err(format!(
+            "disabled-capable client should receive the omitted set inert, got {}",
+            disabled.len()
+        ));
+    }
+    for action in &disabled {
+        assert_disabled_action_invariants(action)?;
+        let reason = action
+            .data
+            .as_ref()
+            .and_then(|data| data["disabled_reason"].as_str());
+        if reason != Some("client_capability_missing") {
+            return Err(format!(
+                "policy-disabled action {} must name client_capability_missing",
+                action.title
+            ));
+        }
+    }
+    let executable = literals
+        .iter()
+        .filter_map(|action| action.command.as_ref())
+        .map(|command| command.command.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        executable,
+        vec![REFRESH_COMMAND],
+        "only the server-executed refresh command may survive on an unenhanced client"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_disabled_actions_never_execute_across_scenarios() -> Result<(), String> {
+    // Negative-experiment guard (#1892): across every scenario that can emit
+    // a disabled action (policy-disabled, stale snapshot, cross-language
+    // limitation), no disabled action carries a command or edit, none is
+    // preferred, and every machine reason stays inside the emitted closed
+    // vocabulary. This test must fail if any disabled path ever leaves an
+    // executable payload attached.
+    let disabled_capable = client_features_with_disabled_support(&[])?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let (_gap_root, gap_params, mut stale_snapshot) = gap_kind_parity_request()?;
+    stale_snapshot.diagnostics_by_uri.clear();
+    let scenarios = [
+        (
+            "policy",
+            code_action_response(&seam_params, Some(&seam_snapshot), &disabled_capable),
+        ),
+        (
+            "stale-gap",
+            code_action_response(&gap_params, Some(&stale_snapshot), &disabled_capable),
+        ),
+    ];
+    let mut disabled_count = 0usize;
+    for (scenario, actions) in &scenarios {
+        let mut scenario_disabled_count = 0usize;
+        for action in code_action_literals(actions)? {
+            if action.disabled.is_some() {
+                assert_disabled_action_invariants(action)?;
+                scenario_disabled_count += 1;
+            }
+        }
+        if scenario_disabled_count == 0 {
+            return Err(format!(
+                "{scenario} scenario must emit at least one disabled action"
+            ));
+        }
+        disabled_count += scenario_disabled_count;
+    }
+    if disabled_count == 0 {
+        return Err("no disabled actions were inspected".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_response_disabled_policy_keeps_only_filter_parity() -> Result<(), String> {
+    // Disabled actions retain their kind (#1892): the `CodeActionContext.only`
+    // filter (#1750) fail-closes on kind-less actions, so a disabled navigate
+    // action must still survive `only: [source.ripr.navigate]`.
+    let disabled_capable = client_features_with_disabled_support(&[])?;
+    let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
+    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.navigate")]);
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &disabled_capable);
+    let literals = code_action_literals(&actions)?;
+    assert_eq!(
+        literals
+            .iter()
+            .map(|action| action.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Write targeted test: open best related test"],
+        "only: [source.ripr.navigate] must keep the (disabled) navigation action"
+    );
+    let action = literals
+        .first()
+        .ok_or_else(|| "navigation action missing".to_string())?;
+    assert_disabled_action_invariants(action)?;
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_stale_diagnostic_yields_disabled_stale_snapshot_action() -> Result<(), String> {
+    // Staleness suppression (#1892, RIPR-SPEC-0129): a gap diagnostic the
+    // current snapshot no longer carries yields an inert packet action
+    // naming stale_snapshot for disabled-capable clients; other clients keep
+    // the legacy omission.
+    let disabled_capable = client_features_with_disabled_support(&[])?;
+    let (_gap_root, gap_params, mut snapshot) = gap_kind_parity_request()?;
+    snapshot.diagnostics_by_uri.clear();
+
+    let omitted = code_action_response(&gap_params, Some(&snapshot), &vscode_client_features()?);
+    assert_eq!(
+        omitted.len(),
+        1,
+        "a client without disabled support keeps the omission (refresh only)"
+    );
+
+    let actions = code_action_response(&gap_params, Some(&snapshot), &disabled_capable);
+    let literals = code_action_literals(&actions)?;
+    let disabled = literals
+        .iter()
+        .filter(|action| action.disabled.is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        disabled
+            .iter()
+            .map(|action| action.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Inspect gap: copy repair packet"],
+        "a stale gap diagnostic must surface exactly the packet action inert"
+    );
+    let action = disabled
+        .first()
+        .ok_or_else(|| "stale gap disabled action missing".to_string())?;
+    assert_disabled_action_invariants(action)?;
+    if action
+        .data
+        .as_ref()
+        .and_then(|data| data["disabled_reason"].as_str())
+        != Some("stale_snapshot")
+    {
+        return Err("stale gap action must name stale_snapshot".to_string());
+    }
+    if action
+        .data
+        .as_ref()
+        .and_then(|data| data["gap_id"].as_str())
+        != Some("gap:py:pricing")
+    {
+        return Err("stale gap action must carry the addressed gap identity".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_disable_verify_route_when_verification_commands_missing() -> Result<(), String>
+{
+    // Missing verification route (#1892): the gap record carries no safe
+    // verification command, so the verify handoff is emitted inert naming
+    // verification_route_unavailable instead of being silently absent.
+    let root = unique_lsp_test_root("gap-disabled-verify-route")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    diagnostic
+        .data
+        .as_mut()
+        .and_then(|data| data.as_object_mut())
+        .ok_or_else(|| "missing diagnostic data".to_string())?
+        .remove("verification_commands");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+
+    let actions = code_action_response(
+        &params,
+        Some(&snapshot),
+        &client_features_with_disabled_support(&[])?,
+    );
+    let literals = code_action_literals(&actions)?;
+    let verify = literals
+        .iter()
+        .find(|action| action.title == "Verify after test: copy verify command")
+        .ok_or_else(|| "verify action missing".to_string())?;
+    assert_disabled_action_invariants(verify)?;
+    if verify
+        .data
+        .as_ref()
+        .and_then(|data| data["disabled_reason"].as_str())
+        != Some("verification_route_unavailable")
+    {
+        return Err("verify action must name verification_route_unavailable".to_string());
+    }
+    if literals
+        .iter()
+        .filter_map(|action| action.command.as_ref())
+        .any(|command| command.command == COPY_AGENT_VERIFY_COMMAND)
+    {
+        return Err("no executable verify command may survive without a route".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_disable_receipt_route_when_receipt_command_missing() -> Result<(), String> {
+    // Missing receipt route (#1892): the gap record carries a verify route
+    // but no safe receipt command, so the receipt handoff is emitted inert
+    // naming receipt_route_unavailable while the verify handoff stays
+    // executable.
+    let root = unique_lsp_test_root("gap-disabled-receipt-route")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    diagnostic
+        .data
+        .as_mut()
+        .and_then(|data| data.as_object_mut())
+        .ok_or_else(|| "missing diagnostic data".to_string())?
+        .remove("receipt_command");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+
+    let actions = code_action_response(
+        &params,
+        Some(&snapshot),
+        &client_features_with_disabled_support(&[])?,
+    );
+    let literals = code_action_literals(&actions)?;
+    let receipt = literals
+        .iter()
+        .find(|action| action.title == "Review result: copy receipt command")
+        .ok_or_else(|| "receipt action missing".to_string())?;
+    assert_disabled_action_invariants(receipt)?;
+    if receipt
+        .data
+        .as_ref()
+        .and_then(|data| data["disabled_reason"].as_str())
+        != Some("receipt_route_unavailable")
+    {
+        return Err("receipt action must name receipt_route_unavailable".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_cross_language_unresolved_yields_disabled_preview_limitation()
+-> Result<(), String> {
+    // Cross-language suppression (#1892): the producer-owned
+    // cross-language-target-unresolved limitation suppresses the whole
+    // repair-packet block; a disabled-capable client sees the packet action
+    // inert naming preview_or_static_limitation while the static-limit note
+    // stays executable.
+    let root = unique_lsp_test_root("gap-disabled-cross-language")?;
+    let uri = file_uri_for_path(&root.path().join("src/jsc/Blob.rs"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["language"] = serde_json::json!("rust");
+    data["gap_state"] = serde_json::json!("static_limitation");
+    data["repairability"] = serde_json::json!("no_action");
+    data["static_limit_kind"] = serde_json::json!("cross_language_target_unresolved");
+    data["projection_exclusion_reasons"] = serde_json::json!(["cross_language_target_unresolved"]);
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+
+    let actions = code_action_response(
+        &params,
+        Some(&snapshot),
+        &client_features_with_disabled_support(&[])?,
+    );
+    let literals = code_action_literals(&actions)?;
+    let packet = literals
+        .iter()
+        .find(|action| action.title == "Inspect gap: copy repair packet")
+        .ok_or_else(|| "packet action missing".to_string())?;
+    assert_disabled_action_invariants(packet)?;
+    if packet
+        .data
+        .as_ref()
+        .and_then(|data| data["disabled_reason"].as_str())
+        != Some("preview_or_static_limitation")
+    {
+        return Err("packet action must name preview_or_static_limitation".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_cross_language_unresolved_yields_disabled_preview_limitation()
+-> Result<(), String> {
+    // Seam-side cross-language suppression (#1892): mirrors
+    // `seam_code_actions_fail_closed_for_cross_language_target_unresolved`
+    // for a disabled-capable client — the targeted-test brief stays visible
+    // but inert naming preview_or_static_limitation.
+    let mut seam = sample_classified_seam();
+    seam.seam = RepoSeam::new(
+        "src/jsc/Blob.rs",
+        "Blob::from_js_without_defer_gc",
+        SeamKind::PredicateBoundary,
+        42,
+        88,
+        "array_buffer.shared || array_buffer.resizable",
+        RequiredDiscriminator::BoundaryValue {
+            description: "array_buffer.shared || array_buffer.resizable".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+    seam.evidence.seam_id = seam.seam.id().clone();
+    seam.evidence.related_tests[0].file = PathBuf::from("test/js/web/fetch/blob.test.ts");
+    seam.evidence.related_tests[0].test_name = "blob copies shared buffers".to_string();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/jsc/Blob.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+
+    let actions = code_action_response(
+        &params,
+        Some(&snapshot),
+        &client_features_with_disabled_support(&[])?,
+    );
+    let literals = code_action_literals(&actions)?;
+    let brief = literals
+        .iter()
+        .find(|action| action.title == "Write targeted test: copy brief")
+        .ok_or_else(|| "targeted-test brief action missing".to_string())?;
+    assert_disabled_action_invariants(brief)?;
+    if brief
+        .data
+        .as_ref()
+        .and_then(|data| data["disabled_reason"].as_str())
+        != Some("preview_or_static_limitation")
+    {
+        return Err("brief action must name preview_or_static_limitation".to_string());
+    }
+    Ok(())
+}
+
 #[test]
 fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Result<(), String> {
     let mut seam = sample_classified_seam();
