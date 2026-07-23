@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-spec-authority-reconciliation.v1"
+generation = 1
+
+source_issue = "issue:1925"
+design_reference = "RIPR-SPEC-0069"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Reconciles the LSP contract authority split across RIPR-SPEC-0069,
+RIPR-SPEC-0129, and RIPR-SPEC-0131: 0069 keeps product purpose, the
+fail-closed evidence boundary, and the read-only default edit policy;
+0129 owns the three client layers and the negotiated client-executed
+command family; 0131 owns the riprAgent wire contract (methods,
+versions, DTOs, errors, compatibility); #1902 owns the optional
+guarded-edit boundary if accepted. Replaces the stale 13-command
+closed vocabulary in 0069 with the three-family split (7
+server-executed commands, negotiated client-executed commands,
+reserved riprAgent requests) and names which spec changes when a
+command or request is added. Docs-only: no production code, no status
+flips, no support-tier change, no traceability or golden change.
+"""
+
+non_goals = [
+  "status flips (0069 and 0131 stay proposed)",
+  "production code changes",
+  "traceability or golden changes",
+  "redesigning the riprAgent protocol",
+]
+
+return_conditions = [
+  "Return to root if the shipped command inventory differs from the verified SERVER_EXECUTED_COMMANDS / RIPR_CLIENT_COMMANDS sets.",
+  "Return to root if any gate reads the reconciliation as a status or support-claim change.",
+]
+
+owned_seams = [
+  "seam:ripr:contract:lsp-spec-authority-split-v1",
+]
+
+shared_seams = []
+
+forbidden_seams = [
+  "seam:ripr:crates:production-code",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0069"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

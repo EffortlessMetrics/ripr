@@ -377,6 +377,10 @@ The server does NOT:
 
 - #1574 — editor/LSP usable-alpha epic (parent).
 - #1599 — owns the `riprAgent` protocol schemas (Layer 3 DTOs).
+- RIPR-SPEC-0069 / RIPR-SPEC-0131 — own the product authority
+  (fail-closed evidence boundary, read-only default edit policy) and
+  the `riprAgent` wire contract respectively; this spec owns only the
+  client layers and capability negotiation (#1925).
 - #1602 / #1603 — own the first real `riprAgent` handlers.
 - #1623 — workspace-trust enforcement (VS Code layer).
 - #1624 — managed server provisioning (VS Code layer).

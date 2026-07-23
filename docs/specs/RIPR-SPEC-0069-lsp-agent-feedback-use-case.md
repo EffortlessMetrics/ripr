@@ -88,25 +88,56 @@ explicit LSP diagnostic profile:
   refresh", never a hard failure);
 - `GapRecord` projections from validated gap artifacts.
 
-The exposed command vocabulary is closed (`crates/ripr/src/lsp.rs`):
+The exposed command vocabulary is closed and split into three families
+with distinct authorities (#1925):
 
-- `ripr.copyContext`
-- `ripr.copyAgentPacketCommand`
-- `ripr.copyAgentBriefCommand`
-- `ripr.copyAfterSnapshotCommand`
-- `ripr.copyAgentVerifyCommand`
-- `ripr.copyAgentReceiptCommand`
-- `ripr.copySuggestedAssertion`
-- `ripr.copyTargetedTestBrief`
+**Server-executed standard/compatibility commands** — owned by the
+server (`SERVER_EXECUTED_COMMANDS` in `crates/ripr/src/lsp/actions.rs`,
+advertised through `executeCommandProvider` in
+`crates/ripr/src/lsp/capabilities.rs`) and available to every client,
+including headless agents:
+
+- `ripr.refresh`
 - `ripr.collectContext`
 - `ripr.collectEvidenceContext`
 - `ripr.collectWorkspaceStatus`
-- `ripr.openRelatedTest`
-- `ripr.refresh`
+- `ripr.collectRepairPacket`
+- `ripr.collectTopLimitation`
+- `ripr.collectReceiptStatus`
 
-No command outside this vocabulary may ship without amending this
-spec. Every command is read-only or copy-to-clipboard; none edits
-source.
+**Negotiated client-executed commands** — clipboard and navigation
+commands the client executes, offered only to clients that advertise
+them through the `experimental.riprEditor` capability negotiation
+(#1628; delivered #1776, #1892, #2292). RIPR-SPEC-0129 is the contract
+authority for this family; the VS Code extension's registered set is
+the `RIPR_CLIENT_COMMANDS` list in `editors/vscode/src/client.ts`,
+held to the extension's registered commands by parity tests. Examples:
+`ripr.copyContext`, `ripr.copyAgentPacketCommand`,
+`ripr.openRelatedTest`. These commands are never headless-agent
+authority: a headless agent must not treat a clipboard or open-file
+command as its contract surface.
+
+**Reserved typed `riprAgent` requests** — RIPR-SPEC-0131 owns this
+wire contract (methods, protocol/schema versions, DTOs, error kinds,
+compatibility). The surface is reserved and fail-closed
+(`supported_requests: []`) until #1602/#1603 land real handlers.
+
+The generic `ripr.collect*` server-executed commands are the
+compatibility surface for headless agents until the typed `riprAgent`
+handlers land; they remain compatibility surfaces afterward and are
+never silently reinterpreted as the typed protocol. No command or
+request edits source: the default edit policy is read-only, and any
+future source-edit capability must arrive through the guarded-edit
+boundary (#1571/#1902), not through a clipboard command or an
+unguarded request.
+
+No command outside this vocabulary may ship without amending the spec
+that owns its family: adding a server-executed command amends this
+spec and RIPR-SPEC-0129; adding a client-executed command amends
+RIPR-SPEC-0129 and the extension's `riprEditor` advertisement;
+advertising a `riprAgent` request amends RIPR-SPEC-0131; changing the
+source-edit policy is owned by the #1902 guarded-edit boundary. Every
+command is read-only or copy-to-clipboard; none edits source.
 
 First-useful-action integration is projection-only:
 `target/ripr/reports/first-useful-action.json` is consumed
@@ -130,6 +161,18 @@ The user should be able to answer:
 - How do I verify and receipt the attempt?
    -> copyable verify command and receipt command.
 ```
+
+### Authority split
+
+The LSP contract authority is split so no spec restates another
+(#1925):
+
+| Authority | Owns |
+|---|---|
+| RIPR-SPEC-0069 (this spec) | Product purpose (agent cockpit first, human editor decoration second), the fail-closed evidence boundary, and the read-only default edit policy. |
+| [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | The three client layers and the `experimental.riprEditor` capability negotiation, including the negotiated client-executed command family. |
+| [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | The typed `riprAgent` wire contract: methods, protocol and schema versions, request/success/error DTOs, error kinds, and compatibility rules. |
+| #1902 guarded-edit boundary (if accepted) | The optional guarded-edit boundary; it owns any future source-edit capability (#1571). |
 
 ### What the LSP must expose
 
@@ -442,4 +485,5 @@ these states as an actionable offer:
   status plus refresh-only guidance route the agent to
   `ripr.refresh` first.
 - Vocabulary creep: new commands appear without a spec change — the
-  closed command list in this spec is the review checkpoint.
+  closed family lists and the authority split in this spec are the
+  review checkpoint, and each family is owned by its named spec.

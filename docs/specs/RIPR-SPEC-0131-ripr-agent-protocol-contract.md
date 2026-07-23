@@ -42,6 +42,20 @@ and absent from `supported_requests`.
 
 ## Behavior
 
+### Authority
+
+This spec is the sole authority for the `riprAgent` wire contract: the
+exact request methods, protocol and schema versions, request, success,
+and error DTOs, the closed error-kind vocabulary, and the
+compatibility rules (#1925). Clipboard and open-file client commands
+(`ripr.copy*`, `ripr.open*`) are never headless-agent authority; they
+belong to the negotiated client-executed command surface governed by
+[RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md), which
+also owns the three client layers and capability negotiation.
+[RIPR-SPEC-0069](RIPR-SPEC-0069-lsp-agent-feedback-use-case.md) owns
+the product boundary — the fail-closed evidence rules and the
+read-only default edit policy — and neither is restated here.
+
 ### Capability discovery
 
 The server advertises the following under `initialize.result.capabilities.experimental.riprAgent`:
