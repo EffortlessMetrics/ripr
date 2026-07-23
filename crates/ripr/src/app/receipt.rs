@@ -41,6 +41,12 @@ pub(crate) struct ReceiptWriteOptions {
     /// (see [`receipt_file_stem`]).
     pub(crate) out: Option<PathBuf>,
     pub(crate) json: bool,
+    /// Repository root for git HEAD resolution (#1941). When set and
+    /// `current_head` is provided, the receipt writer validates that
+    /// `current_head` matches `git rev-parse HEAD` at this root.
+    /// When `None`, the HEAD binding check is skipped (backward-compatible
+    /// with callers that don't have a root).
+    pub(crate) root: Option<PathBuf>,
 }
 
 /// The cross-reference result from comparing a receipt against the live gap set.
@@ -343,6 +349,20 @@ fn validate_write_options(opts: &ReceiptWriteOptions) -> Result<(), String> {
     }
     if let Some(current_head) = opts.current_head.as_deref() {
         validate_current_head(current_head)?;
+        // Bind current_head to the actual git HEAD (#1941): when root is
+        // provided, verify the caller's --current-head matches what git
+        // actually reports. This prevents a caller from stamping an
+        // arbitrary SHA on the receipt.
+        if let Some(root) = opts.root.as_deref()
+            && let Some(actual_head) = resolve_git_head(root)
+            && actual_head != current_head
+        {
+            return Err(format!(
+                "receipt --current-head {current_head} does not match the actual git HEAD at {} ({actual_head}); \
+                 the receipt must bind to the real commit, not a caller-provided value (#1941)",
+                root.display()
+            ));
+        }
     }
     Ok(())
 }
@@ -354,6 +374,28 @@ pub(crate) fn validate_current_head(value: &str) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// Resolve the actual git HEAD SHA at `root` via `git rev-parse HEAD`.
+/// Returns `None` when git is unavailable or the root is not a git repo,
+/// so callers can fail open (format-check only) rather than hard-erroring.
+fn resolve_git_head(root: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let head = String::from_utf8(output.stdout).ok()?;
+    let trimmed = head.trim();
+    if trimmed.len() == 40 && trimmed.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
 }
 
 fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<(), String> {
@@ -496,6 +538,7 @@ mod tests {
             current_head: None,
             out: None,
             json: true,
+            root: None,
         }
     }
 
@@ -513,6 +556,7 @@ mod tests {
             )?),
             out: None,
             json: true,
+            root: None,
         };
         let rendered = write_receipt(&opts)?;
         let value: serde_json::Value = serde_json::from_str(&rendered)
@@ -583,6 +627,7 @@ mod tests {
             current_head: None,
             out: None,
             json: true,
+            root: None,
         };
         match write_receipt(&opts) {
             Ok(_) => Err("write_receipt should have failed with missing gap".to_string()),
@@ -658,6 +703,7 @@ mod tests {
             current_head: None,
             out: None,
             json: true,
+            root: None,
         };
         match write_receipt(&opts) {
             Ok(_) => {
@@ -1090,6 +1136,7 @@ mod tests {
             current_head: None,
             out: Some(PathBuf::from("custom/path/r.json")),
             json: true,
+            root: None,
         };
         assert_eq!(receipt_out_path(&opts), PathBuf::from("custom/path/r.json"));
     }

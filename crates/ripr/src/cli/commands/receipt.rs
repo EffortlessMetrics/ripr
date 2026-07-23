@@ -98,6 +98,7 @@ pub(in crate::cli) fn parse_receipt_write_options(
     let mut verify_status: Option<String> = None;
     let mut current_head: Option<String> = None;
     let mut out: Option<PathBuf> = None;
+    let mut root: Option<PathBuf> = None;
     let mut json = false;
 
     let mut i = 0usize;
@@ -149,6 +150,10 @@ pub(in crate::cli) fn parse_receipt_write_options(
                 out = Some(PathBuf::from(value));
             }
             "--json" => json = true,
+            "--root" => {
+                i += 1;
+                root = Some(PathBuf::from(expect_value(args, i, "--root")?));
+            }
             other => return Err(format!("unknown receipt write argument {other:?}")),
         }
         i += 1;
@@ -169,6 +174,7 @@ pub(in crate::cli) fn parse_receipt_write_options(
         current_head,
         out,
         json,
+        root,
     })
 }
 
