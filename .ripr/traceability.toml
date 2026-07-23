@@ -7137,6 +7137,13 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::code_action_resolve_rejects_missing_data_with_stable_invalid_params",
   "crates/ripr/src/lsp/tests.rs::code_action_resolve_unknown_seam_or_finding_identity_yields_disabled_stale_snapshot",
   "crates/ripr/src/lsp/tests.rs::code_action_resolve_rejects_class_kind_and_capability_disagreement",
+  "crates/ripr/src/lsp/tests.rs::capabilities_advertise_code_lens_provider",
+  "crates/ripr/src/lsp/tests.rs::code_lens_refresh_is_not_attempted_for_unsupported_clients",
+  "crates/ripr/src/lsp/tests.rs::code_lens_refresh_tracks_semantic_view_changes_for_supported_clients",
+  "crates/ripr/src/lsp/tests.rs::hover_response_keeps_current_guidance_text",
+  "crates/ripr/src/lsp/tests.rs::hover_for_position_uses_latest_matching_diagnostic",
+  "crates/ripr/src/lsp/tests.rs::hover_for_position_shows_snapshot_age_and_refresh_duration",
+  "crates/ripr/src/lsp/tests.rs::hover_for_position_adds_snapshot_status_to_seam_hover",
 ]
 fixtures = []
 code = [

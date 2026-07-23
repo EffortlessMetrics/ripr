@@ -130,6 +130,27 @@ real handlers. The capability is advertised as `capability_only`.
 | Real-repo proof | #1630 (pending) | #1579 (pending) | #1579 (pending) |
 | Tier | preview | preview | reserved |
 
+### Exercised clients and harnesses
+
+The matrix above defines client CLASSES. This table names the exact
+clients and harnesses the repository actually exercises today, with their
+proof states; "protocol fixture passes" and "real install-to-repair
+proven" are separate states, and no tier promotion rests on synthetic
+fixtures alone.
+
+| Client / harness | How exercised | Proof state |
+|---|---|---|
+| In-process `LspService` harness (`tests.rs`) | Dominant suite: negotiation, diagnostics, hover, code actions, resolve, executeCommand against the real `Backend` | protocol fixture passes |
+| Framed JSON-RPC harness over a tokio duplex through the real tower-lsp-server 0.23.0 (`framed_lsp_protocol_smoke_exercises_tower_server` and the framed refresh/config/root-switch/degradation tests) | Wire-level initialize/request/shutdown framing | protocol fixture passes |
+| VS Code extension 0.10.0 (`editors/vscode`) | `client.ts` capability advertisement parsed as text by the parity tests; NOT run end-to-end against a live editor | advertisement parity only; real proof #1579 pending |
+| Off-the-shelf standard client (Neovim/Helix/Eglot) | none yet | unclaimed — #1630 |
+| Headless agent client | `supported_requests: []` fail-closed | reserved — #1602/#1603 |
+
+Unsupported or unexercised clients remain unclaimed. The extension's
+advertised `RIPR_CLIENT_COMMANDS` list is verified by parsing
+`editors/vscode/src/client.ts`; a command the extension registers but
+does not advertise fails the parity tests.
+
 ## Acceptance Examples
 
 - A standard LSP client (e.g. Neovim) that does NOT advertise
@@ -217,12 +238,31 @@ real handlers. The capability is advertised as `capability_only`.
   missing or foreign payload.
   `capabilities.rs::tests::initialize_result_advertises_code_action_resolve_provider`
   pins the advertisement.
+- `tests.rs::capabilities_advertise_code_lens_provider` plus
+  `code_lens_refresh_is_not_attempted_for_unsupported_clients` and
+  `code_lens_refresh_tracks_semantic_view_changes_for_supported_clients`
+  verify the advisory codeLens surface (display-only, `resolve_provider:
+  false`) and its refresh negotiation.
+- `tests.rs` hover tests (`hover_response_keeps_current_guidance_text`,
+  `hover_for_position_uses_latest_matching_diagnostic`,
+  `hover_for_position_shows_snapshot_age_and_refresh_duration`,
+  `hover_for_position_adds_snapshot_status_to_seam_hover`) verify hover
+  falls back to snapshot status and never fabricates content without a
+  snapshot.
+- `tests.rs::initialize_result_exposes_existing_lsp_capabilities` pins
+  the base advertisement: full text-document sync, position encoding, and
+  workspace-folder support. Their deeper semantics are owned by the
+  linked child issues (#1625 saved-workspace sync, #1626 positions,
+  RIPR-SPEC-0139 workspace roots), not re-specified here.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
 ## Implementation Mapping
 
 - `crates/ripr/src/lsp/capabilities.rs` — capability advertisement
+  (diagnostics push/pull, hover, code actions + `resolveProvider`,
+  advisory codeLens, text sync, position encoding, workspace folders,
+  `experimental.riprAgent`)
 - `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
 - `crates/ripr/src/lsp/actions.rs` — code action kind classification and
   the omit-vs-disabled client-command policy (#1776, #1892); the
@@ -319,6 +359,21 @@ The server does NOT:
 - This spec does not define the diagnostic code catalog — that is #1662.
 - This spec does not gate on real-client proof — #1630/#1702 own the
   off-the-shelf-client dogfood.
+
+## Relationships
+
+- #1574 — editor/LSP usable-alpha epic (parent).
+- #1599 — owns the `riprAgent` protocol schemas (Layer 3 DTOs).
+- #1602 / #1603 — own the first real `riprAgent` handlers.
+- #1623 — workspace-trust enforcement (VS Code layer).
+- #1624 — managed server provisioning (VS Code layer).
+- #1625 — saved-workspace synchronization semantics (dirty/save).
+- #1626 — position encoding (landed).
+- #1627 — single client-feature authority (`ClientFeatureProfile`).
+- #1628 — portable code actions and the `riprEditor` negotiation
+  (delivered: #1776, #1892, #2292, #2306, #2310).
+- #1579 — governed real install-to-repair evidence.
+- #1630 — off-the-shelf standard-client dogfood.
 
 ## Versioning
 
