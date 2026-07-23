@@ -422,6 +422,24 @@ gate-specific artifacts.
 | scope_unanalyzed_worktree_empty_not_clean | rust | reports/scope-unanalyzed-worktree-empty-not-clean.json | empty_base_head_dirty_worktree_disclosure_not_clean (also `must_disclose_unanalyzed_working_tree`) |
 | scope_worktree_dirty_analyzed_not_excluded | rust | reports/scope-worktree-dirty-analyzed-not-excluded.json | dirty_worktree_explicitly_analyzed_not_reported_excluded (also `must_see_changed_file: src/lib.rs`, `expected_changed_rust_files: 1`, `must_disclose_scope`, `must_not_disclose_no_scope`, `must_not_disclose_unanalyzed_working_tree`, no verify/receipt commands, and no repair packet) |
 | scope_limited_empty_not_clean | rust | reports/scope-limited-empty-not-clean.json | empty_limited_scope_not_clean (also `expected_completeness: limited`) |
+| ts_same_method_other_class | typescript | typescript_adversarial_same_method_other_class | method_owner_same_name_different_class_identity (also `expected_class=no_static_path`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_imported_function_name_collision | typescript | typescript_reexport_no_false_credit | imported_function_name_collision_barrel_reexport_identity (also `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_decorator_indirection_limit | typescript | typescript_static_limit_taxonomy | decorator_indirection_named_limitation_not_promoted (also `must_emit_limitation: decorator_indirection`, `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_dynamic_dispatch_limit | typescript | typescript_static_limit_taxonomy | dynamic_dispatch_named_limitation_not_promoted (also `must_emit_limitation: dynamic_dispatch`, `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_missing_import_graph_limit | typescript | typescript_static_limit_taxonomy | unresolved_import_missing_import_graph_named_limitation (also `must_emit_limitation: missing_import_graph`, `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_hoc_wrapped_owner | typescript | typescript_adversarial_hoc_wrapped_owner | higher_order_wrapper_obscures_owner_identity (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_token_substring | typescript | typescript_adversarial_token_substring | token_substring_coincidence (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_render_reaches_unobserved_sink | typescript | typescript_adversarial_render_unobserved_sink | render_test_reaches_not_observes_changed_sink (also `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| ts_owner_identity_after_insertion | typescript | typescript_adversarial_owner_identity_after_insertion | stale_line_owner_identity_after_insertion (also `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_same_sub_other_package | perl | reports/perl_same_sub_other_package.json | same_sub_name_other_package_package_reference_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_import_alias_defining_package | perl | reports/perl_import_alias_defining_package.json | imported_alias_defining_package_mismatch_package_reference_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_moose_accessor_indirection | perl | reports/perl_moose_accessor_indirection.json | moose_accessor_generated_symbol_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_monkeypatch_symbol_table | perl | reports/perl_monkeypatch_symbol_table.json | monkeypatch_or_symbol_patch_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_mocked_module_unrelated_assertion | perl | reports/perl_mocked_module_unrelated_assertion.json | mocked_module_strong_oracle_observes_unrelated_sink (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_dynamic_require_eval_dispatch | perl | reports/perl_dynamic_require_eval_dispatch.json | dynamic_require_eval_dispatch_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_token_substring | perl | reports/perl_token_substring.json | token_substring_observed_sink_not_aligned (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_fixture_setup_no_discrimination | perl | reports/perl_fixture_setup_no_discrimination.json | fixture_harness_reaches_not_discriminates_fixture_setup_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_direct_owner_advisory_positive | perl | reports/perl_direct_owner_advisory_positive.json | direct_owner_call_relation_fires_advisory_only (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 
 ### Pinned external cases
 
@@ -439,7 +457,108 @@ gate-specific artifacts.
 | ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_dynamic_expected_incomplete_packet | typescript | typescript_dynamic_assertion_unresolved (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| ts_same_method_owner_identity_positive_control | typescript | typescript_same_method_owner_identity_positive (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
+| perl_sink_aligned_positive_control | perl | reports/perl_sink_aligned_positive_control.json (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | scope_clean_complete_empty_may_be_clean | rust | reports/scope-clean-complete-empty-may-be-clean.json (`expected_changed_rust_files: 0`) |
+
+### TypeScript/JavaScript and Perl family coverage (issue #1983)
+
+The corpus covers the cross-language false-promotion families shared by the
+TypeScript/JavaScript and Perl preview tiers. The invariant and the corpus are
+shared; the per-language matchers stay separate (different taxonomies,
+different edge policies).
+
+TypeScript/JavaScript families and their charter coverage:
+
+| family | corpus case | expected state |
+|---|---|---|
+| same method name on a different class/receiver | `ts_same_method_other_class` | `no_static_path` (receiver identity required) |
+| imported function name collision across modules | `ts_imported_function_name_collision` | `maximum_class=weakly_exposed` (barrel re-export resolves to the other module) |
+| decorator wrapper obscuring the owner | `ts_decorator_indirection_limit` | `must_emit_limitation: decorator_indirection`, not promoted |
+| higher-order wrapper obscuring the owner | `ts_hoc_wrapped_owner` | `weakly_exposed` (wrapper boundary stays opaque) |
+| token substring collision | `ts_token_substring` | `weakly_exposed` (call-boundary match, heuristic-only link) |
+| component/render test reaches but does not observe the changed sink | `ts_render_reaches_unobserved_sink` | `weakly_exposed` (heuristic link cannot borrow the strong assertion) |
+| stale line/owner identity after an insertion | `ts_owner_identity_after_insertion` | `maximum_class=weakly_exposed` (post-insertion owner identity; sibling oracle not borrowed) |
+| dynamic dispatch / unresolved import | `ts_dynamic_dispatch_limit`, `ts_missing_import_graph_limit` | named limitations, not promoted |
+
+Perl families and their charter coverage. Perl cases are `source_report`
+cases: the standard fixture runner builds `ripr` with default features
+(rust/typescript/python), and the Perl adapter is a feature-gated
+(`lang-perl`) fact-packet consumer, so Perl findings are not expressible as
+`goldens check` fixtures. Each byte-pinned report under
+`fixtures/evidence-promotion-honesty-corpus/reports/` is real consumer output,
+regenerated from the checked-in hand-authored `ripr-perl-facts-v1` packet of
+the same name under
+`fixtures/evidence-promotion-honesty-corpus/perl-packets/` with:
+
+```bash
+cargo build -p ripr --features lang-perl
+ripr check --perl-facts fixtures/evidence-promotion-honesty-corpus/perl-packets/<case>.json \
+  --base origin/main --json \
+  > fixtures/evidence-promotion-honesty-corpus/reports/<case>.json
+```
+
+The packet is the input (the tempting wrong relation or boundary is encoded
+there); the report is the byte-pinned consumer output the gate enforces.
+Packet fingerprints follow the `recompute_packet_fingerprint` recipe in
+`crates/ripr/src/analysis/language/perl/mod.rs`; the consumer rejects a stale
+or tampered fingerprint at ingestion.
+
+| family | corpus case | expected state |
+|---|---|---|
+| same sub/method name in another package | `perl_same_sub_other_package` | `reachable_unrevealed` (package-reference downgrade) |
+| imported alias vs defining package | `perl_import_alias_defining_package` | `reachable_unrevealed` (package-reference downgrade) |
+| Moose/accessor indirection | `perl_moose_accessor_indirection` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` (generated-symbol boundary) |
+| monkey patch / symbol-table mutation | `perl_monkeypatch_symbol_table` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` |
+| mocked module / unrelated strong assertion | `perl_mocked_module_unrelated_assertion` | `weakly_exposed` (observed sink does not align to the changed observable) |
+| dynamic require/eval dispatch | `perl_dynamic_require_eval_dispatch` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` |
+| token substring collision | `perl_token_substring` | `weakly_exposed` (sink alignment requires exact equality) |
+| fixture/harness test reaches but does not discriminate | `perl_fixture_setup_no_discrimination` | `reachable_unrevealed` (fixture-setup relations are advisory-only) |
+
+Positive controls (same-entity relations must still fire; preview/advisory
+per support policy, no gate, badge, or RIPR Zero role):
+
+- `ts_same_method_owner_identity_positive_control` — true receiver identity
+  (`new TokenValidator(...)` + exact-value assertion) keeps `exposed`.
+- `perl_sink_aligned_positive_control` — direct owner call with a strong
+  oracle whose observed sink exactly aligns to the changed observable keeps
+  `exposed` (already-observed).
+- `perl_direct_owner_advisory_positive` — direct owner call with a strong
+  owner-targeted oracle but no observed-sink fact stays `weakly_exposed`,
+  advisory only.
+
+#### Documented live finding: TypeScript owner-module mock over-credit
+
+The issue #1983 family "mocked module or dependency with unrelated assertion"
+has one uncovered TypeScript arm that is NOT a charter member because the
+current analyzer over-credits it. Reproduction (base `97acf1a4`):
+
+```bash
+# workspace: src/discount.ts exports applyDiscount; tests/discount.test.ts
+# adds `jest.mock('../src/discount')`, stubs the mock, and asserts
+# `expect(result).toBe(90)`.
+ripr check --root <workspace> --diff <predicate-change.diff> --mode fast --json
+```
+
+Actual: `classification: exposed` with `static_limit_kind: mocked_module`
+(`relation_reason: direct_owner_call`, `oracle_kind: exact_value/strong`).
+Expected: at most `weakly_exposed` — when the mocked module IS the changed
+owner's module, the owner call executes the mock, not the changed code, so a
+strong oracle on the stubbed return value cannot observe the changed sink.
+The named `typescript_mock_only_observer` limitation is emitted and
+`repair_packet_ready` stays `false`, but the exposure class over-credits:
+`receiver_owner_call_relation` / `class_method_owner_call_relation` apply the
+`test_mocks_owner_module` guard for Method/ClassMethod/ModuleFunction owners,
+while the Function/ArrowFunction owner path in `owner_call_relation`
+(`crates/ripr/src/analysis/language/typescript/related_tests.rs`) credits
+`DirectOwnerCall` without that guard. This is a candidate false-`exposed`
+finding for a follow-up analyzer PR (production matcher change is out of
+scope here); no golden was blessed for this state and no corpus case was
+added, because a `must_not_promote` entry would correctly fail the gate until
+the matcher is fixed. The dependency-mock arm (the test mocks a *different*
+module than the owner) is already pinned by
+`fixtures/typescript_mocked_module_limit`, and the equivalent Perl family
+(`perl_mocked_module_unrelated_assertion`) stays `weakly_exposed`.
 
 ### Validation by `check-fixture-contracts`
 
@@ -464,8 +583,11 @@ semantic assertions are enforced by opt-in execution against the current binary.
 - Does NOT re-classify any finding.
 - Does NOT bump schema_version, crate version, or touch release workflows.
 - Does NOT replace `goldens check`; composes with it.
-- Static-language clean: gate output uses `exposed`, `weakly_exposed`,
-  `reachable_unrevealed` only — all allowed vocabulary.
+- Static-language clean: gate output uses the conservative static vocabulary
+  (`exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,
+  `infection_unknown`, `propagation_unknown`, `static_unknown`) — all allowed
+  vocabulary. The `*_unknown` classes appear only as named-limitation states
+  (for example alongside `must_emit_limitation`), never as promoted classes.
 
 ## Acceptance Examples
 

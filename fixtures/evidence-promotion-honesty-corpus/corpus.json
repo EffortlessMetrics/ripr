@@ -772,6 +772,351 @@
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "no_static_path" }
       ]
+    },
+    {
+      "id": "ts_same_method_other_class",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_same_method_other_class",
+      "vector": "method_owner_same_name_different_class_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "no_static_path" },
+        { "type": "maximum_class", "class": "no_static_path" }
+      ]
+    },
+    {
+      "id": "ts_imported_function_name_collision",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_reexport_no_false_credit",
+      "vector": "imported_function_name_collision_barrel_reexport_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_decorator_indirection_limit",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_static_limit_taxonomy",
+      "vector": "decorator_indirection_named_limitation_not_promoted",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "decorator_indirection" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_dynamic_dispatch_limit",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_static_limit_taxonomy",
+      "vector": "dynamic_dispatch_named_limitation_not_promoted",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "dynamic_dispatch" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_missing_import_graph_limit",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_static_limit_taxonomy",
+      "vector": "unresolved_import_missing_import_graph_named_limitation",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "missing_import_graph" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_hoc_wrapped_owner",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_hoc_wrapped_owner",
+      "vector": "higher_order_wrapper_obscures_owner_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_token_substring",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_token_substring",
+      "vector": "token_substring_coincidence",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_render_reaches_unobserved_sink",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_render_unobserved_sink",
+      "vector": "render_test_reaches_not_observes_changed_sink",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_owner_identity_after_insertion",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_adversarial_owner_identity_after_insertion",
+      "vector": "stale_line_owner_identity_after_insertion",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_same_method_owner_identity_positive_control",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/typescript_same_method_owner_identity_positive",
+      "vector": "same_entity_receiver_identity_relation_still_fires",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "perl_same_sub_other_package",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_same_sub_other_package.json",
+      "vector": "same_sub_name_other_package_package_reference_downgrade",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "reachable_unrevealed" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_import_alias_defining_package",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_import_alias_defining_package.json",
+      "vector": "imported_alias_defining_package_mismatch_package_reference_downgrade",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "reachable_unrevealed" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_moose_accessor_indirection",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_moose_accessor_indirection.json",
+      "vector": "moose_accessor_generated_symbol_boundary_named_limitation",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "dynamic_dispatch" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "static_unknown" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_monkeypatch_symbol_table",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_monkeypatch_symbol_table.json",
+      "vector": "monkeypatch_or_symbol_patch_boundary_named_limitation",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "dynamic_dispatch" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "static_unknown" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_mocked_module_unrelated_assertion",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_mocked_module_unrelated_assertion.json",
+      "vector": "mocked_module_strong_oracle_observes_unrelated_sink",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "perl_dynamic_require_eval_dispatch",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_dynamic_require_eval_dispatch.json",
+      "vector": "dynamic_require_eval_dispatch_boundary_named_limitation",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "dynamic_dispatch" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "static_unknown" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_token_substring",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_token_substring.json",
+      "vector": "token_substring_observed_sink_not_aligned",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "perl_fixture_setup_no_discrimination",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_fixture_setup_no_discrimination.json",
+      "vector": "fixture_harness_reaches_not_discriminates_fixture_setup_downgrade",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "reachable_unrevealed" },
+        { "type": "maximum_class", "class": "reachable_unrevealed" }
+      ]
+    },
+    {
+      "id": "perl_sink_aligned_positive_control",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_sink_aligned_positive_control.json",
+      "vector": "same_entity_sink_aligned_observation_still_fires",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "perl_direct_owner_advisory_positive",
+      "language": "perl",
+      "tier": "pure",
+      "source_report": "fixtures/evidence-promotion-honesty-corpus/reports/perl_direct_owner_advisory_positive.json",
+      "vector": "direct_owner_call_relation_fires_advisory_only",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     }
   ]
 }
