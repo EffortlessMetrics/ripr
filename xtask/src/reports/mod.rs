@@ -41,7 +41,17 @@ pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
 pub(crate) use eval_sweep::eval_sweep;
 pub(crate) use first_pr::first_pr;
-pub(crate) use fixtures::{fixtures, golden_drift, goldens};
+pub(crate) use fixtures::{
+    FixtureCheckFormat, fixture_dirs, fixtures, golden_drift, goldens, goldens_check,
+    is_manifest_only_fixture_dir, normalize_fixture_human_output, normalize_fixture_json_output,
+    ripr_fixture_binary, run_fixture_check, yes_no,
+};
+#[cfg(test)]
+pub(crate) use fixtures::{
+    GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_contract_violations,
+    golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
+    json_string_values_for_key, normalize_golden_text, parse_reason,
+};
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
 pub(crate) use issue_intake::issue_intake;
