@@ -284,6 +284,132 @@ fn diagnostic_code_id(diagnostic: &Diagnostic) -> Option<String> {
     }
 }
 
+/// Typed, validated view of one action's `data` payload for
+/// `codeAction/resolve` revalidation (#1751, RIPR-SPEC-0129). The payload is
+/// build-only for `textDocument/codeAction`; resolve is its first consumer.
+pub(super) struct ParsedActionData {
+    /// The bounded action class (`inspect` / `navigate` / `refresh` /
+    /// `verify`), consistent with the payload's `action_kind`.
+    pub(super) action_class: String,
+    /// The action's stable snake_case machine name.
+    pub(super) action_name: String,
+    /// Addressed identities, first-present precedence mirroring
+    /// `canonical_identity`.
+    pub(super) canonical_gap_id: Option<String>,
+    /// See `canonical_gap_id`.
+    pub(super) gap_id: Option<String>,
+    /// See `canonical_gap_id`.
+    pub(super) seam_id: Option<String>,
+    /// See `canonical_gap_id`.
+    pub(super) finding_id: Option<String>,
+    /// The snapshot `stable_id()` input identity the action was built
+    /// against, when the payload carries one.
+    pub(super) input_identity: Option<String>,
+    /// The capability the client must hold for the action's command: the
+    /// client-command id, or `"server"` for server-executed commands.
+    pub(super) required_client_capability: String,
+}
+
+impl ParsedActionData {
+    /// The first producer-owned addressed identity, in the same precedence
+    /// `canonical_identity` uses for the build-side fingerprint.
+    pub(super) fn canonical_identity(&self) -> Option<&str> {
+        self.canonical_gap_id
+            .as_deref()
+            .or(self.gap_id.as_deref())
+            .or(self.seam_id.as_deref())
+            .or(self.finding_id.as_deref())
+    }
+
+    /// Whether the action addresses a gap record (gap identity present).
+    pub(super) fn addresses_gap(&self) -> bool {
+        self.canonical_gap_id.is_some() || self.gap_id.is_some()
+    }
+
+    /// Whether the action addresses any snapshot-bound artifact. An action
+    /// that addresses nothing (Refresh Analysis) carries no freshness state
+    /// and stays enabled — it is the recovery path out of staleness.
+    pub(super) fn addresses_artifact(&self) -> bool {
+        self.canonical_identity().is_some()
+    }
+}
+
+/// Parse and validate one action's `data` payload for `codeAction/resolve`
+/// (#1751). Fail-closed: a non-object payload, a missing or foreign
+/// `schema_version`, a malformed or missing required field, an
+/// `action_class`/`action_kind` disagreement, or an `action_id` that does
+/// not recompute from the payload's own action class, canonical addressed
+/// identity, command id, and action name is a rejection — resolve never
+/// best-effort reads a payload it cannot validate. `command_id` is the id
+/// the payload was fingerprinted with (the attached command, or the
+/// recovered capability for a stripped client command).
+pub(super) fn parse_validated_action_data(
+    data: &Value,
+    command_id: &str,
+) -> Result<ParsedActionData, String> {
+    let object = data
+        .as_object()
+        .ok_or_else(|| "code action data payload must be an object".to_string())?;
+    let schema_version = required_payload_string(object, "schema_version")?;
+    if schema_version != RIPR_CODE_ACTION_DATA_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported code action data schema version `{schema_version}`"
+        ));
+    }
+    let action_id = required_payload_string(object, "action_id")?;
+    let action_class = required_payload_string(object, "action_class")?;
+    let action_kind = required_payload_string(object, "action_kind")?;
+    if action_class_for_kind(&action_kind) != action_class {
+        return Err(format!(
+            "code action data action_class `{action_class}` disagrees with action_kind `{action_kind}`"
+        ));
+    }
+    let action_name = required_payload_string(object, "action_name")?;
+    let required_client_capability = required_payload_string(object, "required_client_capability")?;
+    let parsed = ParsedActionData {
+        action_class,
+        action_name,
+        canonical_gap_id: optional_payload_string(object, "canonical_gap_id"),
+        gap_id: optional_payload_string(object, "gap_id"),
+        seam_id: optional_payload_string(object, "seam_id"),
+        finding_id: optional_payload_string(object, "finding_id"),
+        input_identity: optional_payload_string(object, "input_identity"),
+        required_client_capability,
+    };
+    let canonical_identity = parsed.canonical_identity().unwrap_or_default();
+    let recomputed = crate::config::config_fingerprint(&format!(
+        "{action_class}|{canonical_identity}|{command_id}|{action_name}",
+        action_class = parsed.action_class,
+        action_name = parsed.action_name
+    ));
+    if recomputed != action_id {
+        return Err(
+            "code action data action_id does not recompute from its payload identity".to_string(),
+        );
+    }
+    Ok(parsed)
+}
+
+/// A required non-empty string field of the versioned payload (#1751).
+fn required_payload_string(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<String, String> {
+    optional_payload_string(object, key)
+        .ok_or_else(|| format!("code action data payload is missing `{key}`"))
+}
+
+/// An optional string field of the versioned payload (#1751): absent or
+/// empty maps to `None`, mirroring the build-side non-empty filter.
+fn optional_payload_string(object: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

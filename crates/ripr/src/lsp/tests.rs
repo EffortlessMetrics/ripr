@@ -1,4 +1,4 @@
-use super::actions::{SERVER_EXECUTED_COMMANDS, code_action_response};
+use super::actions::{SERVER_EXECUTED_COMMANDS, code_action_response, resolve_action};
 use super::backend::{
     Backend, RefreshLogSummary, refresh_completed_log_message, refresh_failed_log_message,
     workspace_input_path_is_relevant,
@@ -56,12 +56,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
-    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeLensOptions,
-    Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType, FileEvent, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, MarkedString, NumberOrString,
-    PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
+    CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeLensOptions, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, DocumentDiagnosticParams, ExecuteCommandParams, FileChangeType,
+    FileEvent, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, MarkedString,
+    NumberOrString, PartialResultParams, Position, PositionEncodingKind, PreviousResultId, Range,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TraceValue,
     VersionedTextDocumentIdentifier, WindowClientCapabilities, WorkspaceDiagnosticParams,
@@ -4438,6 +4438,386 @@ fn gap_code_actions_carry_distinct_action_ids_and_names() -> Result<(), String> 
     Ok(())
 }
 
+fn first_enabled_action(actions: &[CodeActionOrCommand]) -> Result<CodeAction, String> {
+    code_action_literals(actions)?
+        .into_iter()
+        .find(|action| action.command.is_some())
+        .cloned()
+        .ok_or_else(|| "scenario must emit an enabled action".to_string())
+}
+
+fn disabled_reason_of(action: &CodeAction) -> Option<&str> {
+    action
+        .data
+        .as_ref()
+        .and_then(|data| data.get("disabled_reason"))
+        .and_then(|reason| reason.as_str())
+}
+
+/// Retargets one action's addressed identity (#1751): drops the listed
+/// identity keys, inserts `insert_key = insert_value`, and recomputes the
+/// `action_id` fingerprint so the payload stays well-formed. The canonical
+/// identity after retargeting is `insert_value` (higher-precedence keys are
+/// the caller's responsibility to drop), and the command id comes from the
+/// attached command, mirroring the build-side fingerprint inputs.
+fn retarget_action_identity(
+    action: &CodeAction,
+    drop_keys: &[&str],
+    insert_key: &str,
+    insert_value: &str,
+) -> Result<CodeAction, String> {
+    let mut retargeted = action.clone();
+    let command_id = retargeted
+        .command
+        .as_ref()
+        .map(|command| command.command.clone())
+        .ok_or_else(|| "enabled action must carry a command".to_string())?;
+    let object = retargeted
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?;
+    for key in drop_keys {
+        object.remove(*key);
+    }
+    object.insert(
+        insert_key.to_string(),
+        serde_json::Value::String(insert_value.to_string()),
+    );
+    let action_class = object
+        .get("action_class")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "payload must carry action_class".to_string())?;
+    let action_name = object
+        .get("action_name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "payload must carry action_name".to_string())?;
+    let fingerprint = crate::config::config_fingerprint(&format!(
+        "{action_class}|{insert_value}|{command_id}|{action_name}"
+    ));
+    object.insert(
+        "action_id".to_string(),
+        serde_json::Value::String(fingerprint),
+    );
+    Ok(retargeted)
+}
+
+#[test]
+fn code_action_resolve_returns_fresh_action_resolved() -> Result<(), String> {
+    // #1751, RIPR-SPEC-0129: a well-formed action revalidated against the
+    // snapshot it was built from resolves in its enabled form — command
+    // attached, not disabled.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let mut resolved_count = 0;
+    for action in code_action_literals(&actions)? {
+        let resolved = resolve_action(action.clone(), Some(&seam_snapshot), &vscode)
+            .map_err(|err| format!("fresh action {} was rejected: {err}", action.title))?;
+        if resolved.command.is_none() {
+            return Err(format!("resolved action {} lost its command", action.title));
+        }
+        if resolved.disabled.is_some() {
+            return Err(format!("fresh action {} resolved disabled", action.title));
+        }
+        resolved_count += 1;
+    }
+    if resolved_count < 2 {
+        return Err(format!(
+            "seam scenario should resolve several actions, got {resolved_count}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_stale_input_identity_yields_disabled_stale_snapshot() -> Result<(), String> {
+    // #1751: the payload's input identity no longer matches the current
+    // snapshot — the action resolves inert naming `stale_snapshot`. The
+    // identity sits outside the `action_id` fingerprint, so mutating it
+    // leaves the payload well-formed.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let mut action = first_enabled_action(&actions)?;
+    let object = action
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?;
+    object.insert(
+        "input_identity".to_string(),
+        serde_json::Value::String("input:fnv1a64:0000000000000000".to_string()),
+    );
+    let resolved = resolve_action(action, Some(&seam_snapshot), &vscode)
+        .map_err(|err| format!("stale action was rejected instead of disabled: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+        return Err(format!(
+            "expected stale_snapshot, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_missing_addressed_artifact_yields_disabled_stale_snapshot()
+-> Result<(), String> {
+    // #1751: the current snapshot no longer carries the seam the action
+    // addresses — the action resolves inert naming `stale_snapshot`.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let action = first_enabled_action(&actions)?;
+    let (_ignored_params, mut snapshot_without_seam) = seam_code_action_request()?;
+    snapshot_without_seam.classified_seams.clear();
+    let resolved = resolve_action(action, Some(&snapshot_without_seam), &vscode)
+        .map_err(|err| format!("lapsed action was rejected instead of disabled: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+        return Err(format!(
+            "expected stale_snapshot, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_unadvertised_client_command_yields_disabled_capability_missing()
+-> Result<(), String> {
+    // #1751: the negotiated profile does not advertise the action's
+    // client-executed command — the action resolves inert naming
+    // `client_capability_missing`, mirroring the #1892 disabled form.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let action = code_action_literals(&actions)?
+        .into_iter()
+        .find(|action| {
+            action
+                .command
+                .as_ref()
+                .is_some_and(|command| command.command == COPY_CONTEXT_COMMAND)
+        })
+        .cloned()
+        .ok_or_else(|| "seam scenario must emit a copy-context action".to_string())?;
+    let unenhanced = ClientFeatureProfile::unsupported();
+    let resolved = resolve_action(action, Some(&seam_snapshot), &unenhanced)
+        .map_err(|err| format!("capability-lapsed action was rejected: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("client_capability_missing") {
+        return Err(format!(
+            "expected client_capability_missing, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_without_snapshot_keeps_refresh_enabled() -> Result<(), String> {
+    // #1751: the health/root gate withholds the snapshot — every
+    // diagnostic-addressing action resolves inert naming `stale_snapshot`,
+    // while the refresh action addresses no snapshot artifact and stays
+    // enabled (it is the recovery path out of staleness).
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let mut saw_refresh = false;
+    for action in code_action_literals(&actions)? {
+        let resolved = resolve_action(action.clone(), None, &vscode)
+            .map_err(|err| format!("action {} was rejected: {err}", action.title))?;
+        if action.title == "Refresh Analysis - Saved Workspace Check" {
+            saw_refresh = true;
+            if resolved.command.is_none() || resolved.disabled.is_some() {
+                return Err("refresh must stay enabled without a snapshot".to_string());
+            }
+        } else {
+            assert_disabled_action_invariants(&resolved)?;
+            if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+                return Err(format!(
+                    "action {} must name stale_snapshot, got {:?}",
+                    action.title,
+                    disabled_reason_of(&resolved)
+                ));
+            }
+        }
+    }
+    if !saw_refresh {
+        return Err("seam scenario must emit the refresh action".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_rejects_tampered_or_versionless_payloads() -> Result<(), String> {
+    // #1751: fail-closed parse — a tampered `action_id`, a missing or
+    // foreign `schema_version`, or a missing payload is a protocol
+    // rejection, never a best-effort read.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let action = first_enabled_action(&actions)?;
+
+    let mut tampered = action.clone();
+    tampered
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?
+        .insert(
+            "action_id".to_string(),
+            serde_json::Value::String("fnv1a64:0000000000000000".to_string()),
+        );
+    if resolve_action(tampered, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err("a tampered action_id must be rejected".to_string());
+    }
+
+    let mut versionless = action.clone();
+    versionless
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?
+        .remove("schema_version");
+    if resolve_action(versionless, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err("a missing schema_version must be rejected".to_string());
+    }
+
+    let mut foreign = action.clone();
+    foreign
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?
+        .insert(
+            "schema_version".to_string(),
+            serde_json::Value::String("foreign-schema-v0".to_string()),
+        );
+    if resolve_action(foreign, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err("a foreign schema_version must be rejected".to_string());
+    }
+
+    let mut payloadless = action;
+    payloadless.data = None;
+    if resolve_action(payloadless, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err("a missing payload must be rejected".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_unknown_seam_or_finding_identity_yields_disabled_stale_snapshot()
+-> Result<(), String> {
+    // #1751: a fingerprint-valid payload pointing at a seam or finding the
+    // current snapshot does not carry resolves inert naming `stale_snapshot`
+    // — the addressed-artifact lookup is the discriminator, not the
+    // freshness identity (which is left fresh here).
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let action = code_action_literals(&actions)?
+        .into_iter()
+        .find(|action| {
+            action.command.is_some()
+                && action
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("seam_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+        })
+        .cloned()
+        .ok_or_else(|| "seam scenario must emit an enabled seam-addressed action".to_string())?;
+    let seam_retargeted = retarget_action_identity(
+        &action,
+        &["canonical_gap_id", "gap_id", "finding_id"],
+        "seam_id",
+        "seam:does-not-exist",
+    )?;
+    let resolved = resolve_action(seam_retargeted, Some(&seam_snapshot), &vscode)
+        .map_err(|err| format!("unknown-seam action was rejected instead of disabled: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+        return Err(format!(
+            "unknown seam must name stale_snapshot, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+
+    let finding_retargeted = retarget_action_identity(
+        &action,
+        &["canonical_gap_id", "gap_id", "seam_id"],
+        "finding_id",
+        "finding:does-not-exist",
+    )?;
+    let resolved = resolve_action(finding_retargeted, Some(&seam_snapshot), &vscode)
+        .map_err(|err| format!("unknown-finding action was rejected instead of disabled: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+        return Err(format!(
+            "unknown finding must name stale_snapshot, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn code_action_resolve_rejects_class_kind_and_capability_disagreement() -> Result<(), String> {
+    // #1751: fail-closed parse and revalidation — an `action_class` that
+    // disagrees with `action_kind`, or a `required_client_capability` that
+    // disagrees with the attached command, is a protocol rejection, never a
+    // best-effort read.
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let action = first_enabled_action(&actions)?;
+
+    let mut class_tampered = action.clone();
+    let object = class_tampered
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?;
+    let original_class = object
+        .get("action_class")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "payload must carry action_class".to_string())?
+        .to_string();
+    let flipped_class = if original_class == "inspect" {
+        "navigate"
+    } else {
+        "inspect"
+    };
+    object.insert(
+        "action_class".to_string(),
+        serde_json::Value::String(flipped_class.to_string()),
+    );
+    if resolve_action(class_tampered, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err("an action_class/action_kind disagreement must be rejected".to_string());
+    }
+
+    let mut capability_tampered = action;
+    capability_tampered
+        .data
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "action must carry a data object".to_string())?
+        .insert(
+            "required_client_capability".to_string(),
+            serde_json::Value::String("ripr.noSuchNegotiatedCommand".to_string()),
+        );
+    if resolve_action(capability_tampered, Some(&seam_snapshot), &vscode).is_ok() {
+        return Err(
+            "a required_client_capability/command disagreement must be rejected".to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn code_action_response_disabled_capable_client_receives_inert_client_command_actions()
 -> Result<(), String> {
@@ -6686,6 +7066,67 @@ fn execute_command_rejects_unsupported_commands_with_stable_invalid_params() -> 
             })
             .await
             .map_err(|err| format!("server command failed after rejections: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
+fn code_action_resolve_rejects_missing_data_with_stable_invalid_params() -> Result<(), String> {
+    // #1751, RIPR-SPEC-0129: a `codeAction/resolve` request whose action is
+    // missing the versioned ripr data payload — or carries a payload from a
+    // foreign producer — gets a determinate protocol rejection, mirroring
+    // the unsupported-command rejection (#1628).
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("code-action-resolve-rejection")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        let payloadless = CodeAction {
+            title: "Inspect gap: copy repair packet".to_string(),
+            kind: Some(CodeActionKind::new("source.ripr.inspect")),
+            ..CodeAction::default()
+        };
+        match backend.code_action_resolve(payloadless).await {
+            Err(err) if err.code == tower_lsp_server::jsonrpc::ErrorCode::InvalidParams => {}
+            other => {
+                return Err(format!(
+                    "expected InvalidParams for a missing payload, got {other:?}"
+                ));
+            }
+        }
+
+        let foreign = CodeAction {
+            title: "Inspect gap: copy repair packet".to_string(),
+            kind: Some(CodeActionKind::new("source.ripr.inspect")),
+            data: Some(serde_json::json!({
+                "schema_version": "foreign-schema-v0",
+                "action_id": "fnv1a64:0000000000000000",
+                "action_class": "inspect",
+                "action_kind": "source.ripr.inspect",
+                "action_name": "copy_gap_repair_packet",
+                "required_client_capability": "ripr.copyContext"
+            })),
+            ..CodeAction::default()
+        };
+        match backend.code_action_resolve(foreign).await {
+            Err(err) if err.code == tower_lsp_server::jsonrpc::ErrorCode::InvalidParams => {}
+            other => {
+                return Err(format!(
+                    "expected InvalidParams for a foreign payload, got {other:?}"
+                ));
+            }
+        }
         Ok(())
     })
 }

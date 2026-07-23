@@ -168,6 +168,13 @@ real handlers. The capability is advertised as `capability_only`.
 - A headless agent client sees `experimental.riprAgent` advertised with
   `supported_requests: []` and `implementation_state: "capability_only"`
   until #1602/#1603 land real handlers.
+- A resolve-capable client that sends `codeAction/resolve` for an action
+  whose snapshot has moved on receives the same action back inert (#1751):
+  command and edit stripped, kind retained, `disabled_reason:
+  "stale_snapshot"` named. A fresh action resolves unchanged with its
+  command attached, and an action with a missing, foreign-versioned, or
+  fingerprint-tampered `data` payload receives a stable `InvalidParams`
+  rejection — never a best-effort read.
 
 ## Test Mapping
 
@@ -196,6 +203,20 @@ real handlers. The capability is advertised as `capability_only`.
   VS Code, disabled-support) must deliver identical diagnostics and produce
   identical ordered action-availability signatures, with anti-vacuity
   guards against empty delivered sets and a withheld snapshot.
+- `tests.rs` resolve tests verify `codeAction/resolve` revalidation
+  (#1751): a fresh action resolves enabled with its command attached, a
+  stale `input_identity` or a missing addressed artifact disables with
+  `stale_snapshot`, a fingerprint-valid payload retargeted to an unknown
+  seam or finding identity disables with `stale_snapshot` via the
+  artifact lookup (freshness identity left fresh), an unadvertised client
+  command disables with `client_capability_missing`, the refresh action
+  stays enabled without a snapshot, tampered or versionless payloads are
+  rejected (`action_id`, `action_class`/`action_kind` disagreement,
+  `required_client_capability` disagreement with the attached command),
+  and the trait-level handler returns a stable `InvalidParams` for a
+  missing or foreign payload.
+  `capabilities.rs::tests::initialize_result_advertises_code_action_resolve_provider`
+  pins the advertisement.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
@@ -204,7 +225,9 @@ real handlers. The capability is advertised as `capability_only`.
 - `crates/ripr/src/lsp/capabilities.rs` — capability advertisement
 - `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
 - `crates/ripr/src/lsp/actions.rs` — code action kind classification and
-  the omit-vs-disabled client-command policy (#1776, #1892)
+  the omit-vs-disabled client-command policy (#1776, #1892); the
+  `codeAction/resolve` revalidation helper (#1751)
+- `crates/ripr/src/lsp/backend.rs` — `codeAction/resolve` handler (#1751)
 - `crates/ripr/src/lsp/action_contract.rs` — versioned `CodeAction.data`
   payload and the closed disabled-reason vocabulary (#1892)
 - `crates/ripr/src/lsp/client_features.rs` — negotiated
@@ -256,6 +279,25 @@ client supports:
   `preview_or_static_limitation` (cross-language unresolved target). The
   backend health/root gate stays omit-only: without a snapshot no
   diagnostic-addressing action can be constructed.
+- `codeAction/resolve` is advertised (`resolveProvider: true`) as
+  revalidation, never command stripping (#1751):
+  `textDocument/codeAction` keeps emitting fully-resolved actions so
+  clients without resolve support keep working, and a resolve-capable
+  client revalidates before executing. Resolve fails closed with
+  `InvalidParams` when the action's `data` payload is missing, carries a
+  missing or foreign `schema_version`, is malformed, carries an
+  `action_class` that disagrees with its `action_kind`, carries a
+  `required_client_capability` that disagrees with its attached command, or
+  carries an `action_id` that does not recompute from the payload's own
+  action class, canonical addressed identity, command id, and action name.
+  A well-formed action is re-checked against the same health/root gate as
+  `textDocument/codeAction`, the snapshot `input_identity`, the addressed
+  artifact (validated gap artifact, classified seam, or finding), and the
+  negotiated client-command permission; a lapsed check returns the action
+  in the inert disabled form naming `stale_snapshot` or
+  `client_capability_missing`. The refresh action addresses no snapshot
+  artifact, so it stays enabled — it is the recovery path out of
+  staleness.
 
 The server does NOT:
 - Emit unknown command IDs to a client that has not negotiated them.

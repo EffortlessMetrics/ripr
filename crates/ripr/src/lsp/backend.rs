@@ -1,5 +1,5 @@
 use super::AnalysisStatusNotification;
-use super::actions::code_action_response;
+use super::actions::{code_action_response, resolve_action};
 use super::capabilities::{
     ConfigurationMode, WorkspaceRootResolution, initialize_result_for_client,
     root_from_initialize_params, workspace_folder_set_from_initialize_params,
@@ -69,16 +69,17 @@ use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tower_lsp_server::jsonrpc::{Error as LspError, Result as LspResult};
 use tower_lsp_server::ls_types::notification::LogTrace;
 use tower_lsp_server::ls_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, ConfigurationItem, Diagnostic,
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, ExecuteCommandParams, FileEvent, Hover, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, LSPAny, LogTraceParams, MessageType,
-    Registration, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
-    TraceValue, UnchangedDocumentDiagnosticReport, Uri, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
-    WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
+    CodeAction, CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, ConfigurationItem,
+    Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, ExecuteCommandParams, FileEvent,
+    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, LSPAny,
+    LogTraceParams, MessageType, Registration, RelatedFullDocumentDiagnosticReport,
+    RelatedUnchangedDocumentDiagnosticReport, TraceValue, UnchangedDocumentDiagnosticReport, Uri,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
+    WorkspaceDocumentDiagnosticReport, WorkspaceFullDocumentDiagnosticReport,
+    WorkspaceUnchangedDocumentDiagnosticReport,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -3590,6 +3591,23 @@ impl LanguageServer for Backend {
         result
     }
 
+    /// `codeAction/resolve` revalidation (#1751, RIPR-SPEC-0129): actions
+    /// are emitted fully resolved, so resolve revalidates the versioned data
+    /// payload, the current snapshot, and the negotiated client profile
+    /// before the client executes. A malformed payload fails closed with
+    /// `InvalidParams`; a lapsed action returns in the inert disabled form.
+    async fn code_action_resolve(&self, params: CodeAction) -> LspResult<CodeAction> {
+        self.trace_inbound(
+            "request",
+            "codeAction/resolve",
+            self.verbose_params_bytes(&params),
+        )
+        .await;
+        let result = self.code_action_resolve_inner(params);
+        self.trace_response("codeAction/resolve", &result).await;
+        result
+    }
+
     /// Advisory `textDocument/codeLens` handler (RIPR-SPEC-0099).
     ///
     /// Locks `latest_analysis` read-only exactly like `hover_for_position` and
@@ -3862,6 +3880,36 @@ impl Backend {
             "unsupported command `{}`: not a server-executed ripr command",
             params.command
         )))
+    }
+
+    /// Inner `codeAction/resolve` handler, wrapped by the trait method so
+    /// redacted protocol tracing (#2035, RIPR-SPEC-0137) covers every exit
+    /// point. Applies the same health/root gate and negotiated
+    /// client-command policy as `code_action` (#1751, RIPR-SPEC-0129).
+    fn code_action_resolve_inner(&self, action: CodeAction) -> LspResult<CodeAction> {
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        let health = self.analysis_health_snapshot();
+        let root_allows_analysis = self.workspace_root_authority().allows_analysis();
+        let action_snapshot = (health.allows_current_repairs() && root_allows_analysis)
+            .then_some(snapshot)
+            .flatten();
+        // A poisoned profile store fails closed to the unsupported profile,
+        // same as `code_action` (#1776).
+        let client_features = self
+            .client_features
+            .lock()
+            .map(|features| features.clone())
+            .unwrap_or_else(|_| ClientFeatureProfile::unsupported());
+        resolve_action(
+            action,
+            action_snapshot.as_ref().map(|snapshot| snapshot.as_ref()),
+            &client_features,
+        )
+        .map_err(LspError::invalid_params)
     }
 
     async fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {

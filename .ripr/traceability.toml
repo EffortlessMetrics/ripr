@@ -7127,6 +7127,16 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::seam_code_actions_cross_language_unresolved_yields_disabled_preview_limitation",
   "crates/ripr/src/lsp/tests.rs::execute_command_rejects_unsupported_commands_with_stable_invalid_params",
   "crates/ripr/src/lsp/tests.rs::push_and_pull_delivery_yield_identical_code_action_availability",
+  "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_code_action_resolve_provider",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_returns_fresh_action_resolved",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_stale_input_identity_yields_disabled_stale_snapshot",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_missing_addressed_artifact_yields_disabled_stale_snapshot",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_unadvertised_client_command_yields_disabled_capability_missing",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_without_snapshot_keeps_refresh_enabled",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_rejects_tampered_or_versionless_payloads",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_rejects_missing_data_with_stable_invalid_params",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_unknown_seam_or_finding_identity_yields_disabled_stale_snapshot",
+  "crates/ripr/src/lsp/tests.rs::code_action_resolve_rejects_class_kind_and_capability_disagreement",
 ]
 fixtures = []
 code = [
@@ -7137,6 +7147,7 @@ code = [
   "editors/vscode/src/client.ts",
   "editors/vscode/package.json",
   "crates/ripr/src/lsp/client_features.rs",
+  "crates/ripr/src/lsp/backend.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md",

@@ -66,7 +66,13 @@ pub(super) fn initialize_result_for_client(
                         .map(CodeActionKind::new)
                         .collect(),
                 ),
-                resolve_provider: Some(false),
+                // codeAction/resolve is revalidation, not command stripping
+                // (#1751, RIPR-SPEC-0129): actions are emitted fully resolved,
+                // so clients without resolve support keep working; a
+                // resolve-capable client re-checks the versioned payload, the
+                // current snapshot, and the negotiated capability before
+                // executing.
+                resolve_provider: Some(true),
                 ..CodeActionOptions::default()
             })),
             // Advisory codeLens: resolve is disabled; lenses are display-only
@@ -309,6 +315,21 @@ mod tests {
         };
         if !options.inter_file_dependencies || !options.workspace_diagnostics {
             return Err("diagnostic provider lost workspace dependency support".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn initialize_result_advertises_code_action_resolve_provider() -> Result<(), String> {
+        // #1751, RIPR-SPEC-0129: resolve is advertised as revalidation.
+        let result = initialize_result();
+        let Some(CodeActionProviderCapability::Options(options)) =
+            result.capabilities.code_action_provider
+        else {
+            return Err("expected static code action options".to_string());
+        };
+        if options.resolve_provider != Some(true) {
+            return Err("codeAction/resolve support was not advertised".to_string());
         }
         Ok(())
     }

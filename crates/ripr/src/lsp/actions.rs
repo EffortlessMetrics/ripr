@@ -1,5 +1,6 @@
 use super::action_contract::{
-    ActionDataInputs, ActionDisabledReason, action_data, disabled_reason_emittable,
+    ActionDataInputs, ActionDisabledReason, ParsedActionData, action_data,
+    disabled_reason_emittable, parse_validated_action_data,
 };
 use super::client_features::ClientFeatureProfile;
 use super::gap_artifacts::{ValidatedGapArtifact, command_payload_is_safe, workspace_path_is_safe};
@@ -234,24 +235,142 @@ fn disable_missing_client_command_action(
     if command_permitted(&command.command, client_features) {
         return;
     }
+    disable_action_in_place(action, ActionDisabledReason::ClientCapabilityMissing);
+}
+
+/// Puts an already-emitted action into the inert disabled form with
+/// `reason` (#1892, #1751): command and edit stripped (a disabled action
+/// that still executes is the cardinal-sin flip), `is_preferred` cleared,
+/// kind retained for the `CodeActionContext.only` filter, and the machine
+/// reason named in the data payload. Both call-site reasons are statically
+/// emittable; if the fail-closed emit guard ever rejects one, the action is
+/// still stripped so it can never stay executable.
+fn disable_action_in_place(action: &mut CodeAction, reason: ActionDisabledReason) {
     action.command = None;
     action.edit = None;
     action.is_preferred = None;
+    if !disabled_reason_emittable(reason) {
+        return;
+    }
     action.disabled = Some(CodeActionDisabled {
-        reason: ActionDisabledReason::ClientCapabilityMissing
-            .human_reason()
-            .to_string(),
+        reason: reason.human_reason().to_string(),
     });
     if let Some(object) = action.data.as_mut().and_then(Value::as_object_mut) {
         object.insert(
             "disabled_reason".to_string(),
-            Value::String(
-                ActionDisabledReason::ClientCapabilityMissing
-                    .as_str()
-                    .to_string(),
-            ),
+            Value::String(reason.as_str().to_string()),
         );
     }
+}
+
+/// `codeAction/resolve` revalidation (#1751, RIPR-SPEC-0129).
+/// `textDocument/codeAction` already emits fully-resolved actions, so
+/// resolve never strips or lazily attaches commands: it revalidates the
+/// action against the current snapshot and the negotiated client profile
+/// before the client executes it. A payload that is missing,
+/// foreign-versioned, malformed, or fingerprint-inconsistent is a
+/// fail-closed rejection (the `Err` message maps to `InvalidParams`,
+/// mirroring the unsupported-command rejection at the backend). A
+/// well-formed action whose snapshot, addressed artifact, or required
+/// capability has lapsed returns in the inert disabled form naming the
+/// emittable reason.
+pub(super) fn resolve_action(
+    mut action: CodeAction,
+    snapshot: Option<&AnalysisSnapshot>,
+    client_features: &ClientFeatureProfile,
+) -> Result<CodeAction, String> {
+    let data = action
+        .data
+        .clone()
+        .ok_or_else(|| "code action is missing its ripr data payload".to_string())?;
+    let command_id = resolve_command_id(&action, &data)?;
+    let parsed = parse_validated_action_data(&data, &command_id)?;
+    if parsed.addresses_artifact() {
+        // Same health/root gate as `code_action`: without a current snapshot
+        // the addressed evidence cannot be confirmed.
+        let Some(snapshot) = snapshot else {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        };
+        if let Some(payload_identity) = parsed.input_identity.as_deref()
+            && Some(payload_identity) != snapshot.input_identity_id().as_deref()
+        {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        }
+        if !addressed_artifact_still_present(&parsed, &data, snapshot) {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        }
+    }
+    if let Some(command) = action.command.as_ref() {
+        // The payload's declared capability must agree with the attached
+        // command — a mismatch is payload tampering, not a negotiation
+        // difference.
+        if parsed.required_client_capability != required_client_capability(&command.command) {
+            return Err(
+                "code action data required_client_capability disagrees with its command"
+                    .to_string(),
+            );
+        }
+        if !command_permitted(&command.command, client_features) {
+            disable_action_in_place(&mut action, ActionDisabledReason::ClientCapabilityMissing);
+            return Ok(action);
+        }
+        // Revalidation passed: the action resolves in its enabled form.
+        action.disabled = None;
+    }
+    // An action that arrives without a command (already inert when emitted)
+    // is returned as-is after revalidation: the constructors need the
+    // original request context, so the command is not rebuilt here.
+    Ok(action)
+}
+
+/// The command id the payload's `action_id` was fingerprinted with (#1751):
+/// the attached command when present, otherwise — for an action the
+/// omit-vs-disabled policy stripped — the payload's required capability,
+/// which for a client-executed command is the command id itself. A stripped
+/// server-executed command cannot be recovered and fails closed.
+fn resolve_command_id(action: &CodeAction, data: &Value) -> Result<String, String> {
+    if let Some(command) = action.command.as_ref() {
+        return Ok(command.command.clone());
+    }
+    match data
+        .get("required_client_capability")
+        .and_then(Value::as_str)
+    {
+        Some(capability) if capability != "server" && !capability.trim().is_empty() => {
+            Ok(capability.to_string())
+        }
+        _ => Err("code action carries no command and its payload cannot recover one".to_string()),
+    }
+}
+
+/// The addressed-artifact freshness re-verification (#1751): the snapshot
+/// must still carry the artifact the action addresses — the validated gap
+/// artifact for a gap action (same predicate as the `code_action` emit
+/// site), the classified seam for a seam action, the finding for a finding
+/// action. The payload carries the addressed identities under the same keys
+/// the diagnostic data uses, so the shared matcher consumes it directly.
+fn addressed_artifact_still_present(
+    parsed: &ParsedActionData,
+    data: &Value,
+    snapshot: &AnalysisSnapshot,
+) -> bool {
+    if parsed.addresses_gap() {
+        return snapshot.gap_artifacts.iter().any(|artifact| {
+            artifact.is_safe_projection_input()
+                && artifact.is_actionable_gap()
+                && artifact_matches_gap_diagnostic(artifact, data)
+        });
+    }
+    if let Some(seam_id) = parsed.seam_id.as_deref() {
+        return snapshot.classified_seam_by_id(seam_id).is_some();
+    }
+    if let Some(finding_id) = parsed.finding_id.as_deref() {
+        return snapshot.finding_by_id(finding_id).is_some();
+    }
+    false
 }
 
 /// Builds an inert, diagnostic-addressing action for a suppression site
