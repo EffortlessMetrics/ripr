@@ -2732,6 +2732,27 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('initialize advertises the RIPR experimental capability block', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const advertised = context.experimentalCapabilities() as
+        | { riprEditor?: { version?: string; commands?: string[]; guardedTestEdit?: boolean } }
+        | undefined;
+      assert.ok(advertised?.riprEditor, 'expected the riprEditor experimental block');
+      assert.ok(
+        typeof advertised.riprEditor.version === 'string' && advertised.riprEditor.version !== '',
+        'expected a non-empty extension version in the riprEditor block'
+      );
+      assert.ok(advertised.riprEditor.commands?.includes('ripr.showStatus'));
+      // Guarded test edits are not implemented by this extension; the opt-in
+      // must stay explicitly false rather than absent-truthy.
+      assert.strictEqual(advertised.riprEditor.guardedTestEdit, false);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar reports unavailable server without hanging on modal UI', async () => {
     const context = createControllerTestContext({
       resolveFailure: {
@@ -3886,6 +3907,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const warningMessages: string[] = [];
   const errorMessages: string[] = [];
   let clientOptions: unknown;
+  let experimentalCapabilities: unknown;
   const configuredWorkspaceRootState = controllerWorkspaceRootState(options);
   const runtime: RiprClientRuntime = {
     getConfig: () => ({
@@ -3908,8 +3930,9 @@ function createControllerTestContext(options: ControllerTestOptions) {
       detail: 'test ripr on PATH',
       version: options.serverVersion ?? 'ripr 0.8.0-test'
     }),
-    createLanguageClient: (_serverOptions, options) => {
+    createLanguageClient: (_serverOptions, options, experimental) => {
       clientOptions = options;
+      experimentalCapabilities = experimental;
       return client;
     },
     createFileSystemWatcher: (pattern) => {
@@ -3951,6 +3974,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     errorMessages,
     outputLines,
     clientOptions: () => clientOptions,
+    experimentalCapabilities: () => experimentalCapabilities,
     dispose: async () => {
       await controller.stop();
       output.dispose();

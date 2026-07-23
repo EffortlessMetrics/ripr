@@ -7,6 +7,8 @@ use serde_json::Value;
 use std::path::Path;
 use tower_lsp_server::ls_types::{InitializeParams, PositionEncodingKind};
 
+use super::client_features::ClientFeatureProfile;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
@@ -56,13 +58,18 @@ impl Default for LspAnalysisConfig {
 }
 
 impl LspAnalysisConfig {
+    /// Build the session config from initialization options plus the typed
+    /// client-feature profile (#1987, RIPR-SPEC-0143). The profile is parsed
+    /// once at `initialize`; the position encoding is read from it rather
+    /// than re-negotiated here.
     pub(super) fn from_initialize_params(
         params: &InitializeParams,
         repo_config: RiprConfig,
+        profile: &ClientFeatureProfile,
     ) -> Self {
         let mut config =
             Self::from_repo_config_and_options(repo_config, params.initialization_options.as_ref());
-        config.position_encoding = super::capabilities::negotiate_position_encoding(params);
+        config.position_encoding = profile.selected_position_encoding.clone();
         config
     }
 
@@ -426,10 +433,20 @@ mod tests {
         }
     }
 
+    /// Test helper mirroring the production flow: the profile is parsed once
+    /// from the params and passed into the config build.
+    fn config_from_params(params: &InitializeParams, repo_config: RiprConfig) -> LspAnalysisConfig {
+        LspAnalysisConfig::from_initialize_params(
+            params,
+            repo_config,
+            &ClientFeatureProfile::from_initialize_params(params),
+        )
+    }
+
     #[test]
     fn seam_diagnostics_defaults_to_true_when_option_is_missing() {
         let params = params_with(json!({}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
         assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
     }
@@ -437,7 +454,7 @@ mod tests {
     #[test]
     fn diagnostic_profile_init_option_selects_full_visibility() {
         let params = params_with(json!({"diagnosticProfile": "full"}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
     }
 
@@ -467,7 +484,7 @@ mod tests {
     #[test]
     fn unknown_diagnostic_profile_init_option_keeps_the_default() {
         let params = params_with(json!({"diagnosticProfile": "unknown"}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
     }
 
@@ -488,21 +505,21 @@ diagnostic_profile = "quiet"
     #[test]
     fn seam_diagnostics_true_in_init_options_enables_flag() {
         let params = params_with(json!({"seamDiagnostics": true}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
     }
 
     #[test]
     fn seam_diagnostics_false_in_init_options_disables_default() {
         let params = params_with(json!({"seamDiagnostics": false}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(!config.enable_seam_diagnostics);
     }
 
     #[test]
     fn non_boolean_seam_diagnostics_value_is_ignored() {
         let params = params_with(json!({"seamDiagnostics": "yes"}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         // Falls back to the default rather than misinterpreting a
         // string as truthy.
         assert!(config.enable_seam_diagnostics);
@@ -548,8 +565,7 @@ diagnostic_profile = "quiet"
                     "includeUnchangedTests": include_unchanged_tests,
                     "seamDiagnostics": seam_diagnostics,
                 }));
-                let config =
-                    LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+                let config = config_from_params(&params, RiprConfig::default());
                 assert_eq!(config.include_unchanged_tests, include_unchanged_tests);
                 assert_eq!(config.enable_seam_diagnostics, seam_diagnostics);
             }
@@ -570,7 +586,7 @@ diagnostic_profile = "full"
 "#,
         )?;
         let params = params_with(json!({}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
+        let config = config_from_params(&params, repo_config);
 
         assert_eq!(config.mode, Mode::Deep);
         assert!(!config.include_unchanged_tests);
@@ -596,7 +612,7 @@ seam_diagnostics = true
             "includeUnchangedTests": true,
             "seamDiagnostics": false
         }));
-        let config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
+        let config = config_from_params(&params, repo_config);
 
         assert_eq!(config.mode, Mode::Instant);
         assert!(config.include_unchanged_tests);

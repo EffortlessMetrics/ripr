@@ -1,11 +1,10 @@
 use super::AnalysisStatusNotification;
 use super::actions::code_action_response;
 use super::capabilities::{
-    ConfigurationMode, WorkspaceRootResolution, client_supports_code_lens_refresh,
-    client_supports_diagnostic_refresh, client_supports_pull_diagnostics,
-    client_supports_work_done_progress, configuration_mode, initialize_result_for_client,
+    ConfigurationMode, WorkspaceRootResolution, initialize_result_for_client,
     root_from_initialize_params, workspace_folder_set_from_initialize_params,
 };
+use super::client_features::ClientFeatureProfile;
 use super::config::{LspAnalysisConfig, validated_pulled_options};
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, DiagnosticResultIdCache, WorkspaceDiagnostics,
@@ -100,6 +99,11 @@ pub(super) struct Backend {
     configuration_failure: Mutex<Option<AnalysisFailure>>,
     /// Negotiated session-configuration transport (#2031, RIPR-SPEC-0136).
     configuration_mode: Mutex<ConfigurationMode>,
+    /// The immutable typed client-feature profile (#1987, RIPR-SPEC-0143):
+    /// parsed exactly once at `initialize` and the one authority for what
+    /// the client advertised. The negotiated session fields below are
+    /// populated from it; the bounded status projection is rendered from it.
+    client_features: Mutex<ClientFeatureProfile>,
     /// Epoch guarding pull responses: `workspace/didChangeConfiguration` in
     /// pull mode bumps it, and a response arriving for an older epoch is
     /// dropped. Mirrors `workspace_root_epoch`.
@@ -183,6 +187,7 @@ impl Backend {
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
             configuration_failure: Mutex::new(None),
             configuration_mode: Mutex::new(ConfigurationMode::InitializationOnly),
+            client_features: Mutex::new(ClientFeatureProfile::unsupported()),
             config_pull_epoch: AtomicU64::new(0),
             config_pull_state: Mutex::new(ConfigPullState::NotApplicable),
             config_pull_coordinator: Mutex::new(ConfigPullCoordinator::default()),
@@ -1516,6 +1521,10 @@ impl Backend {
             "root_detail": root.detail,
             "root_recovery_route": root_recovery_route(&root.state),
             "input_authority": input_authority,
+            // Bounded negotiated-capability disclosure (#1987,
+            // RIPR-SPEC-0143): the selected client-feature profile without
+            // the raw capability document.
+            "client_features": self.client_features_projection(),
         })
     }
 
@@ -1821,8 +1830,16 @@ impl Backend {
     }
 
     pub(super) fn set_configuration_failure(&self, message: impl Into<String>) {
+        self.record_blocking_failure("config_invalid", message);
+    }
+
+    /// Record a failure that pauses analysis until the session state is
+    /// repaired: the typed failure lands in `configuration_failure` and the
+    /// analysis health so the status payload discloses it instead of
+    /// presenting an internally inconsistent session as normal.
+    fn record_blocking_failure(&self, kind: &str, message: impl Into<String>) {
         let failure = AnalysisFailure {
-            kind: "config_invalid".to_string(),
+            kind: kind.to_string(),
             message: bounded_failure_message(&message.into()),
         };
         if let Ok(mut current) = self.configuration_failure.lock() {
@@ -1932,6 +1949,33 @@ impl Backend {
             .lock()
             .map(|mode| *mode)
             .unwrap_or(ConfigurationMode::InitializationOnly)
+    }
+
+    /// The bounded status projection of the negotiated client-feature
+    /// profile (#1987, RIPR-SPEC-0143): status-visible without dumping the
+    /// raw capability document. Before `initialize` this projects the
+    /// unsupported pre-initialize profile.
+    fn client_features_projection(&self) -> serde_json::Value {
+        self.client_features
+            .lock()
+            .map(|features| features.status_projection())
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    /// Poison the profile store so tests can exercise the fail-closed
+    /// surfacing at `initialize` (#1987 review). A std::sync::Mutex is
+    /// poisoned only when a guard holder unwinds, so this helper triggers a
+    /// runtime index failure while holding the guard; the index is derived
+    /// at runtime so the compiler cannot const-prove it, and catch_unwind
+    /// confines the unwind to this helper. No production path is involved.
+    #[cfg(test)]
+    pub(super) fn poison_client_features_for_test(&self) {
+        let out_of_bounds = std::env::args_os().count() + 1;
+        let slots = [0u8];
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = self.client_features.lock();
+            let _tombstone = slots[out_of_bounds];
+        }));
     }
 
     fn config_pull_state(&self) -> ConfigPullState {
@@ -2855,7 +2899,7 @@ fn root_authority_block_reason(state: &WorkspaceRootState) -> &'static str {
     }
 }
 
-fn root_authority_receipt_status(state: &WorkspaceRootState) -> LSPAny {
+fn root_authority_receipt_status(state: &WorkspaceRootState, client_features: LSPAny) -> LSPAny {
     serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -2867,6 +2911,7 @@ fn root_authority_receipt_status(state: &WorkspaceRootState) -> LSPAny {
         "open_attempt_ledger": "not_available",
         "latest_attempt_outcome": "not_available",
         "route_quality_summary": "not_available",
+        "client_features": client_features,
         "limits_note": "Static evidence only; advisory, not a gate decision.",
     })
 }
@@ -3049,8 +3094,13 @@ impl LanguageServer for Backend {
         // Typed ingress bound (#2034): reject oversized client options before
         // any config load, root resolution, or capability state mutation.
         check_initialization_options(params.initialization_options.as_ref())?;
-        let supports_pull_diagnostics = client_supports_pull_diagnostics(&params);
-        let supports_diagnostic_refresh = client_supports_diagnostic_refresh(&params);
+        // Parse the typed client-feature profile exactly once (#1987,
+        // RIPR-SPEC-0143); every negotiated session field below is populated
+        // from it, and downstream surfaces consume session state or the
+        // profile — never raw `InitializeParams` capability trees.
+        let profile = ClientFeatureProfile::from_initialize_params(&params);
+        let supports_pull_diagnostics = profile.pull_diagnostics;
+        let supports_diagnostic_refresh = profile.diagnostic_refresh;
         if let Ok(mut supported) = self.pull_diagnostics.lock() {
             *supported = supports_pull_diagnostics;
         }
@@ -3059,17 +3109,16 @@ impl LanguageServer for Backend {
         }
         // CodeLens refresh negotiation (#2032, RIPR-SPEC-0138): from client
         // capabilities only, never inferred from the client name.
-        let supports_code_lens_refresh = client_supports_code_lens_refresh(&params);
+        let supports_code_lens_refresh = profile.code_lens_refresh;
         if let Ok(mut supported) = self.code_lens_refresh_support.lock() {
             *supported = supports_code_lens_refresh;
         }
-        self.progress
-            .set_supported(client_supports_work_done_progress(&params));
+        self.progress.set_supported(profile.work_done_progress);
         // Negotiate the session-configuration transport from capabilities
         // only (#2031, RIPR-SPEC-0136): pull when the client answers
         // `workspace/configuration`, push fallback when it advertises
         // `workspace/didChangeConfiguration`, otherwise initialization-only.
-        let negotiated_mode = configuration_mode(&params);
+        let negotiated_mode = profile.configuration_mode;
         if let Ok(mut mode) = self.configuration_mode.lock() {
             *mode = negotiated_mode;
         }
@@ -3077,13 +3126,7 @@ impl LanguageServer for Backend {
             ConfigurationMode::Pull => ConfigPullState::Pending,
             _ => ConfigPullState::NotApplicable,
         });
-        let supports_dynamic_registration = params
-            .capabilities
-            .workspace
-            .as_ref()
-            .and_then(|workspace| workspace.did_change_watched_files.as_ref())
-            .and_then(|capability| capability.dynamic_registration)
-            .unwrap_or(false);
+        let supports_dynamic_registration = profile.watched_files_dynamic_registration;
         if let Ok(mut supported) = self.dynamic_file_watch_registration.lock() {
             *supported = supports_dynamic_registration;
         }
@@ -3103,10 +3146,11 @@ impl LanguageServer for Backend {
             }
             _ => (crate::config::RiprConfig::default(), None),
         };
-        let analysis_config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
-        // `from_initialize_params` is the sole owner of the position-encoding
-        // negotiation; read the chosen encoding back so the initialize response
-        // advertises exactly what the config will use.
+        let analysis_config =
+            LspAnalysisConfig::from_initialize_params(&params, repo_config, &profile);
+        // The profile is the sole owner of the position-encoding negotiation;
+        // read the chosen encoding back so the initialize response advertises
+        // exactly what the config will use.
         let position_encoding = analysis_config.position_encoding.clone();
         self.set_analysis_config(analysis_config);
         self.set_workspace_root_authority(WorkspaceRootAuthority::unavailable(
@@ -3121,6 +3165,32 @@ impl LanguageServer for Backend {
                 )
                 .await;
             self.set_configuration_failure(error);
+            self.publish_analysis_status().await;
+        }
+        // The profile store lands after the root application and config
+        // failure handling because applying a workspace-root authority
+        // resets the failure channel for the new input context; a failure
+        // recorded here is the last writer and stays disclosed.
+        if let Ok(mut features) = self.client_features.lock() {
+            *features = profile.clone();
+        } else {
+            // Fail closed, never silent (#1987 review): a poisoned profile
+            // store would leave the pre-initialize `unsupported()` profile
+            // beside sibling session fields just populated from the parsed
+            // profile — an internally inconsistent session. Surface it
+            // through the same blocking-failure channel as a config load
+            // failure so the status payload discloses the state and analysis
+            // stays paused instead of running on a torn negotiation.
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    "ripr client feature profile could not be stored; analysis is paused",
+                )
+                .await;
+            self.record_blocking_failure(
+                "session_state_inconsistent",
+                "client feature profile could not be stored after initialize negotiation; analysis is paused",
+            );
             self.publish_analysis_status().await;
         }
         Ok(initialize_result_for_client(
@@ -5104,7 +5174,10 @@ impl Backend {
     fn collect_receipt_status(&self) -> Option<LSPAny> {
         let authority = self.workspace_root_authority();
         if !authority.allows_analysis() {
-            return Some(root_authority_receipt_status(&authority.state));
+            return Some(root_authority_receipt_status(
+                &authority.state,
+                self.client_features_projection(),
+            ));
         }
         let root = self.root.lock().ok()?.clone();
         let snapshot = match self.latest_analysis.lock().ok()? {
@@ -5121,6 +5194,7 @@ impl Backend {
                     "open_attempt_ledger": "not_available",
                     "latest_attempt_outcome": "not_available",
                     "route_quality_summary": "not_available",
+                    "client_features": self.client_features_projection(),
                     "limits_note": "Static evidence only; advisory, not a gate decision.",
                 }));
             }
@@ -5171,6 +5245,7 @@ impl Backend {
             "latest_attempt_outcome": latest_attempt_outcome_val,
             "route_quality_summary": route_quality_summary_val,
             "report_paths": workspace_receipt_status_report_paths(),
+            "client_features": self.client_features_projection(),
             "limits_note": "Static evidence only; advisory, not a gate decision.",
         }))
     }

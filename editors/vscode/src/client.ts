@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+  InitializeParams,
   LanguageClient,
   LanguageClientOptions,
   RevealOutputChannelOn,
@@ -34,6 +35,90 @@ const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typesc
   ['.py', 'python']
 ]);
 const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
+
+// The ripr.* commands this extension registers, advertised to the server at
+// initialize inside the RIPR experimental capability block (#1987,
+// RIPR-SPEC-0143) so the session profile knows which client commands exist.
+const RIPR_CLIENT_COMMANDS: readonly string[] = [
+  'ripr.copyContext',
+  'ripr.copyCurrentRepairPacket',
+  'ripr.copyFirstPrReceiptCommand',
+  'ripr.copyFirstPrRegenerationGuidance',
+  'ripr.copyFirstPrRepairPacket',
+  'ripr.copyFirstPrSummary',
+  'ripr.copyFirstPrVerifyCommand',
+  'ripr.copyReceiptCommand',
+  'ripr.copyRepoGapMap',
+  'ripr.copyTopReceiptCommand',
+  'ripr.copyTopRepairPacket',
+  'ripr.copyTopVerifyCommand',
+  'ripr.diagnoseSetup',
+  'ripr.openAttemptLedger',
+  'ripr.openFirstPrPacket',
+  'ripr.openRelatedTest',
+  'ripr.openReport',
+  'ripr.openSettings',
+  'ripr.restartServer',
+  'ripr.selectWorkspaceRoot',
+  'ripr.showOutput',
+  'ripr.showReceiptStatus',
+  'ripr.showRouteQuality',
+  'ripr.showStatus',
+  'ripr.showTopLimitation',
+  'ripr.startCurrentRepair'
+];
+
+// The RIPR experimental capability block advertised in initialize params
+// (#1987, RIPR-SPEC-0143). Absence of a field never implies support on the
+// server side, and the server fails closed on malformed blocks, so this
+// advertisement stays minimal and exact.
+export interface RiprExperimentalClientCapabilities {
+  riprEditor: {
+    version: string;
+    commands: string[];
+    guardedTestEdit: boolean;
+  };
+}
+
+export function riprExperimentalClientCapabilities(
+  extensionVersion: string
+): RiprExperimentalClientCapabilities {
+  return {
+    riprEditor: {
+      version: extensionVersion,
+      commands: [...RIPR_CLIENT_COMMANDS],
+      // Guarded test edits are not implemented by this extension; the opt-in
+      // stays false until the guarded-edit slice lands.
+      guardedTestEdit: false
+    }
+  };
+}
+
+// A LanguageClient that merges the RIPR experimental capability block into
+// the initialize handshake (#1987). vscode-languageclient computes the
+// standard capabilities itself; this override only adds the RIPR block and
+// preserves any experimental capabilities the library already set.
+class RiprExperimentalLanguageClient extends LanguageClient {
+  constructor(
+    id: string,
+    name: string,
+    serverOptions: ServerOptions,
+    clientOptions: LanguageClientOptions,
+    private readonly riprExperimental: RiprExperimentalClientCapabilities
+  ) {
+    super(id, name, serverOptions, clientOptions);
+  }
+
+  protected override fillInitializeParams(params: InitializeParams): void {
+    super.fillInitializeParams(params);
+    const capabilities = params.capabilities as { experimental?: unknown };
+    const existing =
+      typeof capabilities.experimental === 'object' && capabilities.experimental !== null
+        ? capabilities.experimental
+        : {};
+    capabilities.experimental = { ...existing, ...this.riprExperimental };
+  }
+}
 
 function riprDocumentSelectorsForWorkspace(
   workspaceRoot: string
@@ -153,7 +238,8 @@ export interface RiprClientRuntime {
   ): Promise<ResolvedServer | ResolveFailure>;
   createLanguageClient(
     serverOptions: ServerOptions,
-    clientOptions: LanguageClientOptions
+    clientOptions: LanguageClientOptions,
+    experimentalCapabilities?: RiprExperimentalClientCapabilities
   ): RiprLanguageClient;
   createFileSystemWatcher(pattern: vscode.GlobPattern): vscode.FileSystemWatcher;
   readFile(filePath: string): Promise<string | undefined>;
@@ -184,8 +270,16 @@ const defaultRuntime: RiprClientRuntime = {
   workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
   showQuickPick: (items, options) => vscode.window.showQuickPick(items, options),
   resolveServer,
-  createLanguageClient: (serverOptions, clientOptions) =>
-    new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
+  createLanguageClient: (serverOptions, clientOptions, experimentalCapabilities) =>
+    experimentalCapabilities
+      ? new RiprExperimentalLanguageClient(
+          'ripr',
+          'ripr',
+          serverOptions,
+          clientOptions,
+          experimentalCapabilities
+        )
+      : new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
   createFileSystemWatcher: (pattern) => vscode.workspace.createFileSystemWatcher(pattern),
   readFile: readOptionalFile,
   runRipr,
@@ -409,7 +503,11 @@ export class RiprClientController {
       this.output.appendLine('ripr server start aborted: stop() ran during setup.');
       return;
     }
-    const client = this.runtime.createLanguageClient(serverOptions, clientOptions);
+    const client = this.runtime.createLanguageClient(
+      serverOptions,
+      clientOptions,
+      riprExperimentalClientCapabilities(extensionVersion(this.context))
+    );
     this.client = client;
     client.setTrace(traceFromConfig(config.traceServer));
     this.notificationDisposables.push(

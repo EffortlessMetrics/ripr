@@ -7454,3 +7454,43 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0143"
+name = "lsp client feature profile"
+spec = "docs/specs/RIPR-SPEC-0143-lsp-client-feature-profile.md"
+tests = [
+  "crates/ripr/src/lsp/client_features.rs::tests::minimal_standard_client_gets_only_protocol_defaults",
+  "crates/ripr/src/lsp/client_features.rs::tests::full_modern_standard_client_enables_every_standard_feature",
+  "crates/ripr/src/lsp/client_features.rs::tests::vscode_enhanced_client_parses_editor_block_and_ignores_unknown_keys",
+  "crates/ripr/src/lsp/client_features.rs::tests::headless_agent_client_parses_agent_preferences",
+  "crates/ripr/src/lsp/client_features.rs::tests::malformed_or_unknown_experimental_fields_fail_closed_without_breaking_the_session",
+  "crates/ripr/src/lsp/client_features.rs::tests::absent_and_explicitly_false_capabilities_are_indistinguishable",
+  "crates/ripr/src/lsp/client_features.rs::tests::equivalent_capability_maps_with_different_key_order_select_equal_profiles",
+  "crates/ripr/src/lsp/client_features.rs::tests::session_capability_identity_changes_only_when_selected_behavior_changes",
+  "crates/ripr/src/lsp/client_features.rs::tests::guarded_test_edit_requires_explicit_opt_in",
+  "crates/ripr/src/lsp/client_features.rs::tests::status_projection_is_bounded_and_never_includes_client_identity",
+  "crates/ripr/src/lsp/client_features.rs::tests::status_projection_caps_every_projected_list",
+  "crates/ripr/src/lsp/client_features.rs::tests::ripr_agent_entries_fail_closed_beyond_the_string_byte_bound",
+  "crates/ripr/src/lsp/client_features.rs::tests::position_encoding_selection_matches_the_documented_preference",
+  "crates/ripr/src/lsp/tests.rs::initialize_discloses_bounded_client_feature_profile_in_workspace_status",
+  "crates/ripr/src/lsp/tests.rs::receipt_status_discloses_bounded_client_feature_profile",
+  "crates/ripr/src/lsp/tests.rs::malformed_experimental_blocks_keep_the_standard_session_and_disclose_unsupported",
+  "crates/ripr/src/lsp/tests.rs::initialize_surfaces_poisoned_client_features_store_as_a_session_failure",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/client_features.rs",
+  "crates/ripr/src/lsp/capabilities.rs",
+  "crates/ripr/src/lsp/config.rs",
+  "crates/ripr/src/lsp/agent_protocol.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "editors/vscode/src/client.ts",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0143-lsp-client-feature-profile.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

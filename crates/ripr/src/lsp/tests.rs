@@ -4977,8 +4977,11 @@ fn initialization_options_override_lsp_analysis_config() {
         "includeUnchangedTests": false,
     }));
 
-    let config =
-        LspAnalysisConfig::from_initialize_params(&params, crate::config::RiprConfig::default());
+    let config = LspAnalysisConfig::from_initialize_params(
+        &params,
+        crate::config::RiprConfig::default(),
+        &crate::lsp::client_features::ClientFeatureProfile::from_initialize_params(&params),
+    );
     let input = config.check_input(Path::new("/workspace"));
 
     assert_eq!(config.base_ref.as_deref(), Some("origin/release"));
@@ -4998,8 +5001,11 @@ fn initialization_options_allow_empty_base_ref_and_invalid_mode_falls_back() {
         "checkMode": "surprise",
     }));
 
-    let config =
-        LspAnalysisConfig::from_initialize_params(&params, crate::config::RiprConfig::default());
+    let config = LspAnalysisConfig::from_initialize_params(
+        &params,
+        crate::config::RiprConfig::default(),
+        &crate::lsp::client_features::ClientFeatureProfile::from_initialize_params(&params),
+    );
 
     assert_eq!(config.base_ref, None);
     assert_eq!(config.mode, Mode::Draft);
@@ -5025,6 +5031,7 @@ fn initialization_options_accept_all_analysis_mode_labels() {
         let config = LspAnalysisConfig::from_initialize_params(
             &params,
             crate::config::RiprConfig::default(),
+            &crate::lsp::client_features::ClientFeatureProfile::from_initialize_params(&params),
         );
 
         assert_eq!(config.mode, expected);
@@ -5223,6 +5230,222 @@ fn initialization_only_mode_discloses_transport_and_value_sources() -> Result<()
         );
         assert_eq!(authority["session_value_sources"]["check_mode"], "default");
         assert_eq!(authority["session_value_sources"]["base_ref"], "default");
+        Ok(())
+    })
+}
+
+#[test]
+fn initialize_discloses_bounded_client_feature_profile_in_workspace_status() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("client-feature-profile-status")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = initialize_params(None, Some(file_uri_for_path(root.path())?));
+        params.client_info = Some(tower_lsp_server::ls_types::ClientInfo {
+            name: "profile-test-client-name".to_string(),
+            version: None,
+        });
+        params.capabilities.text_document =
+            Some(tower_lsp_server::ls_types::TextDocumentClientCapabilities {
+                diagnostic: Some(
+                    tower_lsp_server::ls_types::DiagnosticClientCapabilities::default(),
+                ),
+                ..tower_lsp_server::ls_types::TextDocumentClientCapabilities::default()
+            });
+        params.capabilities.window = Some(tower_lsp_server::ls_types::WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..tower_lsp_server::ls_types::WindowClientCapabilities::default()
+        });
+        params.capabilities.experimental = Some(serde_json::json!({
+            "riprEditor": {
+                "version": "0.10.0",
+                "commands": ["ripr.refresh"],
+                "guardedTestEdit": true
+            }
+        }));
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        let features = &status["analysis_status"]["client_features"];
+        assert_eq!(features["position_encoding"], "utf-16");
+        assert_eq!(features["pull_diagnostics"], true);
+        assert_eq!(features["work_done_progress"], true);
+        assert_eq!(features["configuration_mode"], "initialization_only");
+        assert_eq!(features["ripr_editor"]["version"], "0.10.0");
+        assert_eq!(features["ripr_editor"]["guarded_test_edit"], true);
+        assert_eq!(features["ripr_editor"]["command_count"], 1);
+        assert_eq!(features["ripr_agent"], serde_json::Value::Null);
+        // Bounded disclosure: the client name never enters the status payload.
+        if status.to_string().contains("profile-test-client-name") {
+            return Err("status payload leaked the client name".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn receipt_status_discloses_bounded_client_feature_profile() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("client-feature-profile-receipt")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = initialize_params(None, Some(file_uri_for_path(root.path())?));
+        params.capabilities.experimental = Some(serde_json::json!({
+            "riprAgent": {
+                "protocol": "0.1",
+                "profiles": ["actionable"],
+                "delivery": ["status_notifications"]
+            }
+        }));
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_RECEIPT_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected receipt status".to_string())?;
+        let features = &status["client_features"];
+        assert_eq!(features["ripr_agent"]["protocol_version"], "0.1");
+        assert_eq!(
+            features["ripr_agent"]["profiles"],
+            serde_json::json!(["actionable"])
+        );
+        assert_eq!(
+            features["ripr_agent"]["delivery"],
+            serde_json::json!(["status_notifications"])
+        );
+        assert_eq!(features["ripr_editor"], serde_json::Value::Null);
+        Ok(())
+    })
+}
+
+#[test]
+fn malformed_experimental_blocks_keep_the_standard_session_and_disclose_unsupported()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("client-feature-profile-fail-closed")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = initialize_params(None, Some(file_uri_for_path(root.path())?));
+        params.capabilities.text_document =
+            Some(tower_lsp_server::ls_types::TextDocumentClientCapabilities {
+                diagnostic: Some(
+                    tower_lsp_server::ls_types::DiagnosticClientCapabilities::default(),
+                ),
+                ..tower_lsp_server::ls_types::TextDocumentClientCapabilities::default()
+            });
+        params.capabilities.experimental = Some(serde_json::json!({
+            "riprEditor": {"version": 42},
+            "riprAgent": {"protocol": "1.0"}
+        }));
+        let result = backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        // The standard session is unaffected: pull support was negotiated
+        // from the standard capabilities and the provider is advertised.
+        if result.capabilities.diagnostic_provider.is_none() {
+            return Err("malformed experimental blocks broke the standard session".to_string());
+        }
+
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        let features = &status["analysis_status"]["client_features"];
+        assert_eq!(features["pull_diagnostics"], true);
+        assert_eq!(features["ripr_editor"], serde_json::Value::Null);
+        assert_eq!(features["ripr_agent"], serde_json::Value::Null);
+        Ok(())
+    })
+}
+
+#[test]
+fn initialize_surfaces_poisoned_client_features_store_as_a_session_failure() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("client-feature-profile-poisoned-store")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        // Poison the profile store: a std::sync::Mutex is poisoned when a
+        // holder panics. The helper confines the injected panic; no
+        // production path is involved.
+        backend.poison_client_features_for_test();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        // The store failure must surface through the blocking-failure
+        // channel instead of leaving the pre-initialize profile beside
+        // negotiated sibling state.
+        let failure = backend
+            .configuration_failure()
+            .ok_or_else(|| "poisoned profile store must surface a session failure".to_string())?;
+        if failure.kind != "session_state_inconsistent" {
+            return Err(format!(
+                "poisoned profile store surfaced the wrong failure kind: {}",
+                failure.kind
+            ));
+        }
+        let status = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        assert_eq!(
+            status["analysis_status"]["input_authority"]["configuration_state"],
+            "invalid"
+        );
+        assert_eq!(
+            status["analysis_status"]["failure"]["kind"],
+            "session_state_inconsistent"
+        );
         Ok(())
     })
 }

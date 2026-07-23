@@ -42,7 +42,13 @@ impl RiprAgentProtocolVersion {
         Self(RIPR_AGENT_PROTOCOL_VERSION.to_string())
     }
 
-    fn parse(value: &str) -> Result<Self, RiprAgentProtocolVersionError> {
+    /// The wire string for this version, for bounded status projections
+    /// (#1987, RIPR-SPEC-0143).
+    pub(super) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(super) fn parse(value: &str) -> Result<Self, RiprAgentProtocolVersionError> {
         let Some((major, minor)) = value.split_once('.') else {
             return Err(RiprAgentProtocolVersionError::InvalidFormat(
                 value.to_string(),

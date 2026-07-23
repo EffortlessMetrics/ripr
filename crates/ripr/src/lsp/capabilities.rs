@@ -27,42 +27,6 @@ pub(super) fn initialize_result() -> InitializeResult {
     initialize_result_for_client(true, PositionEncodingKind::UTF16)
 }
 
-/// Select the position encoding for this session from the client's advertised
-/// `general.positionEncodings` (#1626 PR B / #1749).
-///
-/// UTF-16 is the LSP default and the server's native computation, so it is
-/// preferred whenever the client supports it. When the client advertises a
-/// list without UTF-16, the server honors the first advertised encoding it can
-/// produce (UTF-8 or UTF-32). When the client advertises nothing, the encoding
-/// defaults to UTF-16.
-pub(super) fn negotiate_position_encoding(params: &InitializeParams) -> PositionEncodingKind {
-    let advertised = params
-        .capabilities
-        .general
-        .as_ref()
-        .and_then(|general| general.position_encodings.as_ref());
-    match advertised {
-        Some(encodings) if !encodings.is_empty() => {
-            if encodings.contains(&PositionEncodingKind::UTF16) {
-                PositionEncodingKind::UTF16
-            } else {
-                encodings
-                    .iter()
-                    .find(|kind| is_supported_position_encoding(kind))
-                    .cloned()
-                    .unwrap_or(PositionEncodingKind::UTF16)
-            }
-        }
-        _ => PositionEncodingKind::UTF16,
-    }
-}
-
-fn is_supported_position_encoding(kind: &PositionEncodingKind) -> bool {
-    *kind == PositionEncodingKind::UTF8
-        || *kind == PositionEncodingKind::UTF16
-        || *kind == PositionEncodingKind::UTF32
-}
-
 pub(super) fn initialize_result_for_client(
     supports_pull_diagnostics: bool,
     position_encoding: PositionEncodingKind,
@@ -126,51 +90,6 @@ pub(super) fn initialize_result_for_client(
     }
 }
 
-pub(super) fn client_supports_pull_diagnostics(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .text_document
-        .as_ref()
-        .and_then(|text_document| text_document.diagnostic.as_ref())
-        .is_some()
-}
-
-pub(super) fn client_supports_diagnostic_refresh(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.diagnostics.as_ref())
-        .and_then(|diagnostics| diagnostics.refresh_support)
-        .unwrap_or(false)
-}
-
-/// Whether the client accepts a server-originated `workspace/codeLens/refresh`
-/// request (`capabilities.workspace.codeLens.refreshSupport`) (#2032,
-/// RIPR-SPEC-0138). Clients without this capability keep their normal
-/// re-request (poll) behavior and receive no refresh request.
-pub(super) fn client_supports_code_lens_refresh(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.code_lens.as_ref())
-        .and_then(|code_lens| code_lens.refresh_support)
-        .unwrap_or(false)
-}
-
-/// Whether the client accepts server-initiated work-done progress
-/// (`window/workDoneProgress/create` + `$/progress`) for analysis requests
-/// (#1971). Clients without this capability see no progress traffic at all.
-pub(super) fn client_supports_work_done_progress(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .window
-        .as_ref()
-        .and_then(|window| window.work_done_progress)
-        .unwrap_or(false)
-}
-
 /// How session configuration reaches the server for the five governed
 /// session keys (#2031, RIPR-SPEC-0136). Negotiated once at `initialize`
 /// from client capabilities only — never inferred from the client name.
@@ -194,39 +113,6 @@ impl ConfigurationMode {
             Self::PushFallback => "push_fallback",
             Self::InitializationOnly => "initialization_only",
         }
-    }
-}
-
-/// Whether the client answers server-originated `workspace/configuration`
-/// requests (`capabilities.workspace.configuration`).
-pub(super) fn client_supports_configuration_pull(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.configuration)
-        .unwrap_or(false)
-}
-
-/// Whether the client advertises `workspace/didChangeConfiguration` support,
-/// which makes pushed settings the fallback transport when pull is
-/// unavailable.
-fn client_supports_push_configuration(params: &InitializeParams) -> bool {
-    params
-        .capabilities
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.did_change_configuration.as_ref())
-        .is_some()
-}
-
-pub(super) fn configuration_mode(params: &InitializeParams) -> ConfigurationMode {
-    if client_supports_configuration_pull(params) {
-        ConfigurationMode::Pull
-    } else if client_supports_push_configuration(params) {
-        ConfigurationMode::PushFallback
-    } else {
-        ConfigurationMode::InitializationOnly
     }
 }
 
@@ -321,6 +207,7 @@ pub(super) fn workspace_folder_set_from_initialize_params(
 
 #[cfg(test)]
 mod tests {
+    use super::super::client_features::ClientFeatureProfile;
     use super::*;
     use tower_lsp_server::ls_types::{
         DiagnosticClientCapabilities, DiagnosticWorkspaceClientCapabilities,
@@ -346,7 +233,7 @@ mod tests {
             PositionEncodingKind::UTF16,
         ]));
         assert_eq!(
-            negotiate_position_encoding(&params),
+            ClientFeatureProfile::from_initialize_params(&params).selected_position_encoding,
             PositionEncodingKind::UTF16
         );
     }
@@ -355,25 +242,23 @@ mod tests {
     fn negotiate_selects_utf8_when_the_client_advertises_only_utf8() {
         let params = params_with_position_encodings(Some(vec![PositionEncodingKind::UTF8]));
         assert_eq!(
-            negotiate_position_encoding(&params),
+            ClientFeatureProfile::from_initialize_params(&params).selected_position_encoding,
             PositionEncodingKind::UTF8
         );
     }
 
     #[test]
     fn negotiate_defaults_to_utf16_when_the_client_advertises_nothing() {
-        assert_eq!(
-            negotiate_position_encoding(&params_with_position_encodings(None)),
-            PositionEncodingKind::UTF16
-        );
-        assert_eq!(
-            negotiate_position_encoding(&params_with_position_encodings(Some(vec![]))),
-            PositionEncodingKind::UTF16
-        );
-        assert_eq!(
-            negotiate_position_encoding(&InitializeParams::default()),
-            PositionEncodingKind::UTF16
-        );
+        for params in [
+            params_with_position_encodings(None),
+            params_with_position_encodings(Some(vec![])),
+            InitializeParams::default(),
+        ] {
+            assert_eq!(
+                ClientFeatureProfile::from_initialize_params(&params).selected_position_encoding,
+                PositionEncodingKind::UTF16
+            );
+        }
     }
 
     #[test]
@@ -439,7 +324,7 @@ mod tests {
             work_done_progress: Some(true),
             ..WindowClientCapabilities::default()
         });
-        if !client_supports_work_done_progress(&capable) {
+        if !ClientFeatureProfile::from_initialize_params(&capable).work_done_progress {
             return Err("window.workDoneProgress=true must enable progress".to_string());
         }
 
@@ -448,8 +333,9 @@ mod tests {
             work_done_progress: Some(false),
             ..WindowClientCapabilities::default()
         });
-        if client_supports_work_done_progress(&declined)
-            || client_supports_work_done_progress(&InitializeParams::default())
+        if ClientFeatureProfile::from_initialize_params(&declined).work_done_progress
+            || ClientFeatureProfile::from_initialize_params(&InitializeParams::default())
+                .work_done_progress
         {
             return Err("missing or declined window.workDoneProgress must disable progress".into());
         }
@@ -467,7 +353,7 @@ mod tests {
             ),
             ..WorkspaceClientCapabilities::default()
         });
-        if !client_supports_code_lens_refresh(&supported) {
+        if !ClientFeatureProfile::from_initialize_params(&supported).code_lens_refresh {
             return Err("workspace.codeLens.refreshSupport=true must enable refresh".to_string());
         }
 
@@ -480,7 +366,7 @@ mod tests {
             ),
             ..WorkspaceClientCapabilities::default()
         });
-        if client_supports_code_lens_refresh(&declined) {
+        if ClientFeatureProfile::from_initialize_params(&declined).code_lens_refresh {
             return Err("workspace.codeLens.refreshSupport=false must disable refresh".to_string());
         }
 
@@ -493,8 +379,9 @@ mod tests {
             ),
             ..WorkspaceClientCapabilities::default()
         });
-        if client_supports_code_lens_refresh(&present_without_flag)
-            || client_supports_code_lens_refresh(&InitializeParams::default())
+        if ClientFeatureProfile::from_initialize_params(&present_without_flag).code_lens_refresh
+            || ClientFeatureProfile::from_initialize_params(&InitializeParams::default())
+                .code_lens_refresh
         {
             return Err(
                 "absent workspace.codeLens.refreshSupport must disable refresh".to_string(),
@@ -510,8 +397,8 @@ mod tests {
             configuration: Some(true),
             ..WorkspaceClientCapabilities::default()
         });
-        if !client_supports_configuration_pull(&pull)
-            || configuration_mode(&pull) != ConfigurationMode::Pull
+        if ClientFeatureProfile::from_initialize_params(&pull).configuration_mode
+            != ConfigurationMode::Pull
         {
             return Err("workspace.configuration=true must negotiate pull mode".to_string());
         }
@@ -521,8 +408,8 @@ mod tests {
             configuration: Some(false),
             ..WorkspaceClientCapabilities::default()
         });
-        if client_supports_configuration_pull(&declined)
-            || configuration_mode(&declined) != ConfigurationMode::InitializationOnly
+        if ClientFeatureProfile::from_initialize_params(&declined).configuration_mode
+            != ConfigurationMode::InitializationOnly
         {
             return Err("workspace.configuration=false must not negotiate pull mode".to_string());
         }
@@ -536,14 +423,18 @@ mod tests {
             ),
             ..WorkspaceClientCapabilities::default()
         });
-        if configuration_mode(&push) != ConfigurationMode::PushFallback {
+        if ClientFeatureProfile::from_initialize_params(&push).configuration_mode
+            != ConfigurationMode::PushFallback
+        {
             return Err(
                 "didChangeConfiguration support without pull must negotiate push fallback"
                     .to_string(),
             );
         }
 
-        if configuration_mode(&InitializeParams::default()) != ConfigurationMode::InitializationOnly
+        if ClientFeatureProfile::from_initialize_params(&InitializeParams::default())
+            .configuration_mode
+            != ConfigurationMode::InitializationOnly
         {
             return Err("empty capabilities must negotiate initialization-only mode".to_string());
         }
@@ -557,7 +448,8 @@ mod tests {
             diagnostic: Some(DiagnosticClientCapabilities::default()),
             ..TextDocumentClientCapabilities::default()
         });
-        if !client_supports_pull_diagnostics(&pull) || client_supports_diagnostic_refresh(&pull) {
+        let profile = ClientFeatureProfile::from_initialize_params(&pull);
+        if !profile.pull_diagnostics || profile.diagnostic_refresh {
             return Err("pull-only capability was classified incorrectly".to_string());
         }
 
@@ -568,14 +460,13 @@ mod tests {
             }),
             ..WorkspaceClientCapabilities::default()
         });
-        if client_supports_pull_diagnostics(&push) || !client_supports_diagnostic_refresh(&push) {
+        let profile = ClientFeatureProfile::from_initialize_params(&push);
+        if profile.pull_diagnostics || !profile.diagnostic_refresh {
             return Err("push refresh capability was classified incorrectly".to_string());
         }
 
-        let neither = InitializeParams::default();
-        if client_supports_pull_diagnostics(&neither)
-            || client_supports_diagnostic_refresh(&neither)
-        {
+        let neither = ClientFeatureProfile::from_initialize_params(&InitializeParams::default());
+        if neither.pull_diagnostics || neither.diagnostic_refresh {
             return Err("empty capabilities were classified as pull-capable".to_string());
         }
         Ok(())
