@@ -66,7 +66,7 @@ use std::time::{Duration, Instant};
 /// Explicit refresh and config reload bypass the debounce (#1908).
 const INTERACTIVE_REFRESH_DEBOUNCE: Duration = Duration::from_millis(200);
 use tokio::sync::{Mutex as AsyncMutex, Notify};
-use tower_lsp_server::jsonrpc::Result as LspResult;
+use tower_lsp_server::jsonrpc::{Error as LspError, Result as LspResult};
 use tower_lsp_server::ls_types::notification::LogTrace;
 use tower_lsp_server::ls_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, ConfigurationItem, Diagnostic,
@@ -3852,7 +3852,16 @@ impl Backend {
         if params.command == COLLECT_RECEIPT_STATUS_COMMAND {
             return Ok(self.collect_receipt_status());
         }
-        Ok(None)
+        // Stable unsupported-command response (#1628): a command the server
+        // does not execute — including client-registered `ripr.copy*` and
+        // `ripr.openRelatedTest` commands, which run client-side — is
+        // rejected with a determinate protocol error instead of a silent
+        // no-op, so a client that forwards an unadvertised command learns
+        // about it.
+        Err(LspError::invalid_params(format!(
+            "unsupported command `{}`: not a server-executed ripr command",
+            params.command
+        )))
     }
 
     async fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {

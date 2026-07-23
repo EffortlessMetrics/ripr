@@ -137,6 +137,11 @@ real handlers. The capability is advertised as `capability_only`.
   `ripr.openRelatedTest` command IDs in code actions — only server-executed
   commands. The `source.ripr.*` kind strings still appear as kind metadata
   for every client; they carry no negotiation requirement.
+- A client that forwards a command the server does not execute — an unknown
+  command ID, or a client-registered command such as `ripr.copyContext` —
+  receives a stable `InvalidParams` rejection naming the command
+  (``unsupported command `<id>`: not a server-executed ripr command``), never
+  a silent no-op (#1628).
 - A standard LSP client that advertises `CodeAction.disabled` support (but
   no `experimental.riprEditor`) instead receives the otherwise-suppressed
   client-command actions inert (#1892): each carries its kind, the

@@ -6198,6 +6198,67 @@ fn session_configuration_change_preserves_invalid_repository_config_health() -> 
 }
 
 #[test]
+fn execute_command_rejects_unsupported_commands_with_stable_invalid_params() -> Result<(), String> {
+    // #1628: a manually forwarded command the server does not execute —
+    // unknown ids AND client-registered commands — gets a determinate
+    // protocol rejection, not a silent no-op.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("execute-command-rejection")?;
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+
+        for command in [
+            "ripr.notACommand",
+            "ripr.copyContext",
+            "ripr.openRelatedTest",
+            "git.blame",
+        ] {
+            let outcome = backend
+                .execute_command(ExecuteCommandParams {
+                    command: command.to_string(),
+                    arguments: vec![],
+                    work_done_progress_params: Default::default(),
+                })
+                .await;
+            let expected_message =
+                format!("unsupported command `{command}`: not a server-executed ripr command");
+            match outcome {
+                Err(err)
+                    if err.code == tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+                        && err.message == expected_message => {}
+                other => {
+                    return Err(format!(
+                        "expected stable InvalidParams rejection for {command}, got {other:?}"
+                    ));
+                }
+            }
+        }
+
+        // A server-executed command still answers after the rejections.
+        backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_WORKSPACE_STATUS_COMMAND.to_string(),
+                arguments: vec![],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("server command failed after rejections: {err}"))?;
+        Ok(())
+    })
+}
+
+#[test]
 fn initialization_only_mode_discloses_transport_and_value_sources() -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
