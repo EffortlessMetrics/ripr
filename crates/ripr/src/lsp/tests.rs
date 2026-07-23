@@ -1,4 +1,4 @@
-use super::actions::code_action_response;
+use super::actions::{SERVER_EXECUTED_COMMANDS, code_action_response};
 use super::backend::{
     Backend, RefreshLogSummary, refresh_completed_log_message, refresh_failed_log_message,
     workspace_input_path_is_relevant,
@@ -6,6 +6,7 @@ use super::backend::{
 use super::capabilities::{
     WorkspaceRootResolution, initialize_result, root_from_initialize_params,
 };
+use super::client_features::ClientFeatureProfile;
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, add_canonical_group_data, canonical_finding_groups,
@@ -1067,6 +1068,10 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
         let root_uri = file_uri_for_path(&repo_root)?;
 
+        // Advertise the riprEditor block exactly as the VS Code extension
+        // does (#1776, RIPR-SPEC-0129) so the session negotiates the
+        // client-command code actions asserted below.
+        let advertised_commands = vscode_advertised_client_commands()?;
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
@@ -1081,7 +1086,15 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                         "checkMode": "instant",
                         "diagnosticProfile": "full"
                     },
-                    "capabilities": {}
+                    "capabilities": {
+                        "experimental": {
+                            "riprEditor": {
+                                "version": "0.10.0",
+                                "commands": advertised_commands,
+                                "guardedTestEdit": false
+                            }
+                        }
+                    }
                 }
             }),
         )
@@ -2029,7 +2042,7 @@ fn discriminator_witness_stays_aligned_across_lsp_surfaces() -> Result<(), Strin
     assert_eq!(context_packet["witness"], witness);
 
     let params = code_action_params(vec![diagnostic])?;
-    let actions = code_action_response(&params, None);
+    let actions = code_action_response(&params, None, &vscode_client_features()?);
     let context_target = actions.iter().find_map(|action| {
         let CodeActionOrCommand::CodeAction(action) = action else {
             return None;
@@ -2850,7 +2863,11 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
     let mut finding = sample_finding();
     finding.related_tests.clear();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, None);
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        None,
+        &vscode_client_features()?,
+    );
 
     let mut titles_kinds_and_commands = Vec::new();
     let mut command_arguments = Vec::new();
@@ -2906,7 +2923,11 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
 
 #[test]
 fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result<(), String> {
-    let actions = code_action_response(&code_action_params(Vec::new())?, None);
+    let actions = code_action_response(
+        &code_action_params(Vec::new())?,
+        None,
+        &vscode_client_features()?,
+    );
 
     assert_eq!(actions.len(), 1);
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
@@ -2959,6 +2980,7 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3140,6 +3162,7 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3195,6 +3218,7 @@ fn gap_code_actions_suppress_python_agent_packet_without_actionable_python_gap_r
         let actions = code_action_response(
             &code_action_params_for(uri.clone(), diagnostic.range.start.line, vec![diagnostic])?,
             Some(&snapshot),
+            &vscode_client_features()?,
         );
         let commands = code_action_commands(&actions)?;
 
@@ -3247,6 +3271,7 @@ fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3333,6 +3358,7 @@ fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3513,6 +3539,7 @@ fn gap_action_commands_for_artifact(
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     code_action_commands(&actions)
 }
@@ -3531,6 +3558,7 @@ fn gap_code_actions_fail_closed_without_valid_current_artifact() -> Result<(), S
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3575,6 +3603,7 @@ fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), Strin
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3616,6 +3645,7 @@ fn gap_code_actions_suppress_python_repair_card_without_target_file() -> Result<
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
 
@@ -3658,6 +3688,7 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
             vec![diagnostic.clone()],
         )?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
     let commands = code_action_commands(&actions)?;
     assert_eq!(
@@ -3717,6 +3748,7 @@ fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), Stri
     let unvalidated_actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&unvalidated_snapshot),
+        &vscode_client_features()?,
     );
     let unvalidated_commands = code_action_commands(&unvalidated_actions)?;
     assert_eq!(
@@ -3746,6 +3778,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     let commands = code_action_commands(&actions)?;
@@ -3852,6 +3885,130 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
 }
 
 #[test]
+fn code_action_response_filters_client_commands_for_unenhanced_client() -> Result<(), String> {
+    // Layer 1 (#1776, RIPR-SPEC-0129): a client that advertised no
+    // riprEditor block must receive no client-executed command IDs — every
+    // ripr.copy*/ripr.openRelatedTest action is stripped and only the
+    // server-executed refresh action remains. Diagnostics and hover are
+    // separate surfaces and stay unfiltered.
+    let unenhanced = ClientFeatureProfile::unsupported();
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let seam_commands = code_action_commands(&code_action_response(
+        &seam_params,
+        Some(&seam_snapshot),
+        &unenhanced,
+    ))?;
+    assert_eq!(
+        seam_commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![REFRESH_COMMAND],
+        "an unenhanced client must receive only server-executed commands"
+    );
+
+    let finding_diagnostic = diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    let finding_commands = code_action_commands(&code_action_response(
+        &code_action_params(vec![finding_diagnostic])?,
+        None,
+        &unenhanced,
+    ))?;
+    assert_eq!(
+        finding_commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![REFRESH_COMMAND],
+        "an unenhanced client must not receive the finding context copy command"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_negotiates_only_the_advertised_client_commands() -> Result<(), String> {
+    // A client advertising only ripr.openRelatedTest keeps the navigation
+    // action and loses every clipboard action (#1776, RIPR-SPEC-0129).
+    let navigate_only = client_features_with_commands(&[OPEN_RELATED_TEST_COMMAND])?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let commands = code_action_commands(&code_action_response(
+        &seam_params,
+        Some(&seam_snapshot),
+        &navigate_only,
+    ))?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND],
+        "only the advertised navigation command and the refresh action survive"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_action_response_emitted_commands_stay_within_server_or_advertised_sets()
+-> Result<(), String> {
+    // Parity invariant (#1776, RIPR-SPEC-0129): every emitted command ID is
+    // either a server-executed command from the executeCommandProvider
+    // advertisement or a client command the negotiated profile advertised.
+    let provider_commands = initialize_result()
+        .capabilities
+        .execute_command_provider
+        .map(|options| options.commands)
+        .unwrap_or_default();
+    assert_eq!(
+        provider_commands,
+        SERVER_EXECUTED_COMMANDS
+            .iter()
+            .map(|command| command.to_string())
+            .collect::<Vec<_>>(),
+        "the server-executed filter set must mirror the executeCommandProvider advertisement"
+    );
+
+    let unenhanced = ClientFeatureProfile::unsupported();
+    let navigate_only = client_features_with_commands(&[OPEN_RELATED_TEST_COMMAND])?;
+    let vscode = vscode_client_features()?;
+    let (seam_params, seam_snapshot) = seam_code_action_request()?;
+    let finding_params = code_action_params(vec![diagnostic_for_finding(
+        Path::new("/workspace"),
+        &sample_finding(),
+    )])?;
+    for (label, profile) in [
+        ("unenhanced", &unenhanced),
+        ("navigate-only", &navigate_only),
+        ("vscode", &vscode),
+    ] {
+        let advertised: BTreeSet<&str> = profile
+            .ripr_editor
+            .as_ref()
+            .map(|editor| editor.commands.iter().map(String::as_str).collect())
+            .unwrap_or_default();
+        for (scenario, actions) in [
+            (
+                "seam",
+                code_action_response(&seam_params, Some(&seam_snapshot), profile),
+            ),
+            (
+                "finding",
+                code_action_response(&finding_params, None, profile),
+            ),
+        ] {
+            for (_, command, _) in code_action_commands(&actions)? {
+                if !SERVER_EXECUTED_COMMANDS.contains(&command.as_str())
+                    && !advertised.contains(command.as_str())
+                {
+                    return Err(format!(
+                        "{label}/{scenario}: emitted command {command} is neither server-executed nor advertised"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Result<(), String> {
     let mut seam = sample_classified_seam();
     seam.seam = RepoSeam::new(
@@ -3882,6 +4039,7 @@ fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Resul
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     let commands = code_action_commands(&actions)?;
@@ -3916,7 +4074,11 @@ fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> R
     snapshot.base = Some("origin/main with space".to_string());
     snapshot.mode = Mode::Ready;
     snapshot.classified_seams = vec![seam.clone()];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     let expected_commands = [
@@ -4012,7 +4174,11 @@ fn seam_code_actions_fail_closed_for_stale_seam_diagnostic() -> Result<(), Strin
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     assert_eq!(
@@ -4043,6 +4209,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
     let actions = code_action_response(
         &code_action_params(vec![seam_diagnostic, finding_diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     let commands = code_action_commands(&actions)?;
@@ -4112,7 +4279,11 @@ fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Res
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     let Some((_, command, args)) = commands
@@ -4194,7 +4365,11 @@ fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_ex
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     let Some((_, command, args)) = commands
@@ -4226,7 +4401,11 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     assert_eq!(
@@ -4266,7 +4445,11 @@ fn unknown_stage_value_route_omits_suggested_assertion_action() -> Result<(), St
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
     let commands = code_action_commands(&actions)?;
 
     if commands
@@ -4308,7 +4491,11 @@ fn seam_code_actions_keep_navigation_when_related_test_is_unresolved() -> Result
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam];
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+    let actions = code_action_response(
+        &code_action_params(vec![diagnostic])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
 
     let commands = code_action_commands(&actions)?;
     assert!(
@@ -8373,6 +8560,91 @@ fn code_action_commands(
     Ok(commands)
 }
 
+/// Parse the `RIPR_CLIENT_COMMANDS` advertisement from the VS Code
+/// extension client (#1776, RIPR-SPEC-0129). The code-action parity tests
+/// negotiate against the exact list the extension sends at `initialize`,
+/// so a command the extension registers but forgets to advertise breaks
+/// these tests instead of silently stripping quick fixes from VS Code.
+fn vscode_advertised_client_commands() -> Result<Vec<String>, String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("editors/vscode/src/client.ts");
+    let source = fs::read_to_string(&path)
+        .map_err(|err| format!("read {} failed: {err}", path.display()))?;
+    let mut commands = Vec::new();
+    let mut in_block = false;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if !in_block {
+            in_block = trimmed.starts_with("const RIPR_CLIENT_COMMANDS");
+            continue;
+        }
+        if trimmed.starts_with("];") {
+            break;
+        }
+        let id = trimmed
+            .strip_prefix('\'')
+            .and_then(|value| {
+                value
+                    .strip_suffix("\',")
+                    .or_else(|| value.strip_suffix('\''))
+            })
+            .ok_or_else(|| format!("unparsable RIPR_CLIENT_COMMANDS entry: {trimmed}"))?;
+        commands.push(id.to_string());
+    }
+    if commands.is_empty() {
+        return Err("RIPR_CLIENT_COMMANDS block not found in client.ts".to_string());
+    }
+    Ok(commands)
+}
+
+/// The negotiated profile for the real VS Code extension: exactly the
+/// `RIPR_CLIENT_COMMANDS` advertisement from `editors/vscode/src/client.ts`
+/// (#1776).
+fn vscode_client_features() -> Result<ClientFeatureProfile, String> {
+    let commands = vscode_advertised_client_commands()?;
+    let borrowed = commands.iter().map(String::as_str).collect::<Vec<_>>();
+    client_features_with_commands(&borrowed)
+}
+
+/// A negotiated profile whose `riprEditor` block advertises exactly
+/// `commands` (#1776).
+fn client_features_with_commands(commands: &[&str]) -> Result<ClientFeatureProfile, String> {
+    let params: InitializeParams = serde_json::from_value(serde_json::json!({
+        "capabilities": {
+            "experimental": {
+                "riprEditor": {
+                    "version": "0.10.0",
+                    "commands": commands,
+                    "guardedTestEdit": false
+                }
+            }
+        }
+    }))
+    .map_err(|err| format!("fixture params must parse: {err}"))?;
+    Ok(ClientFeatureProfile::from_initialize_params(&params))
+}
+
+/// The seam code-action scenario shared by the client-command filter tests
+/// (#1776): one seam diagnostic whose snapshot resolves to a classified
+/// seam, so the unfiltered response carries every client command the
+/// code-action path can emit.
+fn seam_code_action_request() -> Result<(CodeActionParams, AnalysisSnapshot), String> {
+    let seam = sample_classified_seam();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let params = code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?;
+    Ok((params, snapshot))
+}
+
 fn boundary_gap_fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -8448,6 +8720,7 @@ fn workspace_projection_contract(
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic.clone()])?,
         Some(&diagnostics.snapshot),
+        &vscode_client_features()?,
     );
     let summary = RefreshLogSummary::from_snapshot(1, &diagnostics.snapshot)
         .with_enabled_languages(config.repo_config().languages().enabled());
@@ -8539,6 +8812,7 @@ fn boundary_gap_lsp_fixture_outputs() -> Result<(serde_json::Value, serde_json::
             vec![diagnostic.clone()],
         )?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     Ok((
@@ -9340,6 +9614,7 @@ fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     let commands = code_action_commands(&actions)?;
@@ -9374,6 +9649,7 @@ fn typescript_preview_code_action_copies_actionability_without_repair_packet() -
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
+        &vscode_client_features()?,
     );
 
     let commands = code_action_commands(&actions)?;

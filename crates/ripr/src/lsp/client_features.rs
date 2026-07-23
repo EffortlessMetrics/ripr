@@ -210,6 +210,23 @@ impl ClientFeatureProfile {
         }
     }
 
+    /// Whether the negotiated client advertised `command` in its
+    /// `riprEditor.commands` block (#1776, RIPR-SPEC-0129). Client-executed
+    /// `ripr.*` commands (clipboard copies, related-test navigation) exist
+    /// only when the editor integration registered them, so
+    /// `ripr_editor: None` — an unenhanced client, or a malformed block
+    /// that failed closed — supports none of them. Server-executed
+    /// commands (the `executeCommandProvider` set) are not this accessor's
+    /// concern.
+    pub(super) fn supports_client_command(&self, command: &str) -> bool {
+        self.ripr_editor.as_ref().is_some_and(|editor| {
+            editor
+                .commands
+                .iter()
+                .any(|advertised| advertised == command)
+        })
+    }
+
     /// Parse the one typed profile from `InitializeParams`. This is the only
     /// place client capabilities are read; every field the client did not
     /// explicitly advertise stays unsupported.
@@ -778,6 +795,33 @@ mod tests {
         assert!(profile.workspace_edit_document_changes);
         if !profile.code_action_literal || !profile.code_action_data {
             return Err("VS Code code-action support must be captured".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn supports_client_command_tracks_only_the_advertised_editor_commands() -> Result<(), String> {
+        // An unenhanced client (no riprEditor block) supports no
+        // client-executed command (#1776, RIPR-SPEC-0129).
+        let unenhanced = ClientFeatureProfile::from_initialize_params(&minimal_standard_client());
+        for command in [
+            "ripr.copyContext",
+            "ripr.openRelatedTest",
+            "ripr.copyAgentVerifyCommand",
+        ] {
+            if unenhanced.supports_client_command(command) {
+                return Err(format!("unenhanced client must not support {command}"));
+            }
+        }
+        // An enhanced client supports exactly the advertised set.
+        let enhanced = ClientFeatureProfile::from_initialize_params(&vscode_enhanced_client()?);
+        for command in ["ripr.refresh", "ripr.collectWorkspaceStatus"] {
+            if !enhanced.supports_client_command(command) {
+                return Err(format!("advertised command {command} must be supported"));
+            }
+        }
+        if enhanced.supports_client_command("ripr.copyContext") {
+            return Err("an unadvertised command must stay unsupported".to_string());
         }
         Ok(())
     }

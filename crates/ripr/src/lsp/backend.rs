@@ -3571,9 +3571,19 @@ impl LanguageServer for Backend {
         let action_snapshot = (health.allows_current_repairs() && root_allows_analysis)
             .then_some(snapshot)
             .flatten();
+        // Negotiated client-command filter (#1776, RIPR-SPEC-0129): a
+        // poisoned profile store fails closed to the unsupported profile,
+        // which strips every client-executed command rather than offering
+        // quick fixes the client may not have registered.
+        let client_features = self
+            .client_features
+            .lock()
+            .map(|features| features.clone())
+            .unwrap_or_else(|_| ClientFeatureProfile::unsupported());
         let result = Ok(Some(code_action_response(
             &params,
             action_snapshot.as_ref().map(|snapshot| snapshot.as_ref()),
+            &client_features,
         )));
         self.trace_response("textDocument/codeAction", &result)
             .await;

@@ -39,7 +39,15 @@ const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
 // The ripr.* commands this extension registers, advertised to the server at
 // initialize inside the RIPR experimental capability block (#1987,
 // RIPR-SPEC-0143) so the session profile knows which client commands exist.
+// This list must cover EVERY ripr.* command registered in extension.ts: the
+// server filters code actions to advertised commands only (#1776,
+// RIPR-SPEC-0129), so a missing entry silently strips that quick fix.
 const RIPR_CLIENT_COMMANDS: readonly string[] = [
+  'ripr.copyAfterSnapshotCommand',
+  'ripr.copyAgentBriefCommand',
+  'ripr.copyAgentPacketCommand',
+  'ripr.copyAgentReceiptCommand',
+  'ripr.copyAgentVerifyCommand',
   'ripr.copyContext',
   'ripr.copyCurrentRepairPacket',
   'ripr.copyFirstPrReceiptCommand',
@@ -49,6 +57,8 @@ const RIPR_CLIENT_COMMANDS: readonly string[] = [
   'ripr.copyFirstPrVerifyCommand',
   'ripr.copyReceiptCommand',
   'ripr.copyRepoGapMap',
+  'ripr.copySuggestedAssertion',
+  'ripr.copyTargetedTestBrief',
   'ripr.copyTopReceiptCommand',
   'ripr.copyTopRepairPacket',
   'ripr.copyTopVerifyCommand',

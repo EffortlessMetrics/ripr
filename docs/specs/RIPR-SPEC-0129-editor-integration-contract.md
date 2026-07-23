@@ -40,7 +40,12 @@ Does NOT consume:
 
 Requirement: the server must NOT emit unknown command IDs to a Layer 1
 client. The `experimental.riprEditor` capability negotiation (#1628)
-filters client-command actions to clients that advertise support.
+filters client-command actions to clients that advertise support
+(delivered, #1776): `lsp/actions.rs` emits a client-executed command only
+when the negotiated `ClientFeatureProfile` advertised it, and the VS Code
+extension's `RIPR_CLIENT_COMMANDS` advertisement covers every `ripr.*`
+command the extension registers, so the filter strips nothing from the
+enhanced client.
 
 ### Layer 2 — Enhanced VS Code
 
@@ -105,8 +110,13 @@ real handlers. The capability is advertised as `capability_only`.
 
 - `capabilities.rs` tests verify the capability advertisement shape
   (pull diagnostics, code action kinds, riprAgent capability).
-- `tests.rs` code-action tests verify action kinds are correct for the
-  negotiated client capability (after #1628 lands).
+- `tests.rs` code-action tests verify the negotiated client-command filter
+  (#1776): an unenhanced client receives only server-executed commands, a
+  client advertising a subset keeps exactly that subset, and every emitted
+  command ID stays within the `executeCommandProvider` set or the
+  negotiated `riprEditor.commands` advertisement. The full-profile tests
+  parse the advertisement from `editors/vscode/src/client.ts`, so a command
+  the extension registers but does not advertise fails the parity tests.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
 
@@ -115,6 +125,8 @@ real handlers. The capability is advertised as `capability_only`.
 - `crates/ripr/src/lsp/capabilities.rs` — capability advertisement
 - `crates/ripr/src/lsp/agent_protocol.rs` — `experimental.riprAgent`
 - `crates/ripr/src/lsp/actions.rs` — code action kind classification
+- `crates/ripr/src/lsp/client_features.rs` — negotiated
+  `ClientFeatureProfile` consumed by the code-action command filter (#1776)
 - `editors/vscode/src/client.ts` — VS Code client capability advertisement
 - `editors/vscode/package.json` — `capabilities.untrustedWorkspaces`
 
@@ -134,7 +146,7 @@ client supports:
   the pull capability in client capabilities).
 - `experimental.riprAgent` is always advertised (fail-closed,
   `supported_requests: []`) so a Layer 3 client can detect the server.
-- `experimental.riprEditor` negotiation (#1628, pending) filters
+- `experimental.riprEditor` negotiation (#1628, delivered in #1776) filters
   client-command code actions to clients that advertise support.
 - Code action kinds are advertised as `quickfix.ripr` and
   `source.ripr.*` (#1750, landed).

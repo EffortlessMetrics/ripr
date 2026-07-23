@@ -1,11 +1,14 @@
+use super::client_features::ClientFeatureProfile;
 use super::gap_artifacts::{ValidatedGapArtifact, command_payload_is_safe, workspace_path_is_safe};
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use super::{
-    COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND,
-    COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND,
-    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, OPEN_RELATED_TEST_COMMAND,
-    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
+    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
@@ -29,6 +32,7 @@ use tower_lsp_server::ls_types::{
 pub(super) fn code_action_response(
     params: &CodeActionParams,
     snapshot: Option<&AnalysisSnapshot>,
+    client_features: &ClientFeatureProfile,
 ) -> CodeActionResponse {
     let mut actions = Vec::new();
     if let Some(context) = seam_action_context(params, snapshot) {
@@ -59,7 +63,50 @@ pub(super) fn code_action_response(
         }),
         ..CodeAction::default()
     }));
+    // Client-command filter (#1776, RIPR-SPEC-0129): an action whose command
+    // executes client-side (clipboard copies, related-test navigation) is
+    // offered only when the negotiated profile advertised that command —
+    // otherwise the quick fix silently fails in clients without the VS Code
+    // extension's registrations. Server-executed commands run inside the
+    // server and stay unconditional.
+    actions.retain(|action| command_allowed_for_client(action, client_features));
     actions
+}
+
+/// Server-executed commands: the `executeCommandProvider` set from
+/// `lsp/capabilities.rs`. They run inside the server through
+/// `workspace/executeCommand`, so every client can run them regardless of
+/// the negotiated `riprEditor` advertisement (#1776).
+pub(super) const SERVER_EXECUTED_COMMANDS: [&str; 7] = [
+    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND,
+    COLLECT_EVIDENCE_CONTEXT_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND,
+    COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_RECEIPT_STATUS_COMMAND,
+];
+
+/// A code action survives the client-command filter when its command
+/// executes inside the server, or when the negotiated profile advertised
+/// the client-executed command (#1776, RIPR-SPEC-0129). An action with no
+/// command executes nothing client-side and always survives; an unknown
+/// client command fails closed to unsupported.
+fn command_allowed_for_client(
+    action: &CodeActionOrCommand,
+    client_features: &ClientFeatureProfile,
+) -> bool {
+    let command = match action {
+        CodeActionOrCommand::CodeAction(action) => action.command.as_ref(),
+        CodeActionOrCommand::Command(command) => Some(command),
+    };
+    match command {
+        None => true,
+        Some(command) => {
+            SERVER_EXECUTED_COMMANDS.contains(&command.command.as_str())
+                || client_features.supports_client_command(&command.command)
+        }
+    }
 }
 
 struct SeamActionContext<'a> {
@@ -1661,7 +1708,7 @@ mod tests {
         let diagnostic = gap_diagnostic();
         let params = code_action_params(vec![diagnostic])?;
 
-        let actions = code_action_response(&params, None);
+        let actions = code_action_response(&params, None, &ClientFeatureProfile::unsupported());
         let titles = action_titles(&actions);
 
         assert_eq!(titles, vec![REFRESH_ANALYSIS_TITLE]);

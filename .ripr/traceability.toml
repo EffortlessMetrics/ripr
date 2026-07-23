@@ -7087,6 +7087,11 @@ tests = [
   "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_the_fail_closed_agent_capability",
   "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_pull_diagnostic_provider",
   "crates/ripr/src/lsp/capabilities.rs::tests::push_only_client_does_not_receive_pull_provider_advertisement",
+  "crates/ripr/src/lsp/client_features.rs::tests::supports_client_command_tracks_only_the_advertised_editor_commands",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_emitted_commands_stay_within_server_or_advertised_sets",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_filters_client_commands_for_unenhanced_client",
+  "crates/ripr/src/lsp/tests.rs::code_action_response_negotiates_only_the_advertised_client_commands",
+  "crates/ripr/src/lsp/tests.rs::framed_lsp_protocol_smoke_logs_successful_refresh_completion",
   "crates/ripr/src/lsp/tests.rs::initialize_result_exposes_existing_lsp_capabilities",
 ]
 fixtures = []
@@ -7096,6 +7101,7 @@ code = [
   "crates/ripr/src/lsp/actions.rs",
   "editors/vscode/src/client.ts",
   "editors/vscode/package.json",
+  "crates/ripr/src/lsp/client_features.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md",
