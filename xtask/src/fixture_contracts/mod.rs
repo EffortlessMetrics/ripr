@@ -1,7 +1,8 @@
 //! Fixture-contract cluster: the `check-fixture-contracts` orchestrator, its
 //! corpus const tables, and the python/perl corpus validators that sit
-//! physically inside this region. The remaining general corpus validators
-//! live in `general_validators`.
+//! physically inside this region. The editor corpus validators live in
+//! `editor_validators`; the remaining general corpus validators live in
+//! `general_validators`.
 //!
 //! Extracted verbatim from `main.rs` as a behavior-preserving decomposition
 //! slice of #2119. Items referenced outside this module are `pub(crate)` and
@@ -10,8 +11,10 @@
 
 use super::*;
 
+mod editor_validators;
 mod general_validators;
 
+pub(crate) use editor_validators::*;
 pub(crate) use general_validators::*;
 
 pub(crate) fn check_fixture_contracts() -> Result<(), String> {

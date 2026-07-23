@@ -119,6 +119,11 @@ owner = "extension"
 reason = "Store-facing extension README explains what ripr does and does not claim, which requires naming the prohibited outcome terms."
 
 [[allow]]
+path = "xtask/src/fixture_contracts/editor_validators.rs"
+owner = "devtools"
+reason = "The editor fixture validators (moved verbatim out of main.rs in the #2119 decomposition) contain literal prohibited terms in forbidden-claim lists that assert fixture packets never claim them."
+
+[[allow]]
 path = "xtask/src/main.rs"
 owner = "devtools"
 reason = "The static-language checker implementation contains the literal prohibited term list and the regression tests that exercise it."
