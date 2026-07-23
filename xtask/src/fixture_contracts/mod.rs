@@ -1,8 +1,12 @@
 //! Fixture-contract cluster: the `check-fixture-contracts` orchestrator, its
-//! corpus const tables, and the python/perl corpus validators that sit
-//! physically inside this region. The editor corpus validators live in
-//! `editor_validators`; the remaining general corpus validators live in
-//! `general_validators`.
+//! corpus const tables, the shared corpus-record helpers, and the python/perl
+//! corpus validators that sit physically inside this region. The editor
+//! corpus validators live in `editor_validators`; the remaining general
+//! corpus validators live in `general_validators`; the swarm-plan /
+//! actionable-gap-outcomes / first-successful-pr / gap-decision-ledger corpus
+//! validators live in `gap_validators`; the assistant-loop-health /
+//! pr-review-front-panel / report-packet-index / pr-inline-comment-publisher
+//! corpus validators live in `report_validators`.
 //!
 //! Extracted verbatim from `main.rs` as a behavior-preserving decomposition
 //! slice of #2119. Items referenced outside this module are `pub(crate)` and
@@ -12,10 +16,14 @@
 use super::*;
 
 mod editor_validators;
+mod gap_validators;
 mod general_validators;
+mod report_validators;
 
 pub(crate) use editor_validators::*;
+pub(crate) use gap_validators::*;
 pub(crate) use general_validators::*;
+pub(crate) use report_validators::*;
 
 pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     let fixtures_dir = Path::new("fixtures");
@@ -1136,3 +1144,565 @@ pub(crate) const USER_SURFACE_PROJECTION_REQUIRED_RUN_STATUSES: &[&str] = &[
 ];
 
 const PERL_LSP_FACTS_EXPORTER_CORPUS: &str = "fixtures/perl_lsp_facts_exporter/corpus.json";
+
+fn validate_lane1_evidence_quality_record(
+    case_id: &str,
+    record: &Value,
+    violations: &mut Vec<String>,
+) {
+    require_lane1_json_string_at(record, "schema_version", case_id, violations);
+    if json_string_field(record, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_record.schema_version must be 0.1"
+        ));
+    }
+    for field in ["seam_id", "owner", "seam_kind", "grip_class"] {
+        require_lane1_json_string_at(record, field, case_id, violations);
+    }
+    if !matches!(
+        record.get("canonical_gap_id"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_id must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_reason"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_reason must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_group_size"),
+        Some(Value::Null | Value::Number(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_group_size must be number or null"
+        ));
+    }
+    if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} headline_eligible must be boolean"
+        ));
+    }
+    match record.get("location") {
+        Some(location @ Value::Object(_)) => {
+            require_lane1_json_string_at(location, "file", case_id, violations);
+            require_lane1_json_usize_at(location, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} location must be an object"
+        )),
+    }
+    match record.get("evidence_path") {
+        Some(path @ Value::Object(_)) => {
+            for stage in ["reach", "activate", "propagate", "observe", "discriminate"] {
+                match path.get(stage) {
+                    Some(stage_value @ Value::Object(_)) => {
+                        require_lane1_json_string_at(stage_value, "state", case_id, violations);
+                        require_lane1_json_string_at(
+                            stage_value,
+                            "confidence",
+                            case_id,
+                            violations,
+                        );
+                        require_lane1_json_string_at(stage_value, "summary", case_id, violations);
+                    }
+                    _ => violations.push(format!(
+                        "Lane 1 evidence-quality case {case_id} evidence_path.{stage} must be an object"
+                    )),
+                }
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_path must be an object"
+        )),
+    }
+    match record.get("counts") {
+        Some(counts @ Value::Object(_)) => {
+            for field in [
+                "observed_values",
+                "missing_discriminators",
+                "static_limitations",
+                "related_tests_total",
+            ] {
+                require_lane1_json_usize_at(counts, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} counts must be an object"
+        )),
+    }
+    match record.get("top_related_test") {
+        Some(test @ Value::Object(_)) => {
+            for field in [
+                "name",
+                "file",
+                "oracle_kind",
+                "oracle_strength",
+                "relation_reason",
+                "relation_confidence",
+            ] {
+                require_lane1_json_string_at(test, field, case_id, violations);
+            }
+            require_lane1_json_usize_at(test, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} top_related_test must be an object"
+        )),
+    }
+    match record.get("recommendation") {
+        Some(recommendation @ Value::Object(_)) => {
+            require_lane1_json_string_at(recommendation, "action", case_id, violations);
+            require_lane1_json_string_at(recommendation, "reason", case_id, violations);
+            require_lane1_json_usize_at(
+                recommendation,
+                "candidate_values_count",
+                case_id,
+                violations,
+            );
+            if !matches!(
+                recommendation.get("verify_command"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} recommendation.verify_command must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} recommendation must be an object"
+        )),
+    }
+    match record.get("actionability") {
+        Some(actionability @ Value::Object(_)) => {
+            require_lane1_json_string_at(actionability, "class", case_id, violations);
+            if !matches!(
+                actionability.get("has_concrete_guidance"),
+                Some(Value::Bool(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} actionability.has_concrete_guidance must be boolean"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} actionability must be an object"
+        )),
+    }
+    match record.get("calibration") {
+        Some(calibration @ Value::Object(_)) => {
+            for field in ["availability", "confidence", "agreement"] {
+                require_lane1_json_string_at(calibration, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} calibration must be an object"
+        )),
+    }
+    if !matches!(record.get("static_limitations"), Some(Value::Array(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} static_limitations must be an array"
+        ));
+    }
+}
+
+fn lane1_count_field(record: &Value, field: &str) -> Option<usize> {
+    record
+        .get("counts")
+        .and_then(|counts| json_usize_field(counts, field))
+}
+
+fn require_lane1_json_string_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_lane1_json_usize_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_usize_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing numeric field {field}"
+        ));
+    }
+}
+
+fn require_non_empty_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} {field} must be a non-empty string array"
+        )),
+    }
+}
+
+fn require_string_array_contains_all(
+    value: &Value,
+    field: &str,
+    required: &[&str],
+    label: &str,
+    violations: &mut Vec<String>,
+) {
+    let Some(items) = value.get(field).and_then(Value::as_array) else {
+        violations.push(format!("{label} {field} must be a string array"));
+        return;
+    };
+    let mut actual = BTreeSet::new();
+    for item in items {
+        match item.as_str() {
+            Some(item) => {
+                actual.insert(item.to_string());
+            }
+            None => violations.push(format!("{label} {field} contains a non-string item")),
+        }
+    }
+    for expected in required {
+        if !actual.contains(*expected) {
+            violations.push(format!("{label} {field} is missing {expected}"));
+        }
+    }
+}
+
+fn string_array_contains_case_insensitive(value: &Value, field: &str, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|item| item.to_ascii_lowercase().contains(&needle))
+        })
+}
+
+fn validate_evidence_record_contract_record(
+    case_id: &str,
+    record: &Value,
+    violations: &mut Vec<String>,
+) {
+    require_json_string_at(record, "schema_version", case_id, violations);
+    if json_string_field(record, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "evidence-record case {case_id} record schema_version must be 0.1"
+        ));
+    }
+    for field in ["seam_id", "owner", "seam_kind", "grip_class"] {
+        require_json_string_at(record, field, case_id, violations);
+    }
+    if !matches!(
+        record.get("canonical_gap_id"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_id must be string or null"
+        ));
+    }
+    let canonical_gap_group_size_valid = match record.get("canonical_gap_group_size") {
+        Some(Value::Null) => true,
+        Some(Value::Number(number)) => number.as_u64().is_some(),
+        _ => false,
+    };
+    if !canonical_gap_group_size_valid {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_group_size must be number or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_reason"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_reason must be string or null"
+        ));
+    }
+    match record.get("canonical_gap_id") {
+        Some(Value::Null) => {
+            if !matches!(record.get("canonical_gap_group_size"), Some(Value::Null)) {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_group_size must be null when canonical_gap_id is null"
+                ));
+            }
+            if !matches!(record.get("canonical_gap_reason"), Some(Value::Null)) {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_reason must be null when canonical_gap_id is null"
+                ));
+            }
+        }
+        Some(Value::String(_)) => {
+            if json_usize_field(record, "canonical_gap_group_size").is_none() {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_group_size must be numeric when canonical_gap_id is present"
+                ));
+            }
+            if json_string_field(record, "canonical_gap_reason").is_none() {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_reason must be string when canonical_gap_id is present"
+                ));
+            }
+        }
+        _ => {}
+    }
+    if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
+        violations.push(format!(
+            "evidence-record case {case_id} headline_eligible must be boolean"
+        ));
+    }
+
+    match record.get("location") {
+        Some(location @ Value::Object(_)) => {
+            require_json_string_at(location, "file", case_id, violations);
+            require_json_usize_at(location, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} location must be an object"
+        )),
+    }
+
+    match record.get("evidence_path") {
+        Some(path @ Value::Object(_)) => {
+            for stage in ["reach", "activate", "propagate", "observe", "discriminate"] {
+                match path.get(stage) {
+                    Some(stage_value @ Value::Object(_)) => {
+                        require_json_string_at(stage_value, "state", case_id, violations);
+                        require_json_string_at(stage_value, "confidence", case_id, violations);
+                        require_json_string_at(stage_value, "summary", case_id, violations);
+                    }
+                    _ => violations.push(format!(
+                        "evidence-record case {case_id} evidence_path.{stage} must be an object"
+                    )),
+                }
+            }
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} evidence_path must be an object"
+        )),
+    }
+
+    require_json_array_at(record, "observed_values", case_id, violations);
+    require_json_array_at(record, "missing_discriminators", case_id, violations);
+    require_json_usize_at(record, "related_tests_total", case_id, violations);
+    require_json_array_at(record, "related_tests", case_id, violations);
+    validate_evidence_record_related_tests(case_id, record.get("related_tests"), violations);
+    validate_evidence_record_recommendation(case_id, record.get("recommendation"), violations);
+    validate_evidence_record_actionability(case_id, record.get("actionability"), violations);
+    validate_evidence_record_calibration(case_id, record.get("calibration"), violations);
+    require_json_array_at(record, "static_limitations", case_id, violations);
+}
+
+fn validate_evidence_record_related_tests(
+    case_id: &str,
+    related_tests: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(Value::Array(tests)) = related_tests else {
+        return;
+    };
+    for (idx, test) in tests.iter().enumerate() {
+        validate_evidence_record_related_test(
+            case_id,
+            &format!("related_tests[{idx}]"),
+            test,
+            violations,
+        );
+    }
+}
+
+fn validate_evidence_record_related_test(
+    case_id: &str,
+    path: &str,
+    test: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Value::Object(_) = test else {
+        violations.push(format!(
+            "evidence-record case {case_id} {path} must be an object"
+        ));
+        return;
+    };
+    for field in [
+        "name",
+        "file",
+        "oracle_kind",
+        "oracle_strength",
+        "evidence_summary",
+        "relation_reason",
+        "relation_confidence",
+    ] {
+        require_json_string_at(test, field, case_id, violations);
+    }
+    require_json_usize_at(test, "line", case_id, violations);
+    match test.get("oracle_semantics") {
+        Some(semantics @ Value::Object(_)) => {
+            require_json_string_at(semantics, "observes", case_id, violations);
+            require_json_string_at(semantics, "missing", case_id, violations);
+            if !matches!(
+                semantics.get("upgrade_suggestion"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "evidence-record case {case_id} {path}.oracle_semantics.upgrade_suggestion must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} {path}.oracle_semantics must be an object"
+        )),
+    }
+}
+
+fn validate_evidence_record_recommendation(
+    case_id: &str,
+    recommendation: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(recommendation @ Value::Object(_)) = recommendation else {
+        violations.push(format!(
+            "evidence-record case {case_id} recommendation must be an object"
+        ));
+        return;
+    };
+    require_json_string_at(recommendation, "action", case_id, violations);
+    require_json_string_at(recommendation, "reason", case_id, violations);
+    require_json_array_at(recommendation, "candidate_values", case_id, violations);
+    for optional in [
+        "recommended_test",
+        "nearest_test_to_imitate",
+        "assertion_shape",
+        "verify_command",
+    ] {
+        if !matches!(
+            recommendation.get(optional),
+            Some(Value::Null | Value::Object(_) | Value::String(_))
+        ) {
+            violations.push(format!(
+                "evidence-record case {case_id} recommendation.{optional} must be present"
+            ));
+        }
+    }
+    if let Some(nearest @ Value::Object(_)) = recommendation.get("nearest_test_to_imitate") {
+        validate_evidence_record_related_test(
+            case_id,
+            "recommendation.nearest_test_to_imitate",
+            nearest,
+            violations,
+        );
+    }
+}
+
+fn validate_evidence_record_actionability(
+    case_id: &str,
+    actionability: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(actionability @ Value::Object(_)) = actionability else {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability must be an object"
+        ));
+        return;
+    };
+    let class = json_string_field(actionability, "class").unwrap_or_default();
+    if !matches!(
+        class.as_str(),
+        "actionable_focused_test"
+            | "actionable_assertion_upgrade"
+            | "actionable_related_test_extension"
+            | "needs_human_design"
+            | "static_limitation"
+            | "not_policy_relevant"
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.class is unsupported: {class}"
+        ));
+    }
+    require_json_string_at(actionability, "reason", case_id, violations);
+    if !matches!(
+        actionability.get("has_concrete_guidance"),
+        Some(Value::Bool(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.has_concrete_guidance must be boolean"
+        ));
+    }
+    let Some(signals @ Value::Object(_)) = actionability.get("signals") else {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.signals must be an object"
+        ));
+        return;
+    };
+    for signal in [
+        "missing_discriminator",
+        "candidate_value",
+        "assertion_shape",
+        "related_test",
+        "recommended_test_target",
+        "verification_command",
+    ] {
+        if !matches!(signals.get(signal), Some(Value::Bool(_))) {
+            violations.push(format!(
+                "evidence-record case {case_id} actionability.signals.{signal} must be boolean"
+            ));
+        }
+    }
+}
+
+fn validate_evidence_record_calibration(
+    case_id: &str,
+    calibration: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(calibration @ Value::Object(_)) = calibration else {
+        violations.push(format!(
+            "evidence-record case {case_id} calibration must be an object"
+        ));
+        return;
+    };
+    for field in ["availability", "confidence", "agreement"] {
+        require_json_string_at(calibration, field, case_id, violations);
+    }
+}
+
+fn require_json_string_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_json_usize_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if json_usize_field(value, field).is_none() {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing numeric field {field}"
+        ));
+    }
+}
+
+fn require_json_array_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if !matches!(value.get(field), Some(Value::Array(_))) {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing array field {field}"
+        ));
+    }
+}
