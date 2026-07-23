@@ -7496,6 +7496,8 @@ tests = [
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::load_gap_ledger_records_types_every_failure_mode",
   "crates/ripr/src/lsp/tests.rs::lsp_production_sources_have_no_stderr_degradation_fallback",
   "crates/ripr/src/lsp/tests.rs::framed_lsp_component_degradation_is_typed_logged_and_recovers",
+  "crates/ripr/src/lsp/diagnostics.rs::oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warning",
+  "crates/ripr/src/lsp/diagnostics.rs::repo_scope_and_wrapped_guard_errors_do_not_convert",
 ]
 fixtures = []
 code = [

@@ -202,6 +202,30 @@ then the causal_projection outcome is failed with kind
 and the run status is limited, and the client sees one WARNING log message.
 ```
 
+### Diff-component guard stops (timeout and oversized scope)
+
+```text
+Given a refresh whose diff load exceeds the cooperative git deadline
+  (git_invocation_timeout, #2303),
+when the conversion fires,
+then the diff outcome is failed with the named kind and
+  findings_trustworthy: false, the run status is limited, zero findings
+  and zero diagnostics are committed, and the recovery route is
+  retry ripr.refreshDiagnostics.
+
+Given a refresh whose diff exceeds the fail-closed scope guard
+  (diff_scope_oversized, #2299),
+when the conversion fires,
+then the diff outcome is failed with the named kind and
+  findings_trustworthy: false, the run status is limited, and exactly
+  ONE workspace-scoped warning diagnostic (code
+  ripr-scope-diff-oversized) anchored at the workspace root URI carries
+  the guard's bounded first line (kind, actual counts, split guidance),
+  while the CLI keeps its non-zero exit and unchanged error text.
+  Only the raw, unwrapped guard error converts; the distinct
+  repo_scope_oversized guard and wrapped lookalikes do not.
+```
+
 ### Repeated identical degradation does not spam
 
 ```text

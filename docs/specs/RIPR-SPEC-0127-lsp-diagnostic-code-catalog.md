@@ -37,7 +37,10 @@ constructor that is the single source of truth for that family:
   `weakly_exposed`, `reachable_unrevealed`, `no_static_path`,
   `infection_unknown`, `propagation_unknown`, `static_unknown`);
 - seam codes: `ripr-seam-{class}` for every `SeamGripClass`, snake to kebab;
-- gap codes: `ripr-gap-{kind}` for every known `GapRecord.kind`.
+- gap codes: `ripr-gap-{kind}` for every known `GapRecord.kind`;
+- scope-limitation codes (#2299): workspace-scoped guard disclosures,
+  currently `ripr-scope-diff-oversized` — the single warning emitted when
+  the fail-closed diff-scope guard converts to a limited snapshot.
 
 Each catalog entry carries the code identity used today: the stable `code` and
 the deprecated `aliases` that still resolve to it. Compatibility aliases are

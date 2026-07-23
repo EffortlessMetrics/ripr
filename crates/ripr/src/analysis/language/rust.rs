@@ -49,6 +49,22 @@ const DIFF_CHANGED_RUST_LINE_LIMIT: usize = 2_000;
 /// Env override for [`DIFF_CHANGED_RUST_LINE_LIMIT`]. Operators can raise it
 /// for larger runners or lower it to exercise the guard.
 const DIFF_CHANGED_RUST_LINE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_CHANGED_RUST_LINES";
+
+/// Named, matchable prefix for the diff-scope guard errors (#1023, #1324).
+/// The LSP refresh path matches this prefix to convert the fail-closed guard
+/// stop into a committed limited snapshot with one workspace-scoped warning
+/// diagnostic (#2299); the CLI path keeps the non-zero exit and the unchanged
+/// error text. The distinct `repo_scope_oversized` guard (#2109) does NOT
+/// share this prefix and never converts on the LSP path.
+pub(crate) const DIFF_SCOPE_OVERSIZED_PREFIX: &str = "diff_scope_oversized";
+
+/// True when `error` is the named diff-scope guard error (#2299). Matchable
+/// in the style of `git::is_git_invocation_timeout`: only the raw,
+/// unwrapped guard error matches — a wrapped error (for example
+/// `workspace analysis failed: ...`) does not.
+pub(crate) fn is_diff_scope_oversized(error: &str) -> bool {
+    error.starts_with(DIFF_SCOPE_OVERSIZED_PREFIX)
+}
 const NO_TESTS_INFECTION_SUMMARY: &str =
     "No tests were found, so activation/infection cannot be estimated";
 const NO_STATICALLY_REACHABLE_TEST_PATH_INFECTION_SUMMARY: &str =

@@ -714,6 +714,20 @@ pub(super) fn workspace_diagnostics_with_config(
                 err,
             ));
         }
+        // #2299: a diff that exceeds the fail-closed scope guard commits a
+        // limited snapshot carrying ONE workspace-scoped warning diagnostic
+        // (plus the typed failed `diff` outcome) instead of dropping the
+        // refresh with no snapshot, so the editor user sees the limitation
+        // in-surface. ONLY the named guard error converts; the CLI keeps the
+        // non-zero exit and unchanged error text.
+        Err(err) if crate::analysis::is_diff_scope_oversized(&err) => {
+            return Ok(oversized_diff_limited_diagnostics(
+                root,
+                config,
+                defer_seam_inventory,
+                err,
+            ));
+        }
         Err(err) => return Err(format!("workspace analysis failed: {err}")),
     };
     let root = output.root;
@@ -1015,7 +1029,76 @@ fn git_timeout_limited_diagnostics(
     }
 }
 
+/// #2299: the fail-closed diff-scope guard (`diff_scope_oversized: …`)
+/// becomes a committed limited snapshot instead of a dropped refresh. The
+/// snapshot carries ONE workspace-scoped warning diagnostic — the in-editor
+/// signal the issue requires — anchored at the workspace root URI with a
+/// zero-width start-of-document range, plus one typed failed `diff`
+/// outcome with `findings_trustworthy: false`; the shared run-status
+/// derivation turns the degraded component into `limited` (no new
+/// run-status string). The diagnostic message is the guard error's first
+/// line, already bounded and carrying the actual counts and split guidance.
+/// Pure so the conversion contract is testable without an oversized diff.
+fn oversized_diff_limited_diagnostics(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    message: String,
+) -> WorkspaceDiagnostics {
+    let component_outcomes = vec![ComponentOutcome::failed(
+        AnalysisComponent::Diff,
+        crate::analysis::DIFF_SCOPE_OVERSIZED_PREFIX,
+        message.clone(),
+        false,
+        "split the diff or raise the guarded budget as the diagnostic message names",
+    )];
+    let mut diagnostics_by_uri = BTreeMap::new();
+    if let Ok(root_uri) = super::uri::file_uri_for_path(root) {
+        let first_line = message.lines().next().unwrap_or(&message);
+        let bounded_message: String = first_line.chars().take(500).collect();
+        diagnostics_by_uri.insert(
+            root_uri,
+            vec![Diagnostic {
+                range: tower_lsp_server::ls_types::Range::default(),
+                severity: Some(DiagnosticSeverity::WARNING),
+                code: Some(NumberOrString::String(
+                    super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+                )),
+                code_description: None,
+                source: Some("ripr".to_string()),
+                message: bounded_message,
+                related_information: None,
+                tags: None,
+                data: None,
+            }],
+        );
+    }
+    let snapshot = AnalysisSnapshot {
+        root: root.to_path_buf(),
+        input_identity: None,
+        base: config.base_ref.clone(),
+        mode: config.mode.clone(),
+        refresh: RefreshMetadata::generated_now(),
+        findings: Vec::new(),
+        diagnostic_profile: config.diagnostic_profile,
+        classified_seams: Vec::new(),
+        gap_artifacts: Vec::new(),
+        gap_artifact_rejections: Vec::new(),
+        diagnostics_by_uri,
+        delivery_selection: None,
+        seams_deferred: defer_seam_inventory,
+        partial_scope: None,
+        component_outcomes,
+        out_of_scope_test_file_findings: 0,
+    };
+    WorkspaceDiagnostics {
+        snapshot,
+        batches: Vec::new(),
+    }
+}
+
 /// Compute the run status from findings, gap-artifact rejections, and the
+/// shared component outcomes.
 /// Shared run-status derivation from the raw ingredients. Both
 /// `backend::workspace_status_run_status` (for workspace status) and
 /// `diagnostics::snapshot_run_status` (for diagnostic severity) call
@@ -1289,6 +1372,128 @@ fn non_timeout_analysis_errors_are_not_converted() -> Result<(), String> {
         "git_invocation_timeout: git -C /x [\"diff\"] exceeded the 1ms deadline (process terminated)",
     ) {
         return Err("the named timeout error must match the guard".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warning()
+-> Result<(), String> {
+    // #2299: the fail-closed diff-scope guard commits a limited snapshot
+    // carrying ONE workspace-scoped warning diagnostic — the in-editor
+    // signal — plus the typed failed `diff` outcome. Pure conversion: no
+    // oversized diff required.
+    let config = LspAnalysisConfig::default();
+    let message = "diff_scope_oversized: 2301 changed Rust lines across 42 Rust files exceed \
+                   the 2000-line guard (RIPR_MAX_DIFF_CHANGED_RUST_LINES); split the extraction PR"
+        .to_string();
+    let diagnostics =
+        oversized_diff_limited_diagnostics(Path::new("/workspace"), &config, false, message);
+
+    if !diagnostics.snapshot.findings.is_empty() {
+        return Err("an oversized diff must commit zero findings".to_string());
+    }
+    if !diagnostics.batches.is_empty() {
+        return Err("an oversized diff must publish no diagnostic batches".to_string());
+    }
+    if diagnostics.snapshot.diagnostics_by_uri.len() != 1 {
+        return Err(format!(
+            "expected exactly one diagnostic URI, got {}",
+            diagnostics.snapshot.diagnostics_by_uri.len()
+        ));
+    }
+    let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
+        .map_err(|err| format!("root URI construction failed: {err}"))?;
+    let Some(list) = diagnostics.snapshot.diagnostics_by_uri.get(&root_uri) else {
+        return Err("expected the warning anchored at the workspace root URI".to_string());
+    };
+    if list.len() != 1 {
+        return Err(format!(
+            "expected exactly one warning diagnostic, got {}",
+            list.len()
+        ));
+    }
+    let diagnostic = &list[0];
+    if diagnostic.severity != Some(DiagnosticSeverity::WARNING) {
+        return Err(format!(
+            "expected Warning severity, got {:?}",
+            diagnostic.severity
+        ));
+    }
+    if diagnostic.code
+        != Some(NumberOrString::String(
+            super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+        ))
+    {
+        return Err(format!(
+            "expected the governed scope code, got {:?}",
+            diagnostic.code
+        ));
+    }
+    if !diagnostic.message.contains("diff_scope_oversized")
+        || !diagnostic.message.contains("2301 changed Rust lines")
+    {
+        return Err(format!(
+            "expected the guard kind and actual counts, got {:?}",
+            diagnostic.message
+        ));
+    }
+    if diagnostics.snapshot.component_outcomes.len() != 1 {
+        return Err(format!(
+            "expected exactly one component outcome, got {}",
+            diagnostics.snapshot.component_outcomes.len()
+        ));
+    }
+    let Some(outcome) = diagnostics.snapshot.component_outcomes.first() else {
+        return Err("expected the failed diff outcome".to_string());
+    };
+    if outcome.component != AnalysisComponent::Diff {
+        return Err(format!(
+            "expected the diff component, got {}",
+            outcome.component.as_str()
+        ));
+    }
+    if outcome.kind != Some(crate::analysis::DIFF_SCOPE_OVERSIZED_PREFIX) {
+        return Err(format!("expected the named kind, got {:?}", outcome.kind));
+    }
+    if outcome.findings_trustworthy {
+        return Err("an oversized diff must mark findings untrustworthy".to_string());
+    }
+    let run_status = derive_run_status(
+        &diagnostics.snapshot.findings,
+        &diagnostics.snapshot.gap_artifact_rejections,
+        &diagnostics.snapshot.gap_artifacts,
+        diagnostics.snapshot.seams_deferred,
+        diagnostics.snapshot.partial_scope.is_some(),
+        &diagnostics.snapshot.component_outcomes,
+    );
+    if run_status != "limited" {
+        return Err(format!("expected run_status=limited, got {run_status}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn repo_scope_and_wrapped_guard_errors_do_not_convert() -> Result<(), String> {
+    // #2299: the conversion guard matches ONLY the raw, unwrapped
+    // `diff_scope_oversized` guard error — the distinct `repo_scope_oversized`
+    // guard (#2109), wrapped errors, and forged lookalikes keep the
+    // no-snapshot `Err` path.
+    for lookalike in [
+        "repo_scope_oversized: 900 indexed files exceed the repo guard",
+        "workspace analysis failed: diff_scope_oversized: wrapped must not match",
+        "adiff_scope_oversized: forged prefix must not match",
+    ] {
+        if crate::analysis::is_diff_scope_oversized(lookalike) {
+            return Err(format!("non-guard error matched the guard: {lookalike}"));
+        }
+    }
+    if !crate::analysis::is_diff_scope_oversized(
+        "diff_scope_oversized: 900 indexed Rust files exceed the 800-file guard",
+    ) {
+        return Err("the named guard error must match the guard".to_string());
     }
     Ok(())
 }

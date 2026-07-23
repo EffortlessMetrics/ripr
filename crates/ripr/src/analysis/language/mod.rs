@@ -38,7 +38,7 @@ pub(crate) use perl::PerlAdapter;
 #[cfg(feature = "lang-python")]
 pub(crate) use python::{PythonAdapter, detect_python_test_framework};
 pub(crate) use router::route;
-pub(crate) use rust::RustAdapter;
+pub(crate) use rust::{DIFF_SCOPE_OVERSIZED_PREFIX, RustAdapter, is_diff_scope_oversized};
 pub use rust::{
     PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
     PartialDiffStopReason,
