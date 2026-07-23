@@ -5311,13 +5311,15 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_receipt_status_blocked_route_quality_yields_not_available",
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_receipt_status_limitation_hides_receipt_command",
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_receipt_status_registered_in_capabilities",
-  "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_includes_receipt_status_summary_field"
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_workspace_status_includes_receipt_status_summary_field",
+  "crates/ripr/src/lsp/tests.rs::receipt_status_discloses_bounded_client_feature_profile"
 ]
 fixtures = []
 code = [
   "crates/ripr/src/lsp.rs",
   "crates/ripr/src/lsp/capabilities.rs",
-  "crates/ripr/src/lsp/backend.rs"
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/client_features.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0081-lsp-receipt-status-command.md"
