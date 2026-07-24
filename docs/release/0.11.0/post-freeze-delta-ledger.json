@@ -8,11 +8,11 @@
   "source_parent": {"repository":"EffortlessMetrics/ripr","sha":"ec7dc6beaec8ad2efca4abd502f9253cdb4f939c","role":"source_release_authority_parent"},
   "candidate_recommendation": "refreeze",
   "candidate_decision": "pending_category_review",
-  "coverage": {"expected_commits":142,"recorded_commits":72,"remaining_commits":70,"complete":false,"status":"provisional_tranches_recorded"},
+  "coverage": {"expected_commits":142,"recorded_commits":81,"remaining_commits":61,"complete":false,"status":"provisional_tranches_recorded"},
   "review_summary": {
     "review_status": "all_records_provisional_until_category_receipts_merge",
-    "by_category": {"analyzer":13,"editor":20,"ops":24,"trust":15},
-    "by_disposition": {"must_include_0_11":45,"needs_operator_decision":5,"release_infrastructure_only":5,"safe_defer_post_0_11":8,"structural_no_semantic_delta":9}
+    "by_category": {"analyzer":13,"editor":28,"ops":25,"trust":15},
+    "by_disposition": {"must_include_0_11":52,"needs_operator_decision":5,"release_infrastructure_only":5,"safe_defer_post_0_11":10,"structural_no_semantic_delta":9}
   },
   "fragments": [
     {"category":"trust","sequence":1,"path":"post-freeze-trust-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2350","record_count":12,"review_status":"provisional"},
@@ -21,6 +21,8 @@
     {"category":"editor","sequence":1,"path":"post-freeze-editor-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":16,"review_status":"provisional"},
     {"category":"editor","sequence":2,"path":"post-freeze-editor-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":3,"review_status":"provisional"},
     {"category":"editor","sequence":3,"path":"post-freeze-editor-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":1,"review_status":"provisional"},
+    {"category":"editor","sequence":4,"path":"post-freeze-editor-fragment-4.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":3,"review_status":"provisional"},
+    {"category":"editor","sequence":5,"path":"post-freeze-editor-fragment-5.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":5,"review_status":"provisional"},
     {"category":"analyzer","sequence":1,"path":"post-freeze-analyzer-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":5,"review_status":"provisional"},
     {"category":"analyzer","sequence":2,"path":"post-freeze-analyzer-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":6,"review_status":"provisional"},
     {"category":"analyzer","sequence":3,"path":"post-freeze-analyzer-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":1,"review_status":"provisional"},
@@ -28,7 +30,8 @@
     {"category":"ops","sequence":1,"path":"post-freeze-ops-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":8,"review_status":"provisional"},
     {"category":"ops","sequence":2,"path":"post-freeze-ops-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":8,"review_status":"provisional"},
     {"category":"ops","sequence":3,"path":"post-freeze-ops-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":2,"review_status":"provisional"},
-    {"category":"ops","sequence":4,"path":"post-freeze-ops-fragment-4.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":6,"review_status":"provisional"}
+    {"category":"ops","sequence":4,"path":"post-freeze-ops-fragment-4.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":6,"review_status":"provisional"},
+    {"category":"ops","sequence":5,"path":"post-freeze-ops-fragment-5.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":1,"review_status":"provisional"}
   ],
   "disposition_vocabulary": ["must_include_0_11","safe_defer_post_0_11","source_only_followup","release_infrastructure_only","structural_no_semantic_delta","superseded_or_reverted","needs_operator_decision"],
   "open_execution_receipt_posture": {"issues":["EffortlessMetrics/ripr-swarm#2332","EffortlessMetrics/ripr-swarm#2333","EffortlessMetrics/ripr-swarm#2334"],"required_decision":["include_before_refreeze","defer_post_0_11_with_release_nonclaim"],"default_until_reviewed":"needs_operator_decision"},
