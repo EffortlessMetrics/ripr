@@ -1,6 +1,6 @@
 # RIPR 0.11.0 post-freeze delta audit
 
-Status: **in progress — not merge-ready**
+Status: **142/142 coverage complete; category review pending — not merge-ready**
 
 Authority: `EffortlessMetrics/ripr#1510`, under the release decision in
 `EffortlessMetrics/ripr#1509`.
@@ -18,75 +18,124 @@ source parent         ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
 The audit head is fixed. Later `ripr-swarm/main` commits are outside this
 denominator unless a supplemental range is explicitly recorded and reviewed.
 
-## Current coverage
+## Coverage and provisional result
 
 The machine-readable denominator is
 [`post-freeze-delta-ledger.json`](post-freeze-delta-ledger.json).
 
 ```text
-recorded     41
-expected    142
-remaining   101
-complete     no
+recorded     142
+expected     142
+remaining      0
+coverage complete  yes
+category review    pending
+candidate decision pending
 ```
 
-All 41 current records use exact merged `ripr-swarm/main` commit identities.
-Their dispositions are **provisional** until the owning category review is
-accepted.
+Every record names an exact merged `ripr-swarm/main` SHA, one primary category,
+a provisional candidate disposition, the release claim it protects, an exact
+non-claim, secondary impacts, and source-conflict risk.
 
-| Category | Fragment | Records | Provisional posture |
-| --- | --- | ---: | --- |
-| Trust | [`post-freeze-trust-fragment.json`](post-freeze-trust-fragment.json) | 12 | 11 must-include; 1 operator decision |
-| Editor | [`post-freeze-editor-fragment.json`](post-freeze-editor-fragment.json) | 16 | 15 must-include; 1 safe defer |
-| Analyzer | [`post-freeze-analyzer-fragment.json`](post-freeze-analyzer-fragment.json) | 5 | 2 must-include; 2 operator decisions; 1 safe defer |
-| Operations | [`post-freeze-ops-fragment.json`](post-freeze-ops-fragment.json) | 8 | 2 must-include; 1 operator decision; 3 safe defer; 2 structural |
+The denominator was reconciled against the GitHub compare count and exact
+post-freeze commit-date windows. Automated duplicate/content-commitment
+validation remains required before this draft may become merge-ready.
 
-Current aggregate provisional dispositions:
+| Category | Owning issue | Records |
+| --- | --- | ---: |
+| Trust | `ripr-swarm#2350` | 19 |
+| Editor | `ripr-swarm#2351` | 36 |
+| Analyzer | `ripr-swarm#2352` | 31 |
+| Operations | `ripr-swarm#2353` | 56 |
+| **Total** | | **142** |
+
+Current **provisional** dispositions:
 
 ```text
-must_include_0_11             30
-needs_operator_decision        4
-safe_defer_post_0_11           5
-structural_no_semantic_delta   2
+must_include_0_11             88
+needs_operator_decision        6
+release_infrastructure_only   13
+safe_defer_post_0_11          15
+source_only_followup           1
+structural_no_semantic_delta  19
+                              ---
+total                         142
 ```
 
-The audit remains fail-closed: missing records are not treated as deferred,
-structural, or irrelevant, and this draft must not merge at partial coverage.
+Coverage completion is not disposition acceptance. The four category owners
+must review the fragments and the six operator-decision groups must be settled.
 
-## Why the July 21 candidate cannot proceed unchanged by default
+## Current recommendation: refreeze
 
-The frozen tree predates coherent groups that now protect the planned release
-narrative, including:
+The old candidate explicitly deferred partial-scope behavior and predates a
+large portion of the current trust floor:
 
-- complete configured gate routes with producer-owned seam and command identity;
-- provenance-bound analysis artifacts, assurance-state separation, canonical
-  verify-input validation, and actual repository-HEAD receipt binding;
-- partial-diff selection with explicit limited scope and policy ineligibility;
-- saved-workspace currentness, dirty-buffer quarantine, bounded diagnostic
-  delivery, push/pull selection parity, progress, deadlines, and transport
-  resource limits;
-- analyzer correctness and honesty fixes, including scope, relation, oracle,
-  coordinate, and fail-closed behavior;
-- package, dependency, schema, fixture, generated-artifact, workflow, and
-  source-integration changes needed by those semantics.
+- complete configured gate routes with producer-owned seam, gap, and command
+  identity plus command-level blocking proof;
+- provenance-bound analysis artifacts, assurance-axis separation, canonical
+  verify-input validation, actual repository-HEAD receipt binding, and portable
+  receipt paths;
+- partial-diff and repository-scope limits that remain visible and policy
+  ineligible rather than becoming false completeness;
+- saved-workspace currentness, dirty-buffer quarantine, bounded delivery,
+  push/pull diagnostic and action parity, progress, deadlines, transport bounds,
+  and one negotiated client-feature authority;
+- analyzer correctness and honesty fixes across owner, route, assertion,
+  cross-language, scope, Git-input, and failure-disclosure paths;
+- security dependency updates and generated-CI behavior required by the selected
+  extension and configured gate narrative.
 
-Keeping the old candidate would require a large rollback of the proposed
-`0.11.0` claims. The working recommendation is therefore **refreeze**, but the
-final decision remains owned by `ripr#1509` after the denominator and all four
-category reviews are complete.
+Keeping the July 21 tree would require a broad rollback of the planned
+`0.11.0` claims. The working recommendation is therefore **refreeze**, subject
+to category acceptance and the six explicit decisions below.
 
-## Category reviews
+## Operator decisions still required
 
-| Category | Issue | Primary authority |
-| --- | --- | --- |
-| Trust | `ripr-swarm#2350` | Gate, artifacts, commands, verification, and receipts |
-| Editor | `ripr-swarm#2351` | LSP, protocol, VS Code, lifecycle, currentness, and editor UX |
-| Analyzer | `ripr-swarm#2352` | Analysis, CLI, config, package, and user-visible output |
-| Operations | `ripr-swarm#2353` | CI, dependencies, control plane, docs, release copy, and structural changes |
+1. **Executed-verification contract:** ship the landed
+   `VerificationExecutionResultV1` contract while deferring
+   `ripr-swarm#2332`–`#2334`, or complete the execution/`RepairReceiptV2`
+   train before refreeze. A deferral requires explicit release copy saying
+   RIPR does not execute verification commands or issue `RepairReceiptV2`.
+2. **Check-artifact reuse group:** include or defer together the accepted design,
+   implementation, wire/currentness fixes, domain-boundary correction, and
+   worktree extension. Do not ship a half-contract.
+3. **Rayon parsing:** include when required for the documented cold/editor
+   latency boundary; otherwise defer with the dependency and performance claim.
+4. **Mixed audit-head cleanup:** retain the receipt-help correction required by
+   the selected trust path while treating its static-language maintenance
+   portion as non-semantic.
 
-Every commit receives exactly one primary category owner. Secondary impacts
-remain explicit in the record instead of duplicating the commit across
-fragments.
+The check-artifact item accounts for multiple provisional rows but is one
+coherent product decision.
+
+## Category review law
+
+Every commit has one primary category owner. Secondary impacts are recorded in
+the row instead of duplicating the SHA across fragments.
+
+### Trust — `ripr-swarm#2350`
+
+Review gate eligibility, canonical gap/seam/command identity, artifact
+provenance, static-versus-executed assurance, receipt paths/currentness, and
+legacy-baseline compatibility.
+
+### Editor — `ripr-swarm#2351`
+
+Review diagnostic budget and action parity, saved-workspace currentness,
+lifecycle/deadlines, transport and capability bounds, command/action authority,
+Workspace Trust, multi-root, server resolution, and packaged-extension proof.
+
+### Analyzer — `ripr-swarm#2352`
+
+Review diff and repository scope, parser/owner/oracle/route correctness,
+cross-language honesty, CLI/config/output contracts, check-artifact and cache
+identity, public API, performance, and package-required dependencies.
+
+### Operations — `ripr-swarm#2353`
+
+Review CI reliability, generated workflows, dependencies, retained authority
+and release copy, package evidence, and behavior-preserving decomposition.
+Pure moves remain structural only where parity and old-path reachability are
+explicit.
 
 ## Required dispositions
 
@@ -100,92 +149,37 @@ superseded_or_reverted
 needs_operator_decision
 ```
 
-A disposition is not merely a label. Each row must name the affected claim,
-consumer, package/schema/workflow impact, source-conflict risk, reason, and
-exact non-claim.
+A disposition is not merely a label. Each accepted row must retain the affected
+claim, consumer, package/schema/workflow impact, source-conflict risk, reason,
+and exact non-claim.
 
-## Coherent groups that must not be split accidentally
-
-### Trust
-
-1. Gate eligibility contract, typed seam identity, command-boundary behavior,
-   and true blocking/nonzero-exit proof.
-2. Typed `CommandSpec` production and consumer projection.
-3. Artifact schema/repository/revision/input/content commitments.
-4. Static-movement versus executed-verification vocabulary.
-5. Receipt HEAD binding, canonical verify-input validation, portable paths,
-   and checking/currentness behavior.
-
-The open execution and `RepairReceiptV2` train (`ripr-swarm#2332`–`#2334`)
-must be either included before refreeze or explicitly deferred. A deferral
-requires release copy stating that RIPR does not yet execute verification
-commands or issue `RepairReceiptV2`.
-
-### Editor
-
-1. Diagnostic budget enforcement, omission disclosure, legitimate-zero
-   semantics, and one stored push/pull selection authority.
-2. Debounce, saved-content deduplication, dirty-buffer quarantine, and committed
-   current snapshot publication.
-3. Real-binary lifecycle, progress, deadlines/cancellation, and one terminal
-   typed outcome.
-4. Framing/payload/concurrency/slow-reader bounds plus typed client capability,
-   configuration, and degradation authority.
-5. Versioned code-action data, resolve-time revalidation, command authority,
-   and real-wire compatibility journeys.
-6. Workspace Trust, multi-root/start, server resolution/download, and packaged
-   extension proof.
-
-### Analyzer
-
-1. Diff parsing, path confinement, coordinate safety, and source-scope
-   disclosure.
-2. Partial-scope selection, identity, typed status, policy ineligibility, and
-   recovery guidance.
-3. Analyzer evidence-honesty fixes with their adversarial fixtures and corpus
-   gates.
-4. CLI/config/output contracts required by gate, receipt, and editor consumers.
-5. Cache/artifact/input-identity reuse and performance changes only where
-   semantic parity is proved.
-6. Cargo/npm/package/lockfile changes required by selected production code.
-
-### Operations
-
-1. Generated schemas, fixtures, traceability, and docs required by included
-   semantic changes.
-2. CI reliability and source-integration corrections required to prove the
-   candidate.
-3. Source/swarm authority migration and deletion of obsolete scheduler paths.
-4. Dependency and workflow changes not owned directly by production semantics.
-5. Behavior-preserving decomposition, classified as structural only after
-   parity proof and old-authority reachability checks.
-
-## Completion algorithm
+## Completion and release sequence
 
 ```text
-exact 142-commit enumeration
-→ one primary category per commit
-→ category semantic review and disposition
-→ reconcile dependencies, fixtures, schemas, docs, and supersession
-→ validate 142/142 coverage and no duplicates
-→ ripr#1509 keep/refreeze decision
-→ ripr-swarm#2354 immutable replacement freeze, if selected
-→ refreshed ripr#1478 preflight
-→ ripr#1507 source editor integration proof
-→ ripr#1508 final direct two-parent join
+142/142 exact SHA denominator                         complete
+→ automated uniqueness and content-commitment check  pending
+→ four category reviews and disposition acceptance   pending
+→ operator decisions and source-only survivor audit  pending
+→ ripr#1509 records keep/refreeze decision            pending
+→ ripr-swarm#2354 creates immutable replacement freeze, if selected
+→ refresh ripr#1478 preflight
+→ prove source editor integration in ripr#1507
+→ build the final direct two-parent join in ripr#1508
+→ merge source promotion under ripr#1465
+→ continue metadata/readiness/qualification under ripr#1463
 ```
 
 ## Merge gate for this audit PR
 
-This PR must remain draft and unmergeable by policy until:
+This PR must remain draft until:
 
-- the ledger records exactly 142 commits;
-- category counts sum to 142 with no duplicate SHA;
-- every row has a reviewed disposition;
+- fragment counts and unique SHAs mechanically reconcile to 142;
+- every provisional row is accepted or amended by its category owner;
 - every `must_include_0_11` row names the release claim it protects;
-- every deferral names a follow-up issue and release non-claim;
-- reverts and superseding commits are linked;
-- required source-only survivors remain separate;
+- every deferral names a follow-up issue and exact release non-claim;
+- superseding and reverted rows are linked where applicable;
+- source-only `0.10.1` survivors and source workflow/settings authority are
+  represented separately;
 - the final canonical ledger commitment is recorded;
 - `ripr#1509` records the reviewed candidate decision.
 
