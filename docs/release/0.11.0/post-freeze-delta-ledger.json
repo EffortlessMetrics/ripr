@@ -23,30 +23,54 @@
   "candidate_decision": "pending_category_review",
   "coverage": {
     "expected_commits": 142,
-    "recorded_commits": 0,
+    "recorded_commits": 41,
+    "remaining_commits": 101,
     "complete": false,
-    "status": "denominator_metadata_pinned_records_pending"
+    "status": "provisional_tranche_recorded"
   },
-  "category_owners": [
+  "review_summary": {
+    "review_status": "all_records_provisional_until_category_receipts_merge",
+    "by_category": {
+      "analyzer": 5,
+      "editor": 16,
+      "ops": 8,
+      "trust": 12
+    },
+    "by_disposition": {
+      "must_include_0_11": 30,
+      "needs_operator_decision": 4,
+      "safe_defer_post_0_11": 5,
+      "structural_no_semantic_delta": 2
+    }
+  },
+  "fragments": [
     {
-      "id": "trust",
+      "category": "trust",
+      "path": "post-freeze-trust-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2350",
-      "scope": "gate, artifact, command, verification, and receipt authority"
+      "record_count": 12,
+      "review_status": "provisional"
     },
     {
-      "id": "editor",
+      "category": "editor",
+      "path": "post-freeze-editor-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2351",
-      "scope": "LSP, protocol, VS Code, lifecycle, currentness, and editor UX"
+      "record_count": 16,
+      "review_status": "provisional"
     },
     {
-      "id": "analyzer",
+      "category": "analyzer",
+      "path": "post-freeze-analyzer-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2352",
-      "scope": "analysis, CLI, configuration, package, and user-visible output"
+      "record_count": 5,
+      "review_status": "provisional"
     },
     {
-      "id": "ops",
+      "category": "ops",
+      "path": "post-freeze-ops-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2353",
-      "scope": "CI, dependencies, control plane, docs, release copy, and structural work"
+      "record_count": 8,
+      "review_status": "provisional"
     }
   ],
   "disposition_vocabulary": [
@@ -84,7 +108,7 @@
     "this file does not authorize source promotion",
     "this file does not authorize a version bump, tag, publication, signing, marketplace mutation, or release-secret use",
     "a floating main branch is not a valid audit or release candidate",
-    "coverage is incomplete until recorded_commits equals expected_commits"
-  ],
-  "records": []
+    "coverage is incomplete until recorded_commits equals expected_commits",
+    "provisional dispositions are not final until the owning category review is accepted"
+  ]
 }
