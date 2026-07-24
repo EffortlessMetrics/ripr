@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/source-promotion-builder.yml
       - scripts/build_source_promotion_join.py
+      - scripts/run_build_source_promotion_join.py
       - docs/release/0.11.0/source-promotion-resolution-plan.json
   workflow_dispatch:
 
@@ -33,7 +34,7 @@ jobs:
           shared-key: ripr-source-promotion-builder-1.95-${{ runner.os }}
           save-if: false
       - name: Build and validate replacement source join
-        run: python3 scripts/build_source_promotion_join.py
+        run: python3 scripts/run_build_source_promotion_join.py
       - name: Upload builder receipt
         if: always()
         uses: actions/upload-artifact@v7
