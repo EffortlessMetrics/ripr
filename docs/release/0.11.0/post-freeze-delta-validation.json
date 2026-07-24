@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "kind": "ripr_post_freeze_delta_validation",
-  "status": "denominator_validated_dispositions_provisional",
+  "status": "denominator_and_category_reviews_accepted",
   "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
   "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
   "sha_list": {
@@ -14,21 +14,35 @@
     "duplicate_count": 0,
     "sha256": "ea7373162affc0ddb6e7e54cf5f3d8ab56c4f4f82d833b67e93b29565845c1e4"
   },
-  "category_counts": {
-    "trust": 19,
-    "editor": 36,
-    "analyzer": 31,
-    "ops": 56,
-    "total": 142
-  },
-  "provisional_disposition_counts": {
-    "must_include_0_11": 88,
-    "needs_operator_decision": 6,
+  "category_counts": {"trust":19,"editor":36,"analyzer":31,"ops":56,"total":142},
+  "accepted_disposition_counts": {
+    "must_include_0_11": 94,
     "release_infrastructure_only": 13,
     "safe_defer_post_0_11": 15,
     "source_only_followup": 1,
     "structural_no_semantic_delta": 19,
+    "needs_operator_decision": 0,
     "total": 142
+  },
+  "category_review_receipts": [
+    "post-freeze-trust-review.json",
+    "post-freeze-editor-review.json",
+    "post-freeze-analyzer-review.json",
+    "post-freeze-ops-review.json"
+  ],
+  "candidate_decision": {
+    "decision": "refreeze",
+    "replacement_candidate": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+    "supplemental_range": null,
+    "main_comparison_at_decision": "identical",
+    "source_survivor_contract": "post-freeze-source-survivors.json"
+  },
+  "verification_execution_decision": {
+    "landed_result_contract": "included",
+    "ripr_owned_command_execution": "deferred_to_ripr-swarm#2332",
+    "repair_receipt_v2": "deferred_to_ripr-swarm#2333",
+    "adversarial_closeout": "deferred_to_ripr-swarm#2334",
+    "release_nonclaim": "RIPR 0.11.0 does not execute verification commands and does not issue RepairReceiptV2."
   },
   "validation_commands": [
     "test $(wc -l < docs/release/0.11.0/post-freeze-delta-shas.txt) -eq 142",
@@ -38,19 +52,20 @@
   ],
   "completed_checks": [
     "the GitHub compare count is 142 ahead and 0 behind",
-    "the checked-in denominator has 142 exact merged-main SHAs",
-    "the checked-in denominator contains 142 unique SHAs",
+    "the checked-in denominator has 142 exact unique merged-main SHAs",
     "every SHA is lowercase 40-hex",
-    "category counts sum to 142",
-    "provisional disposition counts sum to 142",
-    "the sorted denominator has a retained content commitment"
+    "the sorted denominator has a retained content commitment",
+    "four category receipts accept all 142 dispositions",
+    "all provisional operator-decision rows are settled",
+    "accepted disposition counts sum to 142",
+    "source-only survivor and exclusion requirements are retained",
+    "the reviewed candidate decision is refreeze at the exact audit head"
   ],
   "pending_checks": [
-    "category owners accept or amend every provisional disposition",
-    "fragment-to-denominator mapping is reviewed with any supersession relationships",
-    "the six operator-decision groups are settled",
-    "source-only 0.10.1 survivors and source workflow/settings authority are reconciled",
-    "ripr#1509 records the final keep or refreeze decision"
+    "PR #1511 required checks and review complete",
+    "audit package merged into source main",
+    "immutable replacement freeze ref created and checked under ripr-swarm#2354",
+    "source preflight and final direct two-parent join rebuilt against the replacement candidate"
   ],
-  "authority_boundary": "This validation commits the exact audit denominator only. It does not accept provisional dispositions, create a replacement freeze, authorize source promotion, change versions, or authorize publication."
+  "authority_boundary": "This validation accepts the audit and candidate selection. It does not create the freeze ref, merge source history, change versions, authorize publication, sign artifacts, use release secrets, or promote support tiers."
 }
