@@ -1,0 +1,97 @@
+name: Debug 1478 Exact Parent Preflight
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-1478-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    if: github.head_ref == 'debug/1478-preflight-bundle'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_PARENT: 2b45cffe4353cc055ce201070555450f4c85d6ac
+      SWARM_PARENT: c86807ecdbf359594ef88c0ff38b10b446139dca
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch exact swarm parent
+        run: |
+          git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
+          git fetch --no-tags swarm "$SWARM_PARENT"
+          git branch --force source-parent "$SOURCE_PARENT"
+          git branch --force swarm-candidate FETCH_HEAD
+          test "$(git rev-parse source-parent)" = "$SOURCE_PARENT"
+          test "$(git rev-parse swarm-candidate)" = "$SWARM_PARENT"
+
+      - name: Record ancestry and denominator
+        run: |
+          mkdir -p target/preflight
+          {
+            echo "source_parent=$SOURCE_PARENT"
+            echo "swarm_parent=$SWARM_PARENT"
+            echo "merge_base=$(git merge-base source-parent swarm-candidate)"
+            echo "source_since_base=$(git rev-list --count $(git merge-base source-parent swarm-candidate)..source-parent)"
+            echo "swarm_since_base=$(git rev-list --count $(git merge-base source-parent swarm-candidate)..swarm-candidate)"
+            echo "source_is_ancestor=$(git merge-base --is-ancestor source-parent swarm-candidate && echo yes || echo no)"
+            echo "swarm_is_ancestor=$(git merge-base --is-ancestor swarm-candidate source-parent && echo yes || echo no)"
+          } | tee target/preflight/ancestry.txt
+
+      - name: Run exact dry merge and capture conflicts
+        run: |
+          git config user.name "RIPR release preflight"
+          git config user.email "release-preflight@example.invalid"
+          git switch --detach source-parent
+          set +e
+          git merge --no-commit --no-ff swarm-candidate >target/preflight/merge.stdout 2>target/preflight/merge.stderr
+          code=$?
+          set -e
+          echo "$code" >target/preflight/merge.exit
+          git status --short >target/preflight/status-short.txt
+          git diff --name-only --diff-filter=U >target/preflight/conflict-paths.txt
+          git ls-files -u >target/preflight/unmerged-index.txt
+          git diff --cc >target/preflight/combined-conflicts.diff || true
+          cp .git/MERGE_MSG target/preflight/MERGE_MSG 2>/dev/null || true
+          git merge --abort 2>/dev/null || true
+
+      - name: Record merge-tree diagnostics
+        run: |
+          set +e
+          git merge-tree source-parent swarm-candidate >target/preflight/merge-tree.txt 2>target/preflight/merge-tree.stderr
+          echo "$?" >target/preflight/merge-tree.exit
+          set -e
+
+      - name: Export exact Git bundle
+        run: |
+          git bundle create target/preflight/ripr-0.11-preflight.bundle source-parent swarm-candidate
+          git bundle verify target/preflight/ripr-0.11-preflight.bundle | tee target/preflight/bundle-verify.txt
+          sha256sum target/preflight/ripr-0.11-preflight.bundle | tee target/preflight/bundle.sha256
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Exact 0.11 parent preflight"
+            echo
+            sed 's/^/- /' target/preflight/ancestry.txt
+            echo "- merge exit: \`$(cat target/preflight/merge.exit)\`"
+            echo "- textual conflict paths: \`$(wc -l < target/preflight/conflict-paths.txt)\`"
+            echo
+            echo '```text'
+            cat target/preflight/conflict-paths.txt
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ripr-0.11-exact-parent-preflight
+          path: target/preflight/
+          if-no-files-found: error
