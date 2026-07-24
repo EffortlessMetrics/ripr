@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 5,
+  "disposition_counts": {
+    "must_include_0_11": 2,
+    "needs_operator_decision": 2,
+    "safe_defer_post_0_11": 1
+  },
+  "records": [
+    {
+      "commit_sha": "d7a97987b5d4f438d72a9aca7e4b640609cd63e5",
+      "pr": "EffortlessMetrics/ripr-swarm#2142",
+      "title": "feat(analysis): partial diff-scope analysis with disclosed limited run state",
+      "primary_category": "analyzer",
+      "change_class": "production_and_contract",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "oversized but bounded diffs yield deterministic partial evidence without being represented as complete",
+      "reason": "The old candidate explicitly deferred this behavior; current gate, badge, LSP, and recovery semantics depend on its typed scope identity.",
+      "non_claim": "Partial evidence is not repository-wide authority and is gate-ineligible.",
+      "secondary_impacts": ["json", "human", "lsp", "gate", "badge", "config"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "adc8b7410868d15721a3e1737114ae0c82ffd04b",
+      "pr": "EffortlessMetrics/ripr-swarm#2154",
+      "title": "fix(analysis): attribute summary changed-file counts per language",
+      "primary_category": "analyzer",
+      "change_class": "production_output_correctness",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "language-scoped summary counts describe the files each adapter actually considered",
+      "reason": "Cross-language honesty is part of the release narrative; aggregate counts must not be projected as per-language coverage.",
+      "non_claim": "Correct counts do not imply parity among language adapters.",
+      "secondary_impacts": ["json", "human", "preview_languages"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "57a93d691c88238db103b433974fcf54c0dc24e5",
+      "pr": "EffortlessMetrics/ripr-swarm#2250",
+      "title": "perf(cli): reuse check artifacts across check, explain, and context",
+      "primary_category": "analyzer",
+      "change_class": "production_performance_and_contract",
+      "candidate_disposition": "needs_operator_decision",
+      "review_status": "provisional_category_review",
+      "release_claim": "expensive repeated CLI projections can reuse one exact, fail-closed analysis artifact",
+      "reason": "Operationally useful and contract-bearing, but not essential to the minimum 0.11 trust narrative if fully deferred with matching docs.",
+      "non_claim": "The artifact is not an implicit cache and does not cover every repository edit.",
+      "secondary_impacts": ["cli", "schema", "config_identity", "package"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "e000c256d6ee9c4d78659b2ab54da91f35839d5d",
+      "pr": "EffortlessMetrics/ripr-swarm#2308",
+      "title": "ux(analysis): disclose when diff contains only non-source files",
+      "primary_category": "analyzer",
+      "change_class": "presentation_only",
+      "candidate_disposition": "safe_defer_post_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "a zero-finding docs/config-only run explains why no source was analyzed",
+      "reason": "Honest UX but not a schema or semantic dependency; deferral requires matching known-limit copy.",
+      "non_claim": "Exit zero does not claim source analysis occurred.",
+      "secondary_impacts": ["cli_stderr", "docs"],
+      "source_conflict_risk": "low"
+    },
+    {
+      "commit_sha": "3685f49601325bac9451268aacea6d89de06a66b",
+      "pr": "EffortlessMetrics/ripr-swarm#2322",
+      "title": "perf(analysis): parallelize index-build parsing with rayon",
+      "primary_category": "analyzer",
+      "change_class": "performance_and_dependency",
+      "candidate_disposition": "needs_operator_decision",
+      "review_status": "provisional_category_review",
+      "release_claim": "cold parsing is materially faster while preserving ordered semantic output",
+      "reason": "The change is output-preserving but adds a dependency and may be needed for the documented editor latency boundary.",
+      "non_claim": "Performance evidence does not alter analysis completeness or correctness.",
+      "secondary_impacts": ["Cargo_lock", "dependencies", "cancellation_latency"],
+      "source_conflict_risk": "medium"
+    }
+  ]
+}
