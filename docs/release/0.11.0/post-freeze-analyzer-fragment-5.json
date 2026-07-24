@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "sequence": 5,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 2,
+  "disposition_counts": {"must_include_0_11": 2},
+  "records": [
+    {
+      "commit_sha": "5d3e2a1ddc3912a6cc49eb9889e564900c561288",
+      "pr": "EffortlessMetrics/ripr-swarm#2200",
+      "title": "fix(analysis): guard predicate-shape detection against assertion macros",
+      "primary_category": "analyzer",
+      "change_class": "production_correctness",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "assertion-shaped changes do not receive fabricated threshold/boundary guidance from token coincidence",
+      "reason": "An assertion containing a comparison operator was misclassified as a changed predicate and produced meaningless boundary-test advice. The fix is part of the assertion-shaped guidance group.",
+      "non_claim": "The fallback guidance remains static and does not infer a hidden exact discriminator.",
+      "secondary_impacts": ["probe_classification", "human_guidance", "spec_0133"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "f837c0a76fe69ad4311a1d25ecbf3bb283416716",
+      "pr": "EffortlessMetrics/ripr-swarm#2217",
+      "title": "fix(analysis): tighten cross-language route detection",
+      "primary_category": "analyzer",
+      "change_class": "production_correctness_and_honesty",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "cross-language route detection credits only bounded language/namespace evidence and recognized bridge markers",
+      "reason": "Broad namespace or marker matching can promote unrelated code into a repair route. The landed follow-ups narrow Python evidence and add the intended snake-case bridge forms.",
+      "non_claim": "Cross-language routes remain advisory and do not imply Rust parity or gate authority.",
+      "secondary_impacts": ["python", "typescript", "repair_route", "honesty_controls"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 8,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"release_infrastructure_only": 1},
+  "records": [
+    {
+      "commit_sha": "4085f449d990c8c10ee8980628d4d06700066e0c",
+      "pr": "EffortlessMetrics/ripr-swarm#2188",
+      "title": "test(vscode): move multi-root end-to-end coverage into the live suite",
+      "primary_category": "editor",
+      "change_class": "source_integration_evidence",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "the multi-root and Workspace Trust acceptance tests actually execute in the protected VS Code lane",
+      "reason": "Dead tests are not proof. This moves the claimed coverage under the live runner and removes the duplicate inert harness, making it a prerequisite for source #1507 rather than shipped runtime semantics.",
+      "non_claim": "A live test suite does not itself prove the packaged VSIX candidate or every editor client.",
+      "secondary_impacts": ["vscode_tests", "source_integration", "workspace_trust"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

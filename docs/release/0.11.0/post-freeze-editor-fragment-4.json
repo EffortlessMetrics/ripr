@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 4,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 3,
+  "disposition_counts": {"must_include_0_11": 2, "safe_defer_post_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "9ef119d2f315ae6266b18fb45b05f2b4e9231b90",
+      "pr": "EffortlessMetrics/ripr-swarm#2211",
+      "title": "feat(lsp): capability-negotiated workspace configuration pull",
+      "primary_category": "editor",
+      "change_class": "production_protocol_and_authority",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "clients that support workspace configuration get bounded, epoch-safe, root-scoped settings with honest pending and failure states",
+      "reason": "Configuration authority cannot depend on client name or stale unbound responses; root switches must re-pull rather than reuse another root's values.",
+      "non_claim": "Initialization-only and push fallbacks remain valid for clients without the capability.",
+      "secondary_impacts": ["configuration_schema", "input_identity", "workspace_root", "vscode"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "e239268e8765d7d42f2088762ccbcccc29097af8",
+      "pr": "EffortlessMetrics/ripr-swarm#2219",
+      "title": "feat(lsp): redacted setTrace and logTrace protocol tracing",
+      "primary_category": "editor",
+      "change_class": "production_observability",
+      "candidate_disposition": "safe_defer_post_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "standard LSP trace control emits bounded structural metadata without source, URI, config, command, or packet contents",
+      "reason": "Valuable diagnostics but independently deferrable if the selected release makes no tracing claim and retains correct client-side trace behavior.",
+      "non_claim": "Tracing never enters analysis identity, snapshots, actions, or evidence and cannot be treated as proof.",
+      "secondary_impacts": ["lsp_protocol", "privacy", "tests", "spec_0137"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "350a7b9bdcc584de647ee5004e6ba3fbfb97dc53",
+      "pr": "EffortlessMetrics/ripr-swarm#2226",
+      "title": "feat(lsp): negotiate code-lens refresh with a semantic lens-view identity",
+      "primary_category": "editor",
+      "change_class": "production_currentness_and_protocol",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "supported clients refresh code lenses only when their semantic view changes and clear stale lenses when analysis authority disappears",
+      "reason": "A root or snapshot transition can otherwise leave stale repair summaries visible after diagnostics/actions have cleared.",
+      "non_claim": "Code-lens refresh does not trigger analysis and is omitted for clients without the negotiated capability.",
+      "secondary_impacts": ["code_lens", "workspace_refresh", "snapshot_identity", "spec_0138"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "ops",
+  "sequence": 5,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2353",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"safe_defer_post_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "3de0c772fed00d314b272354a15f81f6f88fe314",
+      "pr": "EffortlessMetrics/ripr-swarm#2255",
+      "title": "feat(xtask): add safe remote-branch inventory and reviewed cleanup plan",
+      "primary_category": "ops",
+      "change_class": "repository_operations",
+      "candidate_disposition": "safe_defer_post_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "remote branch cleanup is based on a deterministic reviewed plan, exact head lease, and explicit operator apply",
+      "reason": "Useful repository hygiene with no runtime, package, schema, or source-promotion dependency for 0.11.0.",
+      "non_claim": "No branch is deleted automatically, from CI, or from this audit.",
+      "secondary_impacts": ["xtask", "GitHub_API", "repo_ops"],
+      "source_conflict_risk": "low"
+    }
+  ]
+}

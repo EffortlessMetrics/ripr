@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 2,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 3,
+  "disposition_counts": {
+    "must_include_0_11": 3
+  },
+  "records": [
+    {
+      "commit_sha": "248644525077275503a4bf9878e6b57b5d9f0046",
+      "pr": "EffortlessMetrics/ripr-swarm#2137",
+      "title": "test(lsp): preserve changed test-file exclusion",
+      "primary_category": "editor",
+      "change_class": "integration_evidence",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "changed test files do not become production gap-diagnostic anchors",
+      "reason": "This regression is part of the same production-scope invariant later broadened by #2158 and prevents inverted editor guidance.",
+      "non_claim": "Does not prove CLI/LSP output-count parity or every language adapter's test-file policy.",
+      "secondary_impacts": ["analysis_scope", "process_policy", "lsp_tests"],
+      "source_conflict_risk": "low"
+    },
+    {
+      "commit_sha": "c5b57122d23a25568a97dd5029d135b7285e9a2b",
+      "pr": "EffortlessMetrics/ripr-swarm#2180",
+      "title": "ux(vscode): quick-pick workspace root for ambiguous multi-root starts",
+      "primary_category": "editor",
+      "change_class": "production_ux_and_authority",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "an ambiguous multi-root start has an in-product, session-bounded recovery path",
+      "reason": "Without this command the packaged extension can correctly block but provides no usable path to select the one-server root.",
+      "non_claim": "The single-server, one-root-at-a-time model remains unchanged.",
+      "secondary_impacts": ["vscode_manifest", "workspace_root_authority", "extension_tests"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "f5f150da6a3b43b3189b0dfe14213813d354abc1",
+      "pr": "EffortlessMetrics/ripr-swarm#2185",
+      "title": "security(lsp): bound transport framing, payloads, concurrency, and slow readers",
+      "primary_category": "editor",
+      "change_class": "production_security_and_contract",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "the public stdio server has explicit finite framing, payload, concurrency, and slow-reader bounds",
+      "reason": "The old candidate leaves attacker-controlled JSON-RPC framing and several request collections unbounded, contradicting the current reliability and security narrative.",
+      "non_claim": "The transport does not provide wire-level frame recovery or a configurable internal queue without upstream changes.",
+      "secondary_impacts": ["real_binary_tests", "lsp_transport", "docs", "process_lifecycle"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

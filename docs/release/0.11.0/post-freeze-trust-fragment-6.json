@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "trust",
+  "sequence": 6,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2350",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"must_include_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "ba849ccb1984bbb4c1d1928650657f8ffa2cf1d8",
+      "pr": "EffortlessMetrics/ripr-swarm#2147",
+      "title": "security(cli): confine agent brief file paths to the workspace",
+      "primary_category": "trust",
+      "change_class": "production_security_and_artifact_confinement",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "agent brief artifacts cannot embed caller-selected paths that escape the analyzed repository root",
+      "reason": "The explicit file list bypassed the confinement already applied to parsed diffs and other agent inputs. Traversal, outside-root absolute paths, and platform prefixes now fail closed with a named error.",
+      "non_claim": "Path confinement does not prove that every in-root file is relevant or safe to edit.",
+      "secondary_impacts": ["agent_brief", "workspace_root", "CLI", "security_tests"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}
