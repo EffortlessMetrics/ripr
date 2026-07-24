@@ -15,7 +15,7 @@ jobs:
   resolve-and-validate:
     if: github.head_ref == 'debug/1478-preflight-bundle'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       SOURCE_PARENT: 2b45cffe4353cc055ce201070555450f4c85d6ac
       SWARM_PARENT: c86807ecdbf359594ef88c0ff38b10b446139dca
@@ -34,10 +34,6 @@ jobs:
           text = p.read_text()
           needle = "\ngit('add', '-A')\n"
           insertion = r'''
-          # Cross-repository diff-check exposes historical trailing spaces that
-          # were not conflicts inside either parent. Normalize only the named
-          # imported evidence/fixture files and retire the surviving live goal
-          # pointer before validating the resolved tree.
           whitespace_files = [
               'docs/handoffs/2026-07-11-targeted-rerun-benchmark.md',
               'docs/handoffs/2026-07-12-call-presence-evidence-packet.md',
@@ -100,32 +96,83 @@ jobs:
           cargo xtask check-workflows
           cargo xtask goldens check
 
-      - name: Validate source integration build
-        run: |
-          cargo check --workspace --all-targets --all-features --locked
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-          cargo test --workspace --locked
-          cargo package -p ripr --list --locked > target/package-list.txt
-          cargo publish -p ripr --dry-run --locked
+      - name: cargo check resolved workspace
+        id: workspace_check
+        continue-on-error: true
+        run: cargo check --workspace --all-targets --all-features --locked 2>&1 | tee /tmp/workspace-check.log
 
-      - name: Validate editor package
-        run: |
-          npm --prefix editors/vscode ci
-          npm --prefix editors/vscode run compile
-          npm --prefix editors/vscode run package
+      - name: cargo clippy resolved workspace
+        id: workspace_clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings 2>&1 | tee /tmp/workspace-clippy.log
 
-      - name: Export exact resolved tree
+      - name: cargo test resolved workspace
+        id: workspace_test
+        continue-on-error: true
+        run: cargo test --workspace --locked 2>&1 | tee /tmp/workspace-test.log
+
+      - name: package list
+        id: package_list
+        continue-on-error: true
+        run: cargo package -p ripr --list --locked 2>&1 | tee /tmp/package-list.txt
+
+      - name: publish dry run
+        id: publish_dry_run
+        continue-on-error: true
+        run: cargo publish -p ripr --dry-run --locked 2>&1 | tee /tmp/publish-dry-run.log
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: npm ci
+        id: npm_ci
+        continue-on-error: true
+        run: npm --prefix editors/vscode ci 2>&1 | tee /tmp/npm-ci.log
+
+      - name: compile extension
+        id: npm_compile
+        continue-on-error: true
+        run: npm --prefix editors/vscode run compile 2>&1 | tee /tmp/npm-compile.log
+
+      - name: package extension
+        id: npm_package
+        continue-on-error: true
+        run: npm --prefix editors/vscode run package 2>&1 | tee /tmp/npm-package.log
+
+      - name: Export exact resolved tree and outcome logs
         if: always()
+        env:
+          WORKSPACE_CHECK: ${{ steps.workspace_check.outcome }}
+          WORKSPACE_CLIPPY: ${{ steps.workspace_clippy.outcome }}
+          WORKSPACE_TEST: ${{ steps.workspace_test.outcome }}
+          PACKAGE_LIST: ${{ steps.package_list.outcome }}
+          PUBLISH_DRY_RUN: ${{ steps.publish_dry_run.outcome }}
+          NPM_CI: ${{ steps.npm_ci.outcome }}
+          NPM_COMPILE: ${{ steps.npm_compile.outcome }}
+          NPM_PACKAGE: ${{ steps.npm_package.outcome }}
         run: |
-          mkdir -p target/resolved-tree-v2
+          mkdir -p target/resolved-tree-v2/logs
           cp /tmp/debug-1478-resolve.log target/resolved-tree-v2/resolver.log 2>/dev/null || true
+          cp /tmp/*.log /tmp/package-list.txt target/resolved-tree-v2/logs/ 2>/dev/null || true
+          printf '%-20s %s\n' \
+            workspace_check "$WORKSPACE_CHECK" \
+            workspace_clippy "$WORKSPACE_CLIPPY" \
+            workspace_test "$WORKSPACE_TEST" \
+            package_list "$PACKAGE_LIST" \
+            publish_dry_run "$PUBLISH_DRY_RUN" \
+            npm_ci "$NPM_CI" \
+            npm_compile "$NPM_COMPILE" \
+            npm_package "$NPM_PACKAGE" \
+            | tee target/resolved-tree-v2/outcomes.txt
           git show -s --format='%H%n%P%n%T%n%s' HEAD | tee target/resolved-tree-v2/identity.txt
           git diff --stat "$SOURCE_PARENT" HEAD > target/resolved-tree-v2/source-delta.stat
           git diff --stat "$SWARM_PARENT" HEAD > target/resolved-tree-v2/swarm-delta.stat
           git bundle create target/resolved-tree-v2/ripr-0.11-resolved-tree.bundle source-parent swarm-candidate HEAD
           git bundle verify target/resolved-tree-v2/ripr-0.11-resolved-tree.bundle | tee target/resolved-tree-v2/bundle-verify.txt
           sha256sum target/resolved-tree-v2/ripr-0.11-resolved-tree.bundle | tee target/resolved-tree-v2/bundle.sha256
-          cp target/package-list.txt target/resolved-tree-v2/package-list.txt 2>/dev/null || true
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -133,3 +180,7 @@ jobs:
           name: ripr-0.11-resolved-tree-validation-v2
           path: target/resolved-tree-v2/
           if-no-files-found: error
+
+      - name: Fail on any unresolved source integration outcome
+        if: always()
+        run: awk '$2 != "success" { failed = 1 } END { exit failed }' target/resolved-tree-v2/outcomes.txt
