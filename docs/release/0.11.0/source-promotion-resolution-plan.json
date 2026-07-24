@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_source_promotion_resolution_plan",
+  "status": "accepted_for_builder",
+  "source_parent": "2b45cffe4353cc055ce201070555450f4c85d6ac",
+  "swarm_parent": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+  "expected_conflicts": [
+    "CHANGELOG.md",
+    "crates/ripr/src/analysis/probes/diff.rs",
+    "crates/ripr/src/output/review_comments.rs",
+    "docs/specs/README.md",
+    "editors/vscode/package-lock.json",
+    "editors/vscode/package.json",
+    "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+    "policy/process_allowlist.txt"
+  ],
+  "resolutions": {
+    "CHANGELOG.md": "source wins; bounded subprocess spec ID changes from 0112 to 0144; version remains staged 0.10.1",
+    "crates/ripr/src/analysis/probes/diff.rs": "swarm parser-backed implementation wins plus the source bounded_subprocess_family check before parser and lexical fallback",
+    "crates/ripr/src/output/review_comments.rs": "swarm causal-aware structured warning implementation wins",
+    "docs/specs/README.md": "swarm index wins plus accepted RIPR-SPEC-0144 bounded subprocess row",
+    "editors/vscode/package.json": "swarm dependency and manifest graph wins; version remains source 0.10.1",
+    "editors/vscode/package-lock.json": "swarm lock graph wins; root package versions remain source 0.10.1",
+    "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json": "swarm current causal-aware golden wins",
+    "policy/process_allowlist.txt": "swarm inventory wins plus RIPR-SPEC-0144 bounded subprocess recognizer row"
+  },
+  "semantic_resolutions": [
+    "rename source RIPR-SPEC-0112 bounded subprocess contract to RIPR-SPEC-0144 because swarm owns 0112 and 0133-0143",
+    "retain source subprocess.rs, module registration, test corpus, traceability, changelog, process allowlist, and network allowlist under 0144",
+    "retain source release workflows, repository settings, release runbooks, and merged audit package",
+    "delete swarm-only .github/workflows/ub-review.yml from the source tree",
+    "use current swarm analyzer, editor, schema, fixture, dependency, and normal CI structure",
+    "retain source crate, Cargo.lock, extension, npm lock, and changelog version at 0.10.1 until issue 1466",
+    "retain the release nonclaim that 0.11.0 does not execute verification commands or issue RepairReceiptV2"
+  ],
+  "source_authority_paths": [
+    ".github/settings.yml",
+    ".github/workflows/release-server-binaries.yml",
+    ".github/workflows/publish-extension.yml",
+    ".github/workflows/badge-endpoints.yml",
+    "docs/SOURCE_PROMOTION.md",
+    "docs/RELEASE.md",
+    "docs/REPO_SETTINGS.md"
+  ],
+  "excluded_swarm_paths": [
+    ".github/workflows/ub-review.yml"
+  ],
+  "target_branch": "promote/0.11.0-replacement",
+  "authority_boundary": "The plan authorizes construction and testing of one source promotion branch. It does not authorize merging source main, changing versions, tagging, publishing, signing, using release secrets, mutating marketplaces, or promoting support tiers."
+}
