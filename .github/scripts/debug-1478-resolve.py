@@ -151,6 +151,41 @@ assert marker in swarm_settings and marker not in source_settings
 Path('.github/settings.yml').write_text(source_settings.rstrip() + '\n' + swarm_settings[swarm_settings.index(marker):])
 Path('.github/workflows/ub-review.yml').unlink(missing_ok=True)
 
+# Resolve the source-only version-copy follow-up: keep 0.10.1 staged until the
+# separate 0.11.0 metadata PR and remove retired goal-scheduler authority from
+# live roadmap/campaign wording touched by the swarm version-copy change.
+replacements = {
+    'AGENTS.md': [
+        ('code --install-extension dist/ripr-0.10.0.vsix --force',
+         'code --install-extension dist/ripr-0.10.1.vsix --force'),
+    ],
+    'crates/ripr/README.md': [
+        ('| Distribution | `0.10.0` is the current development version in this repo. Releases are cut from source `ripr` (EffortlessMetrics/ripr), which remains the release/distribution authority — the `0.8.0`/`0.9.0`/`0.10.0` GitHub Releases here are unpublished working drafts, not a release channel. `ripr-swarm` remains the development trunk. Rust 1.95 MSRV. | Promotion and release-maintenance proof. |',
+         '| Distribution | `0.10.1` is the staged, unpublished source version while the reviewed `0.11.0` release train is prepared. Public release, asset, Marketplace/Open VSX, signing, badge, and distribution authority remains in source `ripr`; `ripr-swarm` remains the development trunk. Rust 1.95 MSRV. | Promotion and release-maintenance proof. |'),
+    ],
+    'docs/specs/RIPR-SPEC-0129-editor-integration-contract.md': [
+        ('| VS Code extension 0.10.0 (`editors/vscode`) |',
+         '| Packaged VS Code extension (`editors/vscode`; version follows package metadata) |'),
+    ],
+    'docs/IMPLEMENTATION_CAMPAIGNS.md': [
+        ('Tracker: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) ·\n`.ripr/goals/active.toml` · issues #1423, #1424, #1425, #1427, #1440',
+         'Tracker: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) ·\nGitHub issues #1423, #1424, #1425, #1427, #1440'),
+        ("The completed 0.9.0 release made Campaign 29's post-release activation gate\nobsolete. The current crate is 0.10.0, and the accepted targeted-rerun contract",
+         "The completed 0.9.0 release made Campaign 29's post-release activation gate\nobsolete. The source tree is staged at 0.10.1 while the reviewed 0.11.0 train is active, and the accepted targeted-rerun contract"),
+    ],
+    'docs/ROADMAP.md': [
+        ('campaign. Rust 0.10.0 is now current, so its post-0.9.0 activation condition is\nhistorical rather than execution authority. Current Rust work is selected by\n`.ripr/goals/active.toml` and\n[RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md).',
+         'campaign. The source tree is staged at 0.10.1 while the reviewed 0.11.0 release train is active, so the post-0.9.0 activation condition is\nhistorical rather than execution authority. Current Rust work is selected by\nGitHub issues, pull requests, checks, reviews, PR-local `ImplementationSliceV1` records, and\n[RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md).'),
+    ],
+}
+for path, pairs in replacements.items():
+    p = Path(path)
+    text = p.read_text()
+    for old, new in pairs:
+        assert old in text, (path, old)
+        text = text.replace(old, new, 1)
+    p.write_text(text)
+
 git('add', '-A')
 assert not git('diff', '--name-only', '--diff-filter=U', capture=True).strip()
 git('diff', '--cached', '--check')
