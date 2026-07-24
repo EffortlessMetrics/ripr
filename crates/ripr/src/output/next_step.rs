@@ -191,7 +191,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         }
     }
 

@@ -43,6 +43,18 @@ mod tests {
             Ok(CliCommand::Outcome(args(&["--format", "json"])))
         );
         assert_eq!(
+            parse_args(args(&[
+                "ripr",
+                "rerun",
+                "--changed-test",
+                "tests/pricing.rs"
+            ])),
+            Ok(CliCommand::Rerun(args(&[
+                "--changed-test",
+                "tests/pricing.rs"
+            ])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "review-comments", "--base", "main"])),
             Ok(CliCommand::ReviewComments(args(&["--base", "main"])))
         );

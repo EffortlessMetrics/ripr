@@ -1,0 +1,71 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_default_value_overridden/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1, rust: 0.
+
+WARNING src/render.py:1
+
+Changed
+  after:  def render(name, verbose=True):
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/render.py::render
+  canonical gap: gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `render`
+  - infection yes: Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`
+  - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
+  - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - local flow reaches unknown sink: def render(name, verbose=True): (line 1)
+  - related test tests/test_render.py:4 test_render_explicit_verbose_false uses strong exact value oracle: assert render("Sam", verbose=False) == "Sam"
+
+Weakness
+  - A strong Python oracle reaches `render`, but every related call passes `verbose` explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `render` without `verbose` to exercise the changed default.
+  - missing discriminator call `render` without `verbose`: changed default parameter(s) `verbose` at line 1 are always explicitly bound, so the default is never exercised
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: render
+  changed behavior: predicate_boundary changed at src/render.py:1: `def render(name, verbose=True):`
+  current test evidence: tests/test_render.py:4 test_render_explicit_verbose_false currently has oracle_strength=strong, oracle_kind=exact_value: assert render("Sam", verbose=False) == "Sam"
+  missing discriminator: call `render` without `verbose`
+  recommended test shape: Strengthen the existing pytest boundary assertion for `call `render` without `verbose``.
+  suggested assertion: Assert the owner result or effect at the boundary `call `render` without `verbose``.
+  suggested file: tests/test_render.py
+  suggested test: test_render_explicit_verbose_false
+  pytest node: tests/test_render.py::test_render_explicit_verbose_false
+  verify: pytest tests/test_render.py::test_render_explicit_verbose_false (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `call `render` without `verbose``.
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

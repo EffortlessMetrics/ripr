@@ -143,6 +143,10 @@ that needs the tuning.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `RIPR_CACHE_DIR` | (none) | Relocate the entire cache base directory. When set to a non-empty path, all cache reads and writes use that path instead of `{workspace_root}/target/ripr/cache`. Useful for read-only or immutable source checkouts and for redirecting the cache to a faster or larger volume. When unset or empty, default behaviour is unchanged. `ripr doctor` reports whether `RIPR_CACHE_DIR` is active and shows the resolved location and total size. |
+| `RIPR_MAX_DIFF_CHANGED_RUST_LINES` | `2000` | Maximum added plus removed Rust diff lines that `ripr check` will expand into probes before failing closed with `diff_scope_oversized`. With `--json`, the command still exits non-zero but emits a limited artifact with `analysis_scope.run_status = "diff_scope_oversized"` and `downstream_consumable = false`. This protects constrained runners from large code-motion diffs that touch few files but produce thousands of probes. Raise only for a single command on a machine with enough memory, or split the extraction PR. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_MAX_DIFF_INDEX_FILES` | `800` | Maximum Rust files that diff-scoped analysis will load into the Rust index before failing closed with `diff_scope_oversized`. With `--json`, the command still exits non-zero but emits a limited artifact with `analysis_scope.run_status = "diff_scope_oversized"` and `downstream_consumable = false`. This protects runners from package-wide index expansion on large multi-crate diffs. Raise only for a single command on a machine with enough memory, or reduce the diff scope. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
+| `RIPR_PARTIAL_DIFF_FILE_BUDGET` | `200` | Changed-line files a diff-scoped analysis inspects before returning a bounded `limited_partial_scope` result (RIPR-PROP-0019): the run analyzes a deterministic whole-file partition (supported-language files first, then package path, then file path) and discloses the exact selected paths, lower-bound uninspected counts, a named stop reason, and `gate_eligibility = "ineligible"` under `analysis_scope` in the JSON output. A partial result is advisory only — never a gate, baseline, badge, or RIPR Zero input — and raising this variable is the only continuation route. Values above `RIPR_MAX_DIFF_INDEX_FILES` are clamped to the guard with a disclosure. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
+| `RIPR_PARTIAL_DIFF_LINE_BUDGET` | `1000` | Added plus removed changed lines a diff-scoped analysis inspects before returning `limited_partial_scope`. A later whole file that would exceed the remaining budget is excluded (never an overshoot); the first selected file is always analyzed even when it alone exceeds the budget (stop reason `line_budget_exceeded_on_first_file`). Values above `RIPR_MAX_DIFF_CHANGED_RUST_LINES` are clamped to the guard with a disclosure. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
 | `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under the cache base directory. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 | `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under the cache base directory. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 
@@ -161,6 +165,12 @@ source checkout):
 
 ```bash
 RIPR_CACHE_DIR=/var/cache/ripr ripr check --root . --format repo-exposure-json
+```
+
+To run a deliberately large Rust extraction diff on a larger runner:
+
+```bash
+RIPR_MAX_DIFF_CHANGED_RUST_LINES=5000 ripr check --root . --diff extraction.diff --json
 ```
 
 To reduce full-cache shard counts for a repo on a machine with enough headroom:
@@ -213,10 +223,22 @@ ripr context [--root PATH] [--base REV | --diff PATH]
 ### `ripr doctor`
 
 ```text
-ripr doctor [--root PATH]
+ripr doctor [--root PATH] [--json]
 ```
 
 Reports local tooling and workspace shape. Takes no analysis-shaping flags.
+
+Use `--json` for the same core checks as the human report when onboarding an
+agent, editor, or CI wrapper:
+
+```console
+ripr doctor --root . --json
+```
+
+The JSON report and the human command share the root-directory, `Cargo.toml`,
+configuration, and `git`/`cargo`/`rustc` checks. A `pass` report exits zero; a
+`fail` report exits non-zero. This is machine-readable setup evidence, not a
+release or analysis gate decision.
 
 `doctor` also reports the repository config status for the selected root:
 
@@ -249,13 +271,16 @@ ripr lsp [--stdio] [--version]
 | `--version` | _(off)_ | Print the language server version and exit. |
 
 LSP runtime behavior is not configured by CLI flags; clients pass options via
-`initializationOptions` (next section).
+`initializationOptions` (next section), pushed
+`workspace/didChangeConfiguration` settings, or — when the client supports it
+— the server-originated `workspace/configuration` pull (see
+[Configuration pull](#lsp-configuration-pull) below).
 
 ## LSP `initializationOptions`
 
 When an LSP client starts `ripr lsp --stdio`, it can shape analysis by sending
 an `initializationOptions` object on the `initialize` request. The server
-reads four keys; everything else is ignored. The schema lives in
+reads six keys; everything else is ignored. The schema lives in
 [`crates/ripr/src/lsp/config.rs`](../crates/ripr/src/lsp/config.rs).
 
 | Key | Type | Default | Effect |
@@ -264,10 +289,57 @@ reads four keys; everything else is ignored. The schema lives in
 | `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
 | `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
 | `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
+| `diagnosticProfile` | string | `ripr.toml` `lsp.diagnostic_profile`, otherwise `actionable` | `actionable` publishes only producer-backed bounded finding routes; `full` preserves audit/debug finding and seam visibility. Unknown initialization values fall back to the repository/default profile. |
+| `gitTimeoutMs` | number | `30000` | Cooperative deadline in milliseconds for each git invocation in the refresh path (Git-input probe and diff load). An exceeded deadline terminates the git process and commits a limited snapshot naming `git_invocation_timeout`; a timed-out probe fails closed as unresolved. Malformed initialization values are ignored (the default stays). No `ripr.toml` slot. |
+| `refreshDeadlineMs` | number | `600000` | Physical deadline in milliseconds for one whole refresh analysis attempt. An attempt that exceeds the deadline is cancelled cooperatively at analysis checkpoints and dropped fail-closed with the named `deadline_exceeded` outcome and an "analysis deadline exceeded" progress end — no limited snapshot is committed. A deadline cancel loses to an earlier supersede or client cancel (first-cancel-wins). Malformed initialization values are ignored (the default stays). No `ripr.toml` slot. |
 
 Initialization options are treated as explicit LSP settings and override
 `ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
 present, except that LSP diagnostics render JSON-shaped data internally.
+
+## LSP configuration pull
+
+When the client advertises `capabilities.workspace.configuration = true`, the
+server negotiates **pull mode** (RIPR-SPEC-0136) and requests the bounded
+`ripr` section once from the `initialized` handler:
+
+```text
+workspace/configuration ← [{ "scopeUri": <selected root URI>, "section": "ripr" }]
+```
+
+The section carries the same seven governed keys as `initializationOptions`
+(`baseRef`, `checkMode`, `includeUnchangedTests`, `seamDiagnostics`,
+`diagnosticProfile`, `gitTimeoutMs`, `refreshDeadlineMs`) and nothing else. The response is
+validated before it is
+applied; a supported key with the wrong JSON type or an unknown enum literal
+fails the whole pull (fail-closed), while unrecognized keys are ignored.
+
+Precedence per governed key in pull mode:
+
+```text
+valid pulled setting > initialization option > ripr.toml > built-in default
+```
+
+`workspace/didChangeConfiguration` in pull mode does not apply pushed values;
+it invalidates the pulled layer and schedules one coalesced re-pull
+(responses for a superseded epoch are dropped). A re-pull that leaves the
+effective settings unchanged does not reschedule analysis.
+
+Fallback, negotiated from capabilities only (never the client name):
+
+- `pull` — client answers `workspace/configuration`; behavior above.
+- `push_fallback` — no pull support, but the client advertises
+  `workspace/didChangeConfiguration`; pushed values keep applying as today.
+- `initialization_only` — neither transport; only `initializationOptions`
+  apply.
+
+All three transports can supply exactly the same seven governed keys. The
+`ripr.collectWorkspaceStatus` payload discloses the negotiated
+`configuration_mode`, the per-field source of each governed value
+(`pulled` | `initialization` | `repo` | `default`), and the last pull state
+(`pending` until the first pull resolves, `deferred` when no single root is
+selected, `applied`, or `failed` with a typed kind and recovery route) under
+`analysis_status.input_authority`.
 
 ## VS Code extension settings
 
@@ -298,6 +370,8 @@ download → `PATH`), see
 | --- | --- | --- | --- |
 | `ripr.check.mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Editor-side analysis mode. Forwarded as `initializationOptions.checkMode`. |
 | `ripr.baseRef` | string | `"origin/main"` | Git base ref used by editor diagnostics and the context commands. Forwarded as `initializationOptions.baseRef`. |
+| `ripr.gitTimeoutMs` | number | `30000` | Cooperative per-invocation git deadline for the server refresh path. Served to the server through the `workspace/configuration` pull; an exceeded deadline commits a limited snapshot naming `git_invocation_timeout`. |
+| `ripr.refreshDeadlineMs` | number | `600000` | Physical deadline for one whole server refresh analysis attempt. Served to the server through the `workspace/configuration` pull; an exceeded deadline drops the attempt fail-closed with the named `deadline_exceeded` outcome (no limited snapshot is committed). |
 
 The editor default matches the CLI and direct LSP missing-config default:
 `draft`.
@@ -313,6 +387,7 @@ The editor default matches the CLI and direct LSP missing-config default:
 The extension contributes:
 
 - `ripr.restartServer`
+- `ripr.selectWorkspaceRoot`
 - `ripr.showOutput`
 - `ripr.copyContext`
 - `ripr.copySuggestedAssertion`
@@ -643,6 +718,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `seam_diagnostics` | boolean | `true` | Default for bounded saved-workspace repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+| `diagnostic_profile` | enum: `actionable` \| `full` | `actionable` | `actionable` suppresses exposed, unknown, opaque, and route-less diagnostics; `full` preserves the audit/debug projection. LSP `initializationOptions.diagnosticProfile` still wins. |
 
 ### `[reports]`
 
@@ -660,7 +736,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). `perl` parses for forward compatibility but is intentionally omitted from the valid-values list: the Perl adapter is `#[cfg(test)] mod perl;`, `lang-perl` is not in the default Cargo features, the production path router ignores `.pm`/`.pl`/`.t`/`.psgi`, and the pipeline returns a fail-closed stub even with the feature on. Perl's support tier is `scaffold` (see [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379), not `preview` — so advertising it here would be misleading. |
 
 `[languages]` controls runtime routing for the selected repository. The `ripr`
 binary must also be built with the corresponding adapter feature. The default
@@ -763,10 +839,12 @@ For CLI commands:
 CLI flag  >  ripr.toml  >  CheckInput::default()
 ```
 
-For LSP:
+For LSP, the negotiated configuration transport decides (see "LSP
+configuration pull" above):
 
 ```
-LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
+pull mode:      valid pulled setting  >  LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
+other modes:    LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
 ```
 
 ## See also

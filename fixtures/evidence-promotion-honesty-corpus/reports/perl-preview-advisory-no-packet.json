@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {
+    "changed_perl_files": 1,
+    "probes": 1,
+    "findings": 1
+  },
+  "findings": [
+    {
+      "id": "perl:preview:discount-threshold",
+      "language": "perl",
+      "classification": "weakly_exposed",
+      "probe": {
+        "file": "lib/Pricing.pm",
+        "line": 42,
+        "family": "return_value"
+      },
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "perl_preview_card": {
+        "card_version": "perl_preview_card.v1",
+        "source": "check_perl_preview",
+        "language": "perl",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "surface_scope": "check_json_human_sarif_github_gap_ledger_markdown",
+        "public_projection_ready": true,
+        "public_repair_packet": false,
+        "repair_packet_ready": false,
+        "agent_packet_ready": false,
+        "gate_candidate": false,
+        "badge_candidate": false,
+        "ripr_zero_candidate": false,
+        "packet_id": "perl-preview:gap:perl:lib/Pricing.pm:Pricing::discount:return_value:exact_return_assertion:return_value",
+        "canonical_gap_id": "gap:perl:lib/Pricing.pm:Pricing::discount:return_value:exact_return_assertion:return_value",
+        "gap_state": "actionable",
+        "changed_owner": "perl:lib/Pricing.pm::Pricing::discount",
+        "evidence_class": "weakly_exposed",
+        "repair_route": "add_exact_return_assertion",
+        "current_test_evidence": "t/pricing.t:12 discount_smoke currently has oracle_strength=strong, oracle_kind=exact_value: is($price, 100)",
+        "missing_discriminator": "$amount == $threshold",
+        "target_test_shape": "Test::More exact_return_assertion",
+        "suggested_test_location": "t/pricing.t::discount_smoke",
+        "suggested_assertion": "is($price, 90, 'applies threshold discount')",
+        "verify": {
+          "command": "prove t/pricing.t",
+          "status": "fact_only_not_delegated"
+        },
+        "receipt": {
+          "command": null,
+          "status": "available_not_delegated",
+          "guidance": "receipt evidence is required internally, but public Perl preview surfaces do not delegate receipt commands yet"
+        },
+        "confidence": "medium",
+        "raw_evidence_refs": [
+          {
+            "raw": "raw_evidence_ref: leg=perl_change;file=lib/Pricing.pm;line=42;kind=perl_change;source_id=change:lib/Pricing.pm:42:return;owner=perl:lib/Pricing.pm::Pricing::discount;sample=return $discounted",
+            "file": "lib/Pricing.pm",
+            "line": 42,
+            "kind": "perl_change",
+            "source_id": "change:lib/Pricing.pm:42:return",
+            "owner": "perl:lib/Pricing.pm::Pricing::discount",
+            "leg": "perl_change",
+            "sample": "return $discounted"
+          }
+        ],
+        "stop_if": [
+          "producer packet is partial",
+          "relation confidence drops below direct_owner_call"
+        ],
+        "must_not_change": [
+          "lib/Pricing.pm"
+        ],
+        "limits": [
+          "Perl preview cards are advisory only.",
+          "repair_packet_ready stays false until the shared validator path owns public packets."
+        ]
+      }
+    }
+  ]
+}

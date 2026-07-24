@@ -4,20 +4,20 @@
   "mode": "fast",
   "root": "fixtures/observation_unverified_call_deletion/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "findings": [
     {
-      "id": "probe:src_lib.rs:call_deletion:09dd1431",
+      "id": "probe:src_lib.rs:call_deletion:c13d820a",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:call_deletion:09dd1431",
+        "id": "probe:src_lib.rs:call_deletion:c13d820a",
         "family": "call_deletion",
         "delta": "effect",
         "file": "fixtures/observation_unverified_call_deletion/input/src/lib.rs",
         "line": 10,
-        "expression": "cache.insert(\"result_key\", result);"
+        "expression": "cache.insert(\"result_key\", result)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_runs_without_panic"},
@@ -76,17 +76,17 @@
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:side_effect:827549d9",
+      "id": "probe:src_lib.rs:side_effect:4c5f48f0",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:side_effect:827549d9",
+        "id": "probe:src_lib.rs:side_effect:4c5f48f0",
         "family": "side_effect",
         "delta": "effect",
         "file": "fixtures/observation_unverified_call_deletion/input/src/lib.rs",
         "line": 10,
-        "expression": "cache.insert(\"result_key\", result);"
+        "expression": "cache.insert(\"result_key\", result)"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach store_result: store_result_runs_without_panic"},

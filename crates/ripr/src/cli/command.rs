@@ -29,12 +29,37 @@ pub(super) enum CliCommand {
     Context(Vec<String>),
     Doctor(Vec<String>),
     Lsp(Vec<String>),
+    PrSummary(Vec<String>),
+    Annotations(Vec<String>),
+    PrEvidence(Vec<String>),
+    ImpactedEvidence(Vec<String>),
+    RiprPlus(Vec<String>),
+    Cache(Vec<String>),
+    Rerun(Vec<String>),
 }
 
 impl CliCommand {
     pub(super) fn from_parts(arg: Option<&str>, command_args: Vec<String>) -> Result<Self, String> {
         match arg {
             None | Some("--help" | "-h") => Ok(Self::Help),
+            // `ripr help` (no subcommand) prints the top-level help, identical
+            // to `ripr --help`. `ripr help <command> [args...]` is the standard
+            // CLI convention (git, cargo, kubectl) and is dispatched as
+            // `ripr <command> --help [args...]` — i.e. the rest of the args are
+            // preserved with `--help` prepended, so each command's existing
+            // `--help` branch prints its own help. `help` followed by an
+            // unknown command still returns the unknown-command error so a
+            // typo is not silently swallowed.
+            Some("help") => {
+                let (target, rest) = match command_args.split_first() {
+                    Some((target, rest)) => (target.clone(), rest.to_vec()),
+                    None => return Ok(Self::Help),
+                };
+                let mut injected = Vec::with_capacity(rest.len() + 1);
+                injected.push("--help".to_string());
+                injected.extend(rest);
+                Self::from_parts(Some(&target), injected)
+            }
             Some("--version" | "-V") => Ok(Self::Version),
             Some("init") => Ok(Self::Init(command_args)),
             Some("pilot") => Ok(Self::Pilot(command_args)),
@@ -63,6 +88,13 @@ impl CliCommand {
             Some("context") => Ok(Self::Context(command_args)),
             Some("doctor") => Ok(Self::Doctor(command_args)),
             Some("lsp") => Ok(Self::Lsp(command_args)),
+            Some("pr-summary") => Ok(Self::PrSummary(command_args)),
+            Some("annotations") => Ok(Self::Annotations(command_args)),
+            Some("pr-evidence") => Ok(Self::PrEvidence(command_args)),
+            Some("impacted-evidence") => Ok(Self::ImpactedEvidence(command_args)),
+            Some("plus") => Ok(Self::RiprPlus(command_args)),
+            Some("cache") => Ok(Self::Cache(command_args)),
+            Some("rerun") => Ok(Self::Rerun(command_args)),
             Some(command) => Err(unknown_command_error(command)),
         }
     }
@@ -70,6 +102,7 @@ impl CliCommand {
 
 const KNOWN_COMMANDS: &[&str] = &[
     "init",
+    "help",
     "pilot",
     "outcome",
     "evidence-health",
@@ -83,6 +116,8 @@ const KNOWN_COMMANDS: &[&str] = &[
     "pr-review",
     "coverage-grip",
     "assistant-loop",
+    "first-pr",
+    "start-here",
     "first-action",
     "reports",
     "calibrate",
@@ -95,6 +130,13 @@ const KNOWN_COMMANDS: &[&str] = &[
     "context",
     "doctor",
     "lsp",
+    "cache",
+    "pr-summary",
+    "annotations",
+    "pr-evidence",
+    "impacted-evidence",
+    "plus",
+    "rerun",
 ];
 
 fn unknown_command_error(command: &str) -> String {
@@ -139,7 +181,7 @@ fn edit_distance(left: &str, right: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::CliCommand;
+    use super::{CliCommand, KNOWN_COMMANDS, closest_command};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -156,6 +198,7 @@ mod tests {
             (Some("init"), CliCommand::Init(Vec::new())),
             (Some("pilot"), CliCommand::Pilot(Vec::new())),
             (Some("outcome"), CliCommand::Outcome(Vec::new())),
+            (Some("rerun"), CliCommand::Rerun(Vec::new())),
             (
                 Some("evidence-health"),
                 CliCommand::EvidenceHealth(Vec::new()),
@@ -190,6 +233,15 @@ mod tests {
             (Some("context"), CliCommand::Context(Vec::new())),
             (Some("doctor"), CliCommand::Doctor(Vec::new())),
             (Some("lsp"), CliCommand::Lsp(Vec::new())),
+            (Some("pr-summary"), CliCommand::PrSummary(Vec::new())),
+            (Some("annotations"), CliCommand::Annotations(Vec::new())),
+            (Some("pr-evidence"), CliCommand::PrEvidence(Vec::new())),
+            (
+                Some("impacted-evidence"),
+                CliCommand::ImpactedEvidence(Vec::new()),
+            ),
+            (Some("plus"), CliCommand::RiprPlus(Vec::new())),
+            (Some("cache"), CliCommand::Cache(Vec::new())),
         ] {
             assert_eq!(CliCommand::from_parts(arg, Vec::new()), Ok(expected));
         }
@@ -223,6 +275,92 @@ mod tests {
                 "unknown command \"review-comment\". Did you mean `review-comments`? Run `ripr --help`."
                     .to_string()
             )
+        );
+    }
+
+    #[test]
+    fn closest_command_suggests_previously_missing_commands() {
+        // These commands were missing from KNOWN_COMMANDS before #1769; verify
+        // they now produce typo suggestions instead of a bare "unknown" error.
+        assert_eq!(closest_command("firts-pr"), Some("first-pr"));
+        assert_eq!(closest_command("start-hear"), Some("start-here"));
+        assert_eq!(closest_command("pr-sumary"), Some("pr-summary"));
+        assert_eq!(closest_command("annotatons"), Some("annotations"));
+        assert_eq!(closest_command("pr-evdence"), Some("pr-evidence"));
+        assert_eq!(
+            closest_command("impacted-evdence"),
+            Some("impacted-evidence")
+        );
+        assert_eq!(closest_command("pls"), Some("plus"));
+    }
+
+    #[test]
+    fn known_commands_covers_every_parser_spelling() {
+        // Every command spelling accepted by from_parts must appear in
+        // KNOWN_COMMANDS so typo suggestions work. Help/Version are flags,
+        // not subcommands, so they are intentionally excluded.
+        for known in KNOWN_COMMANDS {
+            assert!(
+                CliCommand::from_parts(Some(known), Vec::new()).is_ok(),
+                "KNOWN_COMMANDS entry {known:?} is not accepted by from_parts"
+            );
+        }
+    }
+
+    #[test]
+    fn help_with_no_subcommand_returns_top_level_help() {
+        // `ripr help` is identical to `ripr --help`.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), Vec::new()),
+            Ok(CliCommand::Help)
+        );
+    }
+
+    #[test]
+    fn help_with_known_subcommand_dispatches_to_that_command_help() {
+        // `ripr help check` should dispatch the same way as `ripr check --help`,
+        // i.e. parse to CliCommand::Check carrying `["--help"]`. We pick a few
+        // representative commands to cover the surface.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check"])),
+            Ok(CliCommand::Check(args(&["--help"])))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["outcome"])),
+            Ok(CliCommand::Outcome(args(&["--help"])))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["gate"])),
+            Ok(CliCommand::Gate(args(&["--help"])))
+        );
+        // start-here alias should also work via help.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["start-here"])),
+            Ok(CliCommand::FirstPr(args(&["--help"])))
+        );
+    }
+
+    #[test]
+    fn help_preserves_extra_args_after_the_subcommand() {
+        // `ripr help check --root .` keeps --root . so the command's --help
+        // branch fires (each command checks args.iter().any(... == "--help")).
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--root", "."])),
+            Ok(CliCommand::Check(args(&["--help", "--root", "."])))
+        );
+    }
+
+    #[test]
+    fn help_with_unknown_subcommand_returns_unknown_command_error() {
+        // A typo after `help` should produce the same unknown-command error as
+        // the typo would without `help`, including a typo suggestion.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["nonexistent"])),
+            Err("unknown command \"nonexistent\". Run `ripr --help`.".to_string())
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["chekc"])),
+            Err("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`.".to_string())
         );
     }
 }

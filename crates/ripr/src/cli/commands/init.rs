@@ -47,7 +47,36 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
     if config_path.exists() && !options.force {
         println!("Left existing {} unchanged", config_path.display());
     } else {
-        std::fs::write(&config_path, generated_init_config())
+        // Use create_new to prevent a symlink-following write race where a
+        // symlink is placed at config_path between the exists() check above
+        // and the write. create_new fails if the path already exists,
+        // including symlinks. (#1948)
+        if options.force {
+            // --force must not follow a pre-placed symlink either (#2101):
+            // remove_file unlinks the entry itself (it never follows a
+            // symlink to its target), and the create_new write below then
+            // fails closed if anything reappears at the path.
+            match std::fs::remove_file(&config_path) {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(format!(
+                        "remove existing {} for --force failed: {err}",
+                        config_path.display()
+                    ));
+                }
+            }
+        }
+        // Write through the create_new handle: reopening the path after
+        // creation would leave a swap window where a planted symlink is
+        // followed (#2101 review, CWE-367).
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&config_path)
+            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        use std::io::Write;
+        file.write_all(generated_init_config().as_bytes())
             .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
         println!("Wrote {}", config_path.display());
     }
@@ -142,15 +171,38 @@ permissions:
   security-events: write
 
 env:
+  # Upload SARIF to GitHub Security tab when true. Disable with
+  # RIPR_UPLOAD_SARIF=false if your repo does not use code scanning.
   RIPR_UPLOAD_SARIF: "true"
+  # Gate authority for this workflow. Configure as a GitHub Actions
+  # repository variable (Settings > Secrets and variables > Actions >
+  # Variables). Empty (default) = advisory only, the job never fails.
+  # Allowed values:
+  #   visible-only     gate runs and prints, but does not block the job
+  #   acknowledgeable  gate runs; PR author can acknowledge to merge
+  #   baseline-check   gate fails if exposure is worse than the baseline
+  #   calibrated-gate  gate fails on any actionable finding
+  # See docs/CALIBRATED_GATE_POLICY.md for the full policy.
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  # Optional baseline git ref (tag, branch, or SHA) the gate compares
+  # against when RIPR_GATE_MODE includes a baseline check. Empty by default.
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  # PR review-comment publishing. Configure as a repository variable.
+  # Allowed values:
+  #   off     (default) no PR comments; findings only in artifacts
+  #   plan    compute and publish a comment plan; do not post inline
+  #   inline  publish inline review comments on changed lines (needs
+  #           pull-requests: write, which this workflow grants)
   RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
 jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
+    # The whole job is advisory (continue-on-error) unless RIPR_GATE_MODE
+    # is set to a blocking value. With the default empty/visible-only mode
+    # a failure here never fails the PR — set RIPR_GATE_MODE to opt in to
+    # blocking behaviour. See docs/CALIBRATED_GATE_POLICY.md.
     continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
       - uses: actions/checkout@v6
@@ -158,6 +210,18 @@ jobs:
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # Cache the cargo registry, git checkouts, and dependency builds
+      # (#2008): an uncached `cargo install ripr --locked` recompiles for
+      # minutes on every PR. The install itself still runs (no stale-binary
+      # risk); the warm caches cut most of the compile.
+      # Pinned to a commit SHA (#2190 review): the generated workflow
+      # grants pull-requests: write and security-events: write, so a
+      # mutable third-party tag is a supply-chain risk in consumer repos.
+      # Swatinem/rust-cache v2 = e18b497796c12c097a38f9edb9d0641fb99eee32.
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ripr-install
 
       - name: Install ripr
         run: cargo install ripr --locked
@@ -250,7 +314,10 @@ jobs:
 
       - name: Run RIPR PR guidance report
         if: github.event_name == 'pull_request'
-        continue-on-error: true
+        # Gate-critical producer (#2009): advisory by default, but a
+        # blocking RIPR_GATE_MODE must not green-on-error past the gate's
+        # own input.
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           mkdir -p target/ripr/review
           ripr review-comments \
@@ -376,7 +443,7 @@ jobs:
 
       - name: Render RIPR diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           ripr check \
             --root . \
@@ -386,7 +453,7 @@ jobs:
 
       - name: Render RIPR repo seam SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           mkdir -p target/ripr/reports
           ripr check \
@@ -674,16 +741,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
-          configured_languages="$(
-            ripr doctor --root . 2>/dev/null \
-              | sed -n 's/^- Enabled languages: //p' \
-              | tail -n 1 \
-              || true
-          )"
           preview_languages="$(
-            printf '%s\n' "$configured_languages" \
-              | tr ',' '\n' \
-              | sed 's/^ *//; s/ *$//' \
+            ripr doctor --root . --json 2>/dev/null \
+              | jq -r '.languages[]?' 2>/dev/null \
               | sed -n '/^typescript$/p; /^python$/p' \
               | sort -u \
               | tr '\n' ' ' \
@@ -691,7 +751,15 @@ jobs:
               || true
           )"
           if [ -z "$preview_languages" ]; then
-            echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            # Empty can mean "none configured" OR "doctor --json failed"
+            # (#2182 review): doctor always emits at least the default
+            # language, so an empty result is a detection failure. Say so
+            # instead of asserting none are configured.
+            if ripr doctor --root . --json > /dev/null 2>&1; then
+              echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            else
+              echo 'Language detection via `ripr doctor --json` failed; preview promotion packets were not generated. Run ripr doctor locally for the underlying error.'
+            fi
             exit 0
           fi
           for language in $preview_languages; do
@@ -1155,9 +1223,8 @@ jobs:
             fi
             echo
             configured_languages="$(
-              ripr doctor --root . 2>/dev/null \
-                | sed -n 's/^- Enabled languages: //p' \
-                | tail -n 1 \
+              ripr doctor --root . --json 2>/dev/null \
+                | jq -r '.languages | join(",")' 2>/dev/null \
                 || true
             )"
             if [ -z "$configured_languages" ]; then
@@ -2056,6 +2123,28 @@ jobs:
             echo "- No runtime mutation execution is performed by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Check RIPR advisory artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          # Green-with-missing-artifacts is a real failure mode (#2009):
+          # report it visibly without failing the advisory job.
+          missing=()
+          for artifact in target/ripr/reports/start-here.md target/ripr/reports/index.json; do
+            if [ ! -f "$artifact" ]; then
+              missing+=("$artifact")
+            fi
+          done
+          if [ "$RIPR_GATE_MODE" != '' ] && [ ! -f target/ripr/reports/gate-decision.json ] && [ -f target/ripr/review/comments.json ]; then
+            missing+=("target/ripr/reports/gate-decision.json (RIPR_GATE_MODE is set)")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo '::warning::Some RIPR advisory artifacts are missing (upstream step failed softly):'
+            for artifact in "${missing[@]}"; do
+              echo "  - $artifact"
+            done
+          fi
+
       - name: Upload RIPR report artifacts
         if: always()
         continue-on-error: true
@@ -2074,6 +2163,9 @@ jobs:
 
       - name: Upload RIPR diff findings
         if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        # Upload infra is not analysis authority (#2009 review): a CodeQL
+        # flake must not fail a gate the analysis passed. Renders (the
+        # analysis) stay gate-conditional; uploads stay advisory.
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:

@@ -1,0 +1,24 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/assertion_shaped_control_production_owner/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/assertion_shaped_control_production_owner/input/src/lib.rs:2
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Changed behavior: amount >= 100
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/pricing.rs:8 discounted_total_at_boundary
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach discounted_total: discounted_total_at_boundary
+    - infection weak: Tests have literals [90], but no detected value matches changed boundary [100]
+    - 6 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

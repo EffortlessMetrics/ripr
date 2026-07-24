@@ -27,41 +27,144 @@ reading raw logs.
 The current repo automation surface is:
 
 ```bash
-cargo xtask shape
-cargo xtask fix-pr
-cargo xtask commands
+cargo xtask actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]
+cargo xtask agent-seam-packets [root]
+cargo xtask badge-artifacts
+cargo xtask badge-basis [--gap-ledger <path>] [--include-seam-classes]
+cargo xtask badges
+cargo xtask badges --check
+cargo xtask branch-inventory [--input <path>] [--dry-run]
+cargo xtask branch-inventory apply --plan <path> --digest <digest>
+cargo xtask bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]
+cargo xtask bun-ub-preview-summary [--calibration-corpus <path>] [--graph-corpus <path>] [--dogfood-corpus <path>] [--out <path>] [--out-md <path>]
+cargo xtask cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]
+cargo xtask cache report
+cargo xtask check-allow-attributes
+cargo xtask check-architecture
+cargo xtask check-badge-diff-policy
+cargo xtask check-badge-endpoints
+cargo xtask check-behavior-manifest
+cargo xtask check-capabilities
+cargo xtask check-ci-lane-whitelist
+cargo xtask check-command-catalog
+cargo xtask check-dependencies
+cargo xtask check-doc-artifacts
+cargo xtask check-doc-index
+cargo xtask check-doc-roles
+cargo xtask check-droid-review-config
+cargo xtask check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]
+cargo xtask check-executable-files
+cargo xtask check-file-policy
+cargo xtask check-fixture-contracts
+cargo xtask check-generated
+cargo xtask check-generated-clean
+cargo xtask check-lint-policy
+cargo xtask check-local-context
+cargo xtask check-network-policy
+cargo xtask check-no-panic-family [--propose]
+cargo xtask check-output-contracts
+cargo xtask check-positioning-language
+cargo xtask check-pr
+cargo xtask check-process-policy
+cargo xtask check-product-copy
+cargo xtask check-proof-packs
+cargo xtask check-pr-shape
+cargo xtask check-public-api
+cargo xtask check-readme-state
+cargo xtask check-spec-format
+cargo xtask check-spec-ids
+cargo xtask check-spec-numbering
+cargo xtask check-static-language
+cargo xtask check-supply-chain
+cargo xtask check-support-tiers
+cargo xtask check-test-oracles
+cargo xtask check-traceability
+cargo xtask check-verification-contracts [--check]
+cargo xtask check-workflows
+cargo xtask check-workspace-shape
+cargo xtask ci-budget [--workflow <name>] [--limit <n>] [--input <path>]
+cargo xtask ci-fast
+cargo xtask ci-full
 cargo xtask cockpit
+cargo xtask commands
+cargo xtask configured-bridge-inventory [--graph-corpus <path>] [--out <path>] [--out-md <path>]
+cargo xtask critic
+cargo xtask doctor
+cargo xtask dogfood
+cargo xtask evidence-health
+cargo xtask evidence-quality-audit
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend [--current <path>] [--previous <path>]
+cargo xtask first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]
+cargo xtask fix-pr
+cargo xtask fixtures [name]
+cargo xtask gh-pr-status --pr <number>
+cargo xtask golden-drift
+cargo xtask goldens bless <name> --reason <reason>
+cargo xtask goldens check
+cargo xtask impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]
+cargo xtask install-hooks
+cargo xtask issue-intake --issue <number>
+cargo xtask lane1-evidence-audit
+cargo xtask lsp-cockpit-report
+cargo xtask markdown-links
+cargo xtask metrics
+cargo xtask module-health [--threshold <n>]
+cargo xtask mutation-calibration [root] --mutants-json <path>
+cargo xtask operator-cockpit
+cargo xtask operator-cockpit-report
+cargo xtask package
+cargo xtask precommit
+cargo xtask proof preflight [--base <rev>] [--head <rev>]
+cargo xtask proof route [--base <rev>] [--head <rev>]
 cargo xtask pr-ready
 cargo xtask pr-summary
 cargo xtask pr-triage-report
-cargo xtask gh-pr-status --pr <number>
-cargo xtask suggested-fixes
-cargo xtask precommit
-cargo xtask check-pr
-cargo xtask fixtures
-cargo xtask goldens check
-cargo xtask golden-drift
-cargo xtask test-oracle-report
-cargo xtask check-test-oracles
-cargo xtask dogfood
-cargo xtask lsp-cockpit-report
-cargo xtask targeted-test-outcome --before <path> --after <path>
-cargo xtask critic
-cargo xtask reports index
-cargo xtask receipts
-cargo xtask receipts check
+cargo xtask publish-dry-run
+cargo xtask receipts [check]
+cargo xtask recommendation-calibration [--root <path>] [--pr-guidance <path>] [--outcome-receipts <path>] [--out <path>]
+cargo xtask release-readiness --version <version>
+cargo xtask release-server-archive --version <version> --target <triple> --executable <name> --archive <zip\|tar.gz>
+cargo xtask release-server-manifest --version <version> --repository <owner/repo>
+cargo xtask release-upload-assets --version <version>
+cargo xtask repo-badge-artifacts [--gap-ledger <path>]
+cargo xtask repo-contract-report
+cargo xtask repo-exposure-latency-report
+cargo xtask repo-exposure-report
 cargo xtask repo-exposure-summary-report
-cargo xtask doctor
+cargo xtask reports index
+cargo xtask repo-seam-inventory
+cargo xtask ripr-annotations [--comments <path>] [--out <path>] [--check]
+cargo xtask ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]
+cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]
+cargo xtask ripr-pr-summary [--check]
+cargo xtask ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]
+cargo xtask ripr-swarm attempt-ledger [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--previous-ledger <path>] [--real-repair-attempts <path>]
+cargo xtask ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]
+cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]
+cargo xtask ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]
+cargo xtask route-quality [--attempt-ledger <path>]
+cargo xtask rust-conversion-candidates
+cargo xtask rust-repair-trust-report
+cargo xtask sarif-policy --current <path> [--baseline <path>]
+cargo xtask shape
 cargo xtask specs next
-cargo xtask check-allow-attributes
-cargo xtask check-local-context
-cargo xtask check-droid-review-config
-cargo xtask check-spec-format
-cargo xtask check-spec-numbering
-cargo xtask check-command-catalog
-cargo xtask check-supply-chain
-cargo xtask ci-fast
+cargo xtask suggested-fixes
+cargo xtask targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]
+cargo xtask targeted-test-outcome --before <path> --after <path>
+cargo xtask test-efficiency-report
+cargo xtask test-oracle-report
+cargo xtask update-badge-endpoints
+cargo xtask vscode-compile
+cargo xtask vscode-package
+cargo xtask vscode-test
+cargo xtask vscode-test-e2e
+cargo xtask worktree doctor
 ```
+
+This list mirrors the authoritative catalog; run `cargo xtask commands` to
+regenerate the live mutability catalog (`target/ripr/reports/commands.md`)
+before relying on it.
 
 `shape` is the safe local normalizer. It can mutate local files only when the
 mutation is deterministic and reversible by normal version control review.
@@ -128,6 +231,26 @@ advisory queue disposition for each PR — `merge_candidate`, `needs_rebase`,
 `needs_review`, `close_duplicate`, `superseded`, `needs_fresh_validation`,
 `needs_owner_decision`, or `do_not_touch_wrong_lane`. It is advisory and never
 updates, closes, merges, or comments on PRs.
+
+`branch-inventory` is the remote-branch ownership/age report (#2024). It
+regenerates the inventory from current GitHub/Git data and writes
+`target/ripr/reports/branch-inventory.md`, `branch-inventory.json`, the raw
+capture `branch-inventory-input.json`, and a separate digest-bound deletion
+plan `branch-inventory-plan.json`. Classification goes through the all-state
+PR lookup by head branch name with full pagination — never Git ancestry,
+because squash merges leave merged branch SHAs unreachable from `main`.
+Open PR heads, protected/authority branches (`main`, `freeze/*`, `release/*`),
+and `#2022` claims are structurally excluded; unknown always classifies
+`manual-review`, and only merged-PR leftovers whose head SHA still matches the
+merged PR head are `delete-candidate`. The default mode is read-only and never
+deletes anything. Deletion is a separate explicit operator action,
+`cargo xtask branch-inventory apply --plan <path> --digest <digest>`: it
+refuses a regenerated or changed plan, rechecks open PR heads, protection, and
+branch SHAs immediately before each deletion, uses non-force ref deletion
+bound to the rechecked SHA (`--force-with-lease=<ref>:<sha>`, never plain
+`--force`), refuses to run under CI, and writes one cleanup receipt
+(`branch-inventory-cleanup.{md,json}`) recording every deleted, skipped,
+changed, and failed branch. No CI or scheduled job runs the apply path.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
 GitHub CLI PR status, branch-protection required contexts when available,
@@ -360,13 +483,9 @@ cargo xtask fix-pr
 cargo xtask goldens bless <fixture> --reason "..."
 ```
 
-Future:
-
-```bash
-cargo xtask metrics --write
-cargo xtask docs-index --write
-cargo xtask capability-matrix --write
-```
+There are no `--write` variants of `metrics`, `docs-index`, or
+`capability-matrix`; earlier revisions of this section listed them as future
+commands, but they do not exist in the command catalog.
 
 Safe default mutations:
 
@@ -427,7 +546,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
+cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-supply-chain
 ```
@@ -468,7 +587,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
+cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-supply-chain
 ```
@@ -607,7 +726,6 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-droid-review-config
-cargo xtask worktree doctor
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
@@ -617,14 +735,17 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
 cargo xtask check-pr-shape
+cargo xtask check-command-catalog
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
+cargo xtask check-proof-packs
+cargo xtask check-lint-policy
 ```
 
 Install local git hooks with:

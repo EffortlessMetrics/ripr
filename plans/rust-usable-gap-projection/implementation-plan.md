@@ -10,8 +10,7 @@ Linked specs:
 and
 [RIPR-SPEC-0046](../../docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md)
 
-Closed manifest:
-[.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml](../../.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml)
+Closed manifest: `.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml` (deleted with the `.ripr/goals/` retirement in #1701 PR 3; see the closeout below).
 
 Closeout:
 [docs/handoffs/2026-05-15-rust-usable-gap-projection-closeout.md](../../docs/handoffs/2026-05-15-rust-usable-gap-projection-closeout.md)

@@ -5,7 +5,8 @@ use super::{
     ExposureClass, OracleKind, OracleStrength, ProbeId, RiprEvidence, SourceLocation, SymbolId,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProbeFamily {
     Predicate,
     ReturnValue,
@@ -32,7 +33,8 @@ impl ProbeFamily {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DeltaKind {
     Value,
     Control,
@@ -51,7 +53,8 @@ impl DeltaKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StopReason {
     MaxDepthReached,
     ExternalCrateBoundary,
@@ -64,6 +67,15 @@ pub enum StopReason {
     InfectionEvidenceUnknown,
     PropagationEvidenceUnknown,
     StaticProbeUnknown,
+    /// A bounded transitive-reach walk found a candidate path (test -> ... ->
+    /// owner) that ripr cannot fully resolve (lexical-only, name-match only).
+    /// Classification stays `no_static_path`. See RIPR-SPEC-0114.
+    TransitiveReachUnresolved,
+    /// A Rust reach walk found a candidate test entry path that stops at a
+    /// same-repo macro invocation whose definition lexically names the changed
+    /// owner. ripr does not expand the macro; classification stays
+    /// `no_static_path`. See RIPR-SPEC-0117.
+    MacroReachUnresolved,
 }
 
 impl StopReason {
@@ -80,6 +92,8 @@ impl StopReason {
             StopReason::InfectionEvidenceUnknown => "infection_evidence_unknown",
             StopReason::PropagationEvidenceUnknown => "propagation_evidence_unknown",
             StopReason::StaticProbeUnknown => "static_probe_unknown",
+            StopReason::TransitiveReachUnresolved => "transitive_reach_unresolved",
+            StopReason::MacroReachUnresolved => "macro_reach_unresolved",
         }
     }
 
@@ -93,7 +107,7 @@ impl StopReason {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Probe {
     pub id: ProbeId,
     pub location: SourceLocation,
@@ -108,6 +122,7 @@ pub struct Probe {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FlowSinkKind {
     ReturnValue,
     ErrorVariant,
@@ -165,6 +180,7 @@ pub struct FlowSinkFact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ValueContext {
     FunctionArgument,
     AssertionArgument,
@@ -212,7 +228,7 @@ pub struct MissingDiscriminatorFact {
     pub flow_sink: Option<FlowSinkFact>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FindingCanonicalGap {
     pub id: String,
     pub language: String,
@@ -223,13 +239,13 @@ pub struct FindingCanonicalGap {
     pub normalized_discriminator: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivationEvidence {
     pub observed_values: Vec<ValueFact>,
     pub missing_discriminators: Vec<MissingDiscriminatorFact>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelatedTest {
     pub name: String,
     pub file: PathBuf,
@@ -246,7 +262,7 @@ pub struct RelatedTest {
     pub relation_confidence: Option<crate::domain::RelationConfidence>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Finding {
     pub id: String,
     pub canonical_gap: Option<FindingCanonicalGap>,

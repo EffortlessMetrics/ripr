@@ -4,9 +4,10 @@ Some security and review controls live in GitHub settings instead of the git
 tree. This checklist records the expected settings so local automation, CI, and
 review policy do not drift apart.
 
-This checkout is `EffortlessMetrics/ripr-swarm`, the public development landing
-zone for trusted same-repo `ripr` PRs. The release-facing source repository
-remains `EffortlessMetrics/ripr`.
+This checkout is `EffortlessMetrics/ripr`, the release-facing source and
+distribution authority. Normal analyzer, editor, fixture, and development work lands
+in `EffortlessMetrics/ripr-swarm` and reaches this repository only through a reviewed
+history-preserving source promotion.
 
 ## Settings App Contract
 

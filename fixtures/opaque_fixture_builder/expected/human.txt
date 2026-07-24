@@ -4,38 +4,21 @@ root: fixtures/opaque_fixture_builder/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-WARNING fixtures/opaque_fixture_builder/input/src/lib.rs:2
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/opaque_fixture_builder/input/src/lib.rs:2
+  Static exposure: infection_unknown (warning, confidence 0.66)
+  Changed behavior: amount >= 100
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/pricing.rs:16 fixture_builder_case_has_no_discount
+  Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+  Evidence:
+    - reach yes: Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount
+    - infection unknown: Related tests use opaque fixtures; activation/infection is unknown
+    - 5 more evidence line(s) hidden
 
-Changed
-  before: if amount > 100 {
-  after:  if amount >= 100 {
-
-Probe
-  family: predicate
-  delta:  control
-  owner:  src/lib.rs::discounted_total
-
-Static exposure
-  infection_unknown (warning, confidence 0.66)
-
-Evidence
-  - reach yes: Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount
-  - infection unknown: Related tests use opaque fixtures; activation/infection is unknown
-  - propagation yes: Changed behavior appears to influence returned value: amount - 10
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
-  - local flow reaches returned value: amount - 10 (line 3)
-  - related test tests/pricing.rs:16 fixture_builder_case_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(case.amount), case.expected);
-
-Weakness
-  - No detected boundary input for the changed predicate
-  - Related tests use opaque fixtures; activation/infection is unknown
-
-Stop reasons:
-  - fixture_opaque
-
-Next step
-  Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
-
-
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

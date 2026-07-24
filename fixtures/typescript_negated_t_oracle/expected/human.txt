@@ -1,0 +1,29 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_negated_t_oracle/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/discount.ts:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Changed behavior: if (amount >= threshold) {
+  Missing discriminator: Related test reaches `applyDiscount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or …
+  Related test: tests/discount.test.ts:1 discounted value is not the full amount
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, an…
+  Evidence:
+    - reach yes: 2 related test(s) found for owner `applyDiscount`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

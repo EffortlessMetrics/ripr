@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_constructor_field_wrong_field_observer/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:f04ff7e2",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.35,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:f04ff7e2",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_constructor_field_wrong_field_observer/input/src/lib.rs",
+        "line": 15,
+        "expression": "storage,"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No reachable tests were found, so infection cannot be established"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No reachable tests were found, so infection cannot be established", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches unknown sink: unknown sink (line 15)"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":15}
+      ],
+      "evidence": ["No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No reachable tests were found, so infection cannot be established", "No static test path found for the changed owner", "Propagation is not statically obvious from syntax-first analysis", "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed.", "For example, the test `lower_ast_only_checks_name` (tests/lower.rs:4) calls `lower_ast`, an entry point that may lead here. Inspect it to judge whether this change is observed.", "limitation_last_established_edge: test `lower_ast_only_checks_name` (tests/lower.rs:4) -> entry `lower_ast`", "limitation_first_unresolved_edge: entry `lower_ast` -> owner `lower_statement` through a transitive Rust helper path", "limitation_analyzer_route: analysis/rust-public-api-transitive-reach", "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["transitive_reach_unresolved"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "static_limit_kind": "rust_integration_public_api_path_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-public-api-transitive-reach",
+        "first_unresolved_edge": "entry `lower_ast` -> owner `lower_statement` through a transitive Rust helper path",
+        "kind": "rust_integration_public_api_path_unresolved",
+        "last_established_edge": "test `lower_ast_only_checks_name` (tests/lower.rs:4) -> entry `lower_ast`",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+      }
+    }
+  ]
+}

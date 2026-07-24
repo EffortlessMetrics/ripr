@@ -390,6 +390,7 @@ fn top_gap_language_label(selected: &Value) -> &'static str {
         string_path(selected, &["language_status"]).as_deref(),
     ) {
         (Some("python"), Some("preview")) => "preview Python gap",
+        (Some("typescript"), Some("preview")) => "preview TypeScript gap",
         (Some("rust"), Some("stable")) => "stable Rust gap",
         _ => "gap",
     }

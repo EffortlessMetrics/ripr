@@ -1,0 +1,29 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_oracle_helper_gated/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/pricing.ts:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Changed behavior: if (base >= 0) {
+  Missing discriminator: Related test reaches `computePrice` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow…
+  Related test: tests/pricing.test.ts:9 price is checked through helper
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `base == 0`; no actionable repair packet is emitted until verify, receipt, and edit-bou…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `computePrice`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

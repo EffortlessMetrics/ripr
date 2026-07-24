@@ -1,20 +1,41 @@
 pub(crate) mod agent_brief;
+pub(crate) mod agent_gap_packet;
+pub(crate) mod agent_receipt;
 pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;
+pub(crate) mod annotations;
+pub(crate) mod causal_projection;
 mod check;
+pub(crate) mod check_artifact;
 mod context;
 mod explain;
+pub(crate) mod impacted_evidence;
+pub(crate) mod pr_evidence;
+pub(crate) mod pr_summary;
 pub(crate) mod receipt;
+pub(crate) mod ripr_plus;
 mod selector;
+pub(crate) mod temp_diff;
 
 pub use crate::output::format::OutputFormat;
 pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};
-pub(crate) use check::{check_workspace_repo_with_config, check_workspace_with_config};
-pub(crate) use context::collect_context_with_config;
+
+/// The `ripr-perl-facts-v1` packet schema this ripr build consumes (Campaign 31
+/// item 5). Canonical, always-compiled declaration; the lang-perl-gated perl
+/// module (`app::check`, `analysis::language::perl`) and the doctor
+/// (`cli::commands`) reference this single source of truth via
+/// `crate::app::PERL_FACT_PACKET_SCHEMA`.
+pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
+pub(crate) use crate::analysis::repair_route::repair_route_readiness;
+pub(crate) use check::{
+    check_workspace_repo_with_config, check_workspace_with_config,
+    check_workspace_worktree_with_config, is_managed_perl_producer,
+};
 pub use context::{collect_context, collect_context_with_input};
-pub(crate) use explain::explain_finding_with_config;
+pub(crate) use context::{collect_context_from_artifact, collect_context_with_config};
 pub use explain::{explain_finding, explain_finding_with_input};
+pub(crate) use explain::{explain_finding_from_artifact, explain_finding_with_config};
 
 use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;
@@ -42,6 +63,22 @@ pub struct CheckInput {
     pub format: OutputFormat,
     /// Whether unchanged tests may still be used as static evidence.
     pub include_unchanged_tests: bool,
+    /// Path to a `ripr-perl-facts-v1` packet for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
+    /// Optional explicit suppression-policy file for this check run (#1441).
+    /// Relative paths resolve against `root`. When `Some`, exposure-gap
+    /// entries (by `finding_id` or `path` glob) mark matching findings as
+    /// suppressed in the output; a missing or malformed file fails the run.
+    /// When `None`, check output is unchanged.
+    pub suppression_policy: Option<PathBuf>,
+    /// Cooperative per-invocation git deadline for the diff-load path
+    /// (#2303). `None` (the default) keeps git invocations unbounded — the
+    /// CLI behavior. Only the LSP refresh path populates this, from the
+    /// `gitTimeoutMs` session option.
+    pub git_timeout: Option<std::time::Duration>,
 }
 
 impl Default for CheckInput {
@@ -53,6 +90,9 @@ impl Default for CheckInput {
             mode: Mode::Draft,
             format: OutputFormat::Human,
             include_unchanged_tests: true,
+            perl_facts_path: None,
+            suppression_policy: None,
+            git_timeout: None,
         }
     }
 }
@@ -126,11 +166,35 @@ pub struct CheckOutput {
     /// analyzed the scope but found nothing actionable at this time.
     /// See RIPR-SPEC-0082.
     pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion.
+    /// Non-abort contract (Campaign 31 PR 10, #1403): a failure here does not
+    /// abort the report.
+    pub language_runs: Vec<crate::analysis::LanguageRun>,
     /// When `true`, no analysis scope was provided by the caller (no `--diff`,
     /// `--base`, `--files`, or full-repo mode flag). An empty result in this
     /// state does NOT mean the changed behavior is covered — it means nothing
     /// was analyzed. See RIPR-SPEC-0083.
     pub no_scope_provided: bool,
+    /// When `true`, `--base` was used to analyze committed history AND the
+    /// working tree has uncommitted changes to tracked source files that were
+    /// NOT part of the analyzed diff. An empty result in this state does NOT
+    /// mean the working-tree changes are covered — they were silently excluded
+    /// from the analysis. See RIPR-SPEC-0112.
+    pub unanalyzed_working_tree: bool,
+    /// Suppression-policy application outcome (#1441). `Some` only when the
+    /// caller passed `--suppression-policy`; findings named here stay in
+    /// `findings` (visible, marked suppressed by renderers) while the
+    /// per-class `summary` buckets count unsuppressed findings only.
+    pub suppression: Option<crate::output::suppressions::CheckSuppressionOutcome>,
+    /// Partial diff-scope run state (RIPR-PROP-0019, #1999). `Some` only when
+    /// the diff exceeded the partial-selection budget and the run analyzed a
+    /// deterministic bounded partition instead of the full diff
+    /// (`limited_partial_scope`). In that state `summary`/`findings` cover the
+    /// selected partition only, the uninspected accounting on the record is a
+    /// lower bound, and the result is never a gate, baseline, badge, or RIPR
+    /// Zero input (`gate_eligibility: ineligible`).
+    pub partial_scope: Option<crate::analysis::PartialDiffScope>,
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.

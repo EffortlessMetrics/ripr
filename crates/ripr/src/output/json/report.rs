@@ -12,13 +12,14 @@ use crate::output::next_step::reconcile_next_step;
 use crate::output::perl_preview_card::{perl_preview_card, perl_preview_card_json_value};
 use crate::output::preview_actionability::{
     preview_actionability_for, preview_actionability_json_value,
+    projected_preview_actionability_evidence, projected_preview_actionability_missing,
 };
 use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
 use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use crate::output::typescript_preview_card::{
     typescript_preview_card, typescript_preview_card_json_value,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use super::finding_alignment;
@@ -58,14 +59,170 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     out.push_str(",\n");
     out.push_str("  \"findings\": [\n");
     let canonical_gap_counts = canonical_gap_counts(&output.findings);
+    let suppressed_selectors: BTreeMap<&str, &str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| (entry.finding_id.as_str(), entry.selector.as_str()))
+        })
+        .collect();
     for (idx, finding) in output.findings.iter().enumerate() {
-        finding_json_with_config_and_counts(&mut out, finding, 2, config, &canonical_gap_counts);
+        finding_json_with_config_and_counts(
+            &mut out,
+            finding,
+            2,
+            config,
+            &canonical_gap_counts,
+            suppressed_selectors.get(finding.id.as_str()).copied(),
+        );
         if idx + 1 != output.findings.len() {
             out.push(',');
         }
         out.push('\n');
     }
     out.push_str("  ]");
+    // Additive advisory field — emitted only when the caller passed
+    // `--suppression-policy` (#1441). Absent otherwise, so existing goldens
+    // and consumers without a policy see identical output.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(",\n  \"suppression_policy\": {\n");
+        field(&mut out, 2, "path", &suppression.policy_path, true);
+        number_field(
+            &mut out,
+            2,
+            "suppressed",
+            suppression.suppressed.len(),
+            true,
+        );
+        array_field(&mut out, 2, "warnings", &suppression.warnings, false);
+        out.push_str("  }");
+    }
+    // Additive advisory field — emitted only when at least one enabled language
+    // did not complete successfully (non-abort contract, Campaign 31 PR 10,
+    // #1403). Absent when every enabled language ran to completion (the common
+    // single-language-success case), so this stays out of the goldens for
+    // pure-success runs.
+    if !output.language_runs.is_empty() {
+        out.push_str(",\n  \"language_runs\": [\n");
+        for (idx, run) in output.language_runs.iter().enumerate() {
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &run.language, true);
+            field(&mut out, 3, "status", run.status.as_str(), true);
+            match &run.reason {
+                Some(reason) => field(&mut out, 3, "reason", reason, false),
+                None => out.push_str("      \"reason\": null\n"),
+            }
+            out.push_str("    }");
+            if idx + 1 != output.language_runs.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
+    // Additive run-state block — emitted only when the diff exceeded the
+    // partial-selection budget and the run analyzed a deterministic bounded
+    // partition (RIPR-PROP-0019, #1999). Absent for full-scope runs, so
+    // existing goldens and consumers see identical output. Uses the same
+    // limitation/run-status vocabulary as the limited-check artifact
+    // (`run_status`, `downstream_consumable`, `repair_route`); the partial
+    // result is never downstream-consumable and marks
+    // `gate_eligibility: ineligible` so a gate, baseline, badge, or RIPR Zero
+    // consumer fails closed instead of treating a partial denominator as
+    // complete.
+    if let Some(scope) = &output.partial_scope {
+        out.push_str(",\n  \"analysis_scope\": {\n");
+        field(&mut out, 2, "scope", "diff", true);
+        field(&mut out, 2, "run_status", &scope.run_status, true);
+        field(&mut out, 2, "basis", "rust_partial_diff_budget", true);
+        out.push_str("    \"downstream_consumable\": false,\n");
+        field(
+            &mut out,
+            2,
+            "gate_eligibility",
+            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "limitation",
+            crate::analysis::PartialDiffScope::RUN_STATUS,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "repair_route",
+            "analysis/diff-scope-budget",
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "selection_version",
+            crate::analysis::PARTIAL_DIFF_SELECTION_VERSION,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "language_tier_version",
+            crate::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
+            true,
+        );
+        field(&mut out, 2, "diff_identity", &scope.diff_identity, true);
+        field(
+            &mut out,
+            2,
+            "partition_identity",
+            &scope.partition_identity,
+            true,
+        );
+        number_field(&mut out, 2, "file_budget", scope.file_budget, true);
+        number_field(&mut out, 2, "line_budget", scope.line_budget, true);
+        array_field(
+            &mut out,
+            2,
+            "budget_disclosures",
+            &scope.budget_disclosures,
+            true,
+        );
+        array_field(&mut out, 2, "selected_files", &scope.selected_files, true);
+        number_field(
+            &mut out,
+            2,
+            "selected_changed_lines",
+            scope.selected_changed_lines,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_files_lower_bound",
+            scope.uninspected_files_lower_bound,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_changed_lines_lower_bound",
+            scope.uninspected_changed_lines_lower_bound,
+            true,
+        );
+        field(&mut out, 2, "stop_reason", scope.stop_reason.as_str(), true);
+        field(
+            &mut out,
+            2,
+            "continuation",
+            crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+            false,
+        );
+        out.push_str("  }");
+    }
     // Additive advisory field — emitted only when no analysis scope was
     // provided and the result is empty. Absent when scope was given (real
     // analyzed-empty is honest) or when findings are non-empty.
@@ -84,6 +241,13 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         );
         out.push_str("    }\n");
         out.push_str("  ]");
+    }
+    // Additive advisory field — emitted when --base was used and the working tree
+    // has uncommitted changes to tracked source that were NOT analyzed.
+    // Absent when --diff was used (file diff mode) or the worktree is clean.
+    // See RIPR-SPEC-0112.
+    if output.unanalyzed_working_tree {
+        out.push_str(",\n  \"unanalyzed_working_tree\": true");
     }
     // Additive advisory field — emitted only when preview-language files were
     // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
@@ -134,7 +298,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 fn summary_json(out: &mut String, output: &CheckOutput) {
     let s = &output.summary;
     out.push_str(&format!(
-        "{{\"changed_rust_files\":{},\"probes\":{},\"findings\":{},\"exposed\":{},\"weakly_exposed\":{},\"reachable_unrevealed\":{},\"no_static_path\":{},\"infection_unknown\":{},\"propagation_unknown\":{},\"static_unknown\":{}}}",
+        "{{\"changed_rust_files\":{},\"probes\":{},\"findings\":{},\"exposed\":{},\"weakly_exposed\":{},\"reachable_unrevealed\":{},\"no_static_path\":{},\"infection_unknown\":{},\"propagation_unknown\":{},\"static_unknown\":{}",
         s.changed_rust_files,
         s.probes,
         s.findings,
@@ -146,6 +310,31 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
         s.propagation_unknown,
         s.static_unknown
     ));
+    // Additive (#2103): per-language changed-file counts, one entry per
+    // adapter that ran, sorted by language wire string. `changed_rust_files`
+    // above carries the Rust adapter's count only.
+    out.push_str(",\"changed_files_by_language\":[");
+    for (idx, count) in s.changed_files_by_language.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"language\":\"{}\",\"files\":{}}}",
+            escape(&count.language),
+            count.files
+        ));
+    }
+    out.push(']');
+    // Additive: present only when a suppression policy was applied (#1441).
+    // The per-class buckets above count unsuppressed findings only; buckets
+    // plus `suppressed_by_policy` add back up to `findings`.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(&format!(
+            ",\"suppressed_by_policy\":{}",
+            suppression.suppressed.len()
+        ));
+    }
+    out.push('}');
 }
 
 #[cfg(test)]
@@ -156,6 +345,7 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
         indent,
         &RiprConfig::default(),
         &BTreeMap::new(),
+        None,
     );
 }
 
@@ -165,10 +355,21 @@ fn finding_json_with_config_and_counts(
     indent: usize,
     config: &RiprConfig,
     canonical_gap_counts: &BTreeMap<&str, usize>,
+    suppressed_selector: Option<&str>,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "id", &finding.id, true);
+    // Additive: present only on findings suppressed by an explicit
+    // `--suppression-policy` (#1441). The finding stays fully rendered so
+    // suppression is visible, not hidden.
+    if let Some(selector) = suppressed_selector {
+        out.push_str(&format!(
+            "{}\"suppressed\": true,\n",
+            "  ".repeat(indent + 1)
+        ));
+        field(out, indent + 1, "suppressed_by", selector, true);
+    }
     if let Some(gap) = &finding.canonical_gap {
         field(out, indent + 1, "canonical_gap_id", &gap.id, true);
         number_field(
@@ -251,8 +452,10 @@ fn finding_json_with_config_and_counts(
     array_field(out, indent + 1, "evidence_path", &evidence_path, true);
     flow_sinks_json(out, finding, indent + 1);
     out.push_str(",\n");
-    array_field(out, indent + 1, "evidence", &finding.evidence, true);
-    array_field(out, indent + 1, "missing", &finding.missing, true);
+    let evidence = projected_preview_actionability_evidence(finding);
+    array_field(out, indent + 1, "evidence", &evidence, true);
+    let missing = projected_preview_actionability_missing(finding);
+    array_field(out, indent + 1, "missing", &missing, true);
     assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
     out.push_str(",\n");
     activation_json(out, finding, indent + 1);
@@ -376,6 +579,8 @@ fn finding_json_with_config_and_counts(
     let has_status = finding.language_status.is_some();
     let has_owner_kind = finding.owner_kind.is_some();
     let has_static_limit_kind = finding.static_limit_kind.is_some();
+    let static_limitation = static_limitation_json_value(finding);
+    let has_static_limitation = static_limitation.is_some();
     let has_changed_sink = finding.changed_sink.is_some();
     let has_observed_sink = finding.observed_sink.is_some();
     let has_oracle_alignment = finding.oracle_alignment.is_some();
@@ -390,7 +595,12 @@ fn finding_json_with_config_and_counts(
         indent + 1,
         "suggested_next_action",
         &reconciled_step,
-        has_language || has_status || has_owner_kind || has_static_limit_kind || has_alignment,
+        has_language
+            || has_status
+            || has_owner_kind
+            || has_static_limit_kind
+            || has_static_limitation
+            || has_alignment,
     );
     if let Some(language) = finding.language {
         field(
@@ -398,7 +608,11 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language",
             language.as_str(),
-            has_status || has_owner_kind || has_static_limit_kind || has_alignment,
+            has_status
+                || has_owner_kind
+                || has_static_limit_kind
+                || has_static_limitation
+                || has_alignment,
         );
     }
     if let Some(status) = finding.language_status {
@@ -407,7 +621,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "language_status",
             status.as_str(),
-            has_owner_kind || has_static_limit_kind || has_alignment,
+            has_owner_kind || has_static_limit_kind || has_static_limitation || has_alignment,
         );
     }
     if let Some(kind) = finding.owner_kind {
@@ -416,7 +630,7 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "owner_kind",
             kind.as_str(),
-            has_static_limit_kind || has_alignment,
+            has_static_limit_kind || has_static_limitation || has_alignment,
         );
     }
     if let Some(kind) = finding.static_limit_kind {
@@ -425,8 +639,16 @@ fn finding_json_with_config_and_counts(
             indent + 1,
             "static_limit_kind",
             kind.as_str(),
-            has_alignment,
+            has_static_limitation || has_alignment,
         );
+    }
+    if let Some(static_limitation) = &static_limitation {
+        json_value_field(out, indent + 1, "static_limitation", static_limitation);
+        if has_alignment {
+            out.push_str(",\n");
+        } else {
+            out.push('\n');
+        }
     }
     // Python oracle sink-alignment (additive optional, RIPR-SPEC-0028): why a
     // strong oracle did or did not credit `exposed`. Present only on Python
@@ -463,6 +685,47 @@ fn finding_json_with_config_and_counts(
         field(out, indent + 1, "alignment_reason", alignment_reason, false);
     }
     out.push_str(&format!("{sp}}}"));
+}
+
+struct StaticLimitationDetail<'a> {
+    last_established_edge: &'a str,
+    first_unresolved_edge: &'a str,
+    analyzer_route: &'a str,
+    non_claim: &'a str,
+}
+
+fn static_limitation_json_value(finding: &Finding) -> Option<Value> {
+    let kind = finding.static_limit_kind?;
+    let detail = static_limitation_detail_from_evidence(finding)?;
+    Some(json!({
+        "kind": kind.as_str(),
+        "last_established_edge": detail.last_established_edge,
+        "first_unresolved_edge": detail.first_unresolved_edge,
+        "analyzer_route": detail.analyzer_route,
+        "non_claim": detail.non_claim
+    }))
+}
+
+fn static_limitation_detail_from_evidence(finding: &Finding) -> Option<StaticLimitationDetail<'_>> {
+    Some(StaticLimitationDetail {
+        last_established_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        )?,
+        first_unresolved_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        )?,
+        analyzer_route: evidence_suffix(finding, crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX)?,
+        non_claim: evidence_suffix(finding, crate::domain::LIMITATION_NON_CLAIM_PREFIX)?,
+    })
+}
+
+fn evidence_suffix<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
 }
 
 fn canonical_gap_counts(findings: &[Finding]) -> BTreeMap<&str, usize> {

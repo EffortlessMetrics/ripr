@@ -26,13 +26,30 @@ The pipeline per PR:
 scout (read-only inventory)
 -> adversarial spec / issue
 -> builder (implements)
--> verify-myself
--> green PR
--> manual merge when CI green
+-> verifier (separate, exact-head proof)
+-> bot-comment review and repair
+-> all review conversations resolved
+-> required Ripr Rust Small Result green
+-> squash merge or queued auto-merge
+-> branch/worktree cleanup
 ```
 
-Auto-merge is disabled. Merge the PR after CI turns green; do not wait for an
-approval gate unless `stackable = false` or a `blocked_by` dependency applies.
+This is a solo-maintainer repository. ChatGPT or Codex owns the technical PR
+review loop: read the complete current-head diff, inspect every bot comment and
+advisory report, verify each finding against the code, fix valid findings,
+explain invalid or obsolete findings with evidence, resolve all conversations,
+and merge the exact reviewed head once required CI is green.
+
+No external approving review is part of the ordinary merge contract. CodeRabbit,
+Codex review, Droid, ub-review, coverage, Codecov, Test Analytics, and similar
+signals are review inputs unless a focused policy change explicitly promotes
+them. If GitHub reports that an approving review is required, diagnose branch
+protection and ruleset drift instead of parking the PR or asking the maintainer
+to arrange a reviewer.
+
+Auto-merge is enabled for ready PRs. A `stackable = false` or `blocked_by`
+dependency controls when the next dependent branch may start; it is not an
+external-review requirement.
 
 Large fixture, golden, spec, docs, ADR, and traceability diffs are welcome when
 they make one production behavior reviewable. A small code diff is not
@@ -118,6 +135,10 @@ Rules:
   mid-edit snapshots — ignore them and run the compiler.
 - Verify the claim with a behavioral repro of the effect, not just that output
   printed (a weak oracle on your own work).
+- Read every current-head review thread. Treat bot findings as leads: verify,
+  repair or disposition them, and resolve the conversation before merge.
+- A green required check is necessary but not sufficient. Review the semantic
+  claim and the evidence package before merging.
 - Mirror the full CI gate set locally before pushing:
   `cargo test -p xtask policy_checker_facade_runs_current_repo_checks`
   (the policy-checker facade). Cherry-picking individual gates misses some —
@@ -177,14 +198,25 @@ Specifically:
 
 ### CI watching
 
-Use the cost-aware adaptive poller (the `ci-watch` skill), not `gh run watch`.
+Poll check status with cost-aware, spaced queries (for example
+`gh pr checks <pr>` at widening intervals), not `gh run watch`.
 `gh run watch` polls every 3 seconds and consumes the authenticated rate limit
-across long runs.
+across long runs. (An earlier revision of this section named a `ci-watch`
+skill; no such skill exists in the repo — the guidance is the polling
+discipline itself, see `docs/LIBRARY.md`'s CI watcher economics entry.)
+
+Do not repeatedly poll unchanged advisory state. Park only the affected merge
+step, continue an independent dependency-safe lane when available, and issue at
+most one evidence-backed rerun for an infrastructure cancellation.
 
 ### Merge serialization
 
 Merges serialize under the up-to-date-branch rule. When two PRs are ready,
 merge the higher-cost lane's PR first; the lower-cost lane rebases after.
+
+A ready PR has the exact reviewed head, all valid findings addressed, all
+conversations resolved, and the required `Ripr Rust Small Result` green. Merge
+it with squash or queue auto-merge; do not wait for an external approval.
 
 ### Cleanup after every pass
 
@@ -209,7 +241,8 @@ picking up unfamiliar work:
 | `docs/ROADMAP.md` | Direction and checkpoints |
 | `docs/IMPLEMENTATION_PLAN.md` | Next scoped PR |
 | `docs/IMPLEMENTATION_CAMPAIGNS.md` | Active multi-PR campaigns |
-| `.ripr/goals/active.toml` | Machine-readable campaign state |
+| GitHub issues / PRs / checks | Live work selection and ownership |
+| `.allow/spec-system/slices/` | One PR's scope and claim boundary |
 | `docs/CAPABILITY_MATRIX.md` | Current capability status per area |
 | `docs/PR_AUTOMATION.md` | Shape / check / guide model |
 | `docs/specs/` + `.ripr/traceability.toml` | Spec → test → code map |

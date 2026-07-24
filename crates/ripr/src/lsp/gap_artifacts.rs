@@ -1,4 +1,4 @@
-use crate::domain::{LanguageId, LanguageStatus, StaticLimitKind};
+use crate::domain::{CommandSpec, LanguageId, LanguageStatus, StaticLimitKind};
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT;
 use serde_json::Value;
@@ -25,6 +25,8 @@ pub(super) struct ValidatedGapArtifact {
     pub(super) related_paths: Vec<String>,
     pub(super) verify_commands: Vec<String>,
     pub(super) receipt_commands: Vec<String>,
+    pub(super) verify_command_specs: Vec<CommandSpec>,
+    pub(super) receipt_command_specs: Vec<CommandSpec>,
     pub(super) static_limit_kinds: Vec<String>,
     pub(super) has_text_static_limit: bool,
 }
@@ -103,6 +105,11 @@ impl ValidatedGapArtifact {
             .iter()
             .chain(self.receipt_commands.iter())
             .all(|command| !command.trim().is_empty());
+        let typed_command_specs_are_valid = self
+            .verify_command_specs
+            .iter()
+            .chain(self.receipt_command_specs.iter())
+            .all(|command| command.validate().is_ok());
         let static_limits_are_structured_or_text = self
             .static_limit_kinds
             .iter()
@@ -117,6 +124,7 @@ impl ValidatedGapArtifact {
             && gap_state_is_present_or_deferred
             && path_payloads_are_present
             && command_payloads_are_present
+            && typed_command_specs_are_valid
             && static_limits_are_structured_or_text
     }
 
@@ -242,6 +250,14 @@ pub(super) fn validate_gap_artifact(
     validate_paths(context.root, &validation.related_paths)?;
     validate_commands(context.root, &validation.verify_commands)?;
     validate_commands(context.root, &validation.receipt_commands)?;
+    validate_typed_command_specs(
+        &validation.verify_command_specs,
+        crate::domain::CommandRole::Verify,
+    )?;
+    validate_typed_command_specs(
+        &validation.receipt_command_specs,
+        crate::domain::CommandRole::Receipt,
+    )?;
     validate_static_limits(artifact)?;
     normalize_static_limits(artifact, &mut validation);
     if validation.identities.is_empty()
@@ -268,6 +284,7 @@ fn validate_first_useful_action(
     ]);
     let verify_commands = string_values(&[path_value(commands, &["verify"])]);
     let receipt_commands = string_values(&[path_value(commands, &["receipt"])]);
+    let (verify_command_specs, receipt_command_specs) = command_specs_from_value(commands)?;
     Ok(ValidatedGapArtifact {
         kind: GapArtifactKind::FirstUsefulAction,
         root: report_root.map(ToOwned::to_owned),
@@ -281,6 +298,8 @@ fn validate_first_useful_action(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs,
+        receipt_command_specs,
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -301,6 +320,8 @@ fn validate_gap_decision_ledger(
     let mut related_paths = Vec::new();
     let mut verify_commands = Vec::new();
     let mut receipt_commands = Vec::new();
+    let mut verify_command_specs = Vec::new();
+    let mut receipt_command_specs = Vec::new();
     let mut language = None;
     let mut language_status = None;
     let gap_state;
@@ -348,6 +369,9 @@ fn validate_gap_decision_ledger(
         if let Some(command) = record.get("receipt_command").and_then(Value::as_str) {
             receipt_commands.push(command.to_string());
         }
+        let (record_verify_specs, record_receipt_specs) = command_specs_from_value(Some(record))?;
+        verify_command_specs.extend(record_verify_specs);
+        receipt_command_specs.extend(record_receipt_specs);
     }
     if has_actionable_record {
         gap_state = Some("actionable".to_string());
@@ -371,6 +395,8 @@ fn validate_gap_decision_ledger(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs,
+        receipt_command_specs,
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -398,6 +424,8 @@ fn validate_actionable_gaps(
     let mut related_paths = Vec::new();
     let mut verify_commands = Vec::new();
     let mut receipt_commands = Vec::new();
+    let mut verify_command_specs = Vec::new();
+    let mut receipt_command_specs = Vec::new();
     let mut language = None;
     let mut language_status = None;
     let mut has_actionable_packet = false;
@@ -417,6 +445,9 @@ fn validate_actionable_gaps(
 
         if packet_is_actionable(packet) {
             has_actionable_packet = true;
+            // canonical_gap_id stays ahead of identity/projection checks so a
+            // missing id reports its own message; the shared render-field
+            // contract below re-covers it for the command-time consumer.
             require_actionable_packet_string(
                 packet,
                 &["canonical_gap_id"],
@@ -427,12 +458,8 @@ fn validate_actionable_gaps(
                     .ok_or(GapArtifactRejection::MissingIdentity)?,
             );
             validate_actionable_packet_projection_fields(packet)?;
+            require_actionable_packet_render_fields(packet)?;
             require_actionable_packet_repair_route(packet)?;
-            require_actionable_packet_string(
-                packet,
-                &["repair_kind"],
-                "actionable packet must carry repair_kind",
-            )?;
             require_actionable_packet_string(
                 packet,
                 &["target_test_type"],
@@ -450,11 +477,6 @@ fn validate_actionable_gaps(
             )?;
             require_actionable_packet_string(
                 packet,
-                &["verify_command"],
-                "actionable packet must carry verify_command",
-            )?;
-            require_actionable_packet_string(
-                packet,
                 &["confidence_basis"],
                 "actionable packet must carry confidence_basis",
             )?;
@@ -463,27 +485,7 @@ fn validate_actionable_gaps(
                 &["receipt_command_or_path"],
                 "actionable packet must carry receipt_command_or_path",
             )?;
-            require_actionable_packet_string(
-                packet,
-                &["receipt_command"],
-                "actionable packet must carry receipt_command",
-            )?;
             require_actionable_packet_typed_related_target(packet)?;
-            require_actionable_packet_array(
-                packet,
-                &["must_not_change"],
-                "actionable packet must carry must_not_change",
-            )?;
-            require_actionable_packet_array(
-                packet,
-                &["allowed_edit_surface"],
-                "actionable packet must carry allowed_edit_surface",
-            )?;
-            require_actionable_packet_raw_evidence_refs(
-                packet,
-                &["raw_evidence_refs"],
-                "actionable packet must carry raw_evidence_refs",
-            )?;
         } else {
             if packet_is_no_action(packet) {
                 no_action_packets += 1;
@@ -508,6 +510,9 @@ fn validate_actionable_gaps(
                 related_paths.push(receipt);
             }
         }
+        let (packet_verify_specs, packet_receipt_specs) = command_specs_from_value(Some(packet))?;
+        verify_command_specs.extend(packet_verify_specs);
+        receipt_command_specs.extend(packet_receipt_specs);
     }
 
     let gap_state = if has_actionable_packet {
@@ -540,6 +545,8 @@ fn validate_actionable_gaps(
         related_paths,
         verify_commands,
         receipt_commands,
+        verify_command_specs,
+        receipt_command_specs,
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -619,6 +626,53 @@ fn validate_actionable_packet_projection_fields(
             "actionable packet must not carry projection_exclusion_reasons",
         ));
     }
+    Ok(())
+}
+
+/// The actionable-packet render-field contract: the single ordered list of
+/// fields a consumer needs to render a repair packet from an actionable-gaps
+/// packet (RIPR-SPEC-0087 §8, issue #2028). The ingest boundary
+/// (`validate_actionable_gaps`) and the command-time repair-packet renderer
+/// (`lsp::backend`) both enforce exactly this set so the field list exists
+/// once; neither may re-walk packet fields on its own.
+pub(super) fn require_actionable_packet_render_fields(
+    packet: &Value,
+) -> Result<(), GapArtifactRejection> {
+    require_actionable_packet_string(
+        packet,
+        &["canonical_gap_id"],
+        "actionable packet must carry canonical_gap_id",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["repair_kind"],
+        "actionable packet must carry repair_kind",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["verify_command"],
+        "actionable packet must carry verify_command",
+    )?;
+    require_actionable_packet_string(
+        packet,
+        &["receipt_command"],
+        "actionable packet must carry receipt_command",
+    )?;
+    require_actionable_packet_array(
+        packet,
+        &["must_not_change"],
+        "actionable packet must carry must_not_change",
+    )?;
+    require_actionable_packet_array(
+        packet,
+        &["allowed_edit_surface"],
+        "actionable packet must carry allowed_edit_surface",
+    )?;
+    require_actionable_packet_raw_evidence_refs(
+        packet,
+        &["raw_evidence_refs"],
+        "actionable packet must carry raw_evidence_refs",
+    )?;
     Ok(())
 }
 
@@ -916,6 +970,7 @@ fn validate_evidence_record(
         path_value(canonical_item, &["verify_command"]),
         path_value(recommendation, &["verify_command"]),
     ]);
+    let (verify_command_specs, receipt_command_specs) = command_specs_from_value(canonical_item)?;
     Ok(ValidatedGapArtifact {
         kind: GapArtifactKind::EvidenceRecord,
         root: report_root.map(ToOwned::to_owned),
@@ -928,6 +983,8 @@ fn validate_evidence_record(
         related_paths,
         verify_commands,
         receipt_commands: Vec::new(),
+        verify_command_specs,
+        receipt_command_specs,
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
@@ -958,9 +1015,99 @@ fn validate_agent_receipt(
         related_paths,
         verify_commands: Vec::new(),
         receipt_commands: Vec::new(),
+        verify_command_specs: Vec::new(),
+        receipt_command_specs: Vec::new(),
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
+}
+
+fn command_specs_from_value(
+    value: Option<&Value>,
+) -> Result<(Vec<CommandSpec>, Vec<CommandSpec>), GapArtifactRejection> {
+    let Some(command_specs) = value.and_then(|value| value.get("command_specs")) else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    if !command_specs.is_object() {
+        return Err(GapArtifactRejection::MalformedCommandPayload(
+            "command_specs must be an object".to_string(),
+        ));
+    }
+    let verify = parse_command_spec_collection(command_specs.get("verify"), "verify")?;
+    let receipt = parse_command_spec_collection(command_specs.get("receipt"), "receipt")?;
+    Ok((verify, receipt))
+}
+
+/// Return only the typed routes already validated from the matched snapshot
+/// artifact. Request-side diagnostic data is never authoritative here.
+pub(super) fn command_specs_for_projection(artifact: &ValidatedGapArtifact) -> Option<Value> {
+    let verify = &artifact.verify_command_specs;
+    let receipt = &artifact.receipt_command_specs;
+    validate_typed_command_specs(verify, crate::domain::CommandRole::Verify).ok()?;
+    validate_typed_command_specs(receipt, crate::domain::CommandRole::Receipt).ok()?;
+    if verify.is_empty() || receipt.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "verify": command_spec_collection_value(verify),
+        "receipt": command_spec_collection_value(receipt),
+    }))
+}
+
+fn command_spec_collection_value(specs: &[CommandSpec]) -> Value {
+    if specs.len() == 1 {
+        serde_json::json!(specs[0])
+    } else {
+        serde_json::json!(specs)
+    }
+}
+
+fn parse_command_spec_collection(
+    value: Option<&Value>,
+    field: &'static str,
+) -> Result<Vec<CommandSpec>, GapArtifactRejection> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let values = match value {
+        Value::Array(values) => values.iter().collect::<Vec<_>>(),
+        Value::Object(_) => vec![value],
+        Value::Null => Vec::new(),
+        _ => {
+            return Err(GapArtifactRejection::MalformedCommandPayload(format!(
+                "command_specs.{field} must be an object or array"
+            )));
+        }
+    };
+    values
+        .into_iter()
+        .map(|value| {
+            serde_json::from_value(value.clone()).map_err(|err| {
+                GapArtifactRejection::MalformedCommandPayload(format!(
+                    "command_specs.{field} must contain CommandSpec values: {err}"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn validate_typed_command_specs(
+    specs: &[CommandSpec],
+    expected_role: crate::domain::CommandRole,
+) -> Result<(), GapArtifactRejection> {
+    for spec in specs {
+        if spec.role != expected_role {
+            return Err(GapArtifactRejection::MalformedCommandPayload(
+                "typed command role does not match its route".to_string(),
+            ));
+        }
+        spec.validate().map_err(|err| {
+            GapArtifactRejection::MalformedCommandPayload(format!(
+                "typed command spec failed validation: {err}"
+            ))
+        })?;
+    }
+    Ok(())
 }
 
 fn validate_schema(schema_version: Option<&str>) -> Result<(), GapArtifactRejection> {
@@ -1298,9 +1445,7 @@ fn command_tokens(command: &str) -> Vec<String> {
 }
 
 fn is_inside_workspace(root: &Path, path: &Path) -> bool {
-    let root = normalize_path(root);
-    let path = normalize_path(path);
-    path == root || path.starts_with(&(root + "/"))
+    super::uri::path_is_within_root(root, path)
 }
 
 fn normalize_path(path: &Path) -> String {
@@ -1358,8 +1503,16 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::MissingImportGraph,
         StaticLimitKind::DecoratorIndirection,
         StaticLimitKind::MockedModule,
+        StaticLimitKind::OpaqueCustomAssertionHelper,
+        StaticLimitKind::PropertyBasedTest,
+        StaticLimitKind::UnresolvedPytestFixture,
         StaticLimitKind::UnsupportedSyntax,
         StaticLimitKind::CrossLanguageOracleVisibilityUnresolved,
+        StaticLimitKind::RustTransitiveReachUnresolved,
+        StaticLimitKind::RustIntegrationPublicApiPathUnresolved,
+        StaticLimitKind::RustMacroReachUnresolved,
+        StaticLimitKind::RustMacroWrappedTestCallUnresolved,
+        StaticLimitKind::RustMacroWrappedAssertionUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)
@@ -1384,6 +1537,57 @@ mod tests {
         }
     }
 
+    fn canonical_command_specs() -> Value {
+        json!({
+            "verify": {
+                "schema_version": "1",
+                "command_id": "ripr:agent:verify",
+                "role": "verify",
+                "execution_mode": "direct",
+                "program": "ripr",
+                "args": ["agent", "verify", "--root", ".", "--json"],
+                "working_directory": ".",
+                "env_set": [],
+                "env_passthrough": [],
+                "environment": "clean",
+                "stdin": "null",
+                "timeout_ms": 120000,
+                "cancellation": "allowed",
+                "network": "forbidden",
+                "expected_result_parser": "declared_json",
+                "expected_exit_codes": [0],
+                "expected_writes": [],
+                "cost_class": "unknown",
+                "platforms": ["linux", "macos", "windows"],
+                "human_display": "ripr agent verify --root . --json",
+                "authority_boundary": "verification_route_only"
+            },
+            "receipt": {
+                "schema_version": "1",
+                "command_id": "ripr:agent:receipt",
+                "role": "receipt",
+                "execution_mode": "direct",
+                "program": "ripr",
+                "args": ["agent", "receipt", "--root", ".", "--json"],
+                "working_directory": ".",
+                "env_set": [],
+                "env_passthrough": [],
+                "environment": "clean",
+                "stdin": "null",
+                "timeout_ms": 120000,
+                "cancellation": "allowed",
+                "network": "forbidden",
+                "expected_result_parser": "declared_json",
+                "expected_exit_codes": [0],
+                "expected_writes": [],
+                "cost_class": "unknown",
+                "platforms": ["linux", "macos", "windows"],
+                "human_display": "ripr agent receipt --root . --json",
+                "authority_boundary": "receipt_route_only"
+            }
+        })
+    }
+
     fn first_action() -> Value {
         json!({
             "schema_version": "0.1",
@@ -1402,7 +1606,8 @@ mod tests {
             },
             "commands": {
                 "verify": "ripr agent verify --root . --json",
-                "receipt": "ripr agent receipt --root . --json"
+                "receipt": "ripr agent receipt --root . --json",
+                "command_specs": canonical_command_specs()
             }
         })
     }
@@ -1448,6 +1653,7 @@ mod tests {
             "verify_command_source": "canonical_item.verify_command",
             "receipt_command": "ripr agent receipt --root . --json",
             "receipt_command_or_path": "ripr agent receipt --root . --json",
+            "command_specs": canonical_command_specs(),
             "receipt_source": "canonical_item.receipt_command",
             "public_projection_eligible": true,
             "projection_exclusion_reasons": [],
@@ -1652,6 +1858,8 @@ mod tests {
         assert_eq!(validated.related_paths.len(), 3);
         assert_eq!(validated.verify_commands.len(), 1);
         assert_eq!(validated.receipt_commands.len(), 1);
+        assert_eq!(validated.verify_command_specs.len(), 1);
+        assert_eq!(validated.receipt_command_specs.len(), 1);
         Ok(())
     }
 
@@ -1673,12 +1881,171 @@ mod tests {
         assert!(validated.is_safe_projection_input());
         assert_eq!(validated.verify_commands.len(), 1);
         assert_eq!(validated.receipt_commands.len(), 1);
+        assert_eq!(validated.verify_command_specs.len(), 1);
+        assert_eq!(validated.receipt_command_specs.len(), 1);
         assert!(
             validated
                 .related_paths
                 .iter()
                 .any(|path| path == "tests/pricing.rs::below_threshold_has_no_discount")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn typed_command_specs_are_validated_before_projection() -> Result<(), String> {
+        let command: CommandSpec = serde_json::from_value(json!({
+            "schema_version": "1",
+            "command_id": "cmd:verify:pricing",
+            "role": "verify",
+            "execution_mode": "direct",
+            "program": "cargo",
+            "args": ["test", "-p", "pricing"],
+            "working_directory": ".",
+            "env_set": [],
+            "env_passthrough": [],
+            "environment": "declared",
+            "stdin": "null",
+            "timeout_ms": 120000,
+            "cancellation": "allowed",
+            "network": "forbidden",
+            "expected_result_parser": "exit_code",
+            "expected_exit_codes": [0],
+            "expected_writes": ["target/**"],
+            "cost_class": "compile_or_test",
+            "platforms": ["linux"],
+            "human_display": "cargo test -p pricing",
+            "authority_boundary": "verification_route_only"
+        }))
+        .map_err(|error| error.to_string())?;
+        command.validate().map_err(|error| error.to_string())?;
+        let encoded = serde_json::to_value(&command).map_err(|error| error.to_string())?;
+        let decoded: CommandSpec =
+            serde_json::from_value(encoded).map_err(|error| error.to_string())?;
+        if decoded != command {
+            return Err("typed command spec changed during JSON round trip".to_string());
+        }
+        if decoded.args.get(2).map(String::as_str) != Some("pricing") {
+            return Err("argument boundary was not preserved".to_string());
+        }
+
+        let artifact = actionable_gaps_report();
+        let mut valid = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|error| format!("{error:?}"))?;
+        valid.verify_command_specs = vec![command.clone()];
+        if !valid.is_safe_projection_input() {
+            return Err("valid typed command spec was rejected".to_string());
+        }
+
+        let mut invalid_command = command;
+        invalid_command.program.clear();
+        valid.receipt_command_specs = vec![invalid_command];
+        if valid.is_safe_projection_input() {
+            return Err("invalid typed command spec was accepted".to_string());
+        }
+
+        let mut mismatched = actionable_gaps_report();
+        let role = mismatched
+            .get_mut("packets")
+            .and_then(Value::as_array_mut)
+            .and_then(|packets| packets.get_mut(0))
+            .and_then(Value::as_object_mut)
+            .and_then(|packet| packet.get_mut("command_specs"))
+            .and_then(Value::as_object_mut)
+            .and_then(|specs| specs.get_mut("verify"))
+            .and_then(Value::as_object_mut)
+            .and_then(|spec| spec.get_mut("role"));
+        let Some(role) = role else {
+            return Err("actionable fixture lost verify command spec role".to_string());
+        };
+        *role = Value::String("receipt".to_string());
+        if !matches!(
+            validate_gap_artifact(&mismatched, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::MalformedCommandPayload(_))
+        ) {
+            return Err("role-mismatched typed command spec was accepted".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn command_specs_container_must_be_an_object() -> Result<(), String> {
+        let artifact = json!({"command_specs": "not-an-object"});
+        let rejection = match command_specs_from_value(Some(&artifact)) {
+            Ok(_) => return Err("scalar command_specs container was accepted".to_string()),
+            Err(rejection) => rejection,
+        };
+        if !matches!(
+            rejection,
+            GapArtifactRejection::MalformedCommandPayload(ref message)
+                if message == "command_specs must be an object"
+        ) {
+            return Err(format!("unexpected rejection: {rejection:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_command_specs_are_safe_for_action_projection() -> Result<(), String> {
+        let artifact = actionable_gaps_report();
+        let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|error| format!("producer specs were rejected: {error:?}"))?;
+        let projected = command_specs_for_projection(&validated)
+            .ok_or_else(|| "producer specs were omitted".to_string())?;
+        if projected["verify"]["command_id"] != "ripr:agent:verify"
+            || projected["receipt"]["command_id"] != "ripr:agent:receipt"
+        {
+            return Err(format!("unexpected projected specs: {projected}"));
+        }
+
+        let mut multiple = validated.clone();
+        let verify_spec = multiple
+            .verify_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "validated artifact omitted verify command spec".to_string())?;
+        let receipt_spec = multiple
+            .receipt_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "validated artifact omitted receipt command spec".to_string())?;
+        multiple.verify_command_specs.push(verify_spec);
+        multiple.receipt_command_specs.push(receipt_spec);
+        let projected_multiple = command_specs_for_projection(&multiple)
+            .ok_or_else(|| "multiple producer specs were omitted".to_string())?;
+        if !projected_multiple["verify"].is_array() || !projected_multiple["receipt"].is_array() {
+            return Err(format!(
+                "multiple producer specs were not arrays: {projected_multiple}"
+            ));
+        }
+
+        let mut empty = validated.clone();
+        empty.verify_command_specs.clear();
+        empty.receipt_command_specs.clear();
+        if command_specs_for_projection(&empty).is_some() {
+            return Err("empty producer specs were projected".to_string());
+        }
+
+        let mut invalid = validated.clone();
+        invalid
+            .verify_command_specs
+            .first_mut()
+            .ok_or_else(|| "validated artifact omitted verify command spec".to_string())?
+            .program
+            .clear();
+        if command_specs_for_projection(&invalid).is_some() {
+            return Err("invalid producer spec was projected".to_string());
+        }
+
+        let mut mismatched = validated;
+        mismatched
+            .receipt_command_specs
+            .first_mut()
+            .ok_or_else(|| "validated artifact omitted receipt command spec".to_string())?
+            .role = crate::domain::CommandRole::Verify;
+        if command_specs_for_projection(&mismatched).is_some() {
+            return Err("role-mismatched producer spec was projected".to_string());
+        }
         Ok(())
     }
 
@@ -2367,6 +2734,45 @@ mod tests {
                 "runtime_magic".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn validation_accepts_rust_integration_public_api_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_integration_public_api_path_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_macro_wrapped_test_call_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_macro_wrapped_test_call_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_macro_wrapped_assertion_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_macro_wrapped_assertion_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
     }
 
     #[test]

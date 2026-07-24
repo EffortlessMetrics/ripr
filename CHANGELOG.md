@@ -20,7 +20,7 @@ unbounded, or otherwise unsupported subprocess shapes.
 
 ### Fixed
 
-- **Bounded subprocess adapter classification** (RIPR-SPEC-0112, #1454):
+- **Bounded subprocess adapter classification** (RIPR-SPEC-0144, #1454):
   receipt-producing adapters with a literal allowlisted command, arguments,
   timeout, captured output, cleanup, and explicit error handling can use the
   existing `side_effect` probe family. Dynamic command names and shell-shaped

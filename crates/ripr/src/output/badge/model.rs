@@ -145,6 +145,13 @@ pub struct BadgeSummary {
     /// fired. Empty for clean Rust-only diffs and for diffs where the
     /// preview adapter was enabled.
     pub preview_skipped: Vec<String>,
+    /// The public badge projection (RIPR-SPEC-0066). `Some` only for
+    /// repo-scoped public badges (canonical-actionable-gap or
+    /// gap-decision-ledger basis); `None` for diff-scoped and internal
+    /// badges, whose native JSON is unchanged. When present it carries the
+    /// closed public state and the six required sidecar fields, and the
+    /// summary's `message` / `status` / `color` are projected from it.
+    pub projection: Option<super::public_projection::PublicBadgeProjection>,
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
@@ -154,8 +161,12 @@ pub struct BadgeSummary {
 /// policy targets. v0.5 adds `basis = "canonical_actionable_gap"` for
 /// public repair-item badge projection. v0.6 adds `preview_skipped`
 /// so consumers can detect when a preview-language diff was not analyzed
-/// and the badge result is not a clean Rust-grade result.
-pub const BADGE_SCHEMA_VERSION: &str = "0.6";
+/// and the badge result is not a clean Rust-grade result. v0.7 adds the
+/// `public_projection` object (RIPR-SPEC-0066): the closed public badge
+/// state plus the `run_status`, `generated_at`, `actionable_count`,
+/// `limited_reason`, `stale_age_secs`, and `source_report` sidecar fields,
+/// present only on repo-scoped public badges.
+pub const BADGE_SCHEMA_VERSION: &str = "0.7";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order

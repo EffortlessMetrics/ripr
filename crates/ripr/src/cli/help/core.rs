@@ -75,6 +75,12 @@ proof signals moved, what remains weak or unknown, and what reviewers should
 inspect or avoid inferring. It does not run analysis, edit source, generate
 tests, run mutation testing, claim runtime correctness or coverage adequacy,
 approve merges, or decide CI policy.
+
+Limitation: the comparison matches seams/findings by id only. The before/after
+artifacts do not carry a head SHA, so ripr cannot verify they came from the
+same repository or adjacent commits. Ensure the before snapshot is from the
+same repo's base and the after snapshot is from the same repo's head before
+trusting the movement report.
 "#;
 pub(super) const CHECK_HELP: &str = r#"Analyze a diff or workspace and emit findings in human, JSON, SARIF, or badge form.
 
@@ -84,14 +90,25 @@ Options:
   --root PATH              Workspace root. Defaults to current directory.
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
+  --worktree               Diff the base revision against the live working tree
+                           instead of HEAD, including staged and unstaged
+                           tracked edits. Cannot be combined with --diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, json, github, sarif, badge-json, badge-shields,
-                           badge-plus-json, badge-plus-shields, repo-badge-json,
-                           repo-badge-shields, repo-badge-plus-json,
-                           repo-badge-plus-shields, repo-seams-json,
-                           repo-seams-md, repo-exposure-json,
-                           repo-exposure-summary-json, repo-exposure-md,
-                           repo-sarif, agent-seam-packets-json. Defaults to human.
+  --format FORMAT          Output format. Defaults to human. Groups:
+                             Analysis (diff-scoped):
+                               human, human-full, json, github, sarif
+                             Badge (diff-scoped, for README status):
+                               badge-json, badge-shields,
+                               badge-plus-json, badge-plus-shields
+                             Badge (repo-scoped, from gap ledger):
+                               repo-badge-json, repo-badge-shields,
+                               repo-badge-plus-json, repo-badge-plus-shields
+                             Repo-scope (full-repo analysis):
+                               repo-seams-json, repo-seams-md,
+                               repo-exposure-json, repo-exposure-summary-json,
+                               repo-exposure-md, repo-sarif
+                             Agent (machine-readable repair evidence):
+                               agent-seam-packets-json
                            badge-plus-* and repo-badge-plus-* formats read
                            target/ripr/reports/test-efficiency.json when present;
                            missing input renders a neutral "needs test-efficiency"
@@ -104,12 +121,70 @@ Options:
                            instead of seam-native/test-efficiency counts.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
+  --suppression-policy PATH
+                           Apply a suppressions TOML (same schema as
+                           .ripr/suppressions.toml) to the findings-based
+                           formats (human, human-full, json, github). exposure_gap
+                           entries select findings by finding_id or by a
+                           path glob (with optional static_class narrowing).
+                           Suppressed findings stay visible in JSON with
+                           suppressed: true; per-class summary counts cover
+                           unsuppressed findings only. Relative PATH
+                           resolves against --root; a missing or malformed
+                           policy fails the run.
+  --write-artifact PATH    Write a full-fidelity check artifact (schema
+                           ripr-check-artifact-v1) for later
+                           `ripr explain --from PATH` /
+                           `ripr context --from PATH` reuse. The artifact
+                           records the complete finding set plus the input
+                           identity (diff bytes hash, root, mode, languages,
+                           analysis options, config identity, analyzer
+                           version). It is a local, disposable derivative:
+                           never a gate, badge, or proof input. Diff-scoped
+                           findings runs only, including --worktree runs
+                           (the recorded base-to-worktree diff is re-resolved
+                           at reuse time; worktree drift fails closed on the
+                           diff bytes hash); not supported for repo-scoped
+                           formats, --gap-ledger, or managed [perl] producer
+                           packet generation (pass --perl-facts PATH
+                           explicitly instead).
+
+Environment variables:
+  RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines
+                                    before check fails closed as
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 2000.
+  RIPR_MAX_DIFF_INDEX_FILES         Maximum Rust files loaded into the diff
+                                    index before check fails closed as
+                                    diff_scope_oversized. With --json, stdout
+                                    carries a non-consumable limited artifact.
+                                    Default: 800.
+  RIPR_PARTIAL_DIFF_FILE_BUDGET     Changed-line files analyzed before check
+                                    returns a bounded limited_partial_scope
+                                    partition with exact selected paths,
+                                    lower-bound uninspected counts, and a named
+                                    stop reason; gate/baseline/badge/Zero
+                                    ineligible. Overrides above the hard guard
+                                    are clamped with disclosure. Invalid values
+                                    fail closed as partial_budget_invalid.
+                                    Default: 200.
+  RIPR_PARTIAL_DIFF_LINE_BUDGET     Changed lines analyzed before check returns
+                                    limited_partial_scope. The first selected
+                                    file is always analyzed, even when it alone
+                                    exceeds the budget. Overrides above the
+                                    hard guard are clamped with disclosure.
+                                    Invalid values fail closed as
+                                    partial_budget_invalid. Default: 1000.
 
 Examples:
   ripr check
   ripr check --base HEAD~1
+  ripr check --base HEAD --worktree
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
+  ripr check --base origin/main --json --suppression-policy policy/ripr-suppressions.toml
+  ripr check --diff d.patch --write-artifact target/ripr/last-check.json
 "#;
 pub(super) const DIFF_HELP: &str = r#"Analyze the changed surface first and report full-repo context as an explicit bounded state.
 
@@ -131,15 +206,54 @@ or turn the full-repo limitation into a success state.
 "#;
 pub(super) const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
 
-Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>
+Usage: ripr explain [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] <finding-id|file:line>
+
+Options:
+  --from PATH  Load findings from a check artifact written by
+               `ripr check --write-artifact PATH` instead of re-running the
+               analysis. The artifact's recorded diff source is re-resolved
+               and its identity is re-verified; any mismatch (diff, root,
+               mode, languages, analysis options, config identity, or
+               analyzer version) fails closed with a typed error naming the
+               mismatched fields. --diff/--base passed alongside --from are
+               assertions verified against the recording, not overrides.
+  --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
+               With --from, this feeds the identity recomputation: an
+               artifact written with a non-default --mode is consumable only
+               when the same mode resolves here (flag or ripr.toml).
+  --no-unchanged-tests
+               Limit the index to changed Rust files. With --from, an
+               artifact written with this flag is consumable only when the
+               same setting resolves here (flag or ripr.toml).
 "#;
 pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
 
-Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
+Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] --at <finding-id|file:line> [--max-related-tests N] [--json]
+
+Options:
+  --from PATH  Load findings from a check artifact written by
+               `ripr check --write-artifact PATH` instead of re-running the
+               analysis (same fail-closed identity gate as explain --from).
+               --max-related-tests is a render-time knob honored fresh,
+               including beyond the check --json render cap.
+  --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
+               With --from, this feeds the identity recomputation (see
+               `ripr explain --help`).
+  --no-unchanged-tests
+               Limit the index to changed Rust files. With --from, feeds
+               the identity recomputation (see `ripr explain --help`).
 "#;
 pub(super) const DOCTOR_HELP: &str = r#"Diagnose the local ripr setup (Rust toolchain, workspace, paths).
 
-Usage: ripr doctor [--root PATH]
+Usage: ripr doctor [--root PATH] [--json]
+
+Options:
+  --root PATH  Diagnose the selected workspace (defaults to `.`).
+  --json       Emit the core checks as stable JSON and use the same exit status.
+
+The JSON report is machine-readable advisory setup evidence. A `fail` status or
+non-zero exit means at least one core check failed; it is not a release or gate
+decision.
 
 Checks:
   - root directory exists

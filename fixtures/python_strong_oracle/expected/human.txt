@@ -4,39 +4,27 @@ root: fixtures/python_strong_oracle/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO src/discount.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      if amount >= threshold:
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/discount.py:2
+  Static exposure: exposed (info, confidence 0.60)
+  Canonical gap: gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold
+  Changed behavior: if amount >= threshold:
+  Discriminator (observed, advisory): Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Related test: tests/test_discount.py:4 test_apply_discount_boundary
+  Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `apply_discount`
+    - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
+    - 5 more evidence line(s) hidden
 
-Probe
-  family: predicate
-  delta:  control
-  owner:  python:src/discount.py::apply_discount
-  canonical gap: gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  exposed (info, confidence 0.60)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `apply_discount`
-  - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
-  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches unknown sink: if amount >= threshold: (line 2)
-  - related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90
-
-Weakness
-  - Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
-
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

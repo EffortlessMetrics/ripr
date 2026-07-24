@@ -15,3 +15,11 @@ adoption path from repo-local evidence:
 
 The fixtures do not change generated CI defaults. Repositories still opt into
 gate evaluation by setting `RIPR_GATE_MODE`.
+
+Policy-eligible advisory, acknowledged, and blocking receipts carry the exact
+structured repair route directly in `gate-decision.{json,md}`. The checked
+blocking dogfood test reads that gate output—not the PR-guidance input—and
+requires gap/seam identity, changed behavior, missing discriminator, test target
+and intent, verify/receipt commands, the producer-owned inspection command, and
+the static authority boundary. It rejects `gh run download` or a PR-guidance
+lookup as a remediation step.

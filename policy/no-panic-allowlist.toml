@@ -9,7 +9,7 @@ status = "canonical"
 
 [[allow]]
 id = "panic-0001"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
@@ -24,7 +24,7 @@ receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 id = "panic-0002"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
@@ -38,23 +38,8 @@ callee = "unwrap"
 receiver_fingerprint = "fs::create_dir_all(parent)"
 
 [[allow]]
-id = "panic-0003"
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: saves current working directory before test"
-owner = "test-infra"
-expires = "2026-07-01"
-
-[allow.selector]
-kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
-receiver_fingerprint = "CWD_LOCK.get_or_init(|| Mutex::new(())).lock()"
-
-[[allow]]
 id = "panic-0004"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "expect"
 classification = "test_only"
 explanation = "Test harness: expects supported test intent kinds to parse successfully"
@@ -68,7 +53,7 @@ callee = "expect"
 
 [[allow]]
 id = "panic-0005"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -83,7 +68,7 @@ receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 id = "panic-0006"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -97,7 +82,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0007"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -111,7 +96,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0008"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -125,7 +110,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0009"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -139,7 +124,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0010"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -153,7 +138,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0011"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -167,7 +152,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0012"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: panic findings collection validation"
@@ -180,36 +165,8 @@ container = "collect_panic_findings_finds_exact_locations"
 callee = "unwrap"
 
 [[allow]]
-id = "panic-0013"
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-owner = "test-infra"
-expires = "2026-07-01"
-
-[allow.selector]
-kind = "method_call"
-container = "campaign_manifest_parses_valid_file"
-callee = "unwrap"
-
-[[allow]]
-id = "panic-0014"
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-owner = "test-infra"
-expires = "2026-07-01"
-
-[allow.selector]
-kind = "method_call"
-container = "campaign_manifest_reports_violations_for_invalid_file"
-callee = "unwrap"
-
-[[allow]]
 id = "panic-0015"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 allowlist parser validation"
@@ -223,7 +180,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0016"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.1 backward compatibility validation"
@@ -237,7 +194,7 @@ callee = "unwrap"
 
 [[allow]]
 id = "panic-0017"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 missing fields validation"
@@ -414,10 +371,10 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, resolve_tsconfig_paths: false, perl_facts_path: None, git_timeout: None, })"
 
 [allow.last_seen]
-line = 254
+line = 327
 column = 19
 
 [[allow]]
@@ -433,10 +390,10 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, resolve_tsconfig_paths: false, perl_facts_path: None, git_timeout: None, })"
 
 [allow.last_seen]
-line = 271
+line = 345
 column = 23
 
 [[allow]]
@@ -479,7 +436,7 @@ column = 5
 
 [[allow]]
 id = "panic-0030"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
@@ -494,7 +451,7 @@ receiver_fingerprint = "fs::create_dir_all(&dir)"
 
 [[allow]]
 id = "panic-0031"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
@@ -509,7 +466,7 @@ receiver_fingerprint = "fs::write(path, text)"
 
 [[allow]]
 id = "panic-0032"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: saves current working directory before test"
@@ -524,7 +481,7 @@ receiver_fingerprint = "std::env::current_dir()"
 
 [[allow]]
 id = "panic-0033"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: switches into a temporary working directory"
@@ -539,7 +496,7 @@ receiver_fingerprint = "std::env::set_current_dir(&root)"
 
 [[allow]]
 id = "panic-0034"
-path = "xtask/src/main.rs"
+path = "xtask/src/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: restores the previous working directory"
@@ -554,7 +511,7 @@ receiver_fingerprint = "std::env::set_current_dir(old)"
 
 [[allow]]
 id = "panic-0035"
-path = "xtask/src/main.rs"
+path = "xtask/src/no_panic/tests.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -925,4 +882,384 @@ receiver_fingerprint = "std::process::Command::new(bin) .args([\"check\", \"--ro
 
 [allow.last_seen]
 line = 4032
+column = 18
+
+[[allow]]
+id = "panic-0051"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: create_dir_all src for temp git repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::create_dir_all(root.join(\"src\"))"
+
+[allow.last_seen]
+line = 4117
+column = 5
+
+[[allow]]
+id = "panic-0052"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: git init in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"init\"])"
+
+[allow.last_seen]
+line = 4118
+column = 5
+
+[[allow]]
+id = "panic-0053"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: git config user.email in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"config\", \"user.email\", \"test@test.com\"])"
+
+[allow.last_seen]
+line = 4119
+column = 5
+
+[[allow]]
+id = "panic-0054"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: git config user.name in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"config\", \"user.name\", \"Test\"])"
+
+[allow.last_seen]
+line = 4120
+column = 5
+
+[[allow]]
+id = "panic-0055"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: write src/lib.rs baseline in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::write( root.join(\"src/lib.rs\"), \"pub fn add(a: i32, b: i32) -> i32 { a + b }\\n\", )"
+
+[allow.last_seen]
+line = 4121
+column = 5
+
+[[allow]]
+id = "panic-0056"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: write Cargo.toml in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::write( root.join(\"Cargo.toml\"), \"[package]\\nname = \\\"spec-0112-fixture\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2024\\\"\\n\", )"
+
+[allow.last_seen]
+line = 4126
+column = 5
+
+[[allow]]
+id = "panic-0057"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: git add . in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"add\", \".\"])"
+
+[allow.last_seen]
+line = 4131
+column = 5
+
+[[allow]]
+id = "panic-0058"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: git commit initial in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"commit\", \"-m\", \"initial\"])"
+
+[allow.last_seen]
+line = 4132
+column = 5
+
+[[allow]]
+id = "panic-0059"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: write uncommitted edit to src/lib.rs; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::write( root.join(\"src/lib.rs\"), \"pub fn add(a: i32, b: i32) -> i32 { a + b + 1 }\\n\", )"
+
+[allow.last_seen]
+line = 4135
+column = 5
+
+[[allow]]
+id = "panic-0060"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: run ripr check --base HEAD --json; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::process::Command::new(bin) .args([\"check\", \"--root\", &root_str, \"--base\", \"HEAD\", \"--json\"]) .output()"
+
+[allow.last_seen]
+line = 4143
+column = 18
+
+[[allow]]
+id = "panic-0061"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 smoke test: run ripr check --base HEAD (human); canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::process::Command::new(bin) .args([\"check\", \"--root\", &root_str, \"--base\", \"HEAD\"]) .output()"
+
+[allow.last_seen]
+line = 4153
+column = 24
+
+[[allow]]
+id = "panic-0062"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: create_dir_all src for temp git repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::create_dir_all(root.join(\"src\"))"
+
+[allow.last_seen]
+line = 4171
+column = 5
+
+[[allow]]
+id = "panic-0063"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git init in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"init\"])"
+
+[allow.last_seen]
+line = 4172
+column = 5
+
+[[allow]]
+id = "panic-0064"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git config user.email in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"config\", \"user.email\", \"test@test.com\"])"
+
+[allow.last_seen]
+line = 4173
+column = 5
+
+[[allow]]
+id = "panic-0065"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git config user.name in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"config\", \"user.name\", \"Test\"])"
+
+[allow.last_seen]
+line = 4174
+column = 5
+
+[[allow]]
+id = "panic-0066"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: write src/lib.rs in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::write( root.join(\"src/lib.rs\"), \"pub fn add(a: i32, b: i32) -> i32 { a + b }\\n\", )"
+
+[allow.last_seen]
+line = 4175
+column = 5
+
+[[allow]]
+id = "panic-0067"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: write Cargo.toml in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::fs::write( root.join(\"Cargo.toml\"), \"[package]\\nname = \\\"spec-0112-clean-fixture\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2024\\\"\\n\", )"
+
+[allow.last_seen]
+line = 4180
+column = 5
+
+[[allow]]
+id = "panic-0068"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git add . in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"add\", \".\"])"
+
+[allow.last_seen]
+line = 4185
+column = 5
+
+[[allow]]
+id = "panic-0069"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git commit initial in temp repo; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "run_git(&root, &[\"commit\", \"-m\", \"initial\"])"
+
+[allow.last_seen]
+line = 4186
+column = 5
+
+[[allow]]
+id = "panic-0070"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "RIPR-SPEC-0112 clean-worktree smoke test: run ripr check --base HEAD --json; canonical fail-fast pattern for binary integration tests"
+owner = "core/cli"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure"
+callee = "unwrap"
+receiver_fingerprint = "std::process::Command::new(bin) .args([\"check\", \"--root\", &root_str, \"--base\", \"HEAD\", \"--json\"]) .output()"
+
+[allow.last_seen]
+line = 4190
 column = 18

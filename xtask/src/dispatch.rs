@@ -11,6 +11,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::PrReady => super::pr_ready(),
         XtaskCommand::Cockpit => super::cockpit(),
         XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
+        XtaskCommand::BranchInventory(args) => super::branch_inventory::run(&args),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
         XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
@@ -21,6 +22,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Fixtures(name) => super::reports::fixtures(name.as_ref()),
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
+        XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),
         XtaskCommand::TestOracleReport => super::reports::test_oracle_report(),
         XtaskCommand::TestEfficiencyReport => super::reports::test_efficiency_report(),
         XtaskCommand::BadgeArtifacts => super::reports::badge_artifacts(),
@@ -31,9 +33,10 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
         XtaskCommand::RepoExposureSummaryReport => super::reports::repo_exposure_summary_report(),
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
+        XtaskCommand::TargetedRerunBenchmark(args) => {
+            super::reports::targeted_rerun_benchmark(&args)
+        }
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
-        XtaskCommand::PrBody(args) => super::pr_body(&args),
-        XtaskCommand::Closeout(args) => super::closeout(&args),
         XtaskCommand::EvidenceHealth => super::reports::evidence_health_report(),
         XtaskCommand::Lane1EvidenceAudit => super::reports::lane1_evidence_audit_report(),
         XtaskCommand::EvidenceQualityScorecard => {
@@ -77,7 +80,6 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckBadgeEndpoints(args) => super::reports::check_badge_endpoints(&args),
         XtaskCommand::Dogfood => super::reports::dogfood(),
         XtaskCommand::Critic => super::reports::critic(),
-        XtaskCommand::Goals(args) => super::goals(&args),
         XtaskCommand::Reports(args) => super::reports::reports(&args),
         XtaskCommand::Cache(args) => super::cache::run(&args),
         XtaskCommand::Receipts(args) => super::reports::receipts(&args),
@@ -87,7 +89,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CiFast => super::ci_fast(),
         XtaskCommand::CiFull => super::ci_full(),
         XtaskCommand::CheckStaticLanguage => super::check_static_language(),
-        XtaskCommand::CheckNoPanicFamily(args) => super::check_no_panic_family_with_args(&args),
+        XtaskCommand::CheckNoPanicFamily(args) => {
+            super::no_panic::check_no_panic_family_with_args(&args)
+        }
         XtaskCommand::CheckAllowAttributes => super::check_allow_attributes(),
         XtaskCommand::CheckLocalContext => super::check_local_context(),
         XtaskCommand::CheckFilePolicy => super::check_file_policy(),
@@ -98,7 +102,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
         XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
         XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
-        XtaskCommand::CheckEvidencePromotionHonesty => super::check_evidence_promotion_honesty(),
+        XtaskCommand::CheckEvidencePromotionHonesty(args) => {
+            super::check_evidence_promotion_honesty(&args)
+        }
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
         XtaskCommand::CheckWorkspaceShape => super::check_workspace_shape(),
@@ -110,7 +116,6 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckDocIndex => super::check_doc_index(),
         XtaskCommand::CheckReadmeState => super::check_readme_state(),
         XtaskCommand::MarkdownLinks => super::markdown_links(),
-        XtaskCommand::CheckCampaign => super::check_campaign(),
         XtaskCommand::CheckPrShape => super::check_pr_shape(),
         XtaskCommand::CheckGenerated => super::check_generated(),
         XtaskCommand::CheckCommandCatalog => super::check_command_catalog(),
@@ -139,7 +144,31 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::PublishDryRun => {
             super::run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
         }
+        XtaskCommand::IssueIntake(args) => super::reports::issue_intake(&args),
         XtaskCommand::Help(args) => print_help(&args),
         XtaskCommand::Unknown(command) => Err(unknown_command_message(&command)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::execute;
+    use crate::command::XtaskCommand;
+
+    #[test]
+    fn rust_repair_trust_report_is_reachable_from_dispatch() -> Result<(), String> {
+        // The report reads repo-relative paths, so the test changes the
+        // process cwd — a global mutation that races other tests since the
+        // suite went parallel (#2132; flake seen on CI in two unrelated PR
+        // branches). Hold the write guard for the whole window.
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
+        let original_dir = std::env::current_dir().map_err(|error| error.to_string())?;
+        let repository_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have a repository parent".to_string())?;
+        std::env::set_current_dir(repository_root).map_err(|error| error.to_string())?;
+        let result = execute(XtaskCommand::RustRepairTrustReport);
+        std::env::set_current_dir(original_dir).map_err(|error| error.to_string())?;
+        result
     }
 }

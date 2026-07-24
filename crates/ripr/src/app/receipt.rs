@@ -20,6 +20,7 @@
 
 use crate::output::gap_decision_ledger::parse_gap_records_json;
 use crate::output::json;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// Schema version for receipts written by this command.
@@ -35,9 +36,17 @@ pub(crate) struct ReceiptWriteOptions {
     pub(crate) packet_id: Option<String>,
     pub(crate) verify_command: String,
     pub(crate) verify_status: String,
-    /// When `None`, defaults to `target/ripr/receipts/<canonical_gap_id>.json`.
+    pub(crate) current_head: Option<String>,
+    /// When `None`, defaults to `target/ripr/receipts/<sanitized canonical_gap_id>.json`
+    /// (see [`receipt_file_stem`]).
     pub(crate) out: Option<PathBuf>,
     pub(crate) json: bool,
+    /// Repository root for git HEAD resolution (#1941). When set and
+    /// `current_head` is provided, the receipt writer validates that
+    /// `current_head` matches `git rev-parse HEAD` at this root.
+    /// When `None`, the HEAD binding check is skipped (backward-compatible
+    /// with callers that don't have a root).
+    pub(crate) root: Option<PathBuf>,
 }
 
 /// The cross-reference result from comparing a receipt against the live gap set.
@@ -96,6 +105,20 @@ pub(crate) struct ReceiptCheckOptions {
 pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String> {
     validate_write_options(opts)?;
 
+    let repository_root = std::env::current_dir()
+        .map_err(|err| format!("resolve receipt repository root failed: {err}"))?;
+    let actual_head =
+        crate::agent::artifact::current_git_head(&repository_root).map_err(|err| {
+            format!("receipt requires a Git repository with a resolvable HEAD: {err}")
+        })?;
+    if let Some(declared_head) = opts.current_head.as_deref()
+        && !declared_head.eq_ignore_ascii_case(&actual_head)
+    {
+        return Err(format!(
+            "receipt --current-head `{declared_head}` does not match actual repository HEAD `{actual_head}`"
+        ));
+    }
+
     let packet_id_available = opts.packet_id.is_some();
     let packet_id_json = match &opts.packet_id {
         Some(id) => serde_json::Value::String(id.clone()),
@@ -113,6 +136,7 @@ pub(crate) fn write_receipt(opts: &ReceiptWriteOptions) -> Result<String, String
         "packet_id_available": packet_id_available,
         "verify_command": opts.verify_command,
         "verify_status": opts.verify_status,
+        "current_head": actual_head,
         "written_at": written_at,
         "limits_note": "Static evidence only. Receipt records what was run; does not certify semantic correctness."
     });
@@ -224,10 +248,81 @@ fn cross_reference_receipt(
 pub(crate) fn receipt_out_path(opts: &ReceiptWriteOptions) -> PathBuf {
     match &opts.out {
         Some(p) => p.clone(),
-        None => {
-            PathBuf::from("target/ripr/receipts").join(format!("{}.json", opts.canonical_gap_id))
+        None => receipt_default_path(&opts.canonical_gap_id),
+    }
+}
+
+const RECEIPT_DEFAULT_DIRECTORY: &str = "target/ripr/receipts";
+const MAX_RECEIPT_DEFAULT_PATH_LEN: usize = 260;
+const RECEIPT_DEFAULT_DIRECTORY_WITH_SEPARATOR_LEN: usize = RECEIPT_DEFAULT_DIRECTORY.len() + 1;
+const RECEIPT_FILENAME_EXTENSION_LEN: usize = ".json".len();
+const MAX_RECEIPT_FILENAME_COMPONENT_LEN: usize =
+    MAX_RECEIPT_DEFAULT_PATH_LEN - RECEIPT_DEFAULT_DIRECTORY_WITH_SEPARATOR_LEN;
+const MAX_RECEIPT_FILENAME_STEM_LEN: usize =
+    MAX_RECEIPT_FILENAME_COMPONENT_LEN - RECEIPT_FILENAME_EXTENSION_LEN;
+const RECEIPT_FILENAME_HASH_HEX_LEN: usize = 64;
+
+fn receipt_default_path(canonical_gap_id: &str) -> PathBuf {
+    PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join(format!(
+        "{}.json",
+        bounded_receipt_file_stem(canonical_gap_id)
+    ))
+}
+
+fn bounded_receipt_file_stem(canonical_gap_id: &str) -> String {
+    let stem = receipt_file_stem(canonical_gap_id);
+    if stem.len() <= MAX_RECEIPT_FILENAME_STEM_LEN {
+        return stem;
+    }
+
+    let digest = format!("{:x}", Sha256::digest(canonical_gap_id.as_bytes()));
+    let suffix_len = 1 + RECEIPT_FILENAME_HASH_HEX_LEN;
+    let prefix_limit = MAX_RECEIPT_FILENAME_STEM_LEN - suffix_len;
+    let prefix_len = complete_percent_encoded_prefix_len(&stem, prefix_limit);
+    format!(
+        "{}~{}",
+        &stem[..prefix_len],
+        &digest[..RECEIPT_FILENAME_HASH_HEX_LEN]
+    )
+}
+
+fn complete_percent_encoded_prefix_len(encoded: &str, limit: usize) -> usize {
+    let mut prefix_limit = limit.min(encoded.len());
+    while prefix_limit > 0 && !encoded.is_char_boundary(prefix_limit) {
+        prefix_limit -= 1;
+    }
+    let prefix = &encoded[..prefix_limit];
+    match prefix.rfind('%') {
+        Some(percent) if percent + 3 > prefix_limit => percent,
+        _ => prefix_limit,
+    }
+}
+
+/// Derive the filesystem-safe receipt file stem for a canonical gap id.
+///
+/// Canonical gap ids commonly contain `:`-delimited segments (for example
+/// `gap:rust:pricing:aabbccdd`), and `:` is not valid in a Windows filename.
+/// The receipt's JSON content keeps the canonical gap id unchanged; only its
+/// filesystem representation is made portable by percent-encoding the escape
+/// character `%` itself and every character that is unsafe in filenames
+/// (`< > : " / \ | ? *` and ASCII control characters) as `%XX` (uppercase
+/// hex of the UTF-8 code point). The encoding is injective — distinct gap
+/// ids never collide on one file name — deterministic, and applied on every
+/// platform, so `receipt write` and `receipt check` resolve the same default
+/// path everywhere.
+fn receipt_file_stem(canonical_gap_id: &str) -> String {
+    let mut stem = String::with_capacity(canonical_gap_id.len());
+    for c in canonical_gap_id.chars() {
+        if c == '%'
+            || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+            || c.is_ascii_control()
+        {
+            stem.push_str(&format!("%{:02X}", c as u32));
+        } else {
+            stem.push(c);
         }
     }
+    stem
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
@@ -252,7 +347,55 @@ fn validate_write_options(opts: &ReceiptWriteOptions) -> Result<(), String> {
             VALID_VERIFY_STATUSES.join(", ")
         ));
     }
+    if let Some(current_head) = opts.current_head.as_deref() {
+        validate_current_head(current_head)?;
+        // Bind current_head to the actual git HEAD (#1941): when root is
+        // provided, verify the caller's --current-head matches what git
+        // actually reports. This prevents a caller from stamping an
+        // arbitrary SHA on the receipt.
+        if let Some(root) = opts.root.as_deref()
+            && let Some(actual_head) = resolve_git_head(root)
+            && actual_head != current_head
+        {
+            return Err(format!(
+                "receipt --current-head {current_head} does not match the actual git HEAD at {} ({actual_head}); \
+                 the receipt must bind to the real commit, not a caller-provided value (#1941)",
+                root.display()
+            ));
+        }
+    }
     Ok(())
+}
+
+pub(crate) fn validate_current_head(value: &str) -> Result<(), String> {
+    if value.len() != 40 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(
+            "receipt write --current-head requires a 40-character hexadecimal SHA".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Resolve the actual git HEAD SHA at `root` via `git rev-parse HEAD`.
+/// Returns `None` when git is unavailable or the root is not a git repo,
+/// so callers can fail open (format-check only) rather than hard-erroring.
+fn resolve_git_head(root: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let head = String::from_utf8(output.stdout).ok()?;
+    let trimmed = head.trim();
+    if trimmed.len() == 40 && trimmed.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
 }
 
 fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<(), String> {
@@ -263,6 +406,7 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
         "canonical_gap_id",
         "verify_command",
         "verify_status",
+        "current_head",
         "written_at",
     ];
 
@@ -292,13 +436,26 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
         ));
     }
 
+    let current_head = value["current_head"].as_str().ok_or_else(|| {
+        format!(
+            "receipt at {} is malformed: `current_head` must be a string",
+            path.display()
+        )
+    })?;
+    validate_current_head(current_head).map_err(|err| {
+        format!(
+            "receipt at {} is malformed: invalid `current_head`: {err}",
+            path.display()
+        )
+    })?;
+
     Ok(())
 }
 
 fn resolve_check_path(opts: &ReceiptCheckOptions) -> Result<PathBuf, String> {
     match (&opts.path, &opts.gap) {
         (Some(p), _) => Ok(p.clone()),
-        (None, Some(gap)) => Ok(PathBuf::from("target/ripr/receipts").join(format!("{gap}.json"))),
+        (None, Some(gap)) => Ok(receipt_default_path(gap)),
         (None, None) => Err(
             "receipt check requires --path <receipt_path> or --gap <canonical_gap_id>".to_string(),
         ),
@@ -378,8 +535,10 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test -p ripr".to_string(),
             verify_status: status.to_string(),
+            current_head: None,
             out: None,
             json: true,
+            root: None,
         }
     }
 
@@ -392,8 +551,12 @@ mod tests {
             packet_id: Some("packet-abc123".to_string()),
             verify_command: "cargo test -p ripr".to_string(),
             verify_status: "passed".to_string(),
+            current_head: Some(crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?,
+            )?),
             out: None,
             json: true,
+            root: None,
         };
         let rendered = write_receipt(&opts)?;
         let value: serde_json::Value = serde_json::from_str(&rendered)
@@ -410,6 +573,12 @@ mod tests {
         assert_eq!(value["packet_id_available"], true);
         assert_eq!(value["verify_command"], "cargo test -p ripr");
         assert_eq!(value["verify_status"], "passed");
+        assert_eq!(
+            value["current_head"],
+            crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?
+        );
         assert!(value["written_at"].as_str().unwrap_or("").contains('T'));
         assert!(
             value["limits_note"]
@@ -428,6 +597,12 @@ mod tests {
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
         assert_eq!(value["packet_id"], serde_json::Value::Null);
         assert_eq!(value["packet_id_available"], false);
+        assert_eq!(
+            value["current_head"],
+            crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?
+        );
         Ok(())
     }
 
@@ -449,8 +624,10 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: None,
             json: true,
+            root: None,
         };
         match write_receipt(&opts) {
             Ok(_) => Err("write_receipt should have failed with missing gap".to_string()),
@@ -482,14 +659,51 @@ mod tests {
     }
 
     #[test]
+    fn receipt_write_invalid_current_head_exits_nonzero() -> Result<(), String> {
+        for current_head in ["abc1234567890", "0123456789abcdef0123456789abcdef0123456g"] {
+            let mut opts = write_opts("gap:demo:aabbccdd", "passed");
+            opts.current_head = Some(current_head.to_string());
+            match write_receipt(&opts) {
+                Ok(_) => {
+                    return Err(format!(
+                        "write_receipt should reject invalid current head {current_head:?}"
+                    ));
+                }
+                Err(err) if err.contains("40-character hexadecimal SHA") => {}
+                Err(err) => {
+                    return Err(format!(
+                        "error should explain current-head format, got: {err}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_write_rejects_plausible_but_stale_current_head() -> Result<(), String> {
+        let mut opts = write_opts("gap:demo:aabbccdd", "passed");
+        opts.current_head = Some("0123456789abcdef0123456789abcdef01234567".to_string());
+        match write_receipt(&opts) {
+            Ok(_) => Err("write_receipt should reject a stale current head".to_string()),
+            Err(err) if err.contains("does not match actual repository HEAD") => Ok(()),
+            Err(err) => Err(format!(
+                "error should identify the HEAD mismatch, got: {err}"
+            )),
+        }
+    }
+
+    #[test]
     fn receipt_write_missing_verify_command_exits_nonzero() -> Result<(), String> {
         let opts = ReceiptWriteOptions {
             canonical_gap_id: "gap:demo:aabbccdd".to_string(),
             packet_id: None,
             verify_command: "".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: None,
             json: true,
+            root: None,
         };
         match write_receipt(&opts) {
             Ok(_) => {
@@ -637,6 +851,71 @@ mod tests {
     }
 
     #[test]
+    fn receipt_check_missing_current_head_exits_nonzero() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-check-missing-head-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+        let path = dir.join("missing_head.json");
+        let json = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt",
+            "canonical_gap_id": "gap:test:aabbccdd",
+            "verify_command": "cargo test",
+            "verify_status": "passed",
+            "written_at": "2026-06-11T00:00:00Z"
+        });
+        std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
+
+        let result = check_receipt(&ReceiptCheckOptions {
+            gap: None,
+            path: Some(path),
+            ledger: None,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => Err("check_receipt should reject a receipt without current_head".to_string()),
+            Err(err) if err.contains("current_head") => Ok(()),
+            Err(err) => Err(format!("error should mention current_head, got: {err}")),
+        }
+    }
+
+    #[test]
+    fn receipt_check_invalid_current_head_exits_nonzero() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-check-invalid-head-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create temp dir failed: {e}"))?;
+        let path = dir.join("invalid_head.json");
+        let json = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "receipt",
+            "canonical_gap_id": "gap:test:aabbccdd",
+            "verify_command": "cargo test",
+            "verify_status": "passed",
+            "current_head": "not-a-sha",
+            "written_at": "2026-06-11T00:00:00Z"
+        });
+        std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
+
+        let result = check_receipt(&ReceiptCheckOptions {
+            gap: None,
+            path: Some(path),
+            ledger: None,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => Err("check_receipt should reject an invalid current_head".to_string()),
+            Err(err) if err.contains("current_head") => Ok(()),
+            Err(err) => Err(format!("error should mention current_head, got: {err}")),
+        }
+    }
+
+    #[test]
     fn receipt_check_invalid_status_in_file_exits_nonzero() -> Result<(), String> {
         let dir = std::env::temp_dir().join(format!(
             "ripr-receipt-check-bad-status-{}",
@@ -651,6 +930,7 @@ mod tests {
             "canonical_gap_id": "gap:test:aabbccdd",
             "verify_command": "cargo test",
             "verify_status": "invalid_status",
+            "current_head": "0123456789abcdef0123456789abcdef01234567",
             "written_at": "2026-06-11T00:00:00Z"
         });
         std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
@@ -708,6 +988,9 @@ mod tests {
             "canonical_gap_id": gap_id,
             "verify_command": "cargo test",
             "verify_status": "passed",
+            "current_head": crate::agent::artifact::current_git_head(
+                &std::env::current_dir().map_err(|err| err.to_string())?
+            )?,
             "written_at": "2026-06-14T00:00:00Z"
         });
         std::fs::write(&path, json.to_string())
@@ -850,8 +1133,10 @@ mod tests {
             packet_id: None,
             verify_command: "cargo test".to_string(),
             verify_status: "passed".to_string(),
+            current_head: None,
             out: Some(PathBuf::from("custom/path/r.json")),
             json: true,
+            root: None,
         };
         assert_eq!(receipt_out_path(&opts), PathBuf::from("custom/path/r.json"));
     }
@@ -861,8 +1146,118 @@ mod tests {
         let opts = write_opts("gap:test:aabbccdd", "passed");
         assert_eq!(
             receipt_out_path(&opts),
-            PathBuf::from("target/ripr/receipts/gap:test:aabbccdd.json")
+            PathBuf::from("target/ripr/receipts/gap%3Atest%3Aaabbccdd.json")
         );
+    }
+
+    // ── receipt_file_stem portability ─────────────────────────────────────────
+
+    #[test]
+    fn receipt_file_stem_percent_encodes_filesystem_unsafe_characters() {
+        assert_eq!(
+            receipt_file_stem("gap:rust:pricing:aabbccdd"),
+            "gap%3Arust%3Apricing%3Aaabbccdd"
+        );
+        assert_eq!(
+            receipt_file_stem("a<b>c:d\"e/f\\g|h?i*j"),
+            "a%3Cb%3Ec%3Ad%22e%2Ff%5Cg%7Ch%3Fi%2Aj"
+        );
+        assert_eq!(receipt_file_stem("gap\u{0007}bell"), "gap%07bell");
+        assert_eq!(receipt_file_stem("100%certain"), "100%25certain");
+        assert_eq!(receipt_file_stem("gap.test_ok-1"), "gap.test_ok-1");
+    }
+
+    #[test]
+    fn receipt_file_stem_is_collision_free_for_distinct_gap_ids() {
+        // A lossy `-` mapping would collapse these pairs onto one file name,
+        // letting a default write overwrite another gap's receipt.
+        for (left, right) in [
+            ("gap:rust:a-b", "gap:rust:a:b"),
+            ("gap:rust:a%3Ab", "gap:rust:a:b"),
+            ("gap:rust:a b", "gap:rust:a%20b"),
+        ] {
+            assert_ne!(
+                receipt_file_stem(left),
+                receipt_file_stem(right),
+                "distinct gap ids must not share a default receipt file: {left} vs {right}"
+            );
+        }
+    }
+
+    #[test]
+    fn receipt_write_and_check_resolve_the_same_default_path() -> Result<(), String> {
+        let gap = "gap:rust:pricing:discount:threshold-boundary";
+        let write_path = receipt_out_path(&write_opts(gap, "passed"));
+        let check_opts = ReceiptCheckOptions {
+            gap: Some(gap.to_string()),
+            path: None,
+            ledger: None,
+        };
+        let check_path = resolve_check_path(&check_opts)?;
+        assert_eq!(write_path, check_path);
+        let file_name = check_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                format!("default receipt path has no UTF-8 file name: {check_path:?}")
+            })?;
+        assert!(
+            !file_name.chars().any(|c| matches!(
+                c,
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+            ) || c.is_ascii_control()),
+            "default receipt file name must be filesystem-portable: {file_name}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_caps_the_complete_default_path() {
+        let at_limit = "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN);
+        let beyond_limit = format!("{at_limit}0");
+        let distinct_beyond_limit = format!("{at_limit}1");
+        let at_limit_path = receipt_default_path(&at_limit);
+        let beyond_limit_path = receipt_default_path(&beyond_limit);
+        let distinct_beyond_limit_path = receipt_default_path(&distinct_beyond_limit);
+
+        assert_eq!(
+            at_limit_path.to_string_lossy().len(),
+            MAX_RECEIPT_DEFAULT_PATH_LEN
+        );
+        assert_eq!(
+            beyond_limit_path.to_string_lossy().len(),
+            MAX_RECEIPT_DEFAULT_PATH_LEN
+        );
+        assert_ne!(at_limit_path, beyond_limit_path);
+        assert_ne!(beyond_limit_path, distinct_beyond_limit_path);
+        assert!(
+            beyond_limit_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains('~'))
+        );
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_preserves_short_and_percent_boundaries() {
+        let short = "gap:rust:pricing:aabbccdd";
+        assert_eq!(bounded_receipt_file_stem(short), receipt_file_stem(short));
+
+        let prefix = "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN - 1 - RECEIPT_FILENAME_HASH_HEX_LEN);
+        let percent_boundary = format!("{prefix}:{}", "tail".repeat(100));
+        let bounded = bounded_receipt_file_stem(&percent_boundary);
+        assert_eq!(bounded.as_bytes().get(prefix.len()), Some(&b'~'));
+    }
+
+    #[test]
+    fn bounded_receipt_file_stem_handles_multibyte_prefix_boundaries() {
+        let value = format!(
+            "{}é{}",
+            "1".repeat(MAX_RECEIPT_FILENAME_STEM_LEN - RECEIPT_FILENAME_HASH_HEX_LEN - 2),
+            "1".repeat(100)
+        );
+        let path = receipt_default_path(&value);
+        assert!(path.to_string_lossy().len() <= MAX_RECEIPT_DEFAULT_PATH_LEN);
     }
 
     // ── written_at format ─────────────────────────────────────────────────────

@@ -870,6 +870,13 @@ mod tests {
                     test_name: "discounts_large_orders".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 12,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "discounts_large_orders",
+                            std::path::Path::new("tests/pricing.rs"),
+                            12,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "asserts returned discount".to_string(),
@@ -931,6 +938,13 @@ mod tests {
                     test_name: "discounts_smoke".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 22,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "discounts_smoke",
+                            std::path::Path::new("tests/pricing.rs"),
+                            22,
+                        ),
+                    ),
                     oracle_kind: OracleKind::Unknown,
                     oracle_strength: OracleStrength::Unknown,
                     evidence_summary: "helper assertion not classified".to_string(),

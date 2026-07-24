@@ -4,39 +4,25 @@ root: fixtures/python_opaque_custom_helper_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/pricing.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      if amount >= threshold:
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/pricing.py:2
+  Static exposure: static_unknown (note, confidence 0.20)
+  Changed behavior: if amount >= threshold:
+  Missing discriminator: Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or d…
+  Related test: tests/test_pricing.py:8 test_apply_discount_custom_helper
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `apply_discount`
+    - infection unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Probe
-  family: predicate
-  delta:  control
-  owner:  python:src/pricing.py::apply_discount
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  static_unknown (note, confidence 0.20)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `apply_discount`
-  - infection unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python discriminator claim.
-  - related test tests/test_pricing.py:8 test_apply_discount_custom_helper uses unknown unknown oracle: assert_discounted(result)
-
-Weakness
-  - Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or determine whether it already observes the changed discriminator.
-
-Stop reasons:
-  - static_probe_unknown
-
-
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

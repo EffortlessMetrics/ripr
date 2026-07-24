@@ -1,0 +1,24 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_macro_wrapped_assertion_limitation/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 2 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
+  Static exposure: reachable_unrevealed (warning, confidence 0.71)
+  Changed behavior: if a >= b {
+  Missing discriminator: Missing discriminator value: a == b
+  Related test: tests/it.rs:8 test_inner_with_custom_assertion_macro
+  Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+  Evidence:
+    - reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 7 more evidence line(s) hidden
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

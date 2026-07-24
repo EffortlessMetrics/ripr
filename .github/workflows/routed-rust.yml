@@ -22,6 +22,7 @@ jobs:
   route:
     name: Route Ripr Rust Small
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       router_target: ${{ steps.route.outputs.router_target }}
       router_reason: ${{ steps.route.outputs.router_reason }}
@@ -76,6 +77,7 @@ jobs:
   detect-docs-only:
     name: Detect Docs-Only Surface
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
@@ -106,9 +108,13 @@ jobs:
     name: Ripr Rust Small on CX43
     needs: [route, detect-docs-only]
     if: needs.route.outputs.router_target == 'cx43' && needs.detect-docs-only.outputs.docs_only != 'true'
+    outputs:
+      scratch_status: ${{ steps.scratch.outputs.status }}
+      scratch_message: ${{ steps.scratch.outputs.message }}
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -126,48 +132,54 @@ jobs:
         with:
           toolchain: 1.95.0
       - name: Prepare scratch
+        id: scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
           df -h / /mnt/ci-scratch 2>/dev/null || true
+          set +e
           ci-disk-guard /mnt/ci-scratch 35
+          scratch_code=$?
           ci-disk-guard /mnt/ci-cache 20
+          cache_code=$?
+          set -e
+          if [ "$scratch_code" -eq 75 ] || [ "$cache_code" -eq 75 ]; then
+            echo "status=tempfail" >> "$GITHUB_OUTPUT"
+            echo "message=disk_guard_tempfail" >> "$GITHUB_OUTPUT"
+            echo "::warning::disk guard tempfail; GitHub-hosted fallback may run"
+            exit 75
+          fi
+          if [ "$scratch_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=scratch_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$scratch_code"
+          fi
+          if [ "$cache_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=cache_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$cache_code"
+          fi
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
           free -h || true
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "message=ok" >> "$GITHUB_OUTPUT"
       - name: Required Rust gates
         run: |
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
-        if: always()
+        if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
@@ -226,9 +238,13 @@ jobs:
     name: Ripr Rust Small on CPX42
     needs: [route, detect-docs-only]
     if: needs.route.outputs.router_target == 'cpx42' && needs.detect-docs-only.outputs.docs_only != 'true'
+    outputs:
+      scratch_status: ${{ steps.scratch.outputs.status }}
+      scratch_message: ${{ steps.scratch.outputs.message }}
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "8"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -246,49 +262,55 @@ jobs:
         with:
           toolchain: 1.95.0
       - name: Prepare CPX42 scratch
+        id: scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
           df -h / /mnt/ci-scratch 2>/dev/null || true
+          set +e
           ci-disk-guard /mnt/ci-scratch 35
+          scratch_code=$?
           ci-disk-guard /mnt/ci-cache 20
+          cache_code=$?
+          set -e
+          if [ "$scratch_code" -eq 75 ] || [ "$cache_code" -eq 75 ]; then
+            echo "status=tempfail" >> "$GITHUB_OUTPUT"
+            echo "message=disk_guard_tempfail" >> "$GITHUB_OUTPUT"
+            echo "::warning::disk guard tempfail; GitHub-hosted fallback may run"
+            exit 75
+          fi
+          if [ "$scratch_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=scratch_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$scratch_code"
+          fi
+          if [ "$cache_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=cache_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$cache_code"
+          fi
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
           free -h || true
           du -sh "$CARGO_HOME" "$SCCACHE_DIR" 2>/dev/null || true
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "message=ok" >> "$GITHUB_OUTPUT"
       - name: Required Rust gates
         run: |
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
-        if: always()
+        if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
@@ -347,9 +369,13 @@ jobs:
     name: Ripr Rust Small on CX53
     needs: [route, detect-docs-only]
     if: needs.route.outputs.router_target == 'cx53' && needs.detect-docs-only.outputs.docs_only != 'true'
+    outputs:
+      scratch_status: ${{ steps.scratch.outputs.status }}
+      scratch_message: ${{ steps.scratch.outputs.message }}
     runs-on:
       group: em-ci-small
       labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
@@ -367,48 +393,54 @@ jobs:
         with:
           toolchain: 1.95.0
       - name: Prepare scratch
+        id: scratch
         run: |
           find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
           df -h / /mnt/ci-scratch 2>/dev/null || true
+          set +e
           ci-disk-guard /mnt/ci-scratch 50
+          scratch_code=$?
           ci-disk-guard /mnt/ci-cache 20
+          cache_code=$?
+          set -e
+          if [ "$scratch_code" -eq 75 ] || [ "$cache_code" -eq 75 ]; then
+            echo "status=tempfail" >> "$GITHUB_OUTPUT"
+            echo "message=disk_guard_tempfail" >> "$GITHUB_OUTPUT"
+            echo "::warning::disk guard tempfail; GitHub-hosted fallback may run"
+            exit 75
+          fi
+          if [ "$scratch_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=scratch_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$scratch_code"
+          fi
+          if [ "$cache_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=cache_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$cache_code"
+          fi
           mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
           df -h /mnt/ci-scratch /mnt/ci-cache || true
           free -h || true
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "message=ok" >> "$GITHUB_OUTPUT"
       - name: Required Rust gates
         run: |
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
-        if: always()
+        if: always() && steps.scratch.outputs.status != 'tempfail'
         run: |
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
@@ -465,9 +497,17 @@ jobs:
 
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
-    needs: [route, detect-docs-only]
-    if: needs.route.outputs.router_target == 'github' && needs.detect-docs-only.outputs.docs_only != 'true'
+    needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53]
+    if: >-
+      always() &&
+      needs.detect-docs-only.result == 'success' &&
+      needs.detect-docs-only.outputs.docs_only != 'true' &&
+      (needs.route.outputs.router_target == 'github' ||
+      (needs.route.outputs.router_target == 'cx43' && needs.rust-cx43.outputs.scratch_status == 'tempfail') ||
+      (needs.route.outputs.router_target == 'cpx42' && needs.rust-cpx42.outputs.scratch_status == 'tempfail') ||
+      (needs.route.outputs.router_target == 'cx53' && needs.rust-cx53.outputs.scratch_status == 'tempfail'))
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -485,30 +525,13 @@ jobs:
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
-          cargo xtask check-static-language
-          cargo xtask check-no-panic-family
-          cargo xtask check-allow-attributes
-          cargo xtask check-local-context
-          cargo xtask check-file-policy
-          cargo xtask check-executable-files
-          cargo xtask check-workflows
-          cargo xtask check-droid-review-config
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-fixture-contracts
+          cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-generated
-          cargo xtask check-badge-diff-policy
-          cargo xtask check-generated-clean
           cargo xtask check-dependencies
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          cargo xtask check-command-catalog
-          cargo xtask check-output-contracts
           cargo xtask goldens check
           cargo xtask fixtures
-          cargo xtask check-traceability
-          cargo xtask check-capabilities
       - name: Advisory reports
         if: always()
         run: |
@@ -564,6 +587,7 @@ jobs:
     needs: [detect-docs-only]
     if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -574,13 +598,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-docs-gate
-      - name: Doc/spec gates (docs-spec pack required commands)
+      - name: Doc/spec gates (full precommit table)
         run: |
-          cargo xtask check-static-language
-          cargo xtask check-spec-format
-          cargo xtask check-spec-numbering
-          cargo xtask check-doc-index
-          cargo xtask check-local-context
+          cargo xtask precommit
       - name: Upload docs-gate reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -594,6 +614,7 @@ jobs:
     needs: [route, detect-docs-only, rust-cx43, rust-cpx42, rust-cx53, rust-github, docs-gate]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Summarize routed result
         env:
@@ -604,6 +625,12 @@ jobs:
           CPX42_RESULT: ${{ needs.rust-cpx42.result }}
           CX53_RESULT: ${{ needs.rust-cx53.result }}
           GITHUB_RESULT: ${{ needs.rust-github.result }}
+          CX43_SCRATCH_STATUS: ${{ needs.rust-cx43.outputs.scratch_status }}
+          CPX42_SCRATCH_STATUS: ${{ needs.rust-cpx42.outputs.scratch_status }}
+          CX53_SCRATCH_STATUS: ${{ needs.rust-cx53.outputs.scratch_status }}
+          CX43_SCRATCH_MESSAGE: ${{ needs.rust-cx43.outputs.scratch_message }}
+          CPX42_SCRATCH_MESSAGE: ${{ needs.rust-cpx42.outputs.scratch_message }}
+          CX53_SCRATCH_MESSAGE: ${{ needs.rust-cx53.outputs.scratch_message }}
           RUNNER_QUERY: ${{ needs.route.outputs.runner_query }}
           RUNNER_TOTAL: ${{ needs.route.outputs.runner_total }}
           CX43_ONLINE: ${{ needs.route.outputs.cx43_online }}
@@ -613,12 +640,16 @@ jobs:
           CX53_ONLINE: ${{ needs.route.outputs.cx53_online }}
           CX53_IDLE_READY: ${{ needs.route.outputs.cx53_idle_ready }}
           EVENT_NAME: ${{ github.event_name }}
+          DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
           DOCS_ONLY: ${{ needs.detect-docs-only.outputs.docs_only }}
           DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}
         run: |
           status=pass
           message="selected implementation job succeeded"
-          if [ "$DOCS_ONLY" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
+          if [ "$DOCS_DETECT_RESULT" != "success" ]; then
+            status=fail
+            message="docs-surface detection result was $DOCS_DETECT_RESULT"
+          elif [ "$DOCS_ONLY" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
             if [ "$DOCS_GATE_RESULT" = "success" ]; then
               message="docs-only surface; heavy lanes skipped; docs-gate passed"
             else
@@ -630,16 +661,43 @@ jobs:
             message="route job result was $ROUTE_RESULT"
           else
             case "$TARGET" in
-              cx43) [ "$CX43_RESULT" = "success" ] || { status=fail; message="CX43 job result was $CX43_RESULT"; } ;;
-              cpx42) [ "$CPX42_RESULT" = "success" ] || { status=fail; message="CPX42 job result was $CPX42_RESULT"; } ;;
-              cx53) [ "$CX53_RESULT" = "success" ] || { status=fail; message="CX53 job result was $CX53_RESULT"; } ;;
+              cx43)
+                if [ "$CX43_RESULT" = "success" ]; then
+                  message="CX43 job succeeded"
+                elif [ "$CX43_SCRATCH_STATUS" = "tempfail" ] && [ "$GITHUB_RESULT" = "success" ]; then
+                  message="CX43 disk-guard tempfailed; GitHub-hosted fallback succeeded"
+                else
+                  status=fail
+                  message="CX43 job result was $CX43_RESULT"
+                fi
+                ;;
+              cpx42)
+                if [ "$CPX42_RESULT" = "success" ]; then
+                  message="CPX42 job succeeded"
+                elif [ "$CPX42_SCRATCH_STATUS" = "tempfail" ] && [ "$GITHUB_RESULT" = "success" ]; then
+                  message="CPX42 disk-guard tempfailed; GitHub-hosted fallback succeeded"
+                else
+                  status=fail
+                  message="CPX42 job result was $CPX42_RESULT"
+                fi
+                ;;
+              cx53)
+                if [ "$CX53_RESULT" = "success" ]; then
+                  message="CX53 job succeeded"
+                elif [ "$CX53_SCRATCH_STATUS" = "tempfail" ] && [ "$GITHUB_RESULT" = "success" ]; then
+                  message="CX53 disk-guard tempfailed; GitHub-hosted fallback succeeded"
+                else
+                  status=fail
+                  message="CX53 job result was $CX53_RESULT"
+                fi
+                ;;
               github) [ "$GITHUB_RESULT" = "success" ] || { status=fail; message="GitHub-hosted job result was $GITHUB_RESULT"; } ;;
               *) status=fail; message="unknown routed target: $TARGET" ;;
             esac
           fi
           echo "### Ripr Rust Small Result" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          for row in "target:$TARGET" "reason:$REASON" "docs_only:$DOCS_ONLY" "docs_gate:$DOCS_GATE_RESULT" "status:$status" "message:$message" "route:$ROUTE_RESULT" "cx43:$CX43_RESULT" "cpx42:$CPX42_RESULT" "cx53:$CX53_RESULT" "github:$GITHUB_RESULT" "runner query:$RUNNER_QUERY" "visible runners:$RUNNER_TOTAL" "cx43 online:$CX43_ONLINE" "cx43 idle ready:$CX43_IDLE_READY" "cpx42 online:$CPX42_ONLINE" "cpx42 idle ready:$CPX42_IDLE_READY" "cx53 online:$CX53_ONLINE" "cx53 idle ready:$CX53_IDLE_READY"; do
+          for row in "target:$TARGET" "reason:$REASON" "docs_detect:$DOCS_DETECT_RESULT" "docs_only:$DOCS_ONLY" "docs_gate:$DOCS_GATE_RESULT" "status:$status" "message:$message" "route:$ROUTE_RESULT" "cx43:$CX43_RESULT" "cpx42:$CPX42_RESULT" "cx53:$CX53_RESULT" "github:$GITHUB_RESULT" "cx43 scratch:$CX43_SCRATCH_STATUS" "cpx42 scratch:$CPX42_SCRATCH_STATUS" "cx53 scratch:$CX53_SCRATCH_STATUS" "cx43 scratch message:$CX43_SCRATCH_MESSAGE" "cpx42 scratch message:$CPX42_SCRATCH_MESSAGE" "cx53 scratch message:$CX53_SCRATCH_MESSAGE" "runner query:$RUNNER_QUERY" "visible runners:$RUNNER_TOTAL" "cx43 online:$CX43_ONLINE" "cx43 idle ready:$CX43_IDLE_READY" "cpx42 online:$CPX42_ONLINE" "cpx42 idle ready:$CPX42_IDLE_READY" "cx53 online:$CX53_ONLINE" "cx53 idle ready:$CX53_IDLE_READY"; do
             echo "- ${row%%:*}: \`${row#*:}\`" >> "$GITHUB_STEP_SUMMARY"
           done
           [ "$status" = "pass" ]

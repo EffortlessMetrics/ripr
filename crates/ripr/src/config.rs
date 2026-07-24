@@ -15,7 +15,8 @@ mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, OraclePolicy, RiprConfig, SeverityConfig, TypescriptConfig,
+    CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
+    LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -76,14 +77,16 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 
 [languages]
-# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript`,
-# `python`, or `perl` to opt into preview adapters when the ripr binary was
-# built with the matching Cargo feature (`lang-typescript`, `lang-python`, or
-# `lang-perl`). When this file is absent, Python project markers can enable
-# Python preview analysis
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
+# `python` to opt into preview adapters when the ripr binary was built with
+# the matching Cargo feature (`lang-typescript` or `lang-python`). When this
+# file is absent, Python project markers can enable Python preview analysis
 # automatically for the detected repository root; this explicit list remains
 # authoritative when present.
-# Valid values: rust, typescript, python, perl.
+# Valid values: rust, typescript, python.
+# (`perl` parses for forward compatibility but is scaffold-only — the adapter
+# is #[cfg(test)], the path router ignores .pm/.pl, and the pipeline errors
+# out even with lang-perl on. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
@@ -142,6 +145,22 @@ pub(crate) fn config_fingerprint(source_text: &str) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
+/// Canonical analysis-config identity for the check-artifact identity gate
+/// (RIPR-SPEC-0140): the finding-affecting allowlist fields, canonically
+/// serialized (field name, normalized value, defaults materialized), sorted,
+/// and hashed. Render-only knobs are excluded by the allowlist and are
+/// honored fresh at render time by the consuming command.
+pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String {
+    let mut pairs = config
+        .check_artifact_identity_fields()
+        .into_iter()
+        .filter(|field| field.role == ConfigIdentityRole::FindingAffecting)
+        .map(|field| format!("{}={}", field.name, field.value.clone().unwrap_or_default()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    config_fingerprint(&pairs.join("\n"))
+}
+
 pub(crate) fn apply_to_check_input(
     input: &mut CheckInput,
     config: &RiprConfig,
@@ -192,10 +211,16 @@ impl RiprConfig {
         if let Some(severity) = raw.severity {
             config.severity = merge_severity(config.severity, severity)?;
         }
-        if let Some(lsp) = raw.lsp
-            && let Some(seam_diagnostics) = lsp.seam_diagnostics
-        {
-            config.lsp.seam_diagnostics = Some(seam_diagnostics);
+        if let Some(lsp) = raw.lsp {
+            if let Some(seam_diagnostics) = lsp.seam_diagnostics {
+                config.lsp.seam_diagnostics = Some(seam_diagnostics);
+            }
+            if let Some(profile) = lsp.diagnostic_profile {
+                config.lsp.diagnostic_profile = Some(
+                    LspDiagnosticProfile::parse(&profile)
+                        .map_err(|err| format!("{err} in [lsp]"))?,
+                );
+            }
         }
         if let Some(reports) = raw.reports
             && let Some(max) = reports.max_related_tests
@@ -220,6 +245,14 @@ impl RiprConfig {
                 resolve_tsconfig_paths: ts.resolve_tsconfig_paths.unwrap_or(false),
             };
         }
+        if let Some(perl) = raw.perl {
+            config.perl = PerlConfig {
+                producer: perl.producer,
+                executable: perl.executable.map(PathBuf::from),
+                timeout_ms: perl.timeout_ms.unwrap_or(30_000),
+                cache_dir: perl.cache_dir.map(PathBuf::from),
+            };
+        }
         Ok(config)
     }
 }
@@ -234,7 +267,7 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             "perl" => LanguageId::Perl,
             other => {
                 return Err(format!(
-                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl"
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python (perl parses but is scaffold-only — see Campaign 31 #1379)"
                 ));
             }
         };
@@ -300,6 +333,7 @@ struct RawConfig {
     languages: Option<RawLanguagesConfig>,
     profiles: Option<RawProfilesConfig>,
     typescript: Option<RawTypescriptConfig>,
+    perl: Option<RawPerlConfig>,
 }
 
 #[derive(Deserialize)]
@@ -312,6 +346,15 @@ struct RawTypescriptConfig {
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPerlConfig {
+    producer: Option<String>,
+    executable: Option<String>,
+    timeout_ms: Option<u64>,
+    cache_dir: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -346,6 +389,7 @@ struct RawOraclePolicy {
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
+    diagnostic_profile: Option<String>,
 }
 
 #[derive(Deserialize)]

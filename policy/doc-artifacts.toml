@@ -150,6 +150,15 @@ status = "proposed"
 owner = "product-swarm"
 
 [[artifact]]
+id = "RIPR-PLAN-0062"
+kind = "plan"
+path = "plans/rust-one-shot-evidence-to-repair.md"
+status = "proposed"
+owner = "product-swarm"
+linked_proposal = "RIPR-PROP-0015"
+linked_spec = "RIPR-SPEC-0060"
+
+[[artifact]]
 id = "RIPR-SPEC-0065"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0065-evidence-to-repair-use-case-roadmap.md"
@@ -169,6 +178,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md"
 status = "proposed"
 owner = "product-swarm"
+standalone_reason = "Defines the optional PR-gate contract, including producer-owned repair-route eligibility and fail-closed outcomes for incomplete, limited, stale, preview, advisory, and explicitly configured blocking evidence; #2249 and the #1963 command-boundary slice provide current route and process-status proof, while planned top-level output fields remain future work."
 
 [[artifact]]
 id = "RIPR-SPEC-0068"
@@ -334,9 +344,9 @@ standalone_reason = "Fixes #1175: emits a named typescript_diff_first guidance d
 id = "RIPR-SPEC-0090"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0090-all-no-path-disclosure.md"
-status = "proposed"
+status = "accepted"
 owner = "product-swarm"
-standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only (JSON unchanged, no schema bump); addresses #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
+standalone_reason = "Honesty disclosure when every finding in a ripr check run is no_static_path or unknown; adds one advisory line to human output only with analyzed scope counts for changed Rust files, changed expressions, and statically linked related tests (JSON unchanged, no schema bump); addressed #1185 all-no-path wall-of-N usability gap; no separate proposal artifact."
 
 [[artifact]]
 id = "RIPR-SPEC-0091"
@@ -472,7 +482,7 @@ kind = "spec"
 path = "docs/specs/RIPR-SPEC-0108-evidence-promotion-honesty-meta-gate.md"
 status = "accepted"
 owner = "product-swarm"
-standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (5 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
+standalone_reason = "Honesty meta-gate capstone: cross-language pinned adversarial corpus (7 non-promoted charter members across python/typescript/rust + 3 control cases) + xtask check-evidence-promotion-honesty gate that reads byte-pinned golden expected/check.json files and asserts non-promoted cases stay non-promoted, independent of golden re-bless; catches dishonest re-bless that bypasses goldens check; zero classifier change, zero analyzer behavior change; no schema bump; no version bump."
 
 [[artifact]]
 id = "RIPR-SPEC-0109"
@@ -489,3 +499,163 @@ path = "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Receipt-gap cross-reference (closes #1123 PR 4): adds optional --ledger flag to ripr receipt check; cross-references receipt's canonical_gap_id against live gap set from parse_gap_records_json; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed honesty rule); provides the real producer for labels deferred by #1130 no-fake-zero guard; 4 unit controls + 1 CLI smoke; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0112"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0112-disclose-unanalyzed-working-tree.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honesty fix for the --base false-clean gap (closes #1291): emit unanalyzed_working_tree:true (additive JSON field + advisory human Note) when ripr check --base excludes uncommitted tracked-source changes; fail-closed (no disclosure when worktree is clean or git unavailable); 2 CLI smoke tests; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0113"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honest no_static_path messaging (P2 first-run-trust campaign): replace 'add a test' wording (implies no test exists) with 'A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace'; message-only change (no classification, no schema, no exit code change); single pub(crate) const in domain/classification.rs; ~33 golden fixtures re-blessed message-only; no schema_version bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0114"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach limitation (P3 slice-a, first-run-trust campaign): when a no_static_path finding has no related tests but a bounded BFS walk (depth<=5) over lexical call facts finds a candidate path test->...->owner, name the limitation as static_limit_kind=rust_transitive_reach_unresolved; fail-closed (classification NEVER promoted, message uses 'may' language, walk stops at macros/externals/depth>5); additive static_limit_kind value only (no schema_version bump, no version bump); unit tests in classify/transitive_reach.rs; 3 pure-example fixtures."
+
+[[artifact]]
+id = "RIPR-SPEC-0115"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach witness (P3.1, first-run-trust 'visibility before inference'): the 0114 BFS now returns the witnessing test (file:line) and the entry public-API symbol instead of a bare bool, so the limitation names something concrete to open; the human renderer surfaces it under a 'Where to look' section and the JSON evidence carries the same prose, single-sourced via the shared domain prefix const TRANSITIVE_REACH_WITNESS_PREFIX; fail-closed (classification stays no_static_path, witness NOT added to related_tests, 'may lead here' candidate language, all 0114 boundaries inherited); evidence-message-only (no new struct/JSON field, no schema_version bump, no version bump); deterministic witness ordering for golden stability; positive fixture re-blessed message-only, negative fixture unchanged."
+
+[[artifact]]
+id = "RIPR-SPEC-0116"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Explicit check --worktree mode (closes #1296): add an opt-in live tracked-worktree diff source using git diff <base>, including staged and unstaged tracked edits while preserving committed-history --base and file-based --diff behavior; --diff plus --worktree is rejected; dirty doctor guidance recommends ripr check --base HEAD --worktree; no schema_version bump, no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0117"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0117-rust-macro-reach-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust macro-reach limitation (P3 macro-boundary slice, closes #1292 partially): when no_static_path has no related tests and the 0114 lexical transitive walk does not find a path, name a same-repo macro boundary as static_limit_kind=rust_macro_reach_unresolved only when the macro definition lexically mentions the changed owner; fail-closed (classification stays no_static_path, witness is not related_tests, no macro expansion, no repair packet, no schema_version bump)."
+
+[[artifact]]
+id = "RIPR-SPEC-0118"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust integration public-API path limitation: when a RIPR-SPEC-0114/0115 transitive witness starts in an integration test path, name the limitation as static_limit_kind=rust_integration_public_api_path_unresolved while keeping non-integration helper chains on rust_transitive_reach_unresolved; fail-closed (classification stays no_static_path, stop reason stays transitive_reach_unresolved, witness is not related_tests, no repair packet, no schema_version bump)."
+
+[[artifact]]
+id = "RIPR-SPEC-0119"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust direct test macro-call limitation: when a RIPR-SPEC-0117 macro witness comes directly from the test body, name the limitation as static_limit_kind=rust_macro_wrapped_test_call_unresolved while keeping production-entry macro boundaries on rust_macro_reach_unresolved; fail-closed (classification stays no_static_path, stop reason stays macro_reach_unresolved, witness is not related_tests, no repair packet, no schema_version bump)."
+
+[[artifact]]
+id = "RIPR-SPEC-0120"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0120-rust-macro-wrapped-assertion-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust macro-wrapped assertion limitation: when a reachable related test has no recognized oracle but invokes an assertion-like custom macro, name the limitation as static_limit_kind=rust_macro_wrapped_assertion_unresolved; fail-closed (classification stays reachable_unrevealed, no macro expansion, no generic assert_* semantics, no repair packet, no schema_version bump)."
+
+[[artifact]]
+id = "RIPR-SPEC-0121"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "perl-lsp-swarm CI scratch-GC orphan-reaper path mismatch: spec-only — the fix lands in the perl-lsp-swarm repo (unreachable from this session), mirroring ripr-swarm scratch-gc.yml which sweeps inside each scratch subdir at -maxdepth 1 rather than scanning the parent at depth 1. No ripr product, schema, or classification change."
+
+[[artifact]]
+id = "RIPR-SPEC-0122"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Bounded human check output: default human output becomes a start-here triage view, human-full preserves the exhaustive evidence report, repo-scoped formats disclose that --base/--diff do not bound them, and first-pr --check missing-packet errors explain validate-only recovery. Human-only/default-output contract change; no JSON schema, analyzer, classification, or gate-policy change."
+
+[[artifact]]
+id = "RIPR-SPEC-0123"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Accepted and shipped targeted Rust rerun contract: explicit canonical-gap or changed-test selection, content-keyed fact reuse, named invalidation and cold fallback, identity and receipt continuity, local graph provenance, and a reproducible cold-versus-warm benchmark receipt. No dependency, runtime mutation, source edit, default gate, or support-tier promotion."
+
+[[artifact]]
+id = "RIPR-SPEC-0124"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Accepted contract for #1565: canonical per-URI diagnostic ordering, root-independent diagnostic identities, unchanged publication suppression, removed-URI clearing, normalized equivalent-root digest comparison, and server-side publication telemetry. No editor prompt-cache, latency, runtime mutation, or test-adequacy claim."
+
+[[artifact]]
+id = "RIPR-SPEC-0131"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Issue #1599 protocol contract slice: ratifies capability-only riprAgent v0.1 request, success, and error envelopes with independent protocol/schema identities, repository-owned JSON schemas, closed vocabularies, and recovery routes; supported_requests and supported_profiles remain empty, with no handlers, source edits, provider integration, lifecycle, or repair-usefulness claim."
+
+[[artifact]]
+id = "RIPR-SPEC-0132"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0132-spec-v2-runtime-promotion.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "First RIPR-SPEC v2 requirement: a spec/governance slice may define or amend a runtime requirement but cannot mark runtime behavior implemented, claim current runtime proof, or promote runtime support without compatible implementation and evidence dispositions. Walking skeleton for #1667/#1672/#1676."
+
+[[artifact]]
+id = "RIPR-PROP-0019"
+kind = "proposal"
+path = "docs/proposals/RIPR-PROP-0019-partial-diff-scope-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Partial diff-scope contract for #1918/#1999: deterministic whole-file partition selection, separate partial budget beside the hard analysis-cost guards, lower-bound uninspected accounting, gate/baseline/badge/Zero ineligibility, and partition identity for comparable runs."
+
+[[artifact]]
+id = "RIPR-SPEC-0133"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Issue #2131 guidance coherence fix: detect assertion-shaped owners (body dominated by assert*/expect calls, no non-test callers; fail-closed on unrecognized statements and bare-name caller collisions) and reframe recommended_next_step for oracles instead of code under test; class never changes; additive owner_shape evidence line only (no schema_version bump, no version bump); 4 new fixtures, zero pre-existing golden drift; no repair_packet_ready impact."
+
+[[artifact]]
+id = "RIPR-SPEC-0134"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Issue #1977 first provenance slice: producer-owned repo-exposure identity envelope, repository/root and revision disclosure, bounded raw-JSON content commitment, and fail-closed agent verify ingress; receipt command execution and final receipt binding remain follow-up slices under #1941."
+
+[[artifact]]
+id = "RIPR-SPEC-0135"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Issue #1978/#1979 contract slice: separates static movement, explicit command execution, receipt issuance, and externally supplied runtime mutation evidence; adds the typed VerificationExecutionResultV1 validation boundary and adversarial fixture corpus without implementing command execution, receipt binding, gate authority, or support promotion."
+
+[[artifact]]
+id = "RIPR-ADR-0021"
+kind = "adr"
+path = "docs/adr/0021-static-and-executed-assurance-axes.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Durable trust-boundary decision for #1978: static artifact movement, executed commands, receipt issuance, and external runtime mutation remain independent assurance axes."

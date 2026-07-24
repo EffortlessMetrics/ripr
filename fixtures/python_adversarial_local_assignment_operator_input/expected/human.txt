@@ -1,0 +1,33 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_local_assignment_operator_input/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1, rust: 0.
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/calc.py:2
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/calc.py:compute:predicate_boundary:predicate:total=base-bonus
+  Changed behavior: total = base - bonus
+  Missing discriminator: A strong Python oracle reaches `compute`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add a…
+  Related test: tests/test_calc.py:4 test_base_unchanged
+  Suggested test file: tests/test_calc.py
+  Suggested test: test_base_unchanged
+  Test node: tests/test_calc.py::test_base_unchanged
+  Verify command: pytest tests/test_calc.py::test_base_unchanged (high)
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `compute`
+    - infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

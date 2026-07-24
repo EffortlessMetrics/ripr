@@ -1,0 +1,79 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_constructor_field_observation/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:f04ff7e2",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:f04ff7e2",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_constructor_field_observation/input/src/lib.rs",
+        "line": 15,
+        "expression": "storage,"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach lower_statement: lower_ast_preserves_storage"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach lower_statement: lower_ast_preserves_storage", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 15)", "related test tests/lower.rs:4 lower_ast_preserves_storage uses strong exact value oracle: assert_eq!(statement.storage, Storage::Our);", "observed enum variant value Storage::Our at line 6"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":15}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach lower_statement: lower_ast_preserves_storage", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "6": "assert_eq!(statement.storage, Storage::Our);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "Storage::Our",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "Storage::Our",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "lower_ast_preserves_storage",
+          "file": "tests/lower.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(statement.storage, Storage::Our);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}

@@ -9,6 +9,35 @@ import {
 } from './client';
 
 let controller: RiprClientController | undefined;
+let coalescedStart: Promise<void> | undefined;
+
+export async function startServerOnce(
+  currentController: Pick<RiprClientController, 'start'> | undefined
+): Promise<void> {
+  if (!currentController) {
+    return;
+  }
+  if (coalescedStart) {
+    await coalescedStart;
+    return;
+  }
+
+  const start = currentController.start();
+  coalescedStart = start;
+  try {
+    await start;
+  } finally {
+    if (coalescedStart === start) {
+      coalescedStart = undefined;
+    }
+  }
+}
+
+export async function startAfterWorkspaceTrust(
+  currentController: Pick<RiprClientController, 'start'> | undefined
+): Promise<void> {
+  await startServerOnce(currentController);
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('ripr');
@@ -19,6 +48,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     status,
     vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
+    // No matching `onCommand:ripr.selectWorkspaceRoot` entry in package.json
+    // `activationEvents`: since VS Code 1.74 a contributed command activates
+    // its extension automatically, and engines.vscode is ^1.90.0. The
+    // manifest's legacy onCommand list predates that guarantee and is not
+    // extended for new commands. (#2077)
+    vscode.commands.registerCommand('ripr.selectWorkspaceRoot', async () =>
+      controller?.selectWorkspaceRoot()
+    ),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
     vscode.commands.registerCommand('ripr.showStatus', () => controller?.showStatus()),
     vscode.commands.registerCommand('ripr.diagnoseSetup', () => controller?.diagnoseSetup()),
@@ -126,20 +163,72 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidCloseTextDocument((document) => {
       controller?.markWorkspaceClosed(document);
     }),
+    vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      if (event.added.length === 0) {
+        return;
+      }
+      output.appendLine(
+        `ripr workspace folder added (${event.added.length}); starting the server if none is running.`
+      );
+      try {
+        await startServerOnce(controller);
+      } catch (error) {
+        output.appendLine(`ripr server start after workspace folder change failed: ${String(error)}`);
+      }
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(async () => {
+      output.appendLine('ripr workspace trust granted; starting a fresh server session.');
+      try {
+        await startAfterWorkspaceTrust(controller);
+      } catch (error) {
+        output.appendLine(`ripr server start after workspace trust failed: ${String(error)}`);
+      }
+    }),
+    // Auto-start when a workspace folder appears after a no-workspace start.
+    // Without this listener, opening a single Rust file first (no folder)
+    // hits the noWorkspace early return in client.ts and stops. Opening
+    // a folder later does nothing — the user has to run `ripr: Restart
+    // Server` manually. We only react when the PRE-event folder count was
+    // zero and at least one folder was added, so we don't restart on
+    // routine folder additions/removals in an already-running multi-root
+    // workspace. The pre-event count is derived from the post-event count
+    // by adding back removals and subtracting additions. (#2015)
+    vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      const folderCount = vscode.workspace.workspaceFolders?.length ?? 0;
+      // Reconstruct the pre-event folder count. VS Code does not expose it
+      // directly; derive it from the post-event count and the event delta.
+      const preEventFolderCount = folderCount + event.removed.length - event.added.length;
+      const zeroToFolderTransition = preEventFolderCount === 0 && event.added.length > 0;
+      if (zeroToFolderTransition && !controller?.isRunning()) {
+        output.appendLine('ripr workspace folder added; starting server session.');
+        try {
+          await controller?.start();
+        } catch (error) {
+          output.appendLine(`ripr server start after workspace folder added failed: ${String(error)}`);
+        }
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (
         event.affectsConfiguration('ripr.enabled') ||
         event.affectsConfiguration('ripr.server') ||
         event.affectsConfiguration('ripr.check') ||
-        event.affectsConfiguration('ripr.baseRef') ||
-        event.affectsConfiguration('ripr.trace')
+        event.affectsConfiguration('ripr.baseRef')
       ) {
         await controller?.restart();
+        return;
+      }
+      if (event.affectsConfiguration('ripr.trace')) {
+        // Trace applies live (#2082): a full restart would drop every
+        // published diagnostic and force a full re-analysis. When a
+        // restart-triggering key changed in the same event, the restart
+        // above already applied the new trace level at start().
+        controller?.setTraceFromConfig();
       }
     })
   );
 
-  await controller.start();
+  await startServerOnce(controller);
 }
 
 export async function deactivate(): Promise<void> {

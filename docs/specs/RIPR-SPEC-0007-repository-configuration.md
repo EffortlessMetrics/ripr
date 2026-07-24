@@ -43,6 +43,18 @@ Precedence is:
 explicit CLI or LSP option > ripr.toml > built-in default
 ```
 
+Scoped amendment (RIPR-SPEC-0136): when the LSP client supports the
+server-originated `workspace/configuration` pull model, the five governed LSP
+session keys resolve per key as
+
+```text
+valid pulled setting > LSP initialization option > ripr.toml > built-in default
+```
+
+so initialization options become the compatibility fallback for keys the pull
+did not return. In the push-fallback and initialization-only modes the
+precedence above is unchanged.
+
 ## Required Evidence
 
 Repository configuration evidence should cover:
@@ -108,6 +120,16 @@ when the editor sends initializationOptions.seamDiagnostics = false,
 then the LSP server keeps seam diagnostics disabled for that session.
 ```
 
+### Valid pulled LSP settings win over initialization options (pull mode)
+
+```text
+Given the LSP client supports workspace/configuration,
+and initializationOptions.checkMode = "fast",
+when the pulled ripr section returns checkMode = "ready",
+then the LSP session uses ready mode,
+and initialization options supply only the keys the pull did not return.
+```
+
 ### Malformed config is actionable
 
 ```text
@@ -138,6 +160,8 @@ Current tests:
 - `crates/ripr/src/config.rs::tests::oracle_policy_rewrites_configurable_oracle_strengths`
 - `crates/ripr/src/lsp/config.rs::tests::repo_config_sets_defaults_when_initialization_options_are_missing`
 - `crates/ripr/src/lsp/config.rs::tests::initialization_options_override_repo_config_defaults`
+- `crates/ripr/src/lsp/config.rs::tests::pulled_settings_override_initialization_options_for_returned_keys`
+- `crates/ripr/src/lsp/config.rs::tests::repository_reload_preserves_pulled_overrides`
 - `crates/ripr/src/app.rs::tests::configured_finding_severity_applies_to_human_json_and_github`
 - `crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::configured_seam_severity_can_disable_a_class`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`

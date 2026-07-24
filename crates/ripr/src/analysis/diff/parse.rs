@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::model::{ChangedFile, ChangedLine};
-use super::path::{parse_new_path_marker, parse_old_path_marker};
+use super::path::{is_new_path_marker, parse_new_path_marker, parse_old_path_marker};
 
 pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
@@ -22,6 +22,18 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
             continue;
         }
 
+        // Binary file sentinel: `Binary files a/x and b/x differ` (or
+        // `/dev/null` variants) signals that this file has no textual hunks
+        // and produces no analyzable line-level probes. Treat it as a hunk
+        // closer so a following textual file-section is not mis-attributed to
+        // the binary file's still-open hunk, and so the parser does not fall
+        // through and consume the literal `Binary files ...` line as hunk
+        // payload.
+        if state.handle_binary_files_sentinel(raw) {
+            i += 1;
+            continue;
+        }
+
         // RANK-2 fix: detect a plain-diff file-section boundary while in_hunk.
         // A genuine `--- payload` line inside a hunk starts with `-` (one dash)
         // and is consumed as a removed line.  A file-section separator starts
@@ -31,7 +43,7 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
             && parse_old_path_marker(raw)
             && lines
                 .get(i + 1)
-                .is_some_and(|next| parse_new_path_marker(next).is_some())
+                .is_some_and(|next| is_new_path_marker(next))
         {
             // This `--- ` line opens a new file section: close the current hunk
             // and fall through to the normal path-marker handler below.
@@ -74,7 +86,8 @@ fn parse_start(segment: &str) -> Option<usize> {
 
 mod parser_state {
     use super::{
-        ChangedFile, ChangedLine, parse_hunk_header, parse_new_path_marker, parse_old_path_marker,
+        ChangedFile, ChangedLine, is_new_path_marker, parse_hunk_header, parse_new_path_marker,
+        parse_old_path_marker,
     };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -117,6 +130,16 @@ mod parser_state {
             }
 
             let Some(path) = parse_new_path_marker(raw) else {
+                // A syntactically valid `+++` marker whose path was rejected
+                // by confinement (or `/dev/null`): consume the marker and
+                // clear the current file so the following hunk lines cannot
+                // be mis-attributed to the previous file. consume_hunk_line
+                // ignores hunk lines while current_path is None (#2099).
+                if is_new_path_marker(raw) {
+                    self.current_path = None;
+                    self.saw_old_path_marker = false;
+                    return true;
+                }
                 return false;
             };
             if self.current_path.is_none() || self.saw_old_path_marker {
@@ -131,7 +154,20 @@ mod parser_state {
         }
 
         pub(super) fn handle_diff_boundary(&mut self, raw: &str) -> bool {
-            if !raw.starts_with("diff --git ") {
+            // Recognise every form of `git diff` file-section boundary:
+            //   diff --git a/x b/x      (the common two-way diff)
+            //   diff --cc a/x b/x       (combined diff for a merge commit)
+            //   diff --combined a/x b/x (explicit --combined flag)
+            // Without the `--cc`/`--combined` cases, a merge-commit diff would
+            // fall through: the `diff ` prefix is consumed by no handler, the
+            // following `--- `/`+++ ` markers may be mis-attributed to the
+            // previous file, and the parser silently produces zero or wrong
+            // probes for the merge. Treat all three as the same boundary so
+            // the parser closes any open hunk and resets file context.
+            let is_boundary = raw.strip_prefix("diff --").is_some_and(|rest| {
+                rest.starts_with("git ") || rest.starts_with("cc ") || rest.starts_with("combined ")
+            });
+            if !is_boundary {
                 return false;
             }
             self.current_path = None;
@@ -146,12 +182,49 @@ mod parser_state {
             }
             self.saw_old_path_marker = false;
             if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+                // Overflow guard: if either start coordinate is at usize::MAX,
+                // the counter cannot advance and every line in this hunk would
+                // be tagged with a meaningless line number. usize::MAX is never
+                // a real source line, and downstream consumers (classifier,
+                // probe generator) trust `line` unconditionally — emitting a
+                // probe at usize::MAX produces a finding that points nowhere.
+                // Drop the entire hunk (including the first line) by refusing
+                // to enter it. The earlier fail-closed variant recorded the
+                // first line at usize::MAX and then closed; this stricter
+                // variant drops even that first line, because usize::MAX is
+                // not an honest coordinate for any line. See the post-merge
+                // review of #2050.
+                if old_start == usize::MAX || new_start == usize::MAX {
+                    self.in_hunk = false;
+                    return true;
+                }
                 self.old_line = old_start;
                 self.new_line = new_start;
                 self.in_hunk = true;
             } else {
                 self.in_hunk = false;
             }
+            true
+        }
+
+        /// Detect the `Binary files a/x and b/x differ` sentinel git emits in
+        /// place of a textual hunk when a file's bytes differ but cannot be
+        /// shown as text. Returns `true` (and closes any open hunk) so the
+        /// caller advances past the line; `false` otherwise.
+        pub(super) fn handle_binary_files_sentinel(&mut self, raw: &str) -> bool {
+            // `Binary files ` is git's literal prefix; the full line shape is:
+            //   Binary files a/<path> and b/<path> differ
+            //   Binary files a/<path> and /dev/null differ
+            //   Binary files /dev/null and b/<path> differ
+            // We do not try to register the path: ripr cannot extract line
+            // probes from a binary blob, so the file is correctly treated as
+            // having no changed lines. We only need to ensure that any open
+            // hunk is closed so a later textual section is not mis-attributed.
+            if !raw.starts_with("Binary files ") || !raw.ends_with(" differ") {
+                return false;
+            }
+            self.in_hunk = false;
+            self.saw_old_path_marker = false;
             true
         }
 
@@ -178,7 +251,18 @@ mod parser_state {
                     new_side_line: self.new_line,
                     text: text.to_string(),
                 });
-                self.new_line = self.new_line.saturating_add(1);
+                // Fail closed on overflow: if the new-side counter is already
+                // at usize::MAX (from a malicious or malformed @@ header), it
+                // cannot advance. Earlier behaviour silently emitted every
+                // subsequent line in this hunk tagged `line: usize::MAX`,
+                // producing ownerless probes that masqueraded as a long run of
+                // changes. Close the hunk instead so only the first overflowed
+                // line is recorded (and the rest are dropped as ambiguous).
+                if let Some(next) = self.new_line.checked_add(1) {
+                    self.new_line = next;
+                } else {
+                    self.close_hunk();
+                }
             } else if let Some(text) = raw.strip_prefix('-') {
                 // RANK-1 fix: record both the old-side line (`line`) and the
                 // current new-side position (`new_side_line`).  When an earlier
@@ -191,10 +275,22 @@ mod parser_state {
                     new_side_line: self.new_line,
                     text: text.to_string(),
                 });
-                self.old_line = self.old_line.saturating_add(1);
+                if let Some(next) = self.old_line.checked_add(1) {
+                    self.old_line = next;
+                } else {
+                    self.close_hunk();
+                }
             } else if raw.starts_with(' ') || raw.is_empty() {
-                self.old_line = self.old_line.saturating_add(1);
-                self.new_line = self.new_line.saturating_add(1);
+                if let (Some(o), Some(n)) =
+                    (self.old_line.checked_add(1), self.new_line.checked_add(1))
+                {
+                    self.old_line = o;
+                    self.new_line = n;
+                } else {
+                    // Either counter saturated: stop emitting misleading
+                    // line numbers for the rest of this hunk.
+                    self.close_hunk();
+                }
             }
         }
     }
@@ -766,15 +862,226 @@ deleted file mode 100644
     }
 
     #[test]
-    fn parser_handles_hunk_line_numbers_near_usize_max() {
-        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551615,2 +18446744073709551615,2 @@\n-a\n+b\n c\n";
+    fn parser_handles_hunk_line_numbers_at_usize_max() {
+        // A hunk header whose start coordinate is usize::MAX cannot produce
+        // any honest line number: usize::MAX is never a real source line,
+        // and the counter cannot advance. The parser refuses to enter the
+        // hunk at all, so NO changed line is recorded — not even the first.
+        // This is stricter than the earlier fail-closed variant (which
+        // recorded the first line at usize::MAX and then closed); the
+        // stricter behaviour avoids emitting a probe at usize::MAX that
+        // downstream consumers (classifier, probe generator) would trust
+        // unconditionally. See the post-merge review of #2050.
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551615,2 +18446744073709551615,2 @@\n+a\n-b\n c\n";
         let files = parse_unified_diff(diff);
         assert_eq!(files.len(), 1);
         let file = &files[0];
-        assert_eq!(file.added_lines.len(), 1);
-        assert_eq!(file.removed_lines.len(), 1);
-        assert_eq!(file.added_lines[0].line, usize::MAX);
-        assert_eq!(file.removed_lines[0].line, usize::MAX);
+        // The entire hunk is dropped: no added, no removed lines.
+        assert_eq!(file.added_lines.len(), 0);
+        assert_eq!(file.removed_lines.len(), 0);
+    }
+
+    #[test]
+    fn parser_treats_diff_cc_combined_diff_header_as_boundary() {
+        // `diff --cc` is the combined diff git emits for merge commits. Before
+        // the boundary recognition fix, the `diff ` prefix matched no handler,
+        // the following `--- a/...`/`+++ b/...` markers were mis-attributed to
+        // the previous file's still-open hunk, and the parser produced probes
+        // against the wrong file (or zero probes for the merge). We now treat
+        // `diff --cc` exactly like `diff --git`: it closes any open file/hunk
+        // and resets context so the next `--- `/`+++ ` pair opens a fresh
+        // section.
+        let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-old\n+new\ndiff --cc a/src/merged.rs b/src/merged.rs\n--- a/src/merged.rs\n+++ b/src/merged.rs\n@@@ -1,1 -1,1 +1,1 @@@\n-old\n+new\n";
+        let files = parse_unified_diff(diff);
+        // The first file's textual hunk is parsed normally. The `diff --cc`
+        // file's combined hunk header (`@@@ ... @@@`) is not a `@@` prefix, so
+        // it produces no line probes — but the boundary close means the
+        // following `--- a/src/merged.rs`/`+++ b/src/merged.rs` markers are
+        // not mis-attributed to `src/a.rs`.
+        let a = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("src/a.rs"));
+        let merged = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("src/merged.rs"));
+        assert!(a.is_some(), "src/a.rs registered: {files:?}");
+        assert!(merged.is_some(), "src/merged.rs registered: {files:?}");
+        if let (Some(a), Some(merged)) = (a, merged) {
+            // The merged.rs path is registered via its `+++` marker (so it
+            // appears in the file list) but carries no analyzable changed
+            // lines.
+            assert!(merged.added_lines.is_empty());
+            assert!(merged.removed_lines.is_empty());
+            // The a.rs hunk is intact.
+            assert_eq!(a.added_lines.len(), 1);
+            assert_eq!(a.removed_lines.len(), 1);
+        }
+    }
+
+    #[test]
+    fn parser_treats_diff_combined_explicit_header_as_boundary() {
+        // `diff --combined` is the explicit form of `diff --cc`. Same boundary
+        // treatment.
+        let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-old\n+new\ndiff --combined a/src/merged.rs\n--- a/src/merged.rs\n+++ b/src/merged.rs\n";
+        let files = parse_unified_diff(diff);
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == std::path::Path::new("src/a.rs"))
+        );
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == std::path::Path::new("src/merged.rs"))
+        );
+    }
+
+    #[test]
+    fn parser_handles_binary_files_sentinel_and_closes_open_hunk() {
+        // git emits `Binary files a/x and b/x differ` in place of a textual
+        // hunk when a file's bytes differ. ripr cannot extract line probes
+        // from a binary blob, so the file is correctly recorded with zero
+        // changed lines. We must also ensure the sentinel closes any open hunk
+        // so a following textual file is not mis-attributed.
+        let diff = "diff --git a/binary.dat b/binary.dat\nBinary files a/binary.dat and b/binary.dat differ\ndiff --git a/src/text.rs b/src/text.rs\n--- a/src/text.rs\n+++ b/src/text.rs\n@@ -3,1 +3,1 @@\n-old\n+new\n";
+        let files = parse_unified_diff(diff);
+        // binary.dat is not registered: the `Binary files` line is consumed as
+        // a sentinel and produces no `+++ b/binary.dat` marker that would
+        // create a ChangedFile. (Even if git emitted a path marker, the file
+        // would correctly carry no analyzable lines.)
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.path == std::path::Path::new("binary.dat")),
+            "binary sentinel must not register a textual ChangedFile: {files:?}"
+        );
+        // The following textual file is parsed normally — the sentinel closed
+        // any open state from the previous file.
+        let text = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("src/text.rs"));
+        assert!(text.is_some(), "src/text.rs registered: {files:?}");
+        if let Some(text) = text {
+            assert_eq!(text.added_lines.len(), 1);
+            assert_eq!(text.added_lines[0].line, 3);
+            assert_eq!(text.removed_lines.len(), 1);
+            assert_eq!(text.removed_lines[0].line, 3);
+        }
+    }
+
+    #[test]
+    fn parser_handles_binary_files_sentinel_with_dev_null() {
+        // `/dev/null` variants: a newly-added or removed binary file.
+        let diff = "diff --git a/new_blob.dat b/new_blob.dat\nnew file mode 100644\nBinary files /dev/null and b/new_blob.dat differ\ndiff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let files = parse_unified_diff(diff);
+        let lib = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("src/lib.rs"));
+        assert!(lib.is_some(), "src/lib.rs registered: {files:?}");
+        if let Some(lib) = lib {
+            assert_eq!(lib.added_lines.len(), 1);
+        }
+    }
+
+    #[test]
+    fn parser_drops_all_lines_after_usize_max_overflow_in_hunk() {
+        // Secondary overflow defense: a hunk header whose start is NEAR but
+        // not AT usize::MAX (here usize::MAX - 2) enters the hunk normally,
+        // but after the first few lines the counter saturates and the parser
+        // closes the hunk fail-closed. This test exercises the checked_add
+        // close-on-overflow path in consume_hunk_line (the primary defense
+        // is in handle_hunk_header, tested by parser_handles_hunk_line_numbers_at_usize_max).
+        //
+        // Start at usize::MAX - 2 = 18446744073709551613. The first `+first`
+        // line is recorded at that line number (a valid coordinate). The
+        // second `+second` advances to usize::MAX - 1 (valid). The third
+        // `+third` advances to usize::MAX (valid). The fourth context line
+        // ` fourth` cannot advance (usize::MAX + 1 overflows), so the hunk
+        // closes and `-fifth` is dropped.
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551613,5 +18446744073709551613,5 @@\n+first\n+second\n+third\n fourth\n-fifth\n";
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        // Three added lines recorded (at usize::MAX-2, usize::MAX-1, usize::MAX);
+        // the context line ` fourth` triggers the close; `-fifth` is dropped.
+        assert_eq!(file.added_lines.len(), 3);
+        assert_eq!(file.added_lines[0].text, "first");
+        assert_eq!(file.added_lines[0].line, usize::MAX - 2);
+        assert_eq!(file.added_lines[1].text, "second");
+        assert_eq!(file.added_lines[1].line, usize::MAX - 1);
+        assert_eq!(file.added_lines[2].text, "third");
+        assert_eq!(file.added_lines[2].line, usize::MAX);
+        // The fifth line (`-fifth`) is dropped fail-closed.
+        assert_eq!(file.removed_lines.len(), 0);
+    }
+
+    #[test]
+    fn rejects_new_path_marker_with_parent_dir_traversal() {
+        assert_eq!(parse_new_path_marker("+++ b/../../../etc/passwd"), None);
+    }
+
+    #[test]
+    fn rejects_new_path_marker_with_embedded_parent_dir() {
+        assert_eq!(parse_new_path_marker("+++ b/src/../../../etc/passwd"), None);
+    }
+
+    #[test]
+    fn rejects_new_path_marker_with_absolute_path() {
+        assert_eq!(parse_new_path_marker("+++ b//etc/passwd"), None);
+        assert_eq!(parse_new_path_marker("+++ /etc/passwd"), None);
+    }
+
+    #[test]
+    fn normalizes_new_path_marker_with_cur_dir_components() {
+        assert_eq!(
+            parse_new_path_marker("+++ b/./src/lib.rs"),
+            Some(PathBuf::from("src/lib.rs"))
+        );
+    }
+
+    #[test]
+    fn diff_with_traversal_path_registers_no_file() {
+        // A crafted diff whose `+++` marker escapes the workspace must not
+        // register a ChangedFile at all: rejection is treated like
+        // `/dev/null`, so no SourceLocation can escape the root (#2099).
+        let diff = "diff --git a/../../../etc/passwd b/../../../etc/passwd\n--- a/../../../etc/passwd\n+++ b/../../../etc/passwd\n@@ -1,1 +1,1 @@\n-root\n+root\n";
+        let files = parse_unified_diff(diff);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn plain_diff_rejected_traversal_marker_does_not_corrupt_previous_file() {
+        // Plain unified diff (no `diff --git` separators): the RANK-2
+        // boundary detector must treat a confinement-rejected `+++` marker as
+        // a file-section boundary, and the parser must clear the current
+        // file — otherwise the crafted marker, hunk header, and payload lines
+        // are consumed as changes to the previous in-workspace file (#2099
+        // review).
+        let diff = "--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n--- a/../../../etc/passwd\n+++ b/../../../etc/passwd\n@@ -1,1 +1,1 @@\n-root\n+root\n";
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/a.rs"));
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].added_lines[0].text, "new");
+        assert_eq!(files[0].removed_lines.len(), 1);
+        assert_eq!(files[0].removed_lines[0].text, "old");
+    }
+
+    #[test]
+    fn hunk_payload_resembling_markers_with_spaces_stays_payload() {
+        // A removed line whose text is `-- token` followed by an added line
+        // whose text is `++ token with spaces` must not be misread as a
+        // file-section boundary: an unquoted marker path with whitespace is
+        // implausible, so the hunk stays open and both lines attach to the
+        // current file (#2099 review).
+        let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,3 +1,3 @@\n ctx\n--- token\n+++ token with spaces\n ctx2\n";
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/a.rs"));
+        assert_eq!(files[0].removed_lines.len(), 1);
+        assert_eq!(files[0].removed_lines[0].text, "-- token");
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].added_lines[0].text, "++ token with spaces");
     }
 
     fn next_u64(seed: &mut u64) -> u64 {

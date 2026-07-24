@@ -32,6 +32,7 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/badges/shields-endpoint.schema.json`](../../schemas/badges/shields-endpoint.schema.json) | Public committed badge endpoint JSON. |
 | [`schemas/ripr/pr-evidence.schema.json`](../../schemas/ripr/pr-evidence.schema.json) | Canonical PR evidence summary packet. |
 | [`schemas/ripr/review-comments.schema.json`](../../schemas/ripr/review-comments.schema.json) | `ripr review-comments` guidance output. |
+| [`schemas/ripr/gate-decision.schema.json`](../../schemas/ripr/gate-decision.schema.json) | `ripr gate evaluate` decision output and its structured repair route. |
 
 The schema set and valid fixture packets are checked by:
 

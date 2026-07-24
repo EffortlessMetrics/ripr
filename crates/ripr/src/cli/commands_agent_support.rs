@@ -197,7 +197,7 @@ pub(super) fn resolve_agent_brief_working_set(
     match working_set {
         crate::cli::agent::AgentBriefWorkingSet::Diff(path) => {
             let diff_path = validate_agent_brief_diff_path(root, path)?;
-            let diff_text = analysis::load_diff(root, None, Some(&diff_path))?;
+            let diff_text = analysis::load_diff(root, None, Some(&diff_path), None)?;
             let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
             let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
             Ok(AgentBriefResolvedWorkingSet::diff(
@@ -207,7 +207,7 @@ pub(super) fn resolve_agent_brief_working_set(
             .map(|working_set| working_set.with_changed_owners(changed_owners))
         }
         crate::cli::agent::AgentBriefWorkingSet::Base(base) => {
-            let diff_text = analysis::load_diff(root, Some(base.as_str()), None)?;
+            let diff_text = analysis::load_diff(root, Some(base.as_str()), None, None)?;
             let changed_lines = agent_brief_lines_from_diff(root, &diff_text);
             let changed_owners = agent_brief_owners_for_lines(root, &changed_lines);
             Ok(AgentBriefResolvedWorkingSet::base(
@@ -216,14 +216,11 @@ pub(super) fn resolve_agent_brief_working_set(
             ))
             .map(|working_set| working_set.with_changed_owners(changed_owners))
         }
-        crate::cli::agent::AgentBriefWorkingSet::Files(files) => {
-            Ok(AgentBriefResolvedWorkingSet::files(
-                files
-                    .iter()
-                    .map(|file| normalize_agent_brief_path(root, file))
-                    .collect(),
-            ))
-        }
+        crate::cli::agent::AgentBriefWorkingSet::Files(files) => files
+            .iter()
+            .map(|file| confine_agent_brief_file_path(root, file))
+            .collect::<Result<Vec<_>, _>>()
+            .map(AgentBriefResolvedWorkingSet::files),
         crate::cli::agent::AgentBriefWorkingSet::SeamId(seam_id) => {
             Ok(AgentBriefResolvedWorkingSet::seam_id(seam_id.clone()))
         }
@@ -286,6 +283,39 @@ pub(super) fn agent_brief_owners_for_lines(
         .into_iter()
         .map(|owner| AgentBriefChangedOwner::new(owner.file, owner.line, owner.owner))
         .collect()
+}
+
+/// Confine an agent-brief `--files` entry to the workspace (#2100): strip
+/// the root prefix when present, then fail closed with a named error when
+/// the result still escapes — a `..` component, an absolute path outside
+/// root, or a drive prefix. The brief artifact must never embed an
+/// unconfined path; this mirrors the lexical confinement the diff parser
+/// applies to parsed diff paths (#2099).
+fn confine_agent_brief_file_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let normalized = normalize_agent_brief_path(root, path);
+    let mut confined = PathBuf::new();
+    for component in normalized.components() {
+        match component {
+            std::path::Component::Normal(part) => confined.push(part),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "agent brief --files {} must stay under root {}",
+                    path.display(),
+                    root.display()
+                ));
+            }
+        }
+    }
+    if confined.as_os_str().is_empty() {
+        return Err(format!(
+            "agent brief --files {} is empty after normalization",
+            path.display()
+        ));
+    }
+    Ok(confined)
 }
 
 pub(super) fn normalize_agent_brief_path(root: &Path, path: &Path) -> PathBuf {

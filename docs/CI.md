@@ -386,7 +386,12 @@ Use it to record CX53 primary proof, CX43 fallback proof, or the bounded
 runner availability blocker without exposing runner tokens or secrets.
 
 The routed lane runs the existing Rust/product command surface without release
-package or publish dry-run steps. It keeps advisory evidence artifacts
+package or publish dry-run steps. Each required lane invokes the shared
+`cargo xtask precommit` gate table after the cargo build/test steps and keeps
+only the lane-only gates enumerated (`check-evidence-promotion-honesty`,
+`check-dependencies`, `check-process-policy`, `check-network-policy`,
+`goldens check`, `fixtures`); the docs-gate job runs the same precommit table
+for docs-only pull requests. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
 
 The legacy Rust workflow currently runs on pushes to `main` or `master`, manual
@@ -417,7 +422,6 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
@@ -559,7 +563,6 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-command-catalog

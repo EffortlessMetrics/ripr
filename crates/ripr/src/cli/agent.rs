@@ -261,15 +261,17 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
         i += 1;
     }
 
-    if !json {
-        return Err("agent brief requires --json until human output is implemented".to_string());
-    }
-
     let working_set = working_set
         .ok_or_else(|| {
             "agent brief requires exactly one of --diff, --base, --files, or --seam-id".to_string()
         })?
         .into_working_set();
+
+    if !json {
+        return Err(
+            "agent brief requires --json (the supported output for this subcommand)".to_string(),
+        );
+    }
 
     Ok(AgentBriefOptions {
         root,
@@ -323,9 +325,6 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
         i += 1;
     }
 
-    if !json {
-        return Err("agent packet requires --json until human output is implemented".to_string());
-    }
     if seam_id.is_some() && (gap_ledger.is_some() || gap_id.is_some()) {
         return Err(
             "agent packet accepts either --seam-id or --gap-ledger with --gap-id, not both"
@@ -346,6 +345,12 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
             );
         }
         _ => {}
+    }
+
+    if !json {
+        return Err(
+            "agent packet requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentPacketOptions {
@@ -384,14 +389,18 @@ pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyO
         i += 1;
     }
 
+    let before = before.ok_or_else(|| "agent verify requires --before <path>".to_string())?;
+    let after = after.ok_or_else(|| "agent verify requires --after <path>".to_string())?;
     if !json {
-        return Err("agent verify requires --json until human output is implemented".to_string());
+        return Err(
+            "agent verify requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentVerifyOptions {
         root,
-        before: before.ok_or_else(|| "agent verify requires --before <path>".to_string())?,
-        after: after.ok_or_else(|| "agent verify requires --after <path>".to_string())?,
+        before,
+        after,
         json,
     })
 }
@@ -450,15 +459,19 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
         i += 1;
     }
 
+    let verify_json =
+        verify_json.ok_or_else(|| "agent receipt requires --verify-json <path>".to_string())?;
+    let seam_id = seam_id.ok_or_else(|| "agent receipt requires --seam-id".to_string())?;
     if !json {
-        return Err("agent receipt requires --json until human output is implemented".to_string());
+        return Err(
+            "agent receipt requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentReceiptOptions {
         root,
-        verify_json: verify_json
-            .ok_or_else(|| "agent receipt requires --verify-json <path>".to_string())?,
-        seam_id: seam_id.ok_or_else(|| "agent receipt requires --seam-id".to_string())?,
+        verify_json,
+        seam_id,
         test_changed,
         commands_run,
         json,
@@ -592,9 +605,18 @@ mod tests {
 
     #[test]
     fn agent_args_reject_unknown_subcommand() {
+        // #2073: a missing scope is reported before the output-format
+        // requirement.
         assert_eq!(
             parse_agent_args(&args(&["packet"])),
-            Err("agent packet requires --json until human output is implemented".to_string())
+            Err("agent packet requires --seam-id or --gap-ledger with --gap-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_args(&args(&["packet", "--seam-id", "abc"])),
+            Err(
+                "agent packet requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_args(&args(&["other"])),
@@ -753,7 +775,10 @@ mod tests {
     fn agent_brief_requires_json() {
         assert_eq!(
             parse_agent_brief_options(&args(&["--diff", "change.diff"])),
-            Err("agent brief requires --json until human output is implemented".to_string())
+            Err(
+                "agent brief requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
     }
 
@@ -882,7 +907,10 @@ mod tests {
     fn agent_packet_requires_json_and_seam_id() {
         assert_eq!(
             parse_agent_packet_options(&args(&["--seam-id", "abc"])),
-            Err("agent packet requires --json until human output is implemented".to_string())
+            Err(
+                "agent packet requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_packet_options(&args(&["--json"])),
@@ -1002,7 +1030,10 @@ mod tests {
                 "--after",
                 "after.json",
             ])),
-            Err("agent verify requires --json until human output is implemented".to_string())
+            Err(
+                "agent verify requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_verify_options(&args(&["--after", "after.json", "--json"])),
@@ -1074,7 +1105,10 @@ mod tests {
                 "--seam-id",
                 "abc",
             ])),
-            Err("agent receipt requires --json until human output is implemented".to_string())
+            Err(
+                "agent receipt requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_receipt_options(&args(&["--seam-id", "abc", "--json"])),

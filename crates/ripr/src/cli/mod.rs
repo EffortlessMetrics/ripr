@@ -9,6 +9,7 @@ mod commands_timestamps;
 mod execute;
 mod help;
 mod parse;
+mod rerun;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
     execute::execute(parse::parse_args(args)?)
@@ -76,7 +77,10 @@ mod tests {
         );
         assert_eq!(
             run(args(&["ripr", "agent", "brief", "--diff", "change.diff"])),
-            Err("agent brief requires --json until human output is implemented".to_string())
+            Err(
+                "agent brief requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             run(args(&["ripr", "first-pr", "--gap-ledger"])),

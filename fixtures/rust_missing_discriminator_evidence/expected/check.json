@@ -1,0 +1,168 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_missing_discriminator_evidence/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:c1a89389",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:c1a89389",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/rust_missing_discriminator_evidence/input/src/lib.rs",
+        "line": 9,
+        "expression": "Err(PricingError::Other)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_boundary: rejects_boundary"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(PricingError::Other)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_boundary: rejects_boundary", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(PricingError::Other)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(PricingError::Other) (line 9)", "related test tests/pricing.rs:4 rejects_boundary uses weak broad error oracle: assert!(classify_boundary(100).is_err());", "observed function argument value value = 100 at line 5", "missing discriminator PricingError::Other: No exact error variant assertion for PricingError::Other"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(PricingError::Other)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach classify_boundary: rejects_boundary"],
+      "missing": ["Missing discriminator value: PricingError::Other", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert!(classify_boundary(100).is_err());"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "value = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "PricingError::Other",
+            "reason": "No exact error variant assertion for PricingError::Other",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "value = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "PricingError::Other",
+          "reason": "No exact error variant assertion for PricingError::Other",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "rejects_boundary",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(classify_boundary(100).is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
+    },
+    {
+      "id": "probe:src_lib.rs:error_path:06e60f72",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:06e60f72",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/rust_missing_discriminator_evidence/input/src/lib.rs",
+        "line": 9,
+        "expression": "Err(PricingError::Other)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_boundary: rejects_boundary"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(PricingError::Other)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_boundary: rejects_boundary", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(PricingError::Other)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(PricingError::Other) (line 9)", "related test tests/pricing.rs:4 rejects_boundary uses weak broad error oracle: assert!(classify_boundary(100).is_err());", "observed function argument value value = 100 at line 5", "missing discriminator PricingError::Other: No exact error variant assertion for PricingError::Other"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(PricingError::Other)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach classify_boundary: rejects_boundary"],
+      "missing": ["Missing discriminator value: PricingError::Other", "No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert!(classify_boundary(100).is_err());"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "value = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "PricingError::Other",
+            "reason": "No exact error variant assertion for PricingError::Other",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "value = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "PricingError::Other",
+          "reason": "No exact error variant assertion for PricingError::Other",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(PricingError::Other)","line":9}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "rejects_boundary",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(classify_boundary(100).is_err());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust"
+    }
+  ]
+}

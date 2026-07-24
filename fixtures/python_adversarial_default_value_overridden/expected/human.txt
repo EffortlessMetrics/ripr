@@ -1,0 +1,34 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_default_value_overridden/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1, rust: 0.
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/render.py:1
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Canonical gap: gap:python:src/render.py:render:predicate_boundary:predicate:def_render_name_verbose=true
+  Changed behavior: def render(name, verbose=True):
+  Missing discriminator: A strong Python oracle reaches `render`, but every related call passes `verbose` explicitly, so the changed default value is never exercised; static evidence cannot confirm the cha…
+  Related test: tests/test_render.py:4 test_render_explicit_verbose_false
+  Suggested test file: tests/test_render.py
+  Suggested test: test_render_explicit_verbose_false
+  Test node: tests/test_render.py::test_render_explicit_verbose_false
+  Verify command: pytest tests/test_render.py::test_render_explicit_verbose_false (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `call `render` without `verbose``.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `render`
+    - infection yes: Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`
+    - 5 more evidence line(s) hidden
+
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

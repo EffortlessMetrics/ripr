@@ -1,5 +1,5 @@
 use crate::cli::command::CliCommand;
-use crate::cli::{commands, help};
+use crate::cli::{commands, help, rerun};
 
 pub(super) fn execute(command: CliCommand) -> Result<(), String> {
     match command {
@@ -38,6 +38,13 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Context(args) => commands::context(&args),
         CliCommand::Doctor(args) => commands::doctor(&args),
         CliCommand::Lsp(args) => commands::lsp(&args),
+        CliCommand::PrSummary(args) => commands::pr_summary(&args),
+        CliCommand::Annotations(args) => commands::annotations(&args),
+        CliCommand::PrEvidence(args) => commands::pr_evidence(&args),
+        CliCommand::ImpactedEvidence(args) => commands::impacted_evidence(&args),
+        CliCommand::RiprPlus(args) => commands::ripr_plus(&args),
+        CliCommand::Cache(args) => commands::cache(&args),
+        CliCommand::Rerun(args) => rerun::run(&args),
     }
 }
 
@@ -53,6 +60,17 @@ mod tests {
     fn execute_handles_top_level_help_and_version() {
         assert_eq!(execute(CliCommand::Help), Ok(()));
         assert_eq!(execute(CliCommand::Version), Ok(()));
+    }
+
+    #[test]
+    fn execute_dispatches_rerun_parse_errors() {
+        assert_eq!(
+            execute(CliCommand::Rerun(Vec::new())),
+            Err(
+                "rerun requires --changed-test <path> or --gap <canonical-gap-id> --gap-ledger <path>"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
@@ -165,6 +183,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Diff(args(&["--format", "xml"]))),
             Err("unknown diff format \"xml\"".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Cache(Vec::new())),
+            Err("cache requires subcommand `status`".to_string())
         );
     }
 

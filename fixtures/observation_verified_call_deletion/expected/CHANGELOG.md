@@ -23,3 +23,39 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+changed call heads use one canonical parser expression while verified observation remains exposed
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

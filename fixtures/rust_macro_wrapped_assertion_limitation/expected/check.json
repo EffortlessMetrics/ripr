@@ -1,0 +1,204 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_macro_wrapped_assertion_limitation/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":2,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_internal.rs:predicate:114f2322",
+      "classification": "reachable_unrevealed",
+      "severity": "warning",
+      "confidence": 0.71,
+      "probe": {
+        "id": "probe:src_internal.rs:predicate:114f2322",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs",
+        "line": 2,
+        "expression": "if a >= b {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach inner: test_inner_with_custom_assertion_macro"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: a - b"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "observed function argument value a = 10 at line 9", "observed function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"a - b","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion found on related tests", "Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "Related tests contain input values, but the equality-boundary discriminator is missing", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "A related Rust test uses an assertion-like macro that ripr does not classify as an oracle.", "For example, the test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) reaches the changed owner, then invokes assertion-like macro `assert_result!` at tests/it.rs:10. ripr does not classify that macro as an oracle.", "limitation_last_established_edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10", "limitation_first_unresolved_edge: assertion macro `assert_result!` semantics toward the changed owner", "limitation_analyzer_route: analysis/rust-macro-assertion-oracle", "limitation_non_claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"],
+      "missing": ["Missing discriminator value: a == b", "No detected assertion observes the changed value, error, field, or effect", "No relevant oracle was detected", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "9": "let result = rust_macro_wrapped_assertion_limitation_fixture::inner(10, 3);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 9,
+            "value": "a = 10",
+            "context": "function_argument"
+          },
+          {
+            "line": 9,
+            "value": "b = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "a == b",
+            "reason": "No related test call uses a equal to b; observed a values: 10; observed b values: 3",
+            "flow_sink": {"kind":"return_value","text":"a - b","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 9,
+          "value": "a = 10",
+          "context": "function_argument"
+        },
+        {
+          "line": 9,
+          "value": "b = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "a == b",
+          "reason": "No related test call uses a equal to b; observed a values: 10; observed b values: 3",
+          "flow_sink": {"kind":"return_value","text":"a - b","line":3}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_inner_with_custom_assertion_macro",
+          "file": "tests/it.rs",
+          "line": 8,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["fixture_opaque"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "suggested_next_action": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "language": "rust",
+      "static_limit_kind": "rust_macro_wrapped_assertion_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-macro-assertion-oracle",
+        "first_unresolved_edge": "assertion macro `assert_result!` semantics toward the changed owner",
+        "kind": "rust_macro_wrapped_assertion_unresolved",
+        "last_established_edge": "test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
+      }
+    },
+    {
+      "id": "probe:src_internal.rs:predicate:10b08bc9",
+      "classification": "reachable_unrevealed",
+      "severity": "warning",
+      "confidence": 0.71,
+      "probe": {
+        "id": "probe:src_internal.rs:predicate:10b08bc9",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs",
+        "line": 2,
+        "expression": "if a > b {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach inner: test_inner_with_custom_assertion_macro"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: a - b"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: a - b", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: a - b (line 3)", "related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle", "observed function argument value a = 10 at line 9", "observed function argument value b = 3 at line 9", "missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"a - b","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence returned value: a - b", "No assertion found on related tests", "Related tests appear to reach inner: test_inner_with_custom_assertion_macro", "Related tests contain input values, but the equality-boundary discriminator is missing", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "A related Rust test uses an assertion-like macro that ripr does not classify as an oracle.", "For example, the test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) reaches the changed owner, then invokes assertion-like macro `assert_result!` at tests/it.rs:10. ripr does not classify that macro as an oracle.", "limitation_last_established_edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10", "limitation_first_unresolved_edge: assertion macro `assert_result!` semantics toward the changed owner", "limitation_analyzer_route: analysis/rust-macro-assertion-oracle", "limitation_non_claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"],
+      "missing": ["Missing discriminator value: a == b", "No detected assertion observes the changed value, error, field, or effect", "No relevant oracle was detected", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "9": "let result = rust_macro_wrapped_assertion_limitation_fixture::inner(10, 3);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 9,
+            "value": "a = 10",
+            "context": "function_argument"
+          },
+          {
+            "line": 9,
+            "value": "b = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "a == b",
+            "reason": "No related test call uses a equal to b; observed a values: 10; observed b values: 3",
+            "flow_sink": {"kind":"return_value","text":"a - b","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 9,
+          "value": "a = 10",
+          "context": "function_argument"
+        },
+        {
+          "line": 9,
+          "value": "b = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "a == b",
+          "reason": "No related test call uses a equal to b; observed a values: 10; observed b values: 3",
+          "flow_sink": {"kind":"return_value","text":"a - b","line":3}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_inner_with_custom_assertion_macro",
+          "file": "tests/it.rs",
+          "line": 8,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["fixture_opaque"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "suggested_next_action": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "language": "rust",
+      "static_limit_kind": "rust_macro_wrapped_assertion_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-macro-assertion-oracle",
+        "first_unresolved_edge": "assertion macro `assert_result!` semantics toward the changed owner",
+        "kind": "rust_macro_wrapped_assertion_unresolved",
+        "last_established_edge": "test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
+      }
+    }
+  ]
+}

@@ -148,8 +148,9 @@ struct PythonImport {
     imported: String,
     alias: String,
     /// The dotted source module of a `from M import Y` statement (e.g. `src.handler`).
-    /// Empty for a plain `import X` and for relative imports (`from . import Y`),
-    /// which therefore fail closed — they cannot lend free-function module identity.
+    /// Relative imports are resolved against the importing file when possible (for
+    /// example, `from .handler import validate` in `tests/test_api.py` resolves to
+    /// `tests.handler`). Empty for a plain `import X`.
     source_module: String,
 }
 
@@ -271,6 +272,84 @@ struct PythonSourceLimitation {
     missing: String,
 }
 
+/// Detect the Python test framework for a workspace root (#2106), using
+/// the marker set the adapter's code-level detection implies:
+///
+/// - pytest: `pytest.ini`, `conftest.py`, or a pytest section in
+///   `pyproject.toml` / `setup.cfg` / `tox.ini` (a bare pyproject.toml is
+///   PEP 517 packaging, not pytest evidence — #2183 review);
+/// - unittest: no config exists by design, so detection uses bounded code
+///   evidence (`import unittest` in a `test_*.py` file at the root or in
+///   `tests/` / `test/`), matching what the adapter detects from source.
+///
+/// Fail-closed: `None` when no marker matches — callers must report
+/// "not detected", never guess.
+pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> {
+    if root.join("pytest.ini").exists()
+        || root.join("conftest.py").exists()
+        // A bare pyproject.toml is PEP 517 packaging, not pytest evidence
+        // (#2183 review); only an actual pytest section counts.
+        || ini_section_present(&root.join("pyproject.toml"), "[tool.pytest.ini_options]")
+        || ini_section_present(&root.join("setup.cfg"), "[tool:pytest]")
+        || ini_section_present(&root.join("tox.ini"), "[pytest]")
+    {
+        return Some("pytest");
+    }
+    for dir in [root.to_path_buf(), root.join("tests"), root.join("test")] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten().take(64) {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            if !name.starts_with("test_") || !name.ends_with(".py") {
+                continue;
+            }
+            // Bounded evidence read: the import line is at the top of the
+            // file, so a small prefix suffices.
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            let prefix = &bytes[..bytes.len().min(4096)];
+            if String::from_utf8_lossy(prefix)
+                .lines()
+                .any(is_unittest_import_line)
+            {
+                return Some("unittest");
+            }
+        }
+    }
+    None
+}
+
+/// Whether a line is a real unittest import statement — `import unittest`,
+/// `import unittest as ...`, or `from unittest import ...` — at a token
+/// boundary. Comment lines and lookalike identifiers (`import unittesting`)
+/// do not count (#2106 review).
+fn is_unittest_import_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.starts_with('#') {
+        return false;
+    }
+    if let Some(rest) = trimmed.strip_prefix("from ") {
+        return rest
+            .strip_prefix("unittest")
+            .is_some_and(|rest| rest.starts_with(" import"));
+    }
+    trimmed
+        .strip_prefix("import ")
+        .is_some_and(|rest| rest == "unittest" || rest.starts_with("unittest "))
+}
+
+/// Whether an INI-style file exists and contains the given section header.
+fn ini_section_present(path: &Path, section: &str) -> bool {
+    std::fs::read_to_string(path)
+        .map(|text| text.lines().any(|line| line.trim() == section))
+        .unwrap_or(false)
+}
+
 fn parse_module_result(path: &Path, source: &str) -> Result<Mod, String> {
     let source_path = path.to_string_lossy();
     let module = parse(source, Mode::Module, source_path.as_ref())
@@ -329,7 +408,7 @@ fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFacts {
         module_range,
     );
 
-    let imports = collect_imports_from_statements(&module.body);
+    let imports = collect_imports_from_statements(file, &module.body);
     collect_owners_from_statements(
         file,
         source,
@@ -1529,7 +1608,7 @@ fn fixture_parameter_names(args: &ast::Arguments, framework: &str) -> Vec<String
     names
 }
 
-fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
+fn collect_imports_from_statements(file: &Path, statements: &[Stmt]) -> Vec<PythonImport> {
     let mut imports = Vec::new();
     for stmt in statements {
         match stmt {
@@ -1550,13 +1629,11 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
             }
             Stmt::ImportFrom(import) => {
                 // `from src.handler import validate [as v]` — the source module
-                // (`src.handler`) is the free-function identity evidence. `None`
-                // here is a relative import (`from . import y`); leave it empty.
-                let source_module = import
-                    .module
-                    .as_ref()
-                    .map(|module| module.to_string())
-                    .unwrap_or_default();
+                // (`src.handler`) is the free-function identity evidence. For
+                // package-local tests, resolve explicit relative imports against
+                // the importing file so common Python layouts (`from .pricing
+                // import discount`) can still carry owner-module identity.
+                let source_module = import_source_module(file, import);
                 for alias in &import.names {
                     let imported = alias.name.to_string();
                     imports.push(PythonImport {
@@ -1574,6 +1651,35 @@ fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
         }
     }
     imports
+}
+
+fn import_source_module(file: &Path, import: &ast::StmtImportFrom) -> String {
+    let module = import
+        .module
+        .as_ref()
+        .map(|module| module.to_string())
+        .unwrap_or_default();
+    let level = import
+        .level
+        .as_ref()
+        .map(|level| level.to_usize())
+        .unwrap_or(0);
+    if level == 0 {
+        return module;
+    }
+    let normalized = normalized_path(file);
+    let mut parts = normalized.split('/').collect::<Vec<_>>();
+    parts.pop();
+    let package_depth = level.saturating_sub(1);
+    for _ in 0..package_depth {
+        if parts.pop().is_none() {
+            return String::new();
+        }
+    }
+    if !module.is_empty() {
+        parts.extend(module.split('.').filter(|part| !part.is_empty()));
+    }
+    parts.join(".")
 }
 
 fn is_parametrized(decorators: &[Expr]) -> bool {
@@ -2475,18 +2581,37 @@ fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> 
 
 /// Whether a `from M import Y` statement's source module `M` points at the owner's
 /// module. Compares the import's `source_module` last segment against the owner
-/// file stem (`from src.handler import validate` and `from handler import validate`
-/// both match an owner in `src/handler.py`). A plain `import X` or a relative
-/// import has an empty `source_module` and so never matches — fail closed.
+/// file stem (`from src.handler import validate`, `from handler import validate`,
+/// and a resolved `from .handler import validate` all match an owner in
+/// `src/handler.py`). A plain `import X` has an empty `source_module` and so
+/// never matches — fail closed.
+/// The dotted module path of the owner file itself: `src/handler.py` →
+/// `src.handler`, `src/pkg/__init__.py` → `src.pkg`. Identity comparisons must
+/// use this full path — a bare file stem is the token-coincidence family
+/// (`src/tests/test_handler.py` importing `.handler` resolves to
+/// `src.tests.handler`, a different module with the same stem).
+fn owner_module_path(file: &Path) -> String {
+    let normalized = normalized_path(file);
+    let mut parts = normalized
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if let Some(last) = parts.last_mut() {
+        if let Some(stem) = last.strip_suffix(".py") {
+            *last = stem;
+        }
+        if *last == "__init__" {
+            parts.pop();
+        }
+    }
+    parts.join(".")
+}
+
 fn import_source_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> bool {
     if import.source_module.is_empty() {
         return false;
     }
-    owner
-        .file
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .is_some_and(|stem| import.source_module.rsplit('.').next() == Some(stem))
+    import.source_module == owner_module_path(&owner.file)
 }
 
 /// Free-function module-identity evidence: a strong observing test imports the
@@ -4421,12 +4546,355 @@ fn oracle_text_observes_token(text: &str, token: &str) -> bool {
 /// (owner name, import alias, changed-sink tokens) are probed in order against
 /// the strongest related oracles, mirroring the prior boolean exactly so the
 /// derived decision is unchanged.
+#[cfg(test)]
 fn classify_sink_alignment(
     owner: &PythonOwner,
     line_text: &str,
     related: &[RelatedTest],
     all_tests: &[PythonTest],
 ) -> SinkAlignment {
+    classify_sink_alignment_with_old(owner, line_text, None, related, all_tests)
+}
+
+/// Whether the changed line is genuinely a control-flow construct (a predicate or
+/// error-path), for the empty-token-delta fallback gate. This mirrors the
+/// `Predicate` and `ErrorPath` conditions of [`classify_probe_shape`] WITHOUT its
+/// default arm (which returns `Control` for any unrecognized line, e.g. a plain
+/// `total = base - bonus` assignment). Keying the empty-delta operand fallback on
+/// this precise shape — not the default-polluted delta kind — is the #1288 fix:
+/// only a real branch / raise change can be discriminated by an outcome oracle that
+/// merely matches a line token; a value-producing assignment cannot.
+fn is_control_flow_change_line(line_text: &str) -> bool {
+    let trimmed = line_text.trim_start();
+    (trimmed.contains(" if ") && trimmed.contains(" else "))
+        || trimmed.starts_with("if ")
+        || trimmed.starts_with("elif ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("match ")
+        || trimmed.starts_with("case ")
+        || trimmed.starts_with("raise ")
+        || trimmed == "raise"
+        || trimmed.starts_with("try:")
+        || trimmed.starts_with("except ")
+        || trimmed.starts_with("except* ")
+        || trimmed.starts_with("finally:")
+        || (trimmed.starts_with("with ") && trimmed.contains("raises("))
+}
+
+/// Parse a dict-literal line (a `return {...}` or `lhs = {...}`) into its top-level
+/// `(key, value)` pairs. Keys are unquoted; values keep their source text. Returns
+/// `None` if the line has no `{...}` body or no parseable fields.
+fn parse_dict_literal_fields(line: &str) -> Option<Vec<(String, String)>> {
+    let trimmed = line.trim();
+    // The dict EXPRESSION must literally START with `{` (after an optional `return `),
+    // not merely contain one — otherwise an f-string like `f"{value:.3f}"`, a
+    // `.format(...)` call, or any line with `{` inside a string literal is mis-read as
+    // a dict literal and wrongly gated (this follow-up fixes a regressed f-string
+    // discriminator). A set literal `{1, 2}` is naturally excluded below since it has
+    // no top-level `key: value` segments.
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    let body = expr.strip_prefix('{')?.strip_suffix('}')?;
+    let mut fields = Vec::new();
+    for segment in top_level_python_segments(body) {
+        if let Some((key, value)) = python_dict_field_segment_parts(segment) {
+            fields.push((key.to_string(), value.trim().to_string()));
+        }
+    }
+    if fields.is_empty() {
+        None
+    } else {
+        Some(fields)
+    }
+}
+
+/// For a dict-literal field-construction change, the keys whose value differs
+/// between the old and new line (added / removed / re-valued), plus the NEW values
+/// of those keys. Returns `None` when the change is not a dict-literal change on
+/// both sides, or when nothing localizable changed — in which case the #1290
+/// dict-element gate is a pass-through.
+fn dict_changed_keys_and_values(
+    old_line: Option<&str>,
+    new_line: &str,
+) -> Option<(Vec<String>, Vec<String>)> {
+    let old = parse_dict_literal_fields(old_line?)?;
+    let new = parse_dict_literal_fields(new_line)?;
+    let mut changed_keys = Vec::new();
+    let mut changed_values = Vec::new();
+    for (key, value) in &new {
+        let old_value = old.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+        if old_value != Some(value) {
+            changed_keys.push(key.clone());
+            changed_values.push(value.clone());
+        }
+    }
+    // A key present in the old line but removed in the new line is also a change.
+    for (key, _) in &old {
+        if !new.iter().any(|(k, _)| k == key) {
+            changed_keys.push(key.clone());
+        }
+    }
+    if changed_keys.is_empty() {
+        None
+    } else {
+        Some((changed_keys, changed_values))
+    }
+}
+
+/// Whether a strong oracle observes the CHANGED dict element (#1290): a subscript or
+/// `.get(...)` of a changed key, the changed value literal, or a whole-collection
+/// comparison. Conservative — when in doubt it returns `true` (credit stands) so a
+/// genuine discriminator is never dropped; it only returns `false` for an oracle
+/// that observes purely a sibling key or an aggregate.
+fn oracle_observes_changed_dict_element(
+    oracle: &str,
+    changed_keys: &[String],
+    changed_values: &[String],
+) -> bool {
+    // A whole-collection comparison (`== {...}` / `== [...]`) observes every element.
+    if oracle.contains("=={")
+        || oracle.contains("== {")
+        || oracle.contains("==[")
+        || oracle.contains("== [")
+    {
+        return true;
+    }
+    // Observes a changed value literal (e.g. the new `9090` / `"failure"`).
+    for value in changed_values {
+        let literal = value.trim().trim_matches('"').trim_matches('\'');
+        if literal.len() >= 2 && oracle.contains(literal) {
+            return true;
+        }
+    }
+    // Subscripts a changed key by literal (`["port"]`, `['port']`, `.get("port")`).
+    for key in changed_keys {
+        if oracle.contains(&format!("[\"{key}\"]"))
+            || oracle.contains(&format!("['{key}']"))
+            || oracle.contains(&format!(".get(\"{key}\")"))
+            || oracle.contains(&format!(".get('{key}')"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parse a list-literal line (a `return [...]`) into its top-level element source
+/// texts, in order. Like [`parse_dict_literal_fields`], the expression must literally
+/// START with `[` (after an optional `return `) so a subscript expression such as
+/// `arr[-1]` or an f-string is never mis-read as a list literal.
+fn parse_list_literal_elements(line: &str) -> Option<Vec<String>> {
+    let trimmed = line.trim();
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    let body = expr.strip_prefix('[')?.strip_suffix(']')?;
+    let elements: Vec<String> = top_level_python_segments(body)
+        .into_iter()
+        .map(|segment| segment.trim().to_string())
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if elements.is_empty() {
+        None
+    } else {
+        Some(elements)
+    }
+}
+
+/// For a list-literal field-construction change, the positions (indices) whose
+/// element differs between the old and new line, plus the NEW element source at
+/// those positions. Returns `None` when the change is not a list-literal change on
+/// both sides, when the lengths differ (a structural change is observed by `len`),
+/// or when nothing changed — in which case the list-element gate is a pass-through.
+fn list_changed_indices_and_values(
+    old_line: Option<&str>,
+    new_line: &str,
+) -> Option<(Vec<usize>, Vec<String>)> {
+    let old = parse_list_literal_elements(old_line?)?;
+    let new = parse_list_literal_elements(new_line)?;
+    // A length change is discriminated by `len(...)`, so it is NOT gated here.
+    if old.len() != new.len() {
+        return None;
+    }
+    let mut changed_indices = Vec::new();
+    let mut changed_values = Vec::new();
+    for (index, (old_value, new_value)) in old.iter().zip(new.iter()).enumerate() {
+        if old_value != new_value {
+            changed_indices.push(index);
+            changed_values.push(new_value.clone());
+        }
+    }
+    if changed_indices.is_empty() {
+        None
+    } else {
+        Some((changed_indices, changed_values))
+    }
+}
+
+/// Whether a strong oracle observes the CHANGED list element (#1290): a subscript of
+/// a changed index, the changed element value literal, or a whole-collection
+/// comparison. Conservative, mirroring [`oracle_observes_changed_dict_element`]: it
+/// returns `false` only for an oracle that observes purely a sibling index or an
+/// aggregate (`len(...)`).
+fn oracle_observes_changed_list_element(
+    oracle: &str,
+    changed_indices: &[usize],
+    changed_values: &[String],
+) -> bool {
+    if oracle.contains("=={")
+        || oracle.contains("== {")
+        || oracle.contains("==[")
+        || oracle.contains("== [")
+    {
+        return true;
+    }
+    for value in changed_values {
+        let literal = value.trim().trim_matches('"').trim_matches('\'');
+        if literal.len() >= 2 && oracle.contains(literal) {
+            return true;
+        }
+    }
+    for index in changed_indices {
+        if oracle.contains(&format!("[{index}]")) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Split an f-string source (`f"..."`/`f'...'`, optional `r` prefix) into its
+/// concatenated literal text and its ordered `{...}` interpolation substrings.
+/// Returns `None` if the line (after an optional `return `) is not a single f-string.
+fn fstring_template(line: &str) -> Option<(String, Vec<String>)> {
+    let trimmed = line.trim();
+    let expr = trimmed
+        .strip_prefix("return ")
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    // Accept f / rf / fr prefixes (case-insensitive), then a quote.
+    let lower = expr.to_ascii_lowercase();
+    let prefix_len = if lower.starts_with("f\"") || lower.starts_with("f'") {
+        1
+    } else if lower.starts_with("rf\"")
+        || lower.starts_with("rf'")
+        || lower.starts_with("fr\"")
+        || lower.starts_with("fr'")
+    {
+        2
+    } else {
+        return None;
+    };
+    let rest = &expr[prefix_len..];
+    let quote = rest.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let body = rest.strip_prefix(quote)?.strip_suffix(quote)?;
+    // Fail open on f-string shapes this simple parser does not model precisely, so the
+    // gate never downgrades on a mis-parse: escaped braces (`{{` / `}}`), a leftover
+    // quote from a triple-quoted string, or nested interpolation/format-spec
+    // (`{value:{width}}`). When unsupported, return `None` and the gate is a no-op.
+    if body.contains("{{") || body.contains("}}") || body.starts_with(quote) {
+        return None;
+    }
+    let mut literals = String::new();
+    let mut interpolations = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for ch in body.chars() {
+        match ch {
+            '{' => {
+                depth += 1;
+                if depth > 1 {
+                    // Nested interpolation / format-spec — unsupported, fail open.
+                    return None;
+                }
+                continue;
+            }
+            '}' if depth >= 1 => {
+                depth -= 1;
+                interpolations.push(current.clone());
+                current.clear();
+                continue;
+            }
+            _ => {}
+        }
+        if depth == 0 {
+            literals.push(ch);
+        } else {
+            current.push(ch);
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    Some((literals, interpolations))
+}
+
+/// Whether an f-string change is output-length-invariant: the interpolations are
+/// identical (so the runtime-substituted text is unchanged) and the literal text has
+/// the same length. When true, a `len(...)` oracle provably cannot discriminate the
+/// change, so observing the owner's output only through `len` is not a discriminator.
+/// A format-spec change (`:.2f` -> `:.3f`) alters an interpolation, so it is NOT
+/// length-invariant and is never gated here.
+fn fstring_change_is_length_invariant(old_line: &str, new_line: &str) -> bool {
+    match (fstring_template(old_line), fstring_template(new_line)) {
+        (Some((old_literals, old_interps)), Some((new_literals, new_interps))) => {
+            old_interps == new_interps
+                && old_literals.chars().count() == new_literals.chars().count()
+        }
+        _ => false,
+    }
+}
+
+/// Whether an oracle observes the owner's output ONLY through a `len(...)` aggregate
+/// — i.e. it calls `len(` and does NOT also observe the output exactly. An oracle
+/// that compares against a string literal, or that contains the changed f-string
+/// literal text, observes the changed output and is therefore NOT a pure aggregate
+/// (so the #1290 1b gate must not downgrade it). Conservative by design: anything
+/// other than a clear length-only observation keeps the credit.
+fn oracle_is_pure_len_aggregate(oracle: &str, changed_literals: &str) -> bool {
+    if !oracle.contains("len(") {
+        return false;
+    }
+    // An exact string-equality comparison observes the produced string, not just its
+    // length.
+    if oracle.contains("== \"")
+        || oracle.contains("== '")
+        || oracle.contains("==\"")
+        || oracle.contains("=='")
+    {
+        return false;
+    }
+    // The changed literal text appearing in the oracle means it observes the change.
+    let trimmed = changed_literals.trim();
+    if trimmed.len() >= 2 && oracle.contains(trimmed) {
+        return false;
+    }
+    true
+}
+
+fn classify_sink_alignment_with_old(
+    owner: &PythonOwner,
+    line_text: &str,
+    old_line_text: Option<&str>,
+    related: &[RelatedTest],
+    all_tests: &[PythonTest],
+) -> SinkAlignment {
+    // Whether the changed line is genuinely a control-flow construct gates the
+    // empty-token-delta fallback below: only a control-flow change may credit
+    // `changed_sink_token` from bare line operands when the token delta is empty
+    // (see the fallback comment). This is a PRECISE shape check (#1288) — not
+    // `classify_probe_shape(..).1 == Control`, whose default arm also returns
+    // `Control` for unrecognized lines such as plain local assignments
+    // (`total = base - bonus`), which would wrongly keep the operand fallback and
+    // re-introduce the false-`exposed`. Value/effect changes are observed via the
+    // owner call, not an input operand.
+    let changed_line_is_control_flow = is_control_flow_change_line(line_text);
     // `changed_sink` describes the changed line; deduped, joined for display.
     let change_tokens = significant_change_tokens(line_text);
     let mut change_display: Vec<String> = Vec::new();
@@ -4528,6 +4996,48 @@ fn classify_sink_alignment(
     let method_name_token = method_name_token.filter(|token| token.len() >= 2);
     alias_tokens.retain(|token| token.len() >= 2);
     change_only.retain(|token| token.len() >= 2);
+    // Delta tokens: the changed-sink-token credit must reflect what actually
+    // CHANGED on the line, not every operand on it. A token that is unchanged
+    // between the old and new line (e.g. `valid_tokens` in `token in valid_tokens`
+    // -> `token.strip() in valid_tokens`, or `_balance` in a `max(0, ...)` wrap) is
+    // not the behavior delta; an oracle observing only such an operand does not
+    // discriminate the change. When the old line is unavailable (a pure addition),
+    // every token is part of the delta.
+    let delta_tokens: Vec<String> = match old_line_text {
+        Some(old) => {
+            let old_tokens: std::collections::BTreeSet<String> =
+                significant_change_tokens(old).into_iter().collect();
+            let delta: Vec<String> = change_only
+                .iter()
+                .filter(|token| !old_tokens.contains(*token))
+                .cloned()
+                .collect();
+            // An empty token delta means the change is in non-tokenized syntax (an
+            // operator like `<=` -> `<`, punctuation, ordering) that token extraction
+            // does not capture. Falling back to the full changed-line tokens is only
+            // sound for a CONTROL-FLOW change (#1278): for a predicate / error-path
+            // operator change the discriminated outcome (a taken branch, a raised
+            // exception) can be observed by an outcome oracle that matches a line
+            // token — as in `python_cross_file_construct_call`'s `pytest.raises`. For
+            // a VALUE/EFFECT change (a `return` or assignment operator edit), every
+            // line token is an unchanged INPUT operand; the changed sink is the
+            // produced value, which a discriminating test observes via the owner call
+            // (the `direct`/`alias` paths), not via an input token. Crediting
+            // `changed_sink_token` on an input operand there is the false-`exposed`
+            // (e.g. `return count + 1` -> `count - 1` with `assert count == 5`), so
+            // for non-control empty deltas we credit nothing rather than the operands.
+            if delta.is_empty() {
+                if changed_line_is_control_flow {
+                    change_only.clone()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                delta
+            }
+        }
+        None => change_only.clone(),
+    };
 
     // Module owner / no usable token: the prior boolean returned `true` here, so
     // the decision must stay `observes`. Map to `unknown` with the reason that
@@ -4600,31 +5110,102 @@ fn classify_sink_alignment(
                     && any_strong_observes(&attr_token))
         }
     };
-    let (oracle_alignment, alignment_reason) =
-        if any_strong_observes(&identity_tokens) && (is_method_owner || free_fn_module_identity) {
-            ("direct", "strong_oracle_observes_owner_name")
-        } else if method_name_observed && strong_test_binds_method_receiver {
-            (
-                "direct",
-                "strong_oracle_observes_owner_method_on_bound_receiver",
-            )
-        } else if any_strong_observes(&alias_tokens) {
-            ("alias", "strong_oracle_observes_import_alias")
-        } else if any_strong_observes(&change_only)
-            && change_only_credit_ok
-            && (is_method_owner || free_fn_module_identity)
-        {
-            // Gate the changed-sink-token path with the same free-function module
-            // identity as the direct/alias paths: a same-named free function from a
-            // different module must not credit `exposed` via this sibling branch
-            // either (the #1249 every-branch lesson). Method owners are unaffected.
-            (
-                "changed_sink_token",
-                "strong_oracle_observes_changed_sink_token",
-            )
-        } else {
-            ("orthogonal", "strong_oracle_observes_different_sink")
-        };
+    // Changed-element identity for a dict-literal field-construction change (#1290).
+    // A dict-literal change is localized to specific key(s) (`{"port": 8080}` ->
+    // `9090` changes only `port`), but a strong oracle that merely calls the owner
+    // and observes a SIBLING key (`build_config()["host"]`) or an aggregate
+    // (`len(...)`) does not discriminate the change. Credit only when a strong
+    // oracle observes the CHANGED element: its changed value, a subscript of the
+    // changed key, or a whole-collection comparison. Non-dict changes (and changes
+    // whose changed keys cannot be localized from the paired old line) are not gated
+    // and keep prior behavior (pass-through `true`).
+    let field_construction_credit_ok = if let Some((changed_keys, changed_values)) =
+        dict_changed_keys_and_values(old_line_text, line_text)
+    {
+        strong_tests.iter().any(|test| {
+            test.oracle.as_deref().is_some_and(|text| {
+                oracle_observes_changed_dict_element(text, &changed_keys, &changed_values)
+            })
+        })
+    } else if let Some((changed_indices, changed_values)) =
+        list_changed_indices_and_values(old_line_text, line_text)
+    {
+        strong_tests.iter().any(|test| {
+            test.oracle.as_deref().is_some_and(|text| {
+                oracle_observes_changed_list_element(text, &changed_indices, &changed_values)
+            })
+        })
+    } else {
+        true
+    };
+    // F-string aggregate gate (#1290 1b): a length-invariant f-string change (only
+    // literal text changed, interpolations unchanged) observed SOLELY through a
+    // `len(...)` aggregate is not discriminated — the output length is identical, so
+    // `len` cannot notice the change. Downgrade only when every strong oracle is such
+    // a length aggregate; a string-equality oracle (`== "..."`) or a format-spec
+    // change (which alters an interpolation, so it is not length-invariant) keeps the
+    // credit. Pass-through `true` for any non-f-string change.
+    let fstring_credit_ok = match old_line_text {
+        Some(old) if fstring_change_is_length_invariant(old, line_text) => {
+            // Credit stands unless EVERY strong oracle is a PURE `len(...)` aggregate,
+            // which cannot discriminate a length-invariant f-string change. An oracle
+            // that ALSO observes the output exactly (a string-equality comparison, or
+            // the changed literal text) keeps the credit — fail open so this narrow
+            // false-`exposed` fix never introduces a false negative (e.g.
+            // `assert len(f(x)) == 4 and f(x) == "NO:7"`). (`strong_tests` is non-empty
+            // here — the empty case returned `unknown` above.)
+            let new_literals = fstring_template(line_text)
+                .map(|(literals, _)| literals)
+                .unwrap_or_default();
+            !strong_tests.iter().all(|test| {
+                test.oracle
+                    .as_deref()
+                    .is_some_and(|text| oracle_is_pure_len_aggregate(text, &new_literals))
+            })
+        }
+        _ => true,
+    };
+    // The literal-element and f-string gates (#1290) apply to EVERY credit branch —
+    // like the #1249 every-branch lesson — so a sibling-key / aggregate-only oracle
+    // cannot sneak `exposed` through the direct/alias/changed_sink_token path of a
+    // localized literal change. Both are pass-through `true` for unrelated changes.
+    let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens)
+        && (is_method_owner || free_fn_module_identity)
+        && field_construction_credit_ok
+        && fstring_credit_ok
+    {
+        ("direct", "strong_oracle_observes_owner_name")
+    } else if method_name_observed
+        && strong_test_binds_method_receiver
+        && field_construction_credit_ok
+        && fstring_credit_ok
+    {
+        (
+            "direct",
+            "strong_oracle_observes_owner_method_on_bound_receiver",
+        )
+    } else if any_strong_observes(&alias_tokens)
+        && field_construction_credit_ok
+        && fstring_credit_ok
+    {
+        ("alias", "strong_oracle_observes_import_alias")
+    } else if any_strong_observes(&delta_tokens)
+        && change_only_credit_ok
+        && field_construction_credit_ok
+        && fstring_credit_ok
+        && (is_method_owner || free_fn_module_identity)
+    {
+        // Gate the changed-sink-token path with the same free-function module
+        // identity as the direct/alias paths: a same-named free function from a
+        // different module must not credit `exposed` via this sibling branch
+        // either (the #1249 every-branch lesson). Method owners are unaffected.
+        (
+            "changed_sink_token",
+            "strong_oracle_observes_changed_sink_token",
+        )
+    } else {
+        ("orthogonal", "strong_oracle_observes_different_sink")
+    };
     SinkAlignment {
         changed_sink,
         observed_sink,
@@ -4649,6 +5230,575 @@ fn strong_oracle_observes_owner(
     classify_sink_alignment(owner, line_text, related, all_tests).observes()
 }
 
+/// A changed line that carries no runtime behavior, so there is no behavior delta
+/// for a test to discriminate: a blank line, a `#` comment, or a bare
+/// string-literal expression statement (a docstring or standalone string). Such a
+/// change is a no-op / equivalent mutant — `ripr` must not emit a behavior probe
+/// for it, because crediting `exposed` would imply the tests discriminate a
+/// behavior change that does not exist (#1279).
+///
+/// Conservative by construction: only blank/comment lines and lines that are
+/// ENTIRELY a single non-f-string literal qualify. f-strings are excluded (a bare
+/// f-string statement can evaluate embedded calls), multi-line docstring interiors
+/// are not detected here (only one line is in scope), and annotation-only changes
+/// are handled by the dedicated `is_annotation_only_*_change` guards in
+/// `classify_change_with_old` (def headers via #1294; module-scope bare variables
+/// via #1289 — class-body variable annotations remain out of scope because
+/// `@dataclass`/Pydantic make them runtime-meaningful).
+fn is_python_no_behavior_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.is_empty() || trimmed.starts_with('#') || is_bare_string_literal_statement(trimmed)
+}
+
+/// Whether `trimmed` (already whitespace-trimmed) is exactly one Python string
+/// literal with nothing of significance after it — a docstring or standalone
+/// string expression statement. An `f`/`F` prefix is rejected because a bare
+/// f-string can have side effects through embedded expressions; an identity-bearing
+/// prefix is only recognized when it is immediately followed by a quote (an
+/// assignment like `result = "x"` has a separating space and is never matched).
+fn is_bare_string_literal_statement(trimmed: &str) -> bool {
+    let bytes = trimmed.as_bytes();
+    let mut idx = 0;
+    // Optional string prefix (at most two letters, e.g. `r`, `b`, `rb`, `br`, `u`).
+    // `f`/`F` is deliberately absent so formatted strings fall through to `false`.
+    while idx < 2
+        && idx < bytes.len()
+        && matches!(bytes[idx], b'r' | b'R' | b'b' | b'B' | b'u' | b'U')
+    {
+        idx += 1;
+    }
+    let rest = &trimmed[idx..];
+    let rest_bytes = rest.as_bytes();
+    let quote = match rest_bytes.first() {
+        Some(&b'"') => b'"',
+        Some(&b'\'') => b'\'',
+        _ => return false,
+    };
+    let triple = rest_bytes.len() >= 3 && rest_bytes[1] == quote && rest_bytes[2] == quote;
+    if triple {
+        let body = &rest[3..];
+        let close = [quote as char, quote as char, quote as char]
+            .iter()
+            .collect::<String>();
+        match body.find(&close) {
+            Some(pos) => body[pos + 3..].trim().is_empty(),
+            None => false,
+        }
+    } else {
+        let mut escaped = false;
+        for (offset, ch) in rest.char_indices().skip(1) {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch as u32 == u32::from(quote) {
+                return rest[offset + 1..].trim().is_empty();
+            }
+        }
+        false
+    }
+}
+
+/// The runtime-significant skeleton of a `def` header, used to decide whether a
+/// change touches ONLY annotations (#1289). It deliberately EXCLUDES every
+/// annotation (parameter and return) and INCLUDES everything that affects runtime
+/// dispatch: async-ness, function name, ordered parameter names, default-value
+/// source text, the positional-only / keyword-only group sizes, and the
+/// `*args`/`**kwargs` names. Two headers with equal skeletons differ only in
+/// annotations.
+type DefSignatureSkeleton = (
+    bool,                          // is_async
+    String,                        // function name
+    usize,                         // positional-only count
+    usize,                         // keyword-only count
+    Vec<(String, Option<String>)>, // ordered (param name, default-value source)
+    Option<String>,                // *args name
+    Option<String>,                // **kwargs name
+);
+
+fn def_signature_skeleton(line: &str) -> Option<DefSignatureSkeleton> {
+    let trimmed = line.trim_start();
+    if !(trimmed.starts_with("def ") || trimmed.starts_with("async def ")) {
+        return None;
+    }
+    // Synthesize a parseable statement: a `def` header alone is not a module.
+    let snippet = format!("{trimmed}\n    pass\n");
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return None;
+    };
+    let (is_async, name, args) = module.body.iter().find_map(|stmt| match stmt {
+        Stmt::FunctionDef(f) => Some((false, f.name.to_string(), &f.args)),
+        Stmt::AsyncFunctionDef(f) => Some((true, f.name.to_string(), &f.args)),
+        _ => None,
+    })?;
+    let slice = |expr: &Expr| -> String {
+        let range = expr.range();
+        snippet
+            .get(usize::from(range.start())..usize::from(range.end()))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let mut params: Vec<(String, Option<String>)> = Vec::new();
+    for arg in args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+    {
+        let default = arg.default.as_ref().map(|expr| slice(expr));
+        params.push((arg.def.arg.to_string(), default));
+    }
+    Some((
+        is_async,
+        name,
+        args.posonlyargs.len(),
+        args.kwonlyargs.len(),
+        params,
+        args.vararg.as_ref().map(|arg| arg.arg.to_string()),
+        args.kwarg.as_ref().map(|arg| arg.arg.to_string()),
+    ))
+}
+
+/// Whether the `def`-header change modifies ONLY type annotations, leaving the
+/// callable's runtime signature unchanged. Python does not enforce annotations at
+/// runtime, so such a change has no behavior delta (#1289). Fails closed: returns
+/// false when either line is not a parseable `def` header, when the lines are
+/// identical, or when anything beyond an annotation differs (e.g. a default-value
+/// change, an added/removed/renamed/reordered parameter, a `/`/`*` marker move, or
+/// an async-ness change).
+fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> bool {
+    if old_line.trim() == new_line.trim() {
+        return false;
+    }
+    match (
+        def_signature_skeleton(old_line),
+        def_signature_skeleton(new_line),
+    ) {
+        (Some(old), Some(new)) => old == new,
+        _ => false,
+    }
+}
+
+/// The runtime-significant skeleton of a bare variable annotation line
+/// (`x: int = 5` or `x: int`), used to decide whether a change touches ONLY the
+/// annotation (#1289). Includes the target name and the optional value source
+/// text; EXCLUDES the annotation. Two lines with equal skeletons differ only in
+/// annotation, so a value/target change is NOT annotation-only. A simple-name
+/// target only (`x`, not `obj.attr`); attribute annotations live inside class
+/// bodies, which this suppression does not reach (it is module-scope only).
+type VariableAnnotationSkeleton = (String, Option<String>); // (target name, value source)
+
+fn variable_annotation_skeleton(line: &str) -> Option<VariableAnnotationSkeleton> {
+    let trimmed = line.trim();
+    // Cheap reject: must contain a `:` before any `=` (or no `=` at all) and
+    // start with an identifier char. This avoids parsing plain assignments.
+    let name_end = trimmed.find(':').filter(|&idx| {
+        trimmed[..idx]
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+    })?;
+    if name_end == 0 {
+        return None;
+    }
+    // Synthesize a parseable statement: an annotated assignment is a module body.
+    let snippet = format!("{trimmed}\n");
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return None;
+    };
+    let stmt = module.body.first()?;
+    let Stmt::AnnAssign(assign) = stmt else {
+        return None;
+    };
+    // Simple-name target only; an attribute target (`obj.attr: int`) is not a
+    // bare module-scope variable and is left to classify normally.
+    let Expr::Name(target) = &*assign.target else {
+        return None;
+    };
+    let slice = |expr: &Expr| -> String {
+        let range = expr.range();
+        snippet
+            .get(usize::from(range.start())..usize::from(range.end()))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let value = assign.value.as_deref().map(slice);
+    Some((target.id.to_string(), value))
+}
+
+/// Whether a bare variable annotation change modifies ONLY the annotation,
+/// leaving the runtime binding (target name and value) unchanged. Python does
+/// not enforce annotations at runtime at module scope, so such a change has no
+/// behavior delta (#1289). Fails closed: returns false when either line is not
+/// a parseable bare-variable annotation, when the lines are identical, or when
+/// anything beyond the annotation differs (a value change, a target rename, an
+/// added/removed value, or an attribute target).
+fn is_annotation_only_var_change(old_line: &str, new_line: &str) -> bool {
+    if old_line.trim() == new_line.trim() {
+        return false;
+    }
+    match (
+        variable_annotation_skeleton(old_line),
+        variable_annotation_skeleton(new_line),
+    ) {
+        (Some(old), Some(new)) => old == new,
+        _ => false,
+    }
+}
+
+/// A parameter whose default VALUE changed in a `def`-header diff, with the
+/// position metadata needed to decide whether a call binds it.
+struct ChangedDefaultParam {
+    name: String,
+    /// 0-based index in the full ordered parameter list (posonly ++ args ++ kwonly).
+    index: usize,
+    /// Whether a positional argument at `index` can bind this parameter. False for
+    /// a keyword-only parameter, which a positional argument can never reach.
+    positionally_bindable: bool,
+}
+
+/// The parameters whose default VALUE changed between two `def` headers, when the
+/// change is a PURE default-value change (value -> different value) and nothing
+/// else about the runtime signature differs. Returns None — leaving classification
+/// untouched — for a non-`def` line, an added/removed default (which changes
+/// requiredness, not just a value), a renamed/reordered/added parameter, an
+/// async-ness change, or a `*args`/`**kwargs` change, or when no default value
+/// actually changed. Fails closed: anything it cannot prove is a pure
+/// default-value change yields None.
+fn changed_default_value_params(
+    old_line: &str,
+    new_line: &str,
+) -> Option<Vec<ChangedDefaultParam>> {
+    let (old_async, old_name, old_pos, old_kw, old_params, old_va, old_kwa) =
+        def_signature_skeleton(old_line)?;
+    let (new_async, new_name, new_pos, new_kw, new_params, new_va, new_kwa) =
+        def_signature_skeleton(new_line)?;
+    if old_async != new_async
+        || old_name != new_name
+        || old_pos != new_pos
+        || old_kw != new_kw
+        || old_va != new_va
+        || old_kwa != new_kwa
+        || old_params.len() != new_params.len()
+    {
+        return None;
+    }
+    let positional_capacity = new_params.len().saturating_sub(new_kw);
+    let mut changed = Vec::new();
+    for (index, (old_param, new_param)) in old_params.iter().zip(new_params.iter()).enumerate() {
+        if old_param.0 != new_param.0 {
+            return None; // renamed / reordered parameter
+        }
+        match (&old_param.1, &new_param.1) {
+            (Some(old_default), Some(new_default)) if old_default != new_default => {
+                changed.push(ChangedDefaultParam {
+                    name: new_param.0.clone(),
+                    index,
+                    positionally_bindable: index < positional_capacity,
+                });
+            }
+            (Some(_), Some(_)) | (None, None) => {}
+            // Added or removed default changes requiredness, not just a value.
+            (Some(_), None) | (None, Some(_)) => return None,
+        }
+    }
+    (!changed.is_empty()).then_some(changed)
+}
+
+/// The argument shape of a single call: how many positional arguments precede any
+/// keyword arguments, and the set of keyword-argument names.
+struct CallArgShape {
+    positional_count: usize,
+    keywords: Vec<String>,
+}
+
+impl CallArgShape {
+    fn binds(&self, param: &ChangedDefaultParam) -> bool {
+        if self.keywords.iter().any(|name| name == &param.name) {
+            return true;
+        }
+        param.positionally_bindable && param.index < self.positional_count
+    }
+}
+
+/// Splits a call's argument-list text into top-level argument segments, respecting
+/// quotes and nested brackets: `a, g(b, c), d=1` -> `["a", " g(b, c)", " d=1"]`.
+fn split_top_level_args(args: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (idx, ch) in args.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                segments.push(&args[start..idx]);
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    segments.push(&args[start..]);
+    segments
+}
+
+/// The keyword-argument name of a single call-argument segment (`rate=0.2` ->
+/// `Some("rate")`), or None when the segment is positional. Guards against
+/// comparison operators (`x == 1`, `a != b`, `n <= 3`) so a positional boolean
+/// expression is not misread as a keyword binding.
+fn call_segment_keyword_name(segment: &str) -> Option<&str> {
+    let chars: Vec<(usize, char)> = segment.char_indices().collect();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    for (position, (idx, ch)) in chars.iter().copied().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            '=' if depth == 0 => {
+                let prev = position.checked_sub(1).map(|p| chars[p].1);
+                let next = chars.get(position + 1).map(|(_, c)| *c);
+                if matches!(prev, Some('=' | '!' | '<' | '>')) || next == Some('=') {
+                    continue; // part of ==, !=, <=, >=
+                }
+                let field = segment[..idx].trim();
+                return is_simple_python_identifier(field).then_some(field);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parses a call's argument-list text into a positional/keyword shape. Returns
+/// None for any shape this conservative parser cannot fully account for — an
+/// `*args` / `**kwargs` unpacking — so the caller fails open (keeps the existing
+/// classification) rather than guessing a binding.
+fn analyze_call_args(args: &str) -> Option<CallArgShape> {
+    let mut positional_count = 0usize;
+    let mut keywords = Vec::new();
+    for segment in split_top_level_args(args) {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('*') {
+            return None; // *args / **kwargs unpack: binding is undecidable
+        }
+        // A `#` inside an argument segment is an inline comment (legal in a
+        // multi-line call). A comment can hide a `)` that `split_top_level_args`
+        // already mis-counted, or carry text that inflates `positional_count`,
+        // so the binding is ambiguous — fail open rather than risk a false-clean.
+        if trimmed.contains('#') {
+            return None;
+        }
+        match call_segment_keyword_name(trimmed) {
+            Some(name) => keywords.push(name.to_string()),
+            None => positional_count += 1,
+        }
+    }
+    Some(CallArgShape {
+        positional_count,
+        keywords,
+    })
+}
+
+/// The byte index of the `)` that closes the `(` at `open_idx`, respecting quotes
+/// and nesting. None if unbalanced.
+fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (offset, ch) in text[open_idx..].char_indices() {
+        let idx = open_idx + offset;
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(idx);
+                }
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The argument-list text of every direct free-function call to `name` in `body`
+/// (`render(...)` but not `obj.render(...)` and not `renderer(...)`). Balanced-paren
+/// aware; skips calls whose parentheses are unbalanced in the captured body text.
+fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<&'a str> {
+    let mut arglists = Vec::new();
+    if name.is_empty() {
+        return arglists;
+    }
+    let mut search_from = 0usize;
+    while let Some(rel) = body[search_from..].find(name) {
+        let name_start = search_from + rel;
+        let name_end = name_start + name.len();
+        search_from = name_end;
+        // Word boundary before the name: not part of a longer identifier, and not a
+        // method/attribute access (`obj.render`).
+        if let Some(prev) = body[..name_start].chars().next_back()
+            && (prev == '_' || prev == '.' || prev.is_alphanumeric())
+        {
+            continue;
+        }
+        // The match must be live code, not a mention inside a comment or a
+        // string literal. A `# comment` or an unclosed quote on the same line
+        // before the name means this occurrence is not an executable call; a
+        // comment containing `)` would otherwise break `matching_call_paren` and
+        // a string mention would invent a call that does not run.
+        if line_prefix_looks_like_comment_or_string(body, name_start) {
+            continue;
+        }
+        let rest = &body[name_end..];
+        // Not part of a longer identifier after the name (`renderer`).
+        if let Some(next) = rest.chars().next()
+            && (next == '_' || next.is_alphanumeric())
+        {
+            continue;
+        }
+        let trimmed = rest.trim_start();
+        if !trimmed.starts_with('(') {
+            continue;
+        }
+        let open_idx = name_end + (rest.len() - trimmed.len());
+        let Some(close_idx) = matching_call_paren(body, open_idx) else {
+            continue;
+        };
+        arglists.push(&body[open_idx + 1..close_idx]);
+        search_from = close_idx + 1;
+    }
+    arglists
+}
+
+/// Whether a changed default VALUE in a `def` header is left UN-exercised by every
+/// strong related oracle. When the change is a pure default-value change and every
+/// strong related test that calls the owner binds the changed parameter(s)
+/// explicitly (keyword or positional), the changed default is never reached, so a
+/// strong observing oracle cannot discriminate it (#1289 trap 45) — returns
+/// Some(changed-param names) naming what to exercise by omission. Returns None (no
+/// block) when the change is not a pure default-value change, when no owner call
+/// can be analyzed, or when at least one strong call omits a changed parameter.
+/// Fails open: any untracked shape yields None so a genuine exposure is never
+/// suppressed. Scoped to free-function owners — a method/classmethod has an
+/// implicit `self`/`cls` that shifts positional binding, so those fail open.
+fn changed_default_overridden_params(
+    old_line_text: Option<&str>,
+    new_line_text: &str,
+    owner: &PythonOwner,
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> Option<Vec<String>> {
+    let old_line = old_line_text?;
+    if matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    ) {
+        return None;
+    }
+    let changed = changed_default_value_params(old_line, new_line_text)?;
+    let mut saw_strong = false;
+    for candidate in related_candidates {
+        if !candidate.relation.uses_oracle() {
+            continue;
+        }
+        let is_strong = strongest_assertion(&candidate.test.assertions).is_some_and(|assertion| {
+            assertion.oracle_strength.rank() >= OracleStrength::Strong.rank()
+        });
+        if !is_strong {
+            continue;
+        }
+        saw_strong = true;
+        let arglists = free_function_call_arglists(&candidate.test.body_text, &owner.name);
+        if arglists.is_empty() {
+            // A strong related test that reaches the owner without a direct
+            // `owner(...)` call (an alias, wrapper, or indirection this scanner does
+            // not resolve) might exercise the default. Fail open so a genuine
+            // exposure is never suppressed.
+            return None;
+        }
+        for arglist in arglists {
+            let Some(shape) = analyze_call_args(arglist) else {
+                return None; // unanalyzable call -> fail open
+            };
+            if changed.iter().any(|param| !shape.binds(param)) {
+                return None; // some changed default is omitted -> exercised
+            }
+        }
+    }
+    if !saw_strong {
+        return None; // no strong oracle -> the exposed branch is unreachable anyway
+    }
+    Some(changed.into_iter().map(|param| param.name).collect())
+}
+
+/// Backtick-quotes and comma-joins parameter names for a `missing` message.
+fn format_param_name_list(params: &[String]) -> String {
+    params
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(test)]
 fn classify_change(
     file: &Path,
     line: usize,
@@ -4656,10 +5806,61 @@ fn classify_change(
     owners: &[PythonOwner],
     all_tests: &[PythonTest],
 ) -> Option<Finding> {
+    classify_change_with_old(file, line, line_text, None, owners, all_tests)
+}
+
+fn classify_change_with_old(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    old_line_text: Option<&str>,
+    owners: &[PythonOwner],
+    all_tests: &[PythonTest],
+) -> Option<Finding> {
+    // No-op / no-behavior-delta guard (#1279): a docstring-only, comment-only, or
+    // blank-line change has no runtime behavior, so there is nothing for a test to
+    // discriminate. Emit no probe — crediting `exposed` here would falsely imply the
+    // tests notice a behavior change that does not exist. The change is a no-op only
+    // when BOTH sides are non-behavioral: if real code was replaced by a docstring
+    // (old line behavioral), keep analyzing rather than silently dropping it.
+    let new_is_noop = is_python_no_behavior_line(line_text);
+    let old_is_noop = old_line_text.is_none_or(is_python_no_behavior_line);
+    if new_is_noop && old_is_noop {
+        return None;
+    }
+    // Annotation-only `def`-header guard (#1289): Python does not enforce type
+    // annotations at runtime, so a `def` change that touches only parameter/return
+    // annotations — leaving the callable's runtime signature (name, parameter names
+    // and order, default VALUES, *args/**kwargs, async-ness) unchanged — has no
+    // behavior delta. Emit no probe rather than crediting `exposed` from a test that
+    // reaches the owner. Requires the paired old line; fails closed when anything
+    // beyond an annotation differs (e.g. a default-value change, which IS behavioral).
+    if let Some(old) = old_line_text
+        && is_annotation_only_def_change(old, line_text)
+    {
+        return None;
+    }
     let owner = owner_for_changed_line(file, line, owners)?;
+    // Bare-variable annotation-only suppression at MODULE SCOPE only (#1289):
+    // Python does not enforce type annotations at runtime at module scope, so a
+    // module-scope annotated-variable change that touches ONLY the annotation
+    // (identical target name and value) has no behavior delta — emit no probe.
+    // Class-body annotation changes are deliberately NOT suppressed: `@dataclass`,
+    // Pydantic `BaseModel`, and `attrs` make annotations runtime-meaningful
+    // (they drive validation/coercion), and base-class tracking does not exist
+    // yet, so the safe stance is to fail closed for every class body. Also fails
+    // closed when anything beyond the annotation differs (value, target) or the
+    // line is not a parseable annotated assignment.
+    if owner.is_module_owner()
+        && let Some(old) = old_line_text
+        && is_annotation_only_var_change(old, line_text)
+    {
+        return None;
+    }
     let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
-    let alignment = classify_sink_alignment(owner, line_text, &related, all_tests);
+    let alignment =
+        classify_sink_alignment_with_old(owner, line_text, old_line_text, &related, all_tests);
     let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
@@ -4675,6 +5876,28 @@ fn classify_change(
         .max_by_key(|test| test.oracle_strength.rank())
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
+    // A raise / error-path change is discriminated only by an oracle that observes the
+    // RAISED exception (`pytest.raises` / `assertRaises`). A strong normal-path value
+    // oracle reaches the owner but never triggers the changed raise — e.g.
+    // `raise ValueError` -> `KeyError` on an `if not text:` branch, with a test that
+    // only calls `parse("42")` — so it does not discriminate the change (#1290 Class C).
+    // Require an exception-observing oracle for an ErrorPath change before crediting
+    // `exposed`; otherwise it falls through to the strong-but-orthogonal weak branch.
+    let error_path_oracle_ok = !matches!(family, ProbeFamily::ErrorPath)
+        || matches!(
+            strongest_kind,
+            OracleKind::ExactErrorVariant | OracleKind::BroadError
+        );
+
+    // A changed default VALUE is discriminated only by a call that OMITS the
+    // parameter (and so reaches the default). If every strong related test binds
+    // the changed parameter explicitly — `render("Sam", verbose=False)` for a
+    // `verbose=True` default change — the changed default is never exercised, so a
+    // strong observing oracle does not discriminate it (#1289 trap 45). Block
+    // `exposed` in that case and name the parameter(s) to test by omission.
+    let changed_default_override =
+        changed_default_overridden_params(old_line_text, line_text, owner, &related_candidates);
+    let changed_default_exercised_ok = changed_default_override.is_none();
 
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if static_limit
         .is_some()
@@ -4724,7 +5947,11 @@ fn classify_change(
                 owner.name
             )],
         )
-    } else if strongest_strength >= OracleStrength::Strong.rank() && alignment.observes() {
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && alignment.observes()
+        && error_path_oracle_ok
+        && changed_default_exercised_ok
+    {
         (
             ExposureClass::Exposed,
             StageState::Yes,
@@ -4734,6 +5961,28 @@ fn classify_change(
                 "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
                 owner.name,
                 strongest_kind.as_str()
+            )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && alignment.observes()
+        && error_path_oracle_ok
+        && let Some(params) = &changed_default_override
+    {
+        // A strong oracle observes the owner's output, but every reaching call binds
+        // the changed-default parameter(s), so the changed default is never
+        // exercised. Fail closed to weakly_exposed and name the parameter(s) to test
+        // by omission (#1289 trap 45).
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![format!(
+                "A strong Python oracle reaches `{}`, but every related call passes {} explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `{}` without {} to exercise the changed default.",
+                owner.name,
+                format_param_name_list(params),
+                owner.name,
+                format_param_name_list(params),
             )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
@@ -4852,7 +6101,29 @@ fn classify_change(
         && matches!(class, ExposureClass::WeaklyExposed)
         && has_oracle_eligible_relation
     {
-        python_missing_discriminators(&family, line, line_text, owner, flow_sink.as_ref())
+        if let Some(params) = &changed_default_override {
+            // The override downgrade names a specific, actionable missing
+            // discriminator — "call the owner WITHOUT the changed-default
+            // parameter(s)" — that the generic `python_missing_discriminators`
+            // cannot derive for a `def` header (no comparison operator to read).
+            // Populate it directly so the structured field (repair card,
+            // recommended_next_step) carries the omission guidance, not just the
+            // top-level `missing` string.
+            vec![MissingDiscriminatorFact {
+                value: format!(
+                    "call `{}` without {}",
+                    owner.name,
+                    format_param_name_list(params)
+                ),
+                reason: format!(
+                    "changed default parameter(s) {} at line {line} are always explicitly bound, so the default is never exercised",
+                    format_param_name_list(params)
+                ),
+                flow_sink: flow_sink.clone(),
+            }]
+        } else {
+            python_missing_discriminators(&family, line, line_text, owner, flow_sink.as_ref())
+        }
     } else {
         Vec::new()
     };
@@ -5145,10 +6416,18 @@ impl LanguageAdapter for PythonAdapter {
                 continue;
             }
             for added in &changed.added_lines {
-                if let Some(finding) = classify_change(
+                // Pair the in-place removed line (same new-side position) so the
+                // classifier can credit the changed-sink token on the DELTA only.
+                let old_line_text = changed
+                    .removed_lines
+                    .iter()
+                    .find(|removed| removed.new_side_line == added.line)
+                    .map(|removed| removed.text.as_str());
+                if let Some(finding) = classify_change_with_old(
                     &changed.path,
                     added.line,
                     &added.text,
+                    old_line_text,
                     &all_owners,
                     &all_tests,
                 ) {
@@ -5159,6 +6438,8 @@ impl LanguageAdapter for PythonAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            changed_files_by_language: Vec::new(),
+            partial_scope: None,
         })
     }
 
@@ -5169,6 +6450,10 @@ impl LanguageAdapter for PythonAdapter {
     ) -> Result<LanguageRepoResult, String> {
         // Repo-mode preview output lands in a follow-up. The current
         // sub-slice scopes to diff-mode for the smallest useful fixture.
+        // This stub returns an empty result; callers that consume
+        // repo-scoped formats on a Python-only workspace get zero seams
+        // with no warning. See docs/LANGUAGE_ADAPTER_PREVIEW.md
+        // § "Repo-Mode Analysis Is Rust-Only" for the limitation contract.
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,
@@ -5181,6 +6466,120 @@ mod python_tests;
 
 #[cfg(test)]
 mod tests {
+
+    fn unique_test_root(label: &str) -> std::path::PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("ripr-py-fw-{label}-{}-{stamp}", std::process::id()))
+    }
+
+    #[test]
+    fn detect_python_test_framework_reads_setup_cfg_and_tox_sections() -> Result<(), String> {
+        let root = unique_test_root("setup-cfg");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("setup.cfg"), "[tool:pytest]\naddopts = -q\n")
+            .map_err(|err| format!("write setup.cfg: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("pytest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_test_root("tox");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("tox.ini"), "[pytest]\naddopts = -q\n")
+            .map_err(|err| format!("write tox.ini: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("pytest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_reads_conftest_py() -> Result<(), String> {
+        let root = unique_test_root("conftest");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("conftest.py"), "import pytest\n")
+            .map_err(|err| format!("write conftest.py: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("pytest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_reads_pytest_ini_and_pyproject() -> Result<(), String> {
+        let root = unique_test_root("pytest-ini");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("pytest.ini"), "[pytest]\n")
+            .map_err(|err| format!("write pytest.ini: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("pytest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_test_root("pyproject");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("pyproject.toml"), "[tool.pytest.ini_options]\n")
+            .map_err(|err| format!("write pyproject.toml: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("pytest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_recognizes_from_unittest_import() -> Result<(), String> {
+        let root = unique_test_root("from-unittest");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(
+            root.join("test_pricing.py"),
+            "from unittest import TestCase\n\nclass TestPricing(TestCase):\n    pass\n",
+        )
+        .map_err(|err| format!("write test file: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("unittest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_rejects_lookalike_and_commented_imports() -> Result<(), String>
+    {
+        // Negative fixtures (#2106 review): a lookalike identifier and a
+        // commented-out import must NOT report unittest.
+        let root = unique_test_root("lookalike");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("test_lookalike.py"), "import unittesting\n")
+            .map_err(|err| format!("write test file: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), None);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_test_root("commented");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("test_commented.py"), "# import unittest\n")
+            .map_err(|err| format!("write test file: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), None);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_detects_unittest_from_code_evidence() -> Result<(), String> {
+        let root = unique_test_root("unittest");
+        let tests_dir = root.join("tests");
+        std::fs::create_dir_all(&tests_dir).map_err(|err| format!("create tests dir: {err}"))?;
+        std::fs::write(
+            tests_dir.join("test_pricing.py"),
+            "import unittest\n\nclass TestPricing(unittest.TestCase):\n    pass\n",
+        )
+        .map_err(|err| format!("write test file: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), Some("unittest"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_python_test_framework_is_fail_closed_for_empty_root() -> Result<(), String> {
+        let root = unique_test_root("empty");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        assert_eq!(super::detect_python_test_framework(&root), None);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
     use super::*;
     use std::path::{Path, PathBuf};
 
@@ -6410,6 +7809,148 @@ def test_build_user_smoke():
     }
 
     #[test]
+    fn free_function_relative_import_from_owner_module_credits_exposed() -> Result<(), String> {
+        // Common package-local Python tests often use explicit relative imports.
+        // Resolve the importing file's package before checking free-function
+        // module identity so `from .handler import normalize` is not treated as
+        // unrelated bare-name token coincidence.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("src/test_handler.py"),
+            "from .handler import normalize\n\n\ndef test_handler_normalize_relative():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a resolved relative import from the owner's module is identity-bearing"
+        );
+        assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_relative_import_from_sibling_module_stays_fail_closed() -> Result<(), String> {
+        // Boundary: `from .other import normalize` resolves to `src.other`, not
+        // the owner's `src.handler` module — identity must NOT be credited from
+        // the bare-name token coincidence.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("src/test_handler.py"),
+            "from .other import normalize\n\n\ndef test_handler_normalize_sibling():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        if finding.class == ExposureClass::Exposed {
+            return Err(format!(
+                "a relative import from a different module was wrongly credited: {:?}",
+                finding.class
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn relative_import_escaping_the_package_fails_closed() -> Result<(), String> {
+        // `from ...handler import normalize` from a shallow file traverses above
+        // the package root: the resolver must fail closed to an empty module
+        // rather than fabricate an identity.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("src/test_handler.py"),
+            "from ...handler import normalize\n\n\ndef test_handler_normalize_overtraverse():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        if finding.class == ExposureClass::Exposed {
+            return Err(format!(
+                "an over-traversing relative import was wrongly credited: {:?}",
+                finding.class
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn relative_import_of_same_stem_helper_in_sibling_package_stays_fail_closed()
+    -> Result<(), String> {
+        // The P1 review case: `src/tests/test_handler.py` importing
+        // `from .handler import normalize` resolves to `src.tests.handler` — a
+        // DIFFERENT module with the same stem as the owner's `src.handler`.
+        // Stem-only matching would wrongly credit identity here.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("src/tests/test_handler.py"),
+            "from .handler import normalize\n\n\ndef test_handler_same_stem_helper():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        if finding.class == ExposureClass::Exposed {
+            return Err(format!(
+                "a same-stem helper in a sibling package was wrongly credited: {:?}",
+                finding.class
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn vendored_same_stem_module_does_not_match_owner_identity() -> Result<(), String> {
+        // `from src.vendor.handler import normalize` names a same-stem module in
+        // a different package — full-path identity must reject it.
+        let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
+        let tests = extract_tests(
+            Path::new("src/tests/test_handler.py"),
+            "from src.vendor.handler import normalize\n\n\ndef test_handler_vendored():\n    assert normalize(\" ok \") == \"ok\"\n",
+        );
+        let Some(finding) = classify_change(
+            Path::new("src/handler.py"),
+            2,
+            HANDLER_CHANGED_LINE,
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return inside normalize should classify".to_string());
+        };
+        if finding.class == ExposureClass::Exposed {
+            return Err(format!(
+                "a vendored same-stem module was wrongly credited: {:?}",
+                finding.class
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn free_function_aliased_import_from_owner_module_credits_exposed() -> Result<(), String> {
         // Positive control: aliased same-module import (`as norm`) keeps identity.
         let owners = extract_owners(Path::new("src/handler.py"), HANDLER_SOURCE);
@@ -6467,6 +8008,1160 @@ def test_build_user_smoke():
             Some("changed_sink_token")
         );
         Ok(())
+    }
+
+    #[test]
+    fn changed_sink_token_requires_delta_not_unchanged_operand() -> Result<(), String> {
+        // #1276: the delta is `max` (the wrap); the oracle observes the UNCHANGED
+        // operand `_balance` and never invokes the changed `balance` property, so it
+        // does not discriminate the change. Must not credit changed_sink_token.
+        let source = "class Account:\n    def __init__(self, balance):\n        self._balance = balance\n\n    @property\n    def balance(self):\n        return max(0, self._balance)\n";
+        let owners = extract_owners(Path::new("src/account.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_account.py"),
+            "from src.account import Account\n\n\ndef test_account_init():\n    account = Account(100)\n    assert account._balance == 100\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/account.py"),
+            7,
+            "        return max(0, self._balance)",
+            Some("        return self._balance"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed property body should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an unchanged operand observed by the test is not the behavior delta"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_sink_token_credits_when_oracle_observes_the_delta_value() -> Result<(), String> {
+        // Positive control: the changed VALUE "paid" IS the delta, and the oracle
+        // observes it on the same owner instance — the credit stands.
+        let source = "class Invoice:\n    def __init__(self):\n        self.status = \"open\"\n\n    def settle(self):\n        self.status = \"paid\"\n";
+        let owners = extract_owners(Path::new("src/invoice.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_invoice.py"),
+            "from src.invoice import Invoice\n\n\ndef test_settle():\n    inv = Invoice()\n    inv.settle()\n    assert inv.status == \"paid\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/invoice.py"),
+            6,
+            "        self.status = \"paid\"",
+            Some("        self.status = \"settled\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed field write should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed value (the delta) credits exposed"
+        );
+        assert_eq!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_operator_change_does_not_credit_unchanged_input_operand() -> Result<(), String> {
+        // #1278: `+` -> `-` is an operator change with an EMPTY token delta. The only
+        // strong oracle observes the UNCHANGED input parameter `count`, not the
+        // changed return value, so the test does not discriminate the change. The
+        // #1277 empty-delta fallback must NOT credit a value-family change on an
+        // input operand.
+        let source = "def next_value(count):\n    return count - 1\n";
+        let owners = extract_owners(Path::new("src/counter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_counter.py"),
+            "from src.counter import next_value\n\n\ndef test_next():\n    count = 5\n    result = next_value(count)\n    assert count == 5\n    assert result > 0\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/counter.py"),
+            2,
+            "    return count - 1",
+            Some("    return count + 1"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return body should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an operator change observed only via an unchanged input operand is not exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_operator_change_stays_exposed_when_oracle_observes_owner_output()
+    -> Result<(), String> {
+        // #1278 inverse control: the same operator change IS exposed when a strong
+        // oracle observes the owner's OUTPUT by calling it (the `direct` path), not
+        // via an input operand. This proves operator-change discrimination is
+        // preserved when the test actually exercises the changed value.
+        let source = "def next_value(count):\n    return count - 1\n";
+        let owners = extract_owners(Path::new("src/counter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_counter.py"),
+            "from src.counter import next_value\n\n\ndef test_next():\n    assert next_value(5) == 4\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/counter.py"),
+            2,
+            "    return count - 1",
+            Some("    return count + 1"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed return body should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the owner's output (the call result) discriminates the operator change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_delta_predicate_change_still_credits_outcome_oracle() -> Result<(), String> {
+        // #1278 preserve: a CONTROL-flow operator change (`<=` -> `<`) keeps the
+        // empty-delta fallback — an outcome oracle (`pytest.raises`) discriminates the
+        // changed branch, mirroring `python_cross_file_construct_call`.
+        let source = "class Formatter:\n    def __call__(self, event):\n        for key in event:\n            if any(c < \" \" for c in key):\n                raise ValueError(f'Invalid key: \"{key}\"')\n        return \",\".join(event)\n";
+        let owners = extract_owners(Path::new("src/formatter.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "import pytest\n\nfrom src.formatter import Formatter\n\n\ndef test_rejects_space_in_key():\n    with pytest.raises(ValueError, match='Invalid key'):\n        Formatter()({\"bad key\": \"value\"})\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/formatter.py"),
+            4,
+            "            if any(c < \" \" for c in key):",
+            Some("            if any(c <= \" \" for c in key):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed predicate should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a control-flow operator change observed by an outcome oracle stays exposed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_assignment_operator_change_does_not_credit_input_operand() -> Result<(), String> {
+        // #1288: `total = base + bonus` -> `base - bonus` is a plain LOCAL ASSIGNMENT
+        // with an empty token delta. `classify_probe_shape` defaults it to Control, so
+        // the #1278 gate (keyed on delta_kind == Control) wrongly kept the operand
+        // fallback and credited the UNCHANGED input `base`. The precise control-flow
+        // line check must withhold the fallback for a non-control assignment.
+        let source = "def compute(base, bonus):\n    total = base - bonus\n    return total\n";
+        let owners = extract_owners(Path::new("src/calc.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_calc.py"),
+            "from src.calc import compute\n\n\ndef test_base_unchanged():\n    base = 10\n    compute(base, 3)\n    assert base == 10\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/calc.py"),
+            2,
+            "    total = base - bonus",
+            Some("    total = base + bonus"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed local assignment should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a local-assignment operator change observed only via an unchanged input operand is not exposed"
+        );
+        assert_ne!(
+            finding.oracle_alignment.as_deref(),
+            Some("changed_sink_token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn augmented_assignment_operator_change_does_not_credit_input_operand() -> Result<(), String> {
+        // #1288: augmented assignment `acc += step` -> `acc -= step` likewise defaults
+        // to Control in classify_probe_shape; the precise control-flow check must
+        // withhold the operand fallback for the unchanged input `step`.
+        let source = "def accumulate(values, step):\n    acc = 0\n    for value in values:\n        acc -= step\n    return acc\n";
+        let owners = extract_owners(Path::new("src/agg.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_agg.py"),
+            "from src.agg import accumulate\n\n\ndef test_step_unchanged():\n    step = 2\n    accumulate([1, 2, 3], step)\n    assert step == 2\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/agg.py"),
+            4,
+            "        acc -= step",
+            Some("        acc += step"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed augmented assignment should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an augmented-assignment operator change observed only via an unchanged input is not exposed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_only_def_change_emits_no_probe() -> Result<(), String> {
+        // #1289: changing only a parameter annotation (`int` -> `str`) has no runtime
+        // behavior; Python does not enforce annotations. No probe must be emitted.
+        let source = "def discount(amount: str) -> int:\n    return amount\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount_passthrough():\n    assert discount(100) == 100\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            1,
+            "def discount(amount: str) -> int:",
+            Some("def discount(amount: int) -> int:"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "an annotation-only def change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn return_annotation_only_change_emits_no_probe() -> Result<(), String> {
+        // #1289: a return-annotation-only change is likewise a no-op.
+        let source = "def parse(text):\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/p.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_p.py"),
+            "from src.p import parse\n\n\ndef test_parse():\n    assert parse(\"4\") == 4\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/p.py"),
+            1,
+            "def parse(text) -> str:",
+            Some("def parse(text) -> int:"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a return-annotation-only change must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn default_value_change_in_def_still_classifies() -> Result<(), String> {
+        // #1289 safety: a DEFAULT-VALUE change on a def header is behavioral and must
+        // NOT be mistaken for an annotation-only change. The skeleton captures default
+        // value source text, so this differs and is still analyzed.
+        let source = "def page(size=20):\n    return size\n";
+        let owners = extract_owners(Path::new("src/page.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_page.py"),
+            "from src.page import page\n\n\ndef test_page_default():\n    assert page() == 20\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/page.py"),
+            1,
+            "def page(size=20):",
+            Some("def page(size=10):"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a default-value change is behavioral and must still classify (not suppressed as annotation-only)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn annotation_only_detection_is_conservative() {
+        // Annotation-only (suppress):
+        assert!(is_annotation_only_def_change(
+            "def f(x: int):",
+            "def f(x: str):"
+        ));
+        assert!(is_annotation_only_def_change(
+            "def f(x) -> int:",
+            "def f(x) -> str:"
+        ));
+        assert!(is_annotation_only_def_change(
+            "    def m(self, a: int, b: Dict[str, int]) -> None:",
+            "    def m(self, a: str, b: Dict[str, str]) -> None:"
+        ));
+        // NOT annotation-only (must still analyze):
+        assert!(!is_annotation_only_def_change("def f(x=1):", "def f(x=2):")); // default value
+        assert!(!is_annotation_only_def_change("def f(a):", "def f(b):")); // param rename
+        assert!(!is_annotation_only_def_change("def f(a):", "def f(a, b):")); // added param
+        assert!(!is_annotation_only_def_change(
+            "def f(x):",
+            "async def f(x):"
+        )); // async-ness
+        assert!(!is_annotation_only_def_change("def f(x):", "def f(x):")); // identical
+        assert!(!is_annotation_only_def_change(
+            "    return x + 1",
+            "    return x - 1"
+        )); // not a def
+    }
+
+    #[test]
+    fn bare_var_annotation_only_change_at_module_scope_emits_no_probe() -> Result<(), String> {
+        // #1289: a module-scope annotated variable whose ONLY change is the
+        // annotation (`int` -> `str`, value unchanged) has no runtime behavior —
+        // Python does not enforce annotations at module scope. No probe.
+        let source = "CACHE_TTL: str = 30\n\n\ndef get_ttl():\n    return CACHE_TTL\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_ttl\n\n\ndef test_ttl():\n    assert get_ttl() == 30\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "CACHE_TTL: str = 30",
+            Some("CACHE_TTL: int = 30"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a module-scope annotation-only var change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_annotation_only_change_no_value_emits_no_probe() -> Result<(), String> {
+        // #1289: a pure annotation with no value (`x: int` -> `x: str`) is also a
+        // no-op at module scope when only the annotation differs.
+        let source = "LABEL: str\n\n\ndef get_label():\n    return LABEL\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_label\n\n\ndef test_label():\n    assert get_label() == \"x\"\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "LABEL: str",
+            Some("LABEL: int"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a pure annotation change (no value) at module scope must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_value_change_still_classifies() -> Result<(), String> {
+        // #1289 safety: a VALUE change on an annotated variable is behavioral
+        // and must NOT be suppressed. The skeleton captures the value source, so
+        // `= 5` vs `= 6` differs and the line is still analyzed.
+        let source = "LIMIT: int = 6\n\n\ndef get_limit():\n    return LIMIT\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_limit\n\n\ndef test_limit():\n    assert get_limit() == 6\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "LIMIT: int = 6",
+            Some("LIMIT: int = 5"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a value change is behavioral and must still classify (not suppressed as annotation-only)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bare_var_annotation_change_in_class_body_still_classifies() -> Result<(), String> {
+        // #1289 safety: an annotation-only change INSIDE a class body is NOT
+        // suppressed — `@dataclass`/Pydantic make class-body annotations
+        // runtime-meaningful, and base-class tracking does not exist yet. The
+        // guard is module-scope only; fail closed for class bodies.
+        let source =
+            "class Config:\n    ttl: str = 30\n\n    def get(self):\n        return self.ttl\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import Config\n\n\ndef test_ttl():\n    assert Config().get() == 30\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            2,
+            "    ttl: str = 30",
+            Some("    ttl: int = 30"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a class-body annotation-only change must still classify (fail closed for class bodies)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn non_annotation_assignment_still_classifies() -> Result<(), String> {
+        // #1289 safety: a plain assignment (`x = 5`, no annotation) is not an
+        // annotated variable and must classify normally.
+        let source = "COUNT = 6\n\n\ndef get_count():\n    return COUNT\n";
+        let owners = extract_owners(Path::new("src/config.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_config.py"),
+            "from src.config import get_count\n\n\ndef test_count():\n    assert get_count() == 6\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/config.py"),
+            1,
+            "COUNT = 6",
+            Some("COUNT = 5"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_some(),
+            "a plain assignment (no annotation) must still classify"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn is_annotation_only_var_change_is_conservative() {
+        // Annotation-only (suppress):
+        assert!(is_annotation_only_var_change("x: int = 5", "x: str = 5")); // value identical
+        assert!(is_annotation_only_var_change("x: int", "x: str")); // no value either side
+        assert!(is_annotation_only_var_change(
+            "MAX: List[int] = []",
+            "MAX: List[str] = []"
+        )); // subscripted annotation, value identical
+        // NOT annotation-only (must still analyze):
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int = 6")); // value changed
+        assert!(!is_annotation_only_var_change("x: int", "x: int = 5")); // value added
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int")); // value removed
+        assert!(!is_annotation_only_var_change("a: int = 5", "b: int = 5")); // target rename
+        assert!(!is_annotation_only_var_change("x: int = 5", "x: int = 5")); // identical
+        assert!(!is_annotation_only_var_change("x = 5", "x = 6")); // not an annotation
+        assert!(!is_annotation_only_var_change(
+            "    return x + 1",
+            "    return x - 1"
+        )); // not an assignment at all
+    }
+
+    #[test]
+    fn dict_changed_element_sibling_key_oracle_not_exposed() -> Result<(), String> {
+        // #1290: the changed key is `port`, but the only strong oracle observes the
+        // unchanged SIBLING key `host`, so it does not discriminate the change.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_host():\n    assert build_config()[\"host\"] == \"localhost\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle observing a sibling dict key does not discriminate the changed key"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dict_changed_element_observed_value_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: the oracle observes the CHANGED key's new value, so it
+        // genuinely discriminates the change.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_port():\n    assert build_config()[\"port\"] == 9090\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed key's value discriminates the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn list_changed_element_sibling_index_oracle_not_exposed() -> Result<(), String> {
+        // #1290: index 1 changed (`search` -> `browse`), but the only strong oracle
+        // observes the unchanged SIBLING index 0, so it does not discriminate.
+        let source = "def route_order():\n    return [\"index\", \"browse\", \"detail\"]\n";
+        let owners = extract_owners(Path::new("src/routes.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_routes.py"),
+            "from src.routes import route_order\n\n\ndef test_first():\n    assert route_order()[0] == \"index\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/routes.py"),
+            2,
+            "    return [\"index\", \"browse\", \"detail\"]",
+            Some("    return [\"index\", \"search\", \"detail\"]"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed list literal should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle observing a sibling list index does not discriminate the changed index"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn list_changed_element_observed_index_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: observing the changed index credits.
+        let source = "def route_order():\n    return [\"index\", \"browse\", \"detail\"]\n";
+        let owners = extract_owners(Path::new("src/routes.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_routes.py"),
+            "from src.routes import route_order\n\n\ndef test_second():\n    assert route_order()[1] == \"browse\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/routes.py"),
+            2,
+            "    return [\"index\", \"browse\", \"detail\"]",
+            Some("    return [\"index\", \"search\", \"detail\"]"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed list literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "observing the changed index discriminates the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_return_is_not_treated_as_dict_literal() -> Result<(), String> {
+        // #1290 follow-up regression guard: an f-string `f"{value:.3f}"` contains `{`
+        // and `}` but is NOT a dict literal — it must not be gated by the dict-element
+        // check. A genuine f-string discriminator stays exposed.
+        assert!(parse_dict_literal_fields("    return f\"{value:.3f}\"").is_none());
+        assert!(
+            dict_changed_keys_and_values(
+                Some("    return f\"{value:.2f}\""),
+                "    return f\"{value:.3f}\""
+            )
+            .is_none()
+        );
+        let source = "def render_price(value):\n    return f\"{value:.3f}\"\n";
+        let owners = extract_owners(Path::new("src/price.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_price.py"),
+            "from src.price import render_price\n\n\ndef test_render_price_uses_three_decimals():\n    assert render_price(3.14159) == \"3.142\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/price.py"),
+            2,
+            "    return f\"{value:.3f}\"",
+            Some("    return f\"{value:.2f}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a genuine f-string discriminator must not be downgraded by the dict-element gate"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_length_invariant_change_via_len_aggregate_not_exposed() -> Result<(), String> {
+        // #1290 1b: `f"OK:{code}"` -> `f"NO:{code}"` changes only equal-length literal
+        // text (interpolation unchanged), so output length is invariant. The only
+        // strong oracle is `len(...)`, which cannot discriminate it.
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_len():\n    assert len(status_label(7)) == 4\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a length-invariant f-string change observed only via len() is not discriminated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fstring_length_invariant_change_with_string_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 1b preserve: the same length-invariant change observed by an exact
+        // string comparison IS discriminated.
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_exact():\n    assert status_label(7) == \"NO:7\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an exact string oracle observes the changed f-string output"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn error_path_change_with_value_oracle_not_exposed() -> Result<(), String> {
+        // #1290 Class C: a `raise` type change on an untaken branch, observed only by a
+        // normal-path value oracle (the test never triggers the raise), is not
+        // discriminated.
+        let source = "def parse(text):\n    if not text:\n        raise KeyError(\"empty\")\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/parseint.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_parseint.py"),
+            "from src.parseint import parse\n\n\ndef test_parse_ok():\n    assert parse(\"42\") == 42\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/parseint.py"),
+            3,
+            "        raise KeyError(\"empty\")",
+            Some("        raise ValueError(\"empty\")"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed raise should classify".to_string());
+        };
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a raise change observed only by a normal-path value oracle is not discriminated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn error_path_change_with_exception_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 Class C preserve: the same raise change IS exposed when the test
+        // observes the raised exception via pytest.raises.
+        let source = "def parse(text):\n    if not text:\n        raise KeyError(\"empty\")\n    return int(text)\n";
+        let owners = extract_owners(Path::new("src/parseint.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_parseint.py"),
+            "import pytest\n\nfrom src.parseint import parse\n\n\ndef test_parse_empty():\n    with pytest.raises(KeyError, match=\"empty\"):\n        parse(\"\")\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/parseint.py"),
+            3,
+            "        raise KeyError(\"empty\")",
+            Some("        raise ValueError(\"empty\")"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed raise should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an exception oracle observes the changed raise"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_explicit_kwarg_override_not_exposed() -> Result<(), String> {
+        // #1289 trap 45: the `verbose` default changes (False -> True), but the only
+        // strong oracle calls `render("Sam", verbose=False)`, explicitly overriding
+        // the parameter. The changed default is never exercised, so the test passes
+        // identically before and after — not discriminated.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_explicit_verbose_false():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "an explicit kwarg override does not exercise the changed default"
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("without `verbose`")),
+            "the downgrade must name the parameter to test by omission"
+        );
+        assert!(
+            finding
+                .activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.value == "call `render` without `verbose`"),
+            "the structured missing discriminator must carry the omission guidance"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_explicit_positional_override_not_exposed() -> Result<(), String> {
+        // #1289 trap 45: a positional argument at `verbose`'s index (1) overrides the
+        // changed default just as a kwarg would.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_positional_false():\n    assert render(\"Sam\", False) == \"Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "an explicit positional override does not exercise the changed default"
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("without `verbose`")),
+            "the downgrade must name the parameter to test by omission"
+        );
+        assert!(
+            finding
+                .activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.value == "call `render` without `verbose`"),
+            "the structured missing discriminator must carry the omission guidance"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_used_by_omission_stays_exposed() -> Result<(), String> {
+        // #1289 trap 45 preserve: when the call OMITS the parameter, the changed
+        // default IS exercised, and a strong oracle observing the output discriminates
+        // it. Must stay exposed.
+        let source = "def render(name, verbose=True):\n    return f\"[debug] {name}\" if verbose else name\n";
+        let owners = extract_owners(Path::new("src/render.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_render.py"),
+            "from src.render import render\n\n\ndef test_render_default_verbose():\n    assert render(\"Sam\") == \"[debug] Sam\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/render.py"),
+            1,
+            "def render(name, verbose=True):",
+            Some("def render(name, verbose=False):"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a default-value change should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "omitting the parameter exercises the changed default under a strong oracle"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_default_value_params_detects_pure_value_change_only() -> Result<(), String> {
+        // Pure default-value change -> the changed parameter is reported.
+        let Some(changed) = changed_default_value_params(
+            "def render(name, verbose=False):",
+            "def render(name, verbose=True):",
+        ) else {
+            return Err(
+                "a value-to-value default change is a pure default-value change".to_string(),
+            );
+        };
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].name, "verbose");
+        assert_eq!(changed[0].index, 1);
+        assert!(changed[0].positionally_bindable);
+        // No default change at all -> None.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x=1):").is_none());
+        // Added default (requiredness change) -> None, fail open.
+        assert!(changed_default_value_params("def f(x):", "def f(x=1):").is_none());
+        // Removed default -> None, fail open.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x):").is_none());
+        // Param rename alongside a default change -> None (not a pure value change).
+        assert!(changed_default_value_params("def f(a=1):", "def f(b=2):").is_none());
+        // Added parameter -> None.
+        assert!(changed_default_value_params("def f(x=1):", "def f(x=1, y=2):").is_none());
+        // Not a def header -> None.
+        assert!(changed_default_value_params("    return x + 1", "    return x - 1").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn analyze_call_args_classifies_positional_and_keyword() -> Result<(), String> {
+        let Some(shape) = analyze_call_args("\"Sam\", verbose=False") else {
+            return Err("positional + kwarg call is tractable".to_string());
+        };
+        assert_eq!(shape.positional_count, 1);
+        assert_eq!(shape.keywords, vec!["verbose".to_string()]);
+        // Comparison operators are not keyword bindings.
+        let Some(cmp) = analyze_call_args("x == 1, y") else {
+            return Err("comparison-operand call is tractable".to_string());
+        };
+        assert_eq!(cmp.positional_count, 2);
+        assert!(cmp.keywords.is_empty());
+        // Nested calls and brackets stay one positional argument each.
+        let Some(nested) = analyze_call_args("g(a, b), [1, 2], k=3") else {
+            return Err("nested-argument call is tractable".to_string());
+        };
+        assert_eq!(nested.positional_count, 2);
+        assert_eq!(nested.keywords, vec!["k".to_string()]);
+        // *args / **kwargs unpacking is undecidable -> None (fail open).
+        assert!(analyze_call_args("*args").is_none());
+        assert!(analyze_call_args("a, **kwargs").is_none());
+        // An inline `# comment` in the arglist makes binding ambiguous -> None
+        // (fail open, never a false-clean from a comment-parsed `)` or text).
+        assert!(analyze_call_args("a  # note with ) paren").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn free_function_call_arglists_matches_only_direct_calls() {
+        let body =
+            "render(\"Sam\")\nobj.render(\"X\")\nrenderer(\"Y\")\nrender(\"Z\", verbose=False)\n";
+        let calls = free_function_call_arglists(body, "render");
+        // `obj.render(...)` (method access) and `renderer(...)` (longer name) excluded.
+        assert_eq!(calls, vec!["\"Sam\"", "\"Z\", verbose=False"]);
+    }
+
+    #[test]
+    fn free_function_call_arglists_skips_comment_and_string_mentions() {
+        // A `# comment` or string literal that mentions the owner name must not be
+        // read as a live call: a comment with `)` would otherwise break paren
+        // matching and a string mention would invent a call that does not run.
+        let body = "render(\"Sam\")\n# see also render(other)\nx = \"render(unparsed)\"\n";
+        let calls = free_function_call_arglists(body, "render");
+        // Only the first, real call is captured.
+        assert_eq!(calls, vec!["\"Sam\""]);
+    }
+
+    #[test]
+    fn fstring_format_spec_change_is_not_length_invariant() {
+        // #1290 1b: a format-spec change alters an interpolation, so it is NOT
+        // length-invariant — a `len` oracle could discriminate it, and it must not be
+        // gated. (Trap 58 / 53 preservation.)
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{value:.2f}\"",
+            "    return f\"{value:.3f}\""
+        ));
+        // Equal-length literal-only change IS length-invariant.
+        assert!(fstring_change_is_length_invariant(
+            "    return f\"OK:{code}\"",
+            "    return f\"NO:{code}\""
+        ));
+        // A literal change that alters length is NOT invariant (len can discriminate).
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{x}\"",
+            "    return f\"{x}!\""
+        ));
+        // Non-f-string lines are never invariant.
+        assert!(!fstring_change_is_length_invariant(
+            "    return x + 1",
+            "    return x - 1"
+        ));
+        // Fail open on unsupported shapes (escaped / nested braces) -> no template.
+        assert_eq!(fstring_template("    return f\"{{OK}}:{code}\""), None);
+        assert_eq!(fstring_template("    return f\"{value:{width}}\""), None);
+        assert!(!fstring_change_is_length_invariant(
+            "    return f\"{{OK}}:{code}\"",
+            "    return f\"{{NO}}:{code}\""
+        ));
+    }
+
+    #[test]
+    fn oracle_pure_len_aggregate_detection() {
+        // Pure length-only observation:
+        assert!(oracle_is_pure_len_aggregate(
+            "len(status_label(7)) == 4",
+            "NO:"
+        ));
+        // Also observes the output exactly -> NOT pure aggregate (keeps credit):
+        assert!(!oracle_is_pure_len_aggregate(
+            "len(status_label(7)) == 4 and status_label(7) == \"NO:7\"",
+            "NO:"
+        ));
+        // Contains the changed literal -> NOT pure aggregate:
+        assert!(!oracle_is_pure_len_aggregate(
+            "status_label(7).startswith(\"NO:\")",
+            "NO:"
+        ));
+        // No len at all -> not a len aggregate:
+        assert!(!oracle_is_pure_len_aggregate(
+            "status_label(7) == \"NO:7\"",
+            "NO:"
+        ));
+    }
+
+    #[test]
+    fn fstring_len_plus_exact_oracle_stays_exposed() -> Result<(), String> {
+        // #1290 1b hardening: when the test observes BOTH len() AND the exact output
+        // (in separate assertions), the exact-value assertion is the strong oracle and
+        // must keep the credit — the len-aggregate gate must not downgrade it. (A single
+        // `assert a and b` is `smoke_only`/weak for an unrelated reason, so the
+        // discriminating form uses separate assertions.)
+        let source = "def status_label(code):\n    return f\"NO:{code}\"\n";
+        let owners = extract_owners(Path::new("src/status.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_status.py"),
+            "from src.status import status_label\n\n\ndef test_both():\n    assert len(status_label(7)) == 4\n    assert status_label(7) == \"NO:7\"\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/status.py"),
+            2,
+            "    return f\"NO:{code}\"",
+            Some("    return f\"OK:{code}\""),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed f-string should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "an oracle that also observes the exact output is not a pure len aggregate"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dict_changed_element_whole_comparison_stays_exposed() -> Result<(), String> {
+        // #1290 preserve: a whole-collection comparison observes every element,
+        // including the changed one.
+        let source = "def build_config():\n    return {\"host\": \"localhost\", \"port\": 9090}\n";
+        let owners = extract_owners(Path::new("src/conf.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_conf.py"),
+            "from src.conf import build_config\n\n\ndef test_cfg():\n    assert build_config() == {\"host\": \"localhost\", \"port\": 9090}\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/conf.py"),
+            2,
+            "    return {\"host\": \"localhost\", \"port\": 9090}",
+            Some("    return {\"host\": \"localhost\", \"port\": 8080}"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed dict literal should classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a whole-collection comparison observes the changed element"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn noop_docstring_only_change_emits_no_probe() -> Result<(), String> {
+        // #1279: a docstring-only change has no behavior delta. Even though the
+        // strong `== 80` oracle observes the owner's output, there is nothing for
+        // the test to discriminate, so no behavior probe must be emitted.
+        let source = "def discount(price):\n    \"\"\"Apply the standard discount to a price.\"\"\"\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    \"\"\"Apply the standard discount to a price.\"\"\"",
+            Some("    \"Apply a discount.\""),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a docstring-only change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn noop_comment_only_change_emits_no_probe() -> Result<(), String> {
+        // #1279: a comment-only change is likewise a no-op.
+        let source =
+            "def discount(price):\n    # apply the standard discount\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let finding = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    # apply the standard discount",
+            Some("    # apply a discount"),
+            &owners,
+            &tests,
+        );
+        assert!(
+            finding.is_none(),
+            "a comment-only change carries no behavior delta and must emit no probe"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn real_body_change_in_same_function_still_classifies() -> Result<(), String> {
+        // #1279 inverse control: the no-op guard must not suppress a genuine body
+        // change. The same `discount` owner with a real return-value edit still
+        // classifies `exposed` under the strong output oracle.
+        let source = "def discount(price):\n    return price * 0.8\n";
+        let owners = extract_owners(Path::new("src/pricing.py"), source);
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import discount\n\n\ndef test_discount():\n    assert discount(100) == 80\n",
+        );
+        let Some(finding) = classify_change_with_old(
+            Path::new("src/pricing.py"),
+            2,
+            "    return price * 0.8",
+            Some("    return price * 0.9"),
+            &owners,
+            &tests,
+        ) else {
+            return Err("a real body change must still classify".to_string());
+        };
+        assert_eq!(
+            finding.class,
+            ExposureClass::Exposed,
+            "a real return-value change observed by a strong oracle stays exposed"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_behavior_line_detection_is_conservative() {
+        // No-op shapes:
+        assert!(is_python_no_behavior_line("    \"\"\"A docstring.\"\"\""));
+        assert!(is_python_no_behavior_line("'''triple single'''"));
+        assert!(is_python_no_behavior_line("    \"single line string\""));
+        assert!(is_python_no_behavior_line("    # a comment"));
+        assert!(is_python_no_behavior_line("   "));
+        assert!(is_python_no_behavior_line("r\"raw docstring\""));
+        assert!(is_python_no_behavior_line("b\"bytes literal\""));
+        // Behavioral shapes must NOT be treated as no-ops:
+        assert!(!is_python_no_behavior_line("    return \"x\""));
+        assert!(!is_python_no_behavior_line("    result = \"x\""));
+        assert!(!is_python_no_behavior_line("    raise ValueError(\"x\")"));
+        assert!(!is_python_no_behavior_line("    f\"{compute()}\""));
+        assert!(!is_python_no_behavior_line("    rf\"{compute()}\""));
+        assert!(!is_python_no_behavior_line("    \"a\" + str(x)"));
+        assert!(!is_python_no_behavior_line("    return price * 0.8"));
     }
 
     #[test]
@@ -7675,6 +10370,8 @@ def test_build_user_smoke():
             mode: crate::analysis::AnalysisMode::Draft,
             include_unchanged_tests: false,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
         };
         let policy = OraclePolicy::default();
         let changed_files = vec![
@@ -7700,6 +10397,8 @@ def test_build_user_smoke():
             mode: crate::analysis::AnalysisMode::Deep,
             include_unchanged_tests: false,
             resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
         };
         let policy = OraclePolicy::default();
         let result = adapter.analyze_repo(&options, &policy)?;

@@ -4,39 +4,27 @@ root: fixtures/python_async_owner/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO src/loading.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      return await client.total() + 2
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/loading.py:2
+  Static exposure: exposed (info, confidence 0.60)
+  Canonical gap: gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2
+  Changed behavior: return await client.total() + 2
+  Discriminator (observed, advisory): Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Related test: tests/test_loading.py:4 test_load_total_includes_fee
+  Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `load_total`
+    - infection yes: Changed Python return expression can alter the owner return value: `return await client.total() + 2`
+    - 5 more evidence line(s) hidden
 
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/loading.py::load_total
-  canonical gap: gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2
-
-Language
-  language: python
-  status: preview
-  owner kind: function
-
-Static exposure
-  exposed (info, confidence 0.60)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `load_total`
-  - infection yes: Changed Python return expression can alter the owner return value: `return await client.total() + 2`
-  - propagation yes: Changed Python return value is already at the owner output boundary.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches returned value: return await client.total() + 2 (line 2)
-  - related test tests/test_loading.py:4 test_load_total_includes_fee uses strong exact value oracle: assert await load_total(client) == 12
-
-Weakness
-  - Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
-
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+Hidden:
+  0 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

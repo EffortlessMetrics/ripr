@@ -44,6 +44,7 @@
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
     "onCommand:ripr.showStatus",
+    "onCommand:ripr.showOutput",
     "onCommand:ripr.diagnoseSetup",
     "onCommand:ripr.startCurrentRepair",
     "onCommand:ripr.copyCurrentRepairPacket",
@@ -76,7 +77,7 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.13.2",
+    "@types/node": "^24.13.3",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.9.2",
@@ -93,6 +94,20 @@
       "serialize-javascript": "^7.0.5"
     }
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Server download, launch, analysis, and repair require a trusted workspace.",
+      "restrictedConfigurations": [
+        "ripr.server.path",
+        "ripr.server.args",
+        "ripr.server.autoDownload",
+        "ripr.server.version",
+        "ripr.server.downloadBaseUrl"
+      ]
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "configuration": {
       "title": "ripr",
@@ -105,7 +120,8 @@
         "ripr.server.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution."
+          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution.",
+          "scope": "resource"
         },
         "ripr.server.args": {
           "type": "array",
@@ -116,22 +132,26 @@
             "lsp",
             "--stdio"
           ],
-          "description": "Arguments used to start the ripr language server."
+          "description": "Arguments used to start the ripr language server.",
+          "scope": "resource"
         },
         "ripr.server.autoDownload": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available."
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available. Downloads over HTTPS \u2014 by default from github.com/EffortlessMetrics/ripr releases, configurable via ripr.server.downloadBaseUrl \u2014 and archives are SHA-256 verified against the release manifest before extraction.",
+          "scope": "resource"
         },
         "ripr.server.version": {
           "type": "string",
           "default": "",
-          "description": "Pinned ripr server version. Empty means match the extension version."
+          "description": "Pinned ripr server version. Empty means match the extension version.",
+          "scope": "resource"
         },
         "ripr.server.downloadBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases."
+          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases.",
+          "scope": "resource"
         },
         "ripr.check.mode": {
           "type": "string",
@@ -150,6 +170,16 @@
           "default": "origin/main",
           "description": "Git base ref used by ripr editor diagnostics and context commands."
         },
+        "ripr.gitTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Deadline in milliseconds for each git invocation in the ripr language server's refresh path. A git command that exceeds the deadline is terminated and the refresh commits a limited snapshot naming git_invocation_timeout; run the ripr.refreshDiagnostics command to retry."
+        },
+        "ripr.refreshDeadlineMs": {
+          "type": "number",
+          "default": 600000,
+          "description": "Physical deadline in milliseconds for one whole refresh analysis attempt in the ripr language server. An attempt that exceeds the deadline is dropped fail-closed with the named deadline_exceeded outcome and an 'analysis deadline exceeded' progress end \u2014 no limited snapshot is committed; the next save or the ripr.refreshDiagnostics command starts a fresh attempt."
+        },
         "ripr.trace.server": {
           "type": "string",
           "enum": [
@@ -166,6 +196,10 @@
       {
         "command": "ripr.restartServer",
         "title": "ripr: Restart Server"
+      },
+      {
+        "command": "ripr.selectWorkspaceRoot",
+        "title": "ripr: Select Workspace Root"
       },
       {
         "command": "ripr.showOutput",
@@ -277,19 +311,122 @@
       },
       {
         "command": "ripr.showReceiptStatus",
-        "title": "RIPR: Show Receipt Status"
+        "title": "ripr: Show Receipt Status"
       },
       {
         "command": "ripr.copyReceiptCommand",
-        "title": "RIPR: Copy Receipt Command"
+        "title": "ripr: Copy Receipt Command"
       },
       {
         "command": "ripr.openAttemptLedger",
-        "title": "RIPR: Open Attempt Ledger"
+        "title": "ripr: Open Attempt Ledger"
       },
       {
         "command": "ripr.showRouteQuality",
-        "title": "RIPR: Show Route Quality"
+        "title": "ripr: Show Route Quality"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ripr.copyTopRepairPacket",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@1"
+        },
+        {
+          "command": "ripr.copyTopVerifyCommand",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@2"
+        },
+        {
+          "command": "ripr.copyTopReceiptCommand",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@3"
+        },
+        {
+          "command": "ripr.showTopLimitation",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@4"
+        },
+        {
+          "command": "ripr.showStatus",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@5"
+        },
+        {
+          "command": "ripr.showReceiptStatus",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@6"
+        },
+        {
+          "command": "ripr.showRouteQuality",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@7"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "ripr.showStatus",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "ripr.copyTopRepairPacket",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "ripr.getStarted",
+        "title": "ripr: Get Started",
+        "description": "First-run guide for ripr's static mutation-exposure diagnostics: trust, open, diagnose, act.",
+        "steps": [
+          {
+            "id": "ripr.trustWorkspace",
+            "title": "Trust this workspace",
+            "description": "ripr starts its server only in trusted workspaces.\n[Why trust matters](walkthrough/trust.md)",
+            "media": {
+              "markdown": "walkthrough/trust.md"
+            },
+            "completionEvents": [
+              "onContext:workspaceTrusted"
+            ]
+          },
+          {
+            "id": "ripr.openRustFile",
+            "title": "Open a Rust file",
+            "description": "ripr analyzes the saved workspace in the background.\n[What happens on open](walkthrough/open-file.md)",
+            "media": {
+              "markdown": "walkthrough/open-file.md"
+            },
+            "completionEvents": [
+              "onContext:resourceLangId == rust"
+            ]
+          },
+          {
+            "id": "ripr.readDiagnostics",
+            "title": "Read ripr diagnostics",
+            "description": "Problems panel entries carry the `ripr` source label.\n[Reading ripr evidence](walkthrough/diagnostics.md)",
+            "media": {
+              "markdown": "walkthrough/diagnostics.md"
+            }
+          },
+          {
+            "id": "ripr.tryCodeAction",
+            "title": "Try a ripr code action",
+            "description": "Copy the missing test assertion (the check that would catch a wrong behavior) or the repair packet from the lightbulb.\n[ripr actions](walkthrough/code-action.md)",
+            "media": {
+              "markdown": "walkthrough/code-action.md"
+            },
+            "completionEvents": [
+              "onCommand:ripr.showStatus"
+            ]
+          }
+        ]
       }
     ]
   }

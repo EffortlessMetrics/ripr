@@ -55,12 +55,20 @@ Do not split into `ripr-core`, `ripr-cli`, `ripr-lsp`, `ripr-engine`, or
 
 The current internal shape is:
 
-- `domain`: probe, RIPR evidence, oracle strength, exposure classification
+- `domain`: probe, RIPR evidence, oracle strength, exposure classification,
+  fix-instruction state, candidate relations, test-evidence summary
 - `app`: use-case orchestration and public library API
-- `analysis`: diff loading, syntax indexing, probe generation, classification
-- `output`: human, JSON, and GitHub annotation rendering
-- `cli`: command-line adapter
-- `lsp`: experimental sidecar adapter
+- `analysis`: diff loading, syntax indexing, probe generation, classification,
+  repair-route readiness, seam inventory, test-grip evidence
+- `output`: human, JSON, SARIF, GitHub annotation, gate decision, repair
+  packet, receipt, badge, and evidence-record rendering
+- `cli`: command-line adapter (dispatch, help, doctor, parse)
+- `lsp`: experimental sidecar adapter (backend, diagnostics, hover, actions,
+  capabilities, position encoding, diagnostic budget, refresh scheduler,
+  input identity, agent protocol, typed component-outcome degradation
+  authority)
+- `agent`: repair-loop commands (loop commands, provenance)
+- `config`: `ripr.toml` loading, typed model, language detection
 
 ## Rust Baseline
 
@@ -107,6 +115,8 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
+cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
@@ -114,6 +124,7 @@ cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
+cargo xtask check-evidence-promotion-honesty
 cargo xtask check-traceability
 cargo xtask check-capabilities
 cargo xtask check-workspace-shape
@@ -129,6 +140,7 @@ cargo xtask check-proof-packs
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+cargo xtask check-command-catalog
 ```
 
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
@@ -177,14 +189,15 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.8.0.vsix --force
+code --install-extension dist/ripr-0.10.0.vsix --force
 ```
 
 The extension should resolve the server in this order:
 
 ```text
 ripr.server.path
-bundled server binary
+bundled server binary        (not yet shipped — no platform VSIX carries one
+                              today; planned under #1443 / #1624)
 downloaded cached server binary
 verified first-run download
 ripr on PATH
@@ -286,6 +299,91 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   into the output to confirm your edits are even in the binary you are running. And
   terminate any `ripr lsp --stdio` you spawn for an LSP behavioral test; an
   orphaned server holds a Windows file lock and breaks the next build.
+
+### Status-comment verification contract
+
+When posting a status, triage, or "issue update" comment on a GitHub issue,
+bind every claim to verifiable evidence. The open-issue list is the durable
+campaign record; low-truth status comments bury substantive signal and
+mislead future agents who consume prior comments as context.
+
+Rules:
+
+- Every status claim must cite a **verifiable artifact**: a `file:line`
+  reference, a merged PR number, a `gh run` / `gh release` result, or a `git
+  log --grep` output. "Not started" is not a valid verdict without evidence.
+- "No PR references it" is **forbidden** without an **all-state PR search**
+  attached inline: `gh pr list --state all --search <issue-number>` (or the
+  MCP `search_pull_requests` equivalent). Many issues have merged PRs that
+  cite them only in the PR body, not the commit subject, so `git log --all
+  --grep <issue-number>` alone misses these — it is supplemental, not the
+  primary check.
+- Use the closed `status/*` label set as the primary status signal (labels
+  don't bury signal; a status comment is secondary):
+  - `status/done-open` — delivered; the issue is intentionally kept open.
+  - `status/blocked-upstream` / `status/blocked-repo` — waiting on an external
+    or in-repo dependency.
+  - `status/needs-work` — actionable and **not started**. Do **not** use it
+    for partially landed work; that understates delivery and invites
+    duplicate implementation.
+  - `status/partial` — a **bounded portion has merged** to `main` (or another
+    authoritative repository) and the residual acceptance plus next owner are
+    recorded. Apply it only when a merged deliverable exists — never merely
+    because a branch or PR is open.
+  - `status/mis-scoped` — the issue needs re-scoping before work proceeds.
+- A partially landed slice gets **one** evidence-bound reconciliation comment
+  (landed PR + exact merge SHA, acceptance covered, acceptance remaining, next
+  owner/dependency, claim boundary). Closing a child issue never closes its
+  parent capability. See #1863 for the canonical reconciliation format.
+- One status comment per issue per pass. A second pass must **edit** (or
+  minimize/hide) the prior comment, not append a near-duplicate. Re-posting
+  the same review minutes apart is noise that buries substantive comments.
+- Do not fabricate file paths or issue numbers. Verify paths exist (`ls`,
+  `find`) and issues exist (`gh issue view`) before citing them.
+- Do not post a status review on a **closed** issue without first checking
+  `gh issue view <N> --json state`. Describing the pre-fix state of an
+  already-closed issue is a credibility failure.
+
+### Finding verification contract
+
+The status-comment contract above covers updates on existing issues. The same
+evidence discipline applies **before filing or materially updating a code
+finding** (#2026): an inaccurate issue becomes durable context for future
+agents and invites duplicate implementation.
+
+A finding record must name:
+
+- repository, inspected branch/ref, and full source SHA;
+- file path and exact lines or symbol, and the observation timestamp;
+- the reproduction command, or the explicit reason no executable
+  reproduction exists (a design question does not need a failing command,
+  but still requires current source identity and accurate behavior
+  description);
+- actual result vs. expected result or invariant;
+- an all-state, finding-specific issue/PR search (`gh issue list
+  --state all --search <term>` and `gh pr list --state all --search
+  <term>` — both default to open-only, and a bare list is not evidence
+  bound to the finding);
+- known concurrent PRs touching the seam;
+- confidence, remaining uncertainty, and a classification:
+  `verified_current | historical | cannot_reproduce | superseded |
+  design_question`.
+
+Pre-filing rules:
+
+1. Re-read the exact current file/symbol after all scouts return — scout
+   output is a lead, never the finding.
+2. Run the smallest deterministic reproduction where practical.
+3. Treat line numbers from an earlier commit as stale until re-resolved.
+4. Do not promote a grep absence into an architectural fact without
+   checking the search command and relevant alternate paths.
+5. Check open PRs for a branch that already changes the seam.
+6. When the premise changed during the audit, narrow or close the draft
+   instead of preserving the original claim; corrections edit or
+   prominently amend the original record rather than burying it in a later
+   summary.
+7. Source SHA binds evidence, but a moved main requires a premise recheck
+   — not automatic abandonment of a valid finding.
 
 ## PR Scope Doctrine
 
@@ -399,70 +497,194 @@ When reviewing or repairing code, read these files first:
 Orchestrated work is a staged pipeline, not one monolithic session:
 
 ```text
-cheap discovery
--> cheap independent verification
--> written issue/spec/plan
--> focused implementation
--> targeted proof
--> stronger review only where needed
--> cleanup
+reconcile current repo and work-item truth
+-> compile bounded context
+-> run read-only discovery and adversarial checks
+-> root-thread synthesis and decision
+-> isolated implementation
+-> independent verification
+-> integration, review, and targeted proof
+-> cleanup and durable handoff
 ```
 
-The main session does synthesis and judgment. File searches, CI logs, PR
-diffs, and failed hypotheses belong in subagents that return structured
-summaries, not in the main context.
+The main or root session is the **orchestrator and integrator**. It owns the
+objective, accepted premises, constraints, non-goals, dependency order,
+acceptance coverage, contradictions, product or architecture decisions, PR
+scope, and final integration judgment. Broad file searches, CI logs, broad
+diffs, test inventories, and failed hypotheses belong in subagents that return
+bounded structured results, not in the root context. During verification, the
+root may inspect targeted evidence directly when binding a claim to an exact
+head, command, denominator, artifact, or changed line; this targeted inspection
+does not turn the root into a raw-log sink.
 
-Route work by cost:
+### When to delegate
 
-- Use cheap read-only scout agents (Haiku-class, Explore-style) for repo
-  inventory, PR review sweeps, diffstat and changed-surface mapping,
-  spec/schema surface mapping, validation-log summaries, claim checks, and
-  cleanup audits. Scouts return structured tables (item, files touched,
-  claim made, evidence found, missing proof, risk, next action), not prose.
-- Before expensive or risky action (closing a PR, editing release claims,
-  re-pinning a freeze candidate), run a second cheap adversarial pass:
-  assume the first report is wrong, return only concrete discrepancies
-  with file or PR references.
-- Use implementation-grade agents (Sonnet-class) for code changes, test
-  and fixture updates, conflict resolution, schema/doc alignment, and
-  turning scout inventories into coherent PRs, with a bounded plan and a
-  small working set.
-- Escalate to top-tier judgment (Opus-class) only for high-risk release,
-  security, or architecture decisions, or after two failed correction
-  cycles. Using top-tier capacity to discover which files changed is an
-  orchestration failure.
-- Use broad parallel workflows (Ultracode-style fanouts) only for
-  queue-scale uncertainty: open-PR reconciliation audits, release-claim
-  audits across changelog/specs/schema, spec-surface inventories, CI
-  failure taxonomies, cross-repo contract reviews. Never for one narrow
-  edit.
+Prefer subagents when:
 
-Shift verification left so mistakes stay cheap:
+- two or more independent read-heavy questions can be answered in parallel;
+- a log, diff, search, or inventory would otherwise flood the root context;
+- an independent adversarial or verification pass materially changes trust;
+- a broad audit separates naturally by surface, risk, or evidence family;
+- two write tasks have already-proven disjoint edit cages and semantic resources,
+  plus real worktree, CI, review, and merge capacity.
+
+Stay single-agent when:
+
+- the task is one narrow edit or one serial decision chain;
+- the root still needs product, architecture, security, policy, release, or
+  public-contract judgment before decomposition;
+- context or premises are stale, contradictory, or incomplete;
+- writers would share source, schema, golden, fixture, policy, workflow,
+  release, active-goal, traceability, report-root, or Cargo-target resources;
+- CI, review, or merge capacity is already saturated;
+- coordination would cost more than doing the bounded task directly.
+
+Do not treat the client or model's maximum thread count as a target. Cap each
+wave by useful independent work and the repository's integration capacity.
+Read-only fan-out comes before write fan-out. One writer is the default.
+
+### Subagent roles
+
+Use role-specific workers instead of generic "help with this" prompts:
+
+- **Scout:** read-only inventory, repository/PR surface mapping, schema/spec
+  tracing, test discovery, log summarization, and premise checks. Returns
+  observations, evidence references, missing proof, risks, and next questions;
+  never claims implementation or verification complete.
+- **Adversary:** read-only challenge to one named premise, plan, result, or claim.
+  Returns concrete discrepancies with references, or `none_found` plus the exact
+  inspected scope. One supported contradiction is enough to stop dependent work.
+- **Builder:** implements exactly one accepted production/evidence delta in a
+  prepared isolated worktree and explicit edit cage. Returns the actual changed
+  files, diff/commit identity, commands attempted, artifacts, blockers, and
+  author claims; never self-verifies.
+- **Verifier:** checks the exact builder diff/commit with the named proof routes.
+  Does not repair source. Records actual exit status, denominator, output
+  artifact, harness identity, residue, and whether the claim is supported,
+  contradicted, limited, or not run.
+- **Reviewer:** independently inspects the scoped diff and evidence contract for
+  correctness, boundary violations, unsupported claims, and missing tests. A
+  clean result still lists inspected surfaces, risks, invariants, validation
+  signals, and residual assumptions.
+- **Cleanup auditor:** read-only inventory of claims, worktrees, branches,
+  generated output, caches, and temporary residue. Produces a cleanup plan; the
+  root/operator performs any destructive cleanup explicitly.
+
+Root-to-direct-child delegation is the supported default. Do not ask subagents
+to spawn descendants unless a future measured repository contract explicitly
+authorizes recursive fan-out.
+
+### Wave discipline
+
+Before spawning a wave:
+
+1. Reconcile live Git, open PRs, open issues, linked plans/specs, current
+   base/head, and working-tree state. Live source beats transcript or stale
+   planning prose. `.ripr/goals/` was deleted; goal files never select or
+   authorize work.
+2. Give every subtask one bounded objective, decision contribution, input/base
+   identity, read scope, edit policy, dependency list, conflict resources,
+   stop conditions, expected evidence, and result budget.
+3. Run independent read-only scouts and adversaries first. Do not start a
+   builder while its premise or contract remains disputed.
+4. Have the root synthesize results. A contradiction, stale identity, missing
+   required contract, or scope expansion forces stop/recompile/replan; do not
+   smooth it into consensus.
+5. Start a writer only after its exact base, worktree, edit cage, forbidden
+   paths, and semantic single-writer resources are known.
+6. Run a separate verifier after the builder stops mutating the result.
+7. Integrate only current, in-cage, independently verified work. Then run the
+   normal review/CI/PR/merge flow and clean up every orchestration artifact.
+
+The durable campaign and work-item authority remains the existing issue/spec/
+plan graph. Subtasks are ephemeral execution detail inside one work
+item; do not create a second committed task hierarchy from subagent threads.
+
+### Context and result discipline
+
+Keep subagent packets reference-first and role-scoped. Inline only the facts
+needed for that role. Large documents, logs, search dumps, complete diffs, and
+reports stay in the child thread or an ignored artifact path; return stable
+path/line, JSON-pointer, command, digest, or issue/PR references instead.
+
+A useful bounded result contains:
 
 ```text
-before implementation: scout inventory + adversarial check + filed issue/plan
-before push:           focused proof + local preflight + cleanup audit
-before release:        release-claim audit + package dry-run + non-claim review
-before closing a PR:   supersession verified against the diff, not a summary
+status and role
+input/base identity actually consumed
+short summary
+observations or claims with claim type
+exact evidence references
+contradictions and assumptions
+missing evidence and stop reason
+files read and files changed
+commands attempted with actual status and denominator
+produced artifact references
+selected / omitted / total counts when bounded
+one recommended next action
 ```
 
-File or update the ripr-swarm issue or repo spec before implementation.
-Repo specs are durable truth; issues track execution state; chat history is
-not the plan. Use worktrees for risky or parallel branches. Every pass ends
-with cleanup: worktrees, branches, stashes, `target/ripr` cache growth,
-temp files, generated artifacts, cargo/npm churn, rescue leftovers, and
-local-only files.
+Do not return raw chain-of-thought. Do not paste full logs into the root summary.
+If output is truncated or stored out of band, name the omitted counts and the
+complete retrieval route. Repeated unchanged packets/results should remain
+byte-stable once the planned tooling exists; until then, preserve deterministic
+ordering and omit timestamps or volatile paths from semantic summaries.
 
-**Background workflow agents share the main working directory.** Even
-read-only-by-intent scout/Explore agents have shell access and can create or
-modify tracked files (`cat >`, `git apply`, `mkdir`) on whatever branch the main
-session occupies. A background planning fanout once authored a whole spec plus
-fixtures into the working tree, and a `git add -A` swept them into an unrelated
-PR. Therefore: run any workflow whose agents might write with **worktree
-isolation**, not the shared tree; word planning/research prompts to forbid file
-creation; never `git add -A` while a background workflow is live — stage
-explicit paths; and run `git status --short` before every commit, reverting
-anything the pass did not author.
+### Verification and synthesis rules
+
+- A subagent report is a lead, not authority. Verify control-flow and behavioral
+  claims against current source and executable evidence.
+- A builder's "fixed" or "tests pass" is an `author_claim`, not a verified fact.
+- Verification must bind the exact diff/commit, command, denominator, harness,
+  and produced artifact. A pass with zero tests or subjects is `not_run`.
+- Repetition is not independent evidence when agents consumed the same source.
+  Do not majority-vote truth or average confidence prose.
+- Preserve contradictions, stale/rejected results, partial coverage, and missing
+  evidence as first-class states. One concrete contradiction blocks dependent
+  work until the root resolves or recompiles it.
+- Task completion count is not acceptance coverage. The root tracks each
+  acceptance requirement, proof obligation, non-goal, verification state, and
+  unresolved gap explicitly.
+- The root owns final synthesis and judgment. Subagents do not change campaign
+  order, schemas, policy, architecture, release state, credentials, or merge
+  authority silently.
+
+### Writer isolation and semantic conflicts
+
+**Background workflow agents may share the main working directory.** Even a
+read-only-by-intent worker can have shell access and create or modify files.
+Therefore:
+
+- prompts for shared-tree research must explicitly forbid file creation and
+  mutation, and the root must compare `git status --short` before and after;
+- every source-editing builder and any command that may mutate repository state
+  uses a task-specific worktree at the exact declared base;
+- parallel writers require disjoint path cages **and** disjoint semantic
+  resources; different files do not make two tasks independent;
+- treat output schemas and their goldens, fixture corpora, spec-number
+  allocation, traceability, policy ledgers,
+  workflows, release assets, and default mutable report/Cargo/npm roots as
+  single-writer resources;
+- never run `git add -A` while a background workflow is live; stage explicit
+  paths and inspect all tracked/untracked changes before commit;
+- workers must not run `git checkout`, `git switch`, `git stash`,
+  `git reset --hard`, branch deletion, or worktree removal to repair unexpected
+  state. Stop and report the mismatch instead;
+- a stale base, changed work item, conflicting landed PR, unexpected file, or
+  boundary violation invalidates the worker result until the root replans;
+- builder and verifier must not mutate the same worktree concurrently.
+
+Every fan-out ends with cleanup: worker threads/results accounted for,
+worktrees and branches dispositioned, locks/claims released when present,
+`target/ripr` growth inspected, temporary/generated/npm/Cargo residue reviewed,
+and the root worktree proven uncontaminated.
+
+The typed orchestration tooling described by issue #1631 and the child issue
+range 1632–1639 is not yet an assumed command surface. Apply these rules manually
+until each command and schema lands; do not invent or cite planned commands as
+current evidence. See `docs/AGENT_OPERATING_MODEL.md`,
+`docs/CODEX_GOALS.md`, `docs/agent-context/CONTEXT_SYSTEM.md`, and
+`docs/reference/AGENT_HANDOFF_PROTOCOL.md` for the durable surrounding model.
 
 ## Long-Context Agent Workflow
 
@@ -472,12 +694,15 @@ from repository artifacts instead of chat history.
 When picking up work:
 
 - start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
-- use `docs/IMPLEMENTATION_CAMPAIGNS.md` and `.ripr/goals/active.toml` when
-  working through a Codex Goals campaign
+- use `docs/IMPLEMENTATION_CAMPAIGNS.md` for campaign history
 - use `docs/CAPABILITY_MATRIX.md` to identify current capability status
 - use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
 - use `docs/CODEX_GOALS.md` for the multi-PR campaign model
 - use `docs/SCOPED_PR_CONTRACT.md` for one work item's PR-sized evidence bar
+- use `.allow/spec-system/slices/` for one PR's scope of record: each
+  behavior-changing PR owns a small PR-local `ImplementationSliceV1` there
+  (requirement IDs, change class, seams, evidence obligations, non-goals,
+  claim boundary) — never worker, branch, CI, or progress state
 - use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
 - choose the smallest vertical slice with one production delta and one evidence
   package

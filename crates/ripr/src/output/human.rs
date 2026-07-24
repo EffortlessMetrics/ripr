@@ -1,13 +1,132 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::Finding;
+use std::collections::BTreeSet;
 
-/// Render the complete check report in the human-readable CLI format.
+/// Render the bounded triage report in the default human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
-    render_with_config(output, &RiprConfig::default())
+    render_bounded_with_config(output, &RiprConfig::default())
 }
 
+#[cfg(test)]
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    render_bounded_with_config(output, config)
+}
+
+pub(crate) fn render_bounded_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    let mut out = render_header_summary(output);
+    render_suppression_policy_block(&mut out, output);
+    render_partial_scope_disclosure(&mut out, output);
+
+    if output.findings.is_empty() {
+        out.push_str("No diff-derived static exposure probes found.\n");
+        if output.no_scope_provided {
+            let triage = triage::select_human_triage(output, config);
+            triage::render_human_triage(&mut out, &triage, output, config);
+        }
+        if output.no_scope_provided {
+            out.push_str(
+                "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
+Run `ripr check --base origin/main` to analyze your changes, or \
+`ripr check --root . --format repo-exposure-md` for a full-repo scan. \
+An empty result here does NOT mean your changed behavior is covered.\n",
+            );
+        }
+        if output.unanalyzed_working_tree {
+            out.push_str(
+                "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only — commit or stage these changes and re-run, \
+or analyze a committed branch with `ripr check --base origin/main`.\n",
+            );
+        }
+        render_preview_language_advisories(&mut out, output);
+        render_language_runs(&mut out, output);
+        return out;
+    }
+
+    let triage = triage::select_human_triage(output, config);
+    triage::render_human_triage(&mut out, &triage, output, config);
+    render_all_no_path_disclosure(&mut out, output);
+    if output.unanalyzed_working_tree {
+        out.push_str(
+            "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only; run `ripr check` (no --base) to analyze \
+your working tree.\n",
+        );
+    }
+    render_preview_language_advisories(&mut out, output);
+    render_language_runs(&mut out, output);
+    out
+}
+
+pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    let mut out = render_header_summary(output);
+
+    render_suppression_policy_block(&mut out, output);
+    render_partial_scope_disclosure(&mut out, output);
+
+    if output.findings.is_empty() {
+        out.push_str("No diff-derived static exposure probes found.\n");
+        // RIPR-SPEC-0083: disclose when no analysis scope was provided.
+        // This fires only when the caller passed no --diff/--base/--mode, so
+        // an empty result here means "nothing was analyzed", not "tests pass".
+        if output.no_scope_provided {
+            out.push_str(
+                "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
+Run `ripr check --base origin/main` to analyze your changes, or \
+`ripr check --root . --format repo-exposure-md` for a full-repo scan. \
+An empty result here does NOT mean your changed behavior is covered.\n",
+            );
+        }
+        // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+        // changes were NOT analyzed. An empty result here does NOT mean those changes
+        // are covered — they were excluded from the committed-history diff.
+        if output.unanalyzed_working_tree {
+            out.push_str(
+                "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only — commit or stage these changes and re-run, \
+or analyze a committed branch with `ripr check --base origin/main`.\n",
+            );
+        }
+        render_preview_language_advisories(&mut out, output);
+        render_language_runs(&mut out, output);
+        return out;
+    }
+
+    let suppressed_ids: BTreeSet<&str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| entry.finding_id.as_str())
+        })
+        .collect();
+    for finding in &output.findings {
+        if suppressed_ids.contains(finding.id.as_str()) {
+            continue;
+        }
+        out.push_str(&render_finding_with_config(finding, config));
+        out.push('\n');
+    }
+    render_all_no_path_disclosure(&mut out, output);
+    // RIPR-SPEC-0112: disclose when --base was used but uncommitted working-tree
+    // changes were NOT analyzed. Fires whether or not the committed diff had findings —
+    // those uncommitted edits are still unanalyzed regardless.
+    if output.unanalyzed_working_tree {
+        out.push_str(
+            "\nNote: uncommitted changes to tracked source were not analyzed. \
+`--base` compares committed history only; run `ripr check` (no --base) to analyze \
+your working tree.\n",
+        );
+    }
+    render_preview_language_advisories(&mut out, output);
+    render_language_runs(&mut out, output);
+    out
+}
+
+fn render_header_summary(output: &CheckOutput) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "ripr static RIPR exposure analysis\nmode: {}\nroot: {}\n\n",
@@ -25,30 +144,122 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             + output.summary.infection_unknown
             + output.summary.propagation_unknown
     ));
+    render_language_file_breakdown(&mut out, output);
+    out
+}
 
-    if output.findings.is_empty() {
-        out.push_str("No diff-derived static exposure probes found.\n");
-        // RIPR-SPEC-0083: disclose when no analysis scope was provided.
-        // This fires only when the caller passed no --diff/--base/--mode, so
-        // an empty result here means "nothing was analyzed", not "tests pass".
-        if output.no_scope_provided {
-            out.push_str(
-                "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
-Run `ripr check --base origin/main` to analyze your changes, or \
-`ripr check --root . --format repo-exposure-md` for a full-repo scan. \
-An empty result here does NOT mean your changed behavior is covered.\n",
-            );
+/// Emit a per-language changed-file breakdown only when a non-Rust language
+/// adapter counted at least one file (#2103). Pure-Rust runs emit nothing, so
+/// Rust-only output stays byte-identical. `changed_rust_files` itself now
+/// carries the Rust adapter's count only; this line shows the full split.
+fn render_language_file_breakdown(out: &mut String, output: &CheckOutput) {
+    let counts = &output.summary.changed_files_by_language;
+    let has_non_rust = counts
+        .iter()
+        .any(|count| count.language != "rust" && count.files > 0);
+    if !has_non_rust {
+        return;
+    }
+    let parts = counts
+        .iter()
+        .map(|count| format!("{}: {}", count.language, count.files))
+        .collect::<Vec<_>>()
+        .join(", ");
+    out.push_str(&format!("Changed file(s) by language: {parts}.\n\n"));
+}
+
+/// Emit the `--suppression-policy` application block (#1441): which policy
+/// ran, which findings it suppressed (compact one-liners — suppression stays
+/// visible, not hidden), and any expired/unmatched policy warnings. Emits
+/// nothing when no policy was supplied, so default output is unchanged.
+fn render_suppression_policy_block(out: &mut String, output: &CheckOutput) {
+    let Some(suppression) = &output.suppression else {
+        return;
+    };
+    out.push_str(&format!(
+        "Suppressed by policy ({}): {} finding(s)\n",
+        suppression.policy_path,
+        suppression.suppressed.len()
+    ));
+    for entry in &suppression.suppressed {
+        if let Some(finding) = output
+            .findings
+            .iter()
+            .find(|finding| finding.id == entry.finding_id)
+        {
+            out.push_str(&format!(
+                "  - {}:{} {} (selector: {})\n",
+                finding.probe.location.file.display(),
+                finding.probe.location.line,
+                finding.class.as_str(),
+                entry.selector
+            ));
         }
-        render_preview_language_advisories(&mut out, output);
-        return out;
     }
+    for warning in &suppression.warnings {
+        out.push_str(&format!("  policy warning: {warning}\n"));
+    }
+    out.push('\n');
+}
 
-    for finding in &output.findings {
-        out.push_str(&render_finding_with_config(finding, config));
-        out.push('\n');
+/// Emit the `limited_partial_scope` run-state disclosure (RIPR-PROP-0019,
+/// #1999). The partial result must never be presented as complete: the block
+/// names the exact selected partition, the lower-bound uninspected scope, the
+/// stop reason, gate ineligibility, and the only continuation route (raising
+/// the explicit budget overrides).
+fn render_partial_scope_disclosure(out: &mut String, output: &CheckOutput) {
+    let Some(scope) = &output.partial_scope else {
+        return;
+    };
+    out.push_str(&format!(
+        "Partial scope: run state {} — analyzed {} changed file(s) ({} changed line(s)) of the diff; \
+         stop reason: {}.\n",
+        scope.run_status,
+        scope.selected_files.len(),
+        scope.selected_changed_lines,
+        scope.stop_reason.as_str(),
+    ));
+    out.push_str(&format!(
+        "  NOT inspected: at least {} changed file(s) and at least {} changed line(s); \
+         the uninspected scope may contain additional findings.\n",
+        scope.uninspected_files_lower_bound, scope.uninspected_changed_lines_lower_bound,
+    ));
+    for file in &scope.selected_files {
+        // Paths come from the diff text: a crafted filename with control
+        // bytes could forge report lines or emit terminal escape sequences.
+        // The raw path stays on the scope record for identities/JSON; only
+        // the terminal-facing display is escaped (#2142 review).
+        out.push_str(&format!("  selected: {}\n", escape_terminal_display(file)));
     }
-    render_all_no_path_disclosure(&mut out, output);
-    render_preview_language_advisories(&mut out, output);
+    for disclosure in &scope.budget_disclosures {
+        out.push_str(&format!("  budget: {disclosure}\n"));
+    }
+    out.push_str(&format!(
+        "  This partial result is not eligible as a gate, baseline, badge, or RIPR Zero input \
+         (gate_eligibility: {}).\n",
+        crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+    ));
+    out.push_str(&format!(
+        "  {}\n  partition_identity: {}\n\n",
+        crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+        scope.partition_identity,
+    ));
+}
+
+/// Escape a diff-supplied string for terminal display: control bytes
+/// (including ESC, which opens terminal escape sequences) render as
+/// `\u{XX}` so a crafted diff path cannot forge report lines or inject
+/// terminal control. The raw value is unchanged for identities and JSON
+/// (#2142 review).
+fn escape_terminal_display(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_control() {
+            out.push_str(&format!("\\u{{{:02x}}}", ch as u32));
+        } else {
+            out.push(ch);
+        }
+    }
     out
 }
 
@@ -74,10 +285,49 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
     if all_no_path_count != s.findings {
         return;
     }
+    // Honesty guard (dogfood: anyhow `Chain::len`): the unknown classes
+    // (`static_unknown` / `infection_unknown` / `propagation_unknown`) can carry
+    // `reach: yes` — a test DOES reach the change, ripr just could not classify
+    // or propagate it. Claiming "no static test path" for the diff then
+    // contradicts the finding's own reach evidence. A reaching test IS a static
+    // test path, so suppress the all-no-path note whenever any finding reaches.
+    if output
+        .findings
+        .iter()
+        .any(|finding| finding.ripr.reach.state == crate::domain::StageState::Yes)
+    {
+        return;
+    }
+    let related_tests_total = output
+        .findings
+        .iter()
+        .flat_map(|finding| finding.related_tests.iter())
+        .map(|test| {
+            (
+                test.file.to_string_lossy().into_owned(),
+                test.name.clone(),
+                test.line,
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    let scope_summary = if s.changed_rust_files > 0 {
+        format!(
+            "Scope analyzed: {} changed Rust file(s), {} changed expression(s), and {} statically linked related test(s).",
+            s.changed_rust_files, all_no_path_count, related_tests_total
+        )
+    } else {
+        format!(
+            "Scope analyzed: {} changed expression(s) and {} statically linked related test(s).",
+            all_no_path_count, related_tests_total
+        )
+    };
     out.push_str(&format!(
         "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
-This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.\n",
-        all_no_path_count
+{} This is not a coverage assessment. A test may already exercise these changes through macros, \
+helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, \
+add co-located tests that observe the changed behavior.\n",
+        all_no_path_count, scope_summary
     ));
 }
 
@@ -98,17 +348,44 @@ This is not a coverage assessment — it means no co-located test was found that
 fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
     for advisory in &output.preview_language_advisories {
         let language = capitalize_first(&advisory.language);
+        let file_label = if advisory.language == "perl" && advisory.file_count == 1 {
+            format!("{language} file")
+        } else {
+            format!("{language}(s)")
+        };
         if advisory.enabled {
             out.push_str(&format!(
-                "\nNote: {} {}(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.\n",
-                advisory.file_count, language,
+                "\nNote: {} {} analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.\n",
+                advisory.file_count, file_label,
             ));
         } else {
             let language_lowercase = advisory.language.to_lowercase();
             out.push_str(&format!(
-                "\nNote: this diff contains {} {}(s). The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
-                advisory.file_count, language, language,
+                "\nNote: this diff contains {} {}. The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
+                advisory.file_count, file_label, language,
             ));
+        }
+    }
+}
+
+/// Render per-language run-status lines for languages that did not complete
+/// successfully (non-abort contract, Campaign 31 PR 10, #1403). Silent when
+/// every language ran to completion.
+fn render_language_runs(out: &mut String, output: &CheckOutput) {
+    for run in &output.language_runs {
+        let language = capitalize_first(&run.language);
+        match &run.reason {
+            Some(reason) => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above. Reason: {}\n",
+                language,
+                run.status.as_str(),
+                reason,
+            )),
+            None => out.push_str(&format!(
+                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above.\n",
+                language,
+                run.status.as_str(),
+            )),
         }
     }
 }
@@ -128,6 +405,7 @@ pub fn render_finding(finding: &Finding) -> String {
 
 mod evidence_lines;
 mod sections;
+mod triage;
 
 pub(crate) use sections::render_finding_with_config;
 
@@ -138,10 +416,10 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
-        FlowSinkFact, FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact,
-        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId, ValueContext,
-        ValueFact,
+        FlowSinkFact, FlowSinkKind, LanguageFileCount, LanguageId, LanguageStatus,
+        MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -166,7 +444,11 @@ mod tests {
             },
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -176,6 +458,721 @@ mod tests {
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
+    }
+
+    /// #2103: a Rust-only run emits no per-language breakdown line, so
+    /// Rust-only human output stays byte-identical.
+    #[test]
+    fn render_omits_language_breakdown_for_rust_only_run() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                changed_rust_files: 2,
+                changed_files_by_language: vec![LanguageFileCount {
+                    language: "rust".to_string(),
+                    files: 2,
+                }],
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("by language"),
+            "Rust-only output must not contain a per-language breakdown; got:\n{rendered}"
+        );
+    }
+
+    /// #2103: when a non-Rust adapter counted files, the breakdown line shows
+    /// the per-language split.
+    #[test]
+    fn render_emits_language_breakdown_when_non_rust_files_counted() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                changed_rust_files: 1,
+                changed_files_by_language: vec![
+                    LanguageFileCount {
+                        language: "python".to_string(),
+                        files: 5,
+                    },
+                    LanguageFileCount {
+                        language: "rust".to_string(),
+                        files: 1,
+                    },
+                ],
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("Changed file(s) by language: python: 5, rust: 1."),
+            "expected per-language breakdown line; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn bounded_human_output_caps_many_findings_and_reports_omitted_count() {
+        let findings = (0..600)
+            .map(|idx| {
+                let mut finding = sample_finding();
+                finding.id = format!("finding-{idx}");
+                finding.probe.location.line = idx + 1;
+                finding
+            })
+            .collect::<Vec<_>>();
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 600,
+                findings: 600,
+                weakly_exposed: 600,
+                ..Summary::default()
+            },
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("Start here:"));
+        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("599 lower-priority finding(s) omitted"));
+        assert!(rendered.contains("--format human-full"));
+        assert!(rendered.lines().count() < 150);
+        assert_eq!(rendered.matches("Static exposure").count(), 1);
+    }
+
+    #[test]
+    fn bounded_human_output_does_not_select_exposed_over_non_exposed_repair() {
+        let mut exposed = sample_finding();
+        exposed.id = "exposed-with-route".to_string();
+        exposed.class = ExposureClass::Exposed;
+        exposed.probe.location = SourceLocation::new("src/exposed.rs", 1, 1);
+        exposed.confidence = 0.99;
+        exposed.recommended_next_step = Some("Review the already exposed evidence.".to_string());
+
+        let mut actionable = sample_finding();
+        actionable.id = "non-exposed-with-route".to_string();
+        actionable.class = ExposureClass::ReachableUnrevealed;
+        actionable.probe.location = SourceLocation::new("src/actionable.rs", 9, 1);
+        actionable.recommended_next_step =
+            Some("Add the missing discriminator assertion.".to_string());
+
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                exposed: 1,
+                reachable_unrevealed: 1,
+                ..Summary::default()
+            },
+            findings: vec![exposed, actionable],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("File: src/actionable.rs:9"));
+        assert!(rendered.contains("Static exposure: reachable_unrevealed"));
+        assert!(!rendered.contains("File: src/exposed.rs:1"));
+    }
+
+    #[test]
+    fn bounded_human_output_reports_missing_scope_as_start_here_state() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("Start here:"));
+        assert!(rendered.contains("State: missing_scope"));
+        assert!(rendered.contains("provide an analysis scope"));
+        assert!(rendered.contains("No diff-derived static exposure probes found."));
+    }
+
+    #[test]
+    fn bounded_human_output_keeps_preview_language_in_preview_limited_state() {
+        let mut finding = sample_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.recommended_next_step = Some("Add a TypeScript preview repair.".to_string());
+        finding
+            .evidence
+            .push("suggested_verify_command: npm test -- pricing".to_string());
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("preview-language evidence is advisory"));
+        assert!(!rendered.contains("State: top_gap"));
+    }
+
+    // #2273: an `exposed` finding can carry an observation rationale (not a
+    // missing discriminator) in `missing`; the digest label must reflect the
+    // discriminator state instead of contradicting the class.
+    #[test]
+    fn digest_labels_observation_rationale_as_observed_advisory_for_exposed() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::Exposed;
+        finding.missing = vec![
+            "Related test reaches `applyDiscount` with a `exact_value` oracle; behavior observed."
+                .to_string(),
+        ];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains(
+                "  Discriminator (observed, advisory): Related test reaches `applyDiscount`"
+            ),
+            "expected observed-advisory label in digest; got:\n{digest}"
+        );
+        assert!(
+            !digest.contains("Missing discriminator:"),
+            "exposed digest must not claim a missing discriminator; got:\n{digest}"
+        );
+    }
+
+    #[test]
+    fn digest_keeps_missing_discriminator_label_for_non_exposed_classes() {
+        for class in [
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::StaticUnknown,
+        ] {
+            let mut finding = sample_finding();
+            finding.class = class;
+            finding.missing = vec!["missing strong oracle".to_string()];
+
+            let digest = super::sections::render_finding_digest_with_config(
+                &finding,
+                &crate::config::RiprConfig::default(),
+            );
+
+            assert!(
+                digest.contains("  Missing discriminator: missing strong oracle"),
+                "expected missing-discriminator label for {:?}; got:\n{digest}",
+                finding.class
+            );
+            assert!(
+                !digest.contains("Discriminator (observed, advisory)"),
+                "non-exposed digest must not use the observed-advisory label; got:\n{digest}"
+            );
+        }
+    }
+
+    // #2273: the preview_limited safe next action distinguishes a
+    // complete-but-advisory repair packet (shared validator authority) from
+    // one with missing fields.
+    #[test]
+    fn preview_limited_safe_action_keeps_missing_fields_line_for_incomplete_packet() {
+        let finding = typescript_preview_finding(false);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
+        ));
+        assert!(!rendered.contains("the repair packet is complete but remains advisory"));
+    }
+
+    #[test]
+    fn preview_limited_safe_action_names_complete_but_advisory_packet() {
+        let finding = typescript_preview_finding(true);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n"
+        ));
+        assert!(!rendered.contains("complete the missing repair-packet fields before acting"));
+    }
+
+    // #2273 (coderabbit thread on #2272): a packet that is blocked with no
+    // missing actionability fields AND a structured static-limit kind is held
+    // by the named limitation — the safe action must not tell the operator to
+    // complete absent fields.
+    #[test]
+    fn preview_limited_safe_action_names_limitation_block_when_no_fields_missing() {
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("missing_actionability_fields: "));
+        finding.static_limit_kind = Some(crate::domain::StaticLimitKind::MockedModule);
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n"
+        ));
+        assert!(!rendered.contains("complete the missing repair-packet fields before acting"));
+        assert!(!rendered.contains("the repair packet is complete but remains advisory"));
+    }
+
+    // Guard against over-crediting the limitation arm: the same blocked
+    // packet WITHOUT a structured static-limit kind keeps the generic
+    // missing-fields line (e.g. a strong-oracle preview finding whose packet
+    // simply lacks projected contract fields).
+    #[test]
+    fn preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind() {
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("missing_actionability_fields: "));
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
+        ));
+        assert!(!rendered.contains("blocked by the named static limitation"));
+    }
+
+    fn single_finding_output(finding: Finding) -> CheckOutput {
+        CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        }
+    }
+
+    // Build a TypeScript preview finding. With `complete_packet`, the evidence
+    // satisfies the shared repair-packet validator so
+    // `preview_actionability_for` reports `repair_packet_ready: true`.
+    fn typescript_preview_finding(complete_packet: bool) -> Finding {
+        let mut finding = unknown_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.probe.location = SourceLocation::new("src/lib.ts", 2, 1);
+        finding.evidence = vec![
+            "owner: applyDiscount".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: incomplete_repair_packet".to_string(),
+            "why_not_actionable: TypeScript preview lacks a complete repair packet contract"
+                .to_string(),
+            "repair_route: project canonical TypeScript repair packet fields later".to_string(),
+            "missing_actionability_fields: canonical_gap_id, verify_command".to_string(),
+            "missing_graph_legs: verify_command, receipt_command".to_string(),
+            "unlock_condition: project complete repair packet fields before public projection"
+                .to_string(),
+            "evidence_needed_to_promote: canonical gap identity and verify command".to_string(),
+            "raw_evidence_ref: leg=rust_seam;file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=applyDiscount;sample=if amount >= threshold".to_string(),
+        ];
+        if complete_packet {
+            finding
+                .evidence
+                .push("typescript_verify_command: jest tests/discount.test.ts".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_observed: result".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_expected: 50".to_string());
+            finding
+                .activation
+                .missing_discriminators
+                .push(MissingDiscriminatorFact {
+                    value: "amount == threshold".to_string(),
+                    reason: "changed TypeScript equality-boundary lacks a concrete discriminator"
+                        .to_string(),
+                    flow_sink: None,
+                });
+            finding.related_tests.push(RelatedTest {
+                name: "applies discount at threshold".to_string(),
+                file: PathBuf::from("tests/discount.test.ts"),
+                line: 5,
+                oracle_strength: OracleStrength::Weak,
+                oracle_kind: OracleKind::ExactValue,
+                oracle: Some("expect(result).toBe(50)".to_string()),
+                relation_reason: None,
+                relation_confidence: None,
+            });
+        }
+        finding
+    }
+
+    #[test]
+    fn bounded_human_output_prefers_stable_gap_over_preview_with_route() {
+        let mut stable = sample_finding();
+        stable.id = "stable-gap".to_string();
+        stable.probe.location = SourceLocation::new("src/stable.rs", 10, 1);
+
+        let mut preview = sample_finding();
+        preview.id = "preview-gap".to_string();
+        preview.language = Some(LanguageId::TypeScript);
+        preview.language_status = Some(LanguageStatus::Preview);
+        preview.probe.location = SourceLocation::new("src/preview.ts", 1, 1);
+        preview.recommended_next_step = Some("Add a TypeScript preview repair.".to_string());
+        preview
+            .evidence
+            .push("suggested_verify_command: npm test -- pricing".to_string());
+
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                weakly_exposed: 2,
+                ..Summary::default()
+            },
+            findings: vec![preview, stable],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("File: src/stable.rs:10"));
+        assert!(!rendered.contains("File: src/preview.ts:1"));
+    }
+
+    #[test]
+    fn human_full_preserves_legacy_all_findings_output() {
+        let mut first = sample_finding();
+        first.id = "first".to_string();
+        first.probe.location.line = 7;
+        let mut second = sample_finding();
+        second.id = "second".to_string();
+        second.probe.location.line = 8;
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                weakly_exposed: 2,
+                ..Summary::default()
+            },
+            findings: vec![first, second],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered =
+            super::render_full_with_config(&output, &crate::config::RiprConfig::default());
+
+        assert_eq!(rendered.matches("Changed\n").count(), 2);
+        assert_eq!(rendered.matches("Probe\n").count(), 2);
+        assert!(!rendered.contains("lower-priority finding(s) omitted"));
+    }
+
+    #[test]
+    fn render_lists_policy_suppressed_findings_compactly_with_warnings() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let location = finding.probe.location.file.display().to_string();
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: Some(CheckSuppressionOutcome {
+                policy_path: "policy/ripr-suppressions.toml".to_string(),
+                suppressed: vec![SuppressedCheckFinding {
+                    finding_id,
+                    selector: "src/**".to_string(),
+                }],
+                warnings: vec![
+                    "exposure_gap suppression for `missing/**` did not match any current finding"
+                        .to_string(),
+                ],
+            }),
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("Suppressed by policy (policy/ripr-suppressions.toml): 1 finding(s)")
+        );
+        assert!(rendered.contains("(selector: src/**)"));
+        assert!(rendered.contains("policy warning: exposure_gap suppression for `missing/**`"));
+        // The suppressed finding must not also render as a detailed block.
+        assert!(!rendered.contains(&format!("WARNING {location}:7")));
+    }
+
+    #[test]
+    fn bounded_human_output_reports_no_actionable_gap_when_all_findings_suppressed() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: Some(CheckSuppressionOutcome {
+                policy_path: "policy/ripr-suppressions.toml".to_string(),
+                suppressed: vec![SuppressedCheckFinding {
+                    finding_id,
+                    selector: "src/**".to_string(),
+                }],
+                warnings: Vec::new(),
+            }),
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: no_actionable_gap"));
+        assert!(rendered.contains("all findings are suppressed by policy"));
+        assert!(!rendered.contains("inspect the named static limitation"));
+    }
+
+    #[test]
+    fn human_output_discloses_limited_partial_scope_run_state() -> Result<(), String> {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: Some(crate::analysis::PartialDiffScope {
+                run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+                diff_identity: "sha256:abc".to_string(),
+                file_budget: 2,
+                line_budget: 100,
+                budget_disclosures: vec!["clamped budget disclosure".to_string()],
+                selected_files: vec!["src/a.rs".to_string()],
+                selected_changed_lines: 60,
+                uninspected_files_lower_bound: 3,
+                uninspected_changed_lines_lower_bound: 180,
+                stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                partition_identity: "c".repeat(64),
+            }),
+        };
+
+        for rendered in [
+            super::render_bounded_with_config(&output, &crate::config::RiprConfig::default()),
+            super::render_full_with_config(&output, &crate::config::RiprConfig::default()),
+        ] {
+            for needle in [
+                "run state limited_partial_scope",
+                "stop reason: file_budget",
+                "selected: src/a.rs",
+                "NOT inspected: at least 3 changed file(s) and at least 180 changed line(s)",
+                "not eligible as a gate, baseline, badge, or RIPR Zero input",
+                "RIPR_PARTIAL_DIFF_FILE_BUDGET",
+                "clamped budget disclosure",
+                &format!("partition_identity: {}", "c".repeat(64)),
+            ] {
+                if !rendered.contains(needle) {
+                    return Err(format!(
+                        "partial disclosure missing `{needle}` in:\n{rendered}"
+                    ));
+                }
+            }
+        }
+
+        // Full-scope runs carry no partial disclosure.
+        let full = CheckOutput {
+            partial_scope: None,
+            ..output
+        };
+        assert!(
+            !super::render_bounded_with_config(&full, &crate::config::RiprConfig::default())
+                .contains("limited_partial_scope")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn human_output_escapes_control_bytes_in_selected_paths() -> Result<(), String> {
+        // A crafted diff filename with control bytes must not reach the
+        // terminal verbatim (#2142 review): the display is escaped while the
+        // raw path stays on the scope record.
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: Some(crate::analysis::PartialDiffScope {
+                run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+                diff_identity: "sha256:abc".to_string(),
+                file_budget: 2,
+                line_budget: 100,
+                budget_disclosures: Vec::new(),
+                selected_files: vec!["src/evil\u{1b}[2K.rs".to_string()],
+                selected_changed_lines: 1,
+                uninspected_files_lower_bound: 1,
+                uninspected_changed_lines_lower_bound: 1,
+                stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                partition_identity: "c".repeat(64),
+            }),
+        };
+
+        let rendered =
+            super::render_bounded_with_config(&output, &crate::config::RiprConfig::default());
+        if rendered.contains('\u{1b}') {
+            return Err("raw ESC byte reached the terminal display".to_string());
+        }
+        if !rendered.contains("selected: src/evil\\u{1b}[2K.rs") {
+            return Err(format!("escaped path missing in:\n{rendered}"));
+        }
+        Ok(())
     }
 
     #[test]
@@ -492,6 +1489,55 @@ mod tests {
         assert!(output.contains("  - static_probe_unknown"));
     }
 
+    // RIPR-SPEC-0115: a transitive-reach witness line in `evidence` (recognized
+    // by the shared prefix) renders as a concrete "Where to look" pointer.
+    #[test]
+    fn human_output_surfaces_transitive_reach_witness_as_where_to_look() {
+        let mut finding = sample_finding();
+        finding.evidence.push(
+            "For example, the test `test_uses_outer` (tests/it.rs:12) calls `outer`, an entry \
+             point that may lead here. Inspect it to judge whether this change is observed."
+                .to_string(),
+        );
+        let output = render_finding(&finding);
+        assert!(output.contains("Where to look\n"));
+        assert!(output.contains("the test `test_uses_outer` (tests/it.rs:12) calls `outer`"));
+        assert!(output.contains("may lead here"));
+    }
+
+    #[test]
+    fn human_output_surfaces_static_limitation_detail() {
+        let mut finding = sample_finding();
+        finding.evidence.extend([
+            "limitation_last_established_edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`".to_string(),
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path".to_string(),
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach".to_string(),
+            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change".to_string(),
+        ]);
+
+        let output = render_finding(&finding);
+
+        assert!(output.contains("Limitation detail\n"));
+        assert!(output.contains(
+            "  last established edge: test `test_uses_outer` (tests/it.rs:12) -> entry `outer`\n"
+        ));
+        assert!(output.contains(
+            "  first unresolved edge: entry `outer` -> owner `inner` through a transitive Rust helper path\n"
+        ));
+        assert!(output.contains("  analyzer route: analysis/rust-public-api-transitive-reach\n"));
+        assert!(output.contains(
+            "  non-claim: named limitation only; ripr cannot confirm or deny that this path observes the change\n"
+        ));
+    }
+
+    // No witness line -> no "Where to look" section (fail-closed: only render
+    // when the limitation actually named a witness).
+    #[test]
+    fn human_output_omits_where_to_look_without_witness() {
+        let output = render_finding(&sample_finding());
+        assert!(!output.contains("Where to look"));
+    }
+
     fn add_perl_preview_card_inputs(finding: &mut Finding) {
         finding.id = "probe:lib_My_App_pm:8:perl_return".to_string();
         finding.canonical_gap = Some(FindingCanonicalGap {
@@ -728,7 +1774,11 @@ mod tests {
                 sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -763,7 +1813,11 @@ mod tests {
                 sample_paths: vec!["app/main.py".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -789,7 +1843,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -821,7 +1879,11 @@ mod tests {
                 sample_paths: vec!["src/lib.ts".to_string()],
                 enabled: true,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -833,8 +1895,8 @@ mod tests {
     }
 
     #[test]
-    fn render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled() {
-        // The #1111 default case: TypeScript files in the diff but the adapter
+    fn render_emits_singular_perl_disclosure_when_adapter_disabled() {
+        // The #2104 case: one Perl file in the diff but the adapter
         // is NOT enabled. The empty result must be broken by a disclosure that
         // says the files were not analyzed.
         let output = CheckOutput {
@@ -846,18 +1908,22 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: vec![PreviewLanguageAdvisory {
-                language: "typescript".to_string(),
+                language: "perl".to_string(),
                 file_count: 1,
-                sample_paths: vec!["src/utils.ts".to_string()],
+                sample_paths: vec!["lib/Pricing.pm".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
 
         assert!(
-            rendered.contains("this diff contains 1 Typescript(s)"),
+            rendered.contains("this diff contains 1 Perl file"),
             "expected not-enabled disclosure; got:\n{rendered}"
         );
         assert!(
@@ -874,7 +1940,7 @@ mod tests {
         );
         // Must include the copy-paste TOML block.
         assert!(
-            rendered.contains("[languages]\nenabled = [\"rust\", \"typescript\"]"),
+            rendered.contains("[languages]\nenabled = [\"rust\", \"perl\"]"),
             "expected copy-paste TOML block; got:\n{rendered}"
         );
         // Must NOT use the enabled wording.
@@ -887,8 +1953,8 @@ mod tests {
     #[test]
     fn render_not_enabled_disclosure_includes_language_specific_toml_block() {
         // Verify the copy-paste block uses the actual language name, not a
-        // hardcoded string. This covers the Python path; TypeScript is covered
-        // by render_emits_not_enabled_disclosure_for_typescript_files_when_adapter_disabled.
+        // hardcoded string. This covers the Python path; Perl is covered by
+        // render_emits_singular_perl_disclosure_when_adapter_disabled.
         let output = CheckOutput {
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
@@ -903,7 +1969,11 @@ mod tests {
                 sample_paths: vec!["app/models.py".to_string()],
                 enabled: false,
             }],
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -971,7 +2041,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1014,7 +2088,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1044,7 +2122,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1075,7 +2157,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1102,6 +2188,7 @@ mod tests {
             root: PathBuf::from("repo"),
             base: None,
             summary: Summary {
+                changed_rust_files: 1,
                 probes: 2,
                 findings: 2,
                 no_static_path: 2,
@@ -1109,7 +2196,11 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1124,8 +2215,14 @@ mod tests {
             "expected honesty note; got:\n{rendered}"
         );
         assert!(
-            rendered.contains("no co-located test was found that statically discriminates"),
-            "expected absence-of-path wording; got:\n{rendered}"
+            rendered.contains("A test may already exercise these changes through macros"),
+            "expected honest untraced-test wording; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related test(s)."
+            ),
+            "expected scope-count disclosure; got:\n{rendered}"
         );
     }
 
@@ -1146,7 +2243,11 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1155,6 +2256,90 @@ mod tests {
             rendered
                 .contains("ripr found no static test path for any of the 1 changed expression(s)"),
             "expected disclosure for static_unknown finding; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_all_no_path_disclosure_counts_linked_related_tests() {
+        let mut finding = unknown_finding();
+        let related_test = RelatedTest {
+            name: "test_handles_disabled".to_string(),
+            file: PathBuf::from("tests/sample.rs"),
+            line: 22,
+            oracle: Some("assert_eq!(actual, expected)".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+        };
+        finding.related_tests.push(related_test.clone());
+        let mut duplicate_finding = unknown_finding();
+        duplicate_finding.related_tests.push(related_test);
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 2,
+                static_unknown: 2,
+                ..Summary::default()
+            },
+            findings: vec![finding, duplicate_finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(
+                "Scope analyzed: 2 changed expression(s) and 1 statically linked related test(s)."
+            ),
+            "expected related-test count disclosure; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_omits_all_no_path_disclosure_when_a_finding_reaches() {
+        // Honesty (dogfood: anyhow Chain::len): an unknown-class finding can carry
+        // reach=yes (a test DOES reach the change). Claiming "no static test path"
+        // then contradicts the finding's own reach evidence, so the all-no-path
+        // note must be suppressed when any finding reaches.
+        let mut finding = unknown_finding();
+        finding.ripr.reach.state = StageState::Yes;
+        let output = CheckOutput {
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("ripr found no static test path for any"),
+            "must not claim no-static-path when a finding reaches; got:\n{rendered}"
         );
     }
 
@@ -1177,7 +2362,11 @@ mod tests {
             },
             findings: vec![sample_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1204,7 +2393,11 @@ mod tests {
             },
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1228,7 +2421,11 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1257,7 +2454,11 @@ mod tests {
             },
             findings: vec![unknown_finding(), unknown_finding(), unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1285,7 +2486,11 @@ mod tests {
             },
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);

@@ -1,5 +1,5 @@
 use crate::config::RiprConfig;
-use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
 };
@@ -17,6 +17,96 @@ use crate::output::typescript_preview_card::{
 };
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
+
+pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &RiprConfig) -> String {
+    let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
+    out.push_str(&format!(
+        "  File: {}:{}\n",
+        display_path(&finding.probe.location.file),
+        finding.probe.location.line
+    ));
+    out.push_str(&format!(
+        "  Static exposure: {} ({}, confidence {:.2})\n",
+        finding.class.as_str(),
+        severity,
+        finding.confidence
+    ));
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  Canonical gap: {}\n", gap.id));
+    }
+    let changed = finding
+        .probe
+        .after
+        .as_deref()
+        .or(finding.probe.before.as_deref())
+        .unwrap_or(&finding.probe.expression);
+    out.push_str(&format!("  Changed behavior: {}\n", one_line(changed)));
+    if let Some(missing) = finding.missing.first() {
+        // #2273: preview-language classifiers record an observation rationale
+        // (not a missing discriminator) in this field for `exposed` findings;
+        // label it as observed advisory evidence so the header does not
+        // contradict the machine state. Rust `exposed` findings never carry a
+        // `missing` entry, so this switch only affects advisory preview output.
+        let label = if finding.class == ExposureClass::Exposed {
+            "Discriminator (observed, advisory)"
+        } else {
+            "Missing discriminator"
+        };
+        out.push_str(&format!("  {label}: {}\n", one_line(missing)));
+    }
+    if let Some(test) = finding.related_tests.first() {
+        out.push_str(&format!(
+            "  Related test: {}:{} {}\n",
+            display_path(&test.file),
+            test.line,
+            test.name
+        ));
+    }
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        out.push_str(&format!("  Suggested test file: {}\n", placement.test_file));
+        out.push_str(&format!("  Suggested test: {}\n", placement.test_name));
+        if let Some(node_id) = placement.test_node_id {
+            out.push_str(&format!("  Test node: {node_id}\n"));
+        }
+        out.push_str(&format!(
+            "  Verify command: {} ({})\n",
+            placement.verify_command, placement.verify_confidence
+        ));
+    }
+    if finding.recommended_next_step.is_some() {
+        out.push_str(&format!(
+            "  Next step: {}\n",
+            one_line(&reconcile_next_step(finding))
+        ));
+    }
+    let evidence = evidence_path_lines(finding);
+    if !evidence.is_empty() {
+        out.push_str("  Evidence:\n");
+        for line in evidence.iter().take(2) {
+            out.push_str(&format!("    - {}\n", one_line(line)));
+        }
+        if evidence.len() > 2 {
+            out.push_str(&format!(
+                "    - {} more evidence line(s) hidden\n",
+                evidence.len() - 2
+            ));
+        }
+    }
+    out
+}
+
+fn one_line(value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    const LIMIT: usize = 180;
+    if collapsed.chars().count() <= LIMIT {
+        collapsed
+    } else {
+        let mut truncated = collapsed.chars().take(LIMIT).collect::<String>();
+        truncated.push('…');
+        truncated
+    }
+}
 
 pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig) -> String {
     let mut out = String::new();
@@ -97,6 +187,41 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
+    // #1162 explain enhancement: when a named static limitation is present,
+    // surface its plain-English meaning (not just the snake_case token) so a CLI
+    // reader understands *why* ripr could not resolve the path. Fail-closed
+    // disclosure only — `describe()` asserts no coverage.
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        out.push_str("\nStatic limitation\n");
+        out.push_str(&format!(
+            "  {} \u{2014} {}\n",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
+    }
+
+    // RIPR-SPEC-0115/0117: when a Rust no_static_path limitation named a
+    // witnessing test, surface it in human output as a concrete "Where to look"
+    // pointer. The witness prose lives in `evidence` (the limitation channel);
+    // we recognize it by the shared prefix so JSON evidence and human output
+    // stay single-sourced.
+    if let Some(witness) = finding
+        .evidence
+        .iter()
+        .find(|line| line.starts_with(crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX))
+    {
+        out.push_str("\nWhere to look\n");
+        out.push_str(&format!("  {witness}\n"));
+    }
+
+    let limitation_details = limitation_detail_lines(finding);
+    if !limitation_details.is_empty() {
+        out.push_str("\nLimitation detail\n");
+        for (label, value) in limitation_details {
+            out.push_str(&format!("  {label}: {value}\n"));
+        }
+    }
+
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
@@ -105,6 +230,10 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         // actionable, or the named limitation when blocked. Emitted after the
         // preview card so it reads as a separate operator-facing section.
         push_typescript_repair_packet_field_note(&mut out, finding);
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6): advisory-only,
+        // hard-pinned to never flip an authority flag. See perl_preview_card.rs
+        // `advisory_only_readiness()` + the invariant test. Decommissioned in
+        // the post-Phase-B PR.
     } else if let Some(card) = perl_preview_card(finding) {
         push_perl_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {
@@ -126,6 +255,33 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn limitation_detail_lines(finding: &Finding) -> Vec<(&'static str, &str)> {
+    [
+        (
+            "last established edge",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        ),
+        (
+            "first unresolved edge",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        ),
+        (
+            "analyzer route",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX,
+        ),
+        ("non-claim", crate::domain::LIMITATION_NON_CLAIM_PREFIX),
+    ]
+    .into_iter()
+    .filter_map(|(label, prefix)| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+            .map(|value| (label, value))
+    })
+    .collect()
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {

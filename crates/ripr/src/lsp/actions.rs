@@ -1,37 +1,65 @@
+use super::action_contract::{
+    ActionDataInputs, ActionDisabledReason, ParsedActionData, action_data,
+    disabled_reason_emittable, parse_validated_action_data,
+};
+use super::client_features::ClientFeatureProfile;
 use super::gap_artifacts::{ValidatedGapArtifact, command_payload_is_safe, workspace_path_is_safe};
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use super::{
-    COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND,
-    COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND,
-    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, OPEN_RELATED_TEST_COMMAND,
-    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND, COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
+    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::repair_route::{
+    cross_language_test_target_unresolved, repair_packet_eligibility,
+};
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::domain::OracleStrength;
+use crate::lsp::gap_artifacts::command_specs_for_projection;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
-use crate::output::evidence_record::cross_language_test_target_unresolved;
+use crate::output::evidence_record::CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Command,
-    Diagnostic, LSPAny,
+    CodeAction, CodeActionDisabled, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeActionResponse, Command, Diagnostic, LSPAny,
 };
 
 pub(super) fn code_action_response(
     params: &CodeActionParams,
     snapshot: Option<&AnalysisSnapshot>,
+    client_features: &ClientFeatureProfile,
 ) -> CodeActionResponse {
     let mut actions = Vec::new();
     if let Some(context) = seam_action_context(params, snapshot) {
-        push_seam_actions(&mut actions, params, context);
+        push_seam_actions(&mut actions, params, context, client_features);
     }
     if let Some(context) = gap_action_context(params, snapshot) {
-        push_gap_actions(&mut actions, params, context);
+        push_gap_actions(&mut actions, params, context, client_features);
+    } else if client_features.code_action_disabled
+        && let Some((diagnostic, current)) = stale_gap_diagnostic(params, snapshot)
+        && let Some(action) = disabled_action(
+            INSPECT_GAP_PACKET_TITLE,
+            "source.ripr.inspect",
+            "copy_gap_repair_packet",
+            COPY_CONTEXT_COMMAND,
+            diagnostic,
+            Some(current),
+            ActionDisabledReason::StaleSnapshot,
+        )
+    {
+        // #1892: the gap diagnostic is stale against the current snapshot —
+        // a disabled-capable client sees the packet action inert instead of
+        // absent; other clients keep the legacy omission.
+        actions.push(action);
     }
     if let Some(diagnostic) = params
         .context
@@ -42,20 +70,367 @@ pub(super) fn code_action_response(
         actions.push(copy_context_action(
             INSPECT_FINDING_CONTEXT_TITLE,
             INSPECT_FINDING_CONTEXT_COMMAND_TITLE,
+            "copy_finding_context",
             copy_context_target(params, diagnostic),
+            diagnostic,
+            snapshot,
         ));
     }
     actions.push(CodeActionOrCommand::CodeAction(CodeAction {
         title: REFRESH_ANALYSIS_TITLE.to_string(),
-        kind: Some(CodeActionKind::SOURCE),
+        kind: Some(CodeActionKind::new("source.ripr.refresh")),
         command: Some(Command {
             title: REFRESH_ANALYSIS_TITLE.to_string(),
             command: REFRESH_COMMAND.to_string(),
             arguments: Some(Vec::new()),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.refresh",
+            "refresh_analysis",
+            REFRESH_COMMAND,
+            None,
+            snapshot,
+        )),
         ..CodeAction::default()
     }));
+    // `CodeActionContext.only` filter (#1750, RIPR-SPEC-0129): LSP 3.17
+    // hierarchical kind semantics — an action survives when a requested
+    // kind equals or dot-segment-prefixes the action's kind. Absent `only`
+    // leaves the response unfiltered; a kind-less action fails closed.
+    if let Some(only) = &params.context.only {
+        actions.retain(|action| kind_matches_only(action, only));
+    }
+    // Client-command policy (#1776 omit, #1892 disabled form,
+    // RIPR-SPEC-0129): an action whose command executes client-side
+    // (clipboard copies, related-test navigation) requires the negotiated
+    // profile to have advertised that command. A client without
+    // `CodeAction.disabled` support keeps the fail-closed omission; a
+    // disabled-capable client instead receives the action inert — command
+    // and edit stripped (a disabled action that still executes is the
+    // cardinal-sin flip), kind retained for the `only` filter, and the
+    // machine reason named in the data payload. Server-executed commands
+    // run inside the server and stay unconditional.
+    if client_features.code_action_disabled {
+        for action in &mut actions {
+            disable_missing_client_command_action(action, client_features);
+        }
+    } else {
+        actions.retain(|action| command_allowed_for_client(action, client_features));
+    }
     actions
+}
+
+/// LSP 3.17 `CodeActionContext.only` matching (#1750, RIPR-SPEC-0129): an
+/// action survives when any requested kind equals the action's kind or is a
+/// dot-segment prefix of it (`source` matches `source.ripr.inspect` and
+/// `source.ripr.refresh`; `source.ripr.navigate` matches only that
+/// subtree). An action with no kind fails closed when `only` is present.
+fn kind_matches_only(action: &CodeActionOrCommand, only: &[CodeActionKind]) -> bool {
+    let kind = match action {
+        CodeActionOrCommand::CodeAction(action) => action.kind.as_ref(),
+        CodeActionOrCommand::Command(_) => None,
+    };
+    let Some(kind) = kind else {
+        return false;
+    };
+    only.iter().any(|requested| {
+        kind.as_str() == requested.as_str()
+            || kind
+                .as_str()
+                .strip_prefix(requested.as_str())
+                .is_some_and(|rest| rest.starts_with('.'))
+    })
+}
+
+/// Server-executed commands: the `executeCommandProvider` set from
+/// `lsp/capabilities.rs`. They run inside the server through
+/// `workspace/executeCommand`, so every client can run them regardless of
+/// the negotiated `riprEditor` advertisement (#1776).
+pub(super) const SERVER_EXECUTED_COMMANDS: [&str; 7] = [
+    REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND,
+    COLLECT_EVIDENCE_CONTEXT_COMMAND,
+    COLLECT_WORKSPACE_STATUS_COMMAND,
+    COLLECT_REPAIR_PACKET_COMMAND,
+    COLLECT_TOP_LIMITATION_COMMAND,
+    COLLECT_RECEIPT_STATUS_COMMAND,
+];
+
+/// A code action survives the client-command filter when its command
+/// executes inside the server, or when the negotiated profile advertised
+/// the client-executed command (#1776, RIPR-SPEC-0129). An action with no
+/// command executes nothing client-side and always survives; an unknown
+/// client command fails closed to unsupported.
+fn command_allowed_for_client(
+    action: &CodeActionOrCommand,
+    client_features: &ClientFeatureProfile,
+) -> bool {
+    let command = match action {
+        CodeActionOrCommand::CodeAction(action) => action.command.as_ref(),
+        CodeActionOrCommand::Command(command) => Some(command),
+    };
+    match command {
+        None => true,
+        Some(command) => command_permitted(&command.command, client_features),
+    }
+}
+
+/// The shared client-command permission predicate (#1776, #1892): a command
+/// is permitted when it executes inside the server or when the negotiated
+/// profile advertised it. Both the omit filter and the disabled-form policy
+/// delegate here so the two paths can never drift apart.
+fn command_permitted(command: &str, client_features: &ClientFeatureProfile) -> bool {
+    SERVER_EXECUTED_COMMANDS.contains(&command) || client_features.supports_client_command(command)
+}
+
+/// The capability the client must hold for a command (#1892): a
+/// server-executed command runs inside the server (`"server"`); any other
+/// command requires the client-command advertisement itself (#1776).
+fn required_client_capability(command_id: &str) -> &str {
+    if SERVER_EXECUTED_COMMANDS.contains(&command_id) {
+        "server"
+    } else {
+        command_id
+    }
+}
+
+/// The versioned `CodeAction.data` payload for an enabled action (#1892).
+/// `action_name` is the action's stable snake_case machine identity — never
+/// title text — and keeps the `action_id` distinct across constructors that
+/// share one command id on one diagnostic.
+fn action_data_payload(
+    action_kind: &str,
+    action_name: &'static str,
+    command_id: &str,
+    diagnostic: Option<&Diagnostic>,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> LSPAny {
+    action_data(&ActionDataInputs {
+        action_kind,
+        action_name,
+        command_id,
+        required_client_capability: required_client_capability(command_id),
+        diagnostic,
+        input_identity: snapshot.and_then(AnalysisSnapshot::input_identity_id),
+        disabled_reason: None,
+    })
+}
+
+/// Disabled form of the client-command filter (#1892, RIPR-SPEC-0129): an
+/// action whose client-executed command was not advertised stays visible
+/// but inert. The command/edit strip is mandatory — a disabled action that
+/// still executes is the cardinal-sin flip — and `is_preferred` is never
+/// true on a disabled action. Actions without a command (including actions
+/// disabled at their suppression site) execute nothing and are left alone.
+fn disable_missing_client_command_action(
+    action: &mut CodeActionOrCommand,
+    client_features: &ClientFeatureProfile,
+) {
+    let CodeActionOrCommand::CodeAction(action) = action else {
+        return;
+    };
+    let Some(command) = action.command.as_ref() else {
+        return;
+    };
+    if command_permitted(&command.command, client_features) {
+        return;
+    }
+    disable_action_in_place(action, ActionDisabledReason::ClientCapabilityMissing);
+}
+
+/// Puts an already-emitted action into the inert disabled form with
+/// `reason` (#1892, #1751): command and edit stripped (a disabled action
+/// that still executes is the cardinal-sin flip), `is_preferred` cleared,
+/// kind retained for the `CodeActionContext.only` filter, and the machine
+/// reason named in the data payload. Both call-site reasons are statically
+/// emittable; if the fail-closed emit guard ever rejects one, the action is
+/// still stripped so it can never stay executable.
+fn disable_action_in_place(action: &mut CodeAction, reason: ActionDisabledReason) {
+    action.command = None;
+    action.edit = None;
+    action.is_preferred = None;
+    if !disabled_reason_emittable(reason) {
+        return;
+    }
+    action.disabled = Some(CodeActionDisabled {
+        reason: reason.human_reason().to_string(),
+    });
+    if let Some(object) = action.data.as_mut().and_then(Value::as_object_mut) {
+        object.insert(
+            "disabled_reason".to_string(),
+            Value::String(reason.as_str().to_string()),
+        );
+    }
+}
+
+/// `codeAction/resolve` revalidation (#1751, RIPR-SPEC-0129).
+/// `textDocument/codeAction` already emits fully-resolved actions, so
+/// resolve never strips or lazily attaches commands: it revalidates the
+/// action against the current snapshot and the negotiated client profile
+/// before the client executes it. A payload that is missing,
+/// foreign-versioned, malformed, or fingerprint-inconsistent is a
+/// fail-closed rejection (the `Err` message maps to `InvalidParams`,
+/// mirroring the unsupported-command rejection at the backend). A
+/// well-formed action whose snapshot, addressed artifact, or required
+/// capability has lapsed returns in the inert disabled form naming the
+/// emittable reason.
+pub(super) fn resolve_action(
+    mut action: CodeAction,
+    snapshot: Option<&AnalysisSnapshot>,
+    client_features: &ClientFeatureProfile,
+) -> Result<CodeAction, String> {
+    let data = action
+        .data
+        .clone()
+        .ok_or_else(|| "code action is missing its ripr data payload".to_string())?;
+    let command_id = resolve_command_id(&action, &data)?;
+    let parsed = parse_validated_action_data(&data, &command_id)?;
+    if parsed.addresses_artifact() {
+        // Same health/root gate as `code_action`: without a current snapshot
+        // the addressed evidence cannot be confirmed.
+        let Some(snapshot) = snapshot else {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        };
+        if let Some(payload_identity) = parsed.input_identity.as_deref()
+            && Some(payload_identity) != snapshot.input_identity_id().as_deref()
+        {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        }
+        if !addressed_artifact_still_present(&parsed, &data, snapshot) {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        }
+    }
+    if let Some(command) = action.command.as_ref() {
+        // The payload's declared capability must agree with the attached
+        // command — a mismatch is payload tampering, not a negotiation
+        // difference.
+        if parsed.required_client_capability != required_client_capability(&command.command) {
+            return Err(
+                "code action data required_client_capability disagrees with its command"
+                    .to_string(),
+            );
+        }
+        if !command_permitted(&command.command, client_features) {
+            disable_action_in_place(&mut action, ActionDisabledReason::ClientCapabilityMissing);
+            return Ok(action);
+        }
+        // Revalidation passed: the action resolves in its enabled form.
+        action.disabled = None;
+    }
+    // An action that arrives without a command (already inert when emitted)
+    // is returned as-is after revalidation: the constructors need the
+    // original request context, so the command is not rebuilt here.
+    Ok(action)
+}
+
+/// The command id the payload's `action_id` was fingerprinted with (#1751):
+/// the attached command when present, otherwise — for an action the
+/// omit-vs-disabled policy stripped — the payload's required capability,
+/// which for a client-executed command is the command id itself. A stripped
+/// server-executed command cannot be recovered and fails closed.
+fn resolve_command_id(action: &CodeAction, data: &Value) -> Result<String, String> {
+    if let Some(command) = action.command.as_ref() {
+        return Ok(command.command.clone());
+    }
+    match data
+        .get("required_client_capability")
+        .and_then(Value::as_str)
+    {
+        Some(capability) if capability != "server" && !capability.trim().is_empty() => {
+            Ok(capability.to_string())
+        }
+        _ => Err("code action carries no command and its payload cannot recover one".to_string()),
+    }
+}
+
+/// The addressed-artifact freshness re-verification (#1751): the snapshot
+/// must still carry the artifact the action addresses — the validated gap
+/// artifact for a gap action (same predicate as the `code_action` emit
+/// site), the classified seam for a seam action, the finding for a finding
+/// action. The payload carries the addressed identities under the same keys
+/// the diagnostic data uses, so the shared matcher consumes it directly.
+fn addressed_artifact_still_present(
+    parsed: &ParsedActionData,
+    data: &Value,
+    snapshot: &AnalysisSnapshot,
+) -> bool {
+    if parsed.addresses_gap() {
+        return snapshot.gap_artifacts.iter().any(|artifact| {
+            artifact.is_safe_projection_input()
+                && artifact.is_actionable_gap()
+                && artifact_matches_gap_diagnostic(artifact, data)
+        });
+    }
+    if let Some(seam_id) = parsed.seam_id.as_deref() {
+        return snapshot.classified_seam_by_id(seam_id).is_some();
+    }
+    if let Some(finding_id) = parsed.finding_id.as_deref() {
+        return snapshot.finding_by_id(finding_id).is_some();
+    }
+    false
+}
+
+/// Builds an inert, diagnostic-addressing action for a suppression site
+/// (#1892): the kind is retained (the `CodeActionContext.only` filter
+/// fail-closes on kind-less actions), no command or edit is attached, and
+/// the machine reason sits in the versioned data payload. Returns `None` —
+/// the caller keeps the legacy omission — when the reason has no real
+/// producer yet (fail-closed emit guard).
+fn disabled_action(
+    title: &str,
+    action_kind: &'static str,
+    action_name: &'static str,
+    command_id: &str,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+    reason: ActionDisabledReason,
+) -> Option<CodeActionOrCommand> {
+    if !disabled_reason_emittable(reason) {
+        return None;
+    }
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::new(action_kind)),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        disabled: Some(CodeActionDisabled {
+            reason: reason.human_reason().to_string(),
+        }),
+        data: Some(action_data(&ActionDataInputs {
+            action_kind,
+            action_name,
+            command_id,
+            required_client_capability: required_client_capability(command_id),
+            diagnostic: Some(diagnostic),
+            input_identity: snapshot.and_then(AnalysisSnapshot::input_identity_id),
+            disabled_reason: Some(reason),
+        })),
+        ..CodeAction::default()
+    }))
+}
+
+/// A gap diagnostic the current snapshot no longer carries (#1892): any
+/// action built from it would address superseded evidence, so a
+/// disabled-capable client receives an inert action naming `stale_snapshot`
+/// instead of silence. Returns the diagnostic and the snapshot only for the
+/// staleness case — a missing artifact or missing snapshot stays omit-only.
+fn stale_gap_diagnostic<'a>(
+    params: &'a CodeActionParams,
+    snapshot: Option<&'a AnalysisSnapshot>,
+) -> Option<(&'a Diagnostic, &'a AnalysisSnapshot)> {
+    let snapshot = snapshot?;
+    let diagnostic = params
+        .context
+        .diagnostics
+        .iter()
+        .find(|d| is_ripr_diagnostic(d) && is_gap_diagnostic(d))?;
+    let data = diagnostic.data.as_ref()?;
+    if snapshot_has_current_gap_diagnostic(params, snapshot, data) {
+        return None;
+    }
+    Some((diagnostic, snapshot))
 }
 
 struct SeamActionContext<'a> {
@@ -68,6 +443,7 @@ struct GapActionContext<'a> {
     diagnostic: &'a Diagnostic,
     data: &'a Value,
     snapshot: &'a AnalysisSnapshot,
+    artifact: &'a ValidatedGapArtifact,
 }
 
 fn seam_action_context<'a>(
@@ -105,7 +481,7 @@ fn gap_action_context<'a>(
     if !snapshot_has_current_gap_diagnostic(params, snapshot, data) {
         return None;
     }
-    let _artifact = snapshot.gap_artifacts.iter().find(|artifact| {
+    let artifact = snapshot.gap_artifacts.iter().find(|artifact| {
         artifact.is_safe_projection_input()
             && artifact.is_actionable_gap()
             && artifact_matches_gap_diagnostic(artifact, data)
@@ -114,6 +490,7 @@ fn gap_action_context<'a>(
         diagnostic,
         data,
         snapshot,
+        artifact,
     })
 }
 
@@ -159,26 +536,57 @@ fn push_seam_actions(
     actions: &mut CodeActionResponse,
     params: &CodeActionParams,
     context: SeamActionContext<'_>,
+    client_features: &ClientFeatureProfile,
 ) {
     let suggested_assertion = suggested_assertion_for_classified_seam(context.seam);
     let related_test = best_related_test_for_editor(context.seam);
     actions.push(copy_context_action(
         INSPECT_SEAM_PACKET_TITLE,
         INSPECT_SEAM_PACKET_TITLE,
+        "copy_seam_packet",
         copy_seam_packet_target(params, context.diagnostic, context.seam),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     if cross_language_test_target_unresolved(context.seam) {
+        // #1892: the cross-language limitation suppresses the repair-packet
+        // surface; a disabled-capable client still sees the brief action
+        // inert with the preview/static limitation named.
+        if client_features.code_action_disabled
+            && let Some(action) = disabled_action(
+                TARGETED_TEST_BRIEF_TITLE,
+                "source.ripr.inspect",
+                "copy_targeted_test_brief",
+                COPY_TARGETED_TEST_BRIEF_COMMAND,
+                context.diagnostic,
+                Some(context.snapshot),
+                ActionDisabledReason::PreviewOrStaticLimitation,
+            )
+        {
+            actions.push(action);
+        }
         return;
     }
-    if suggested_assertion.is_some() || related_test.is_some() {
+    // The targeted-test brief is the editor's repair-packet surface, so the
+    // flip routes through the single producer-owned authority
+    // (`repair_packet_eligibility`, RIPR-SPEC-0087 §8) instead of hand-conjoining
+    // readiness and cross-language predicates. The remaining guard is content
+    // availability (a concrete assertion template or related test), not a
+    // readiness predicate.
+    if repair_packet_eligibility(context.seam).eligible()
+        && (suggested_assertion.is_some() || related_test.is_some())
+    {
         actions.push(copy_targeted_test_brief_action(
             context.seam,
             targeted_test_brief_for_classified_seam(context.seam),
+            context.diagnostic,
+            Some(context.snapshot),
         ));
     }
     actions.push(copy_agent_loop_command_action(
         AGENT_PACKET_COMMAND_TITLE,
         COPY_AGENT_PACKET_COMMAND,
+        "copy_agent_packet_command",
         agent_loop_command_target(
             context.snapshot,
             context.diagnostic,
@@ -191,10 +599,13 @@ fn push_seam_actions(
                 loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
             ),
         ),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     actions.push(copy_agent_loop_command_action(
         AGENT_BRIEF_COMMAND_TITLE,
         COPY_AGENT_BRIEF_COMMAND,
+        "copy_agent_brief_command",
         agent_loop_command_target(
             context.snapshot,
             context.diagnostic,
@@ -207,10 +618,13 @@ fn push_seam_actions(
                 loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
             ),
         ),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     actions.push(copy_agent_loop_command_action(
         AFTER_SNAPSHOT_COMMAND_TITLE,
         COPY_AFTER_SNAPSHOT_COMMAND,
+        "copy_after_snapshot_command",
         agent_loop_command_target(
             context.snapshot,
             context.diagnostic,
@@ -224,10 +638,13 @@ fn push_seam_actions(
                 loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
             ),
         ),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     actions.push(copy_agent_loop_command_action(
         AGENT_VERIFY_COMMAND_TITLE,
         COPY_AGENT_VERIFY_COMMAND,
+        "copy_agent_verify_command",
         agent_loop_command_target(
             context.snapshot,
             context.diagnostic,
@@ -241,10 +658,13 @@ fn push_seam_actions(
                 Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
             ),
         ),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     actions.push(copy_agent_loop_command_action(
         AGENT_RECEIPT_COMMAND_TITLE,
         COPY_AGENT_RECEIPT_COMMAND,
+        "copy_agent_receipt_command",
         agent_loop_command_target(
             context.snapshot,
             context.diagnostic,
@@ -258,14 +678,25 @@ fn push_seam_actions(
                 Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
             ),
         ),
+        context.diagnostic,
+        Some(context.snapshot),
     ));
     if let Some(assertion) = suggested_assertion {
-        actions.push(copy_suggested_assertion_action(context.seam, assertion));
+        actions.push(copy_suggested_assertion_action(
+            context.seam,
+            assertion,
+            context.diagnostic,
+            Some(context.snapshot),
+        ));
     }
     if let Some(related) = related_test
         && let Some(target) = related_test_target(context.snapshot, related)
     {
-        actions.push(open_related_test_action(target));
+        actions.push(open_related_test_action(
+            target,
+            context.diagnostic,
+            Some(context.snapshot),
+        ));
     }
 }
 
@@ -273,37 +704,64 @@ fn push_gap_actions(
     actions: &mut CodeActionResponse,
     params: &CodeActionParams,
     context: GapActionContext<'_>,
+    client_features: &ClientFeatureProfile,
 ) {
     if !gap_cross_language_target_unresolved(context.data) {
-        if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
-            actions.push(copy_context_action(
-                COPY_FIRST_REPAIR_PACKET_TITLE,
-                COPY_FIRST_REPAIR_PACKET_TITLE,
-                target,
-            ));
-        }
         if let Some(target) =
-            python_agent_packet_target(params, context.snapshot, context.diagnostic)
+            first_repair_packet_target(context.snapshot, context.diagnostic, context.artifact)
         {
+            actions.push(copy_context_action(
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                COPY_FIRST_REPAIR_PACKET_TITLE,
+                "copy_first_repair_packet",
+                target,
+                context.diagnostic,
+                Some(context.snapshot),
+            ));
+        }
+        if let Some(target) = python_agent_packet_target(
+            params,
+            context.snapshot,
+            context.diagnostic,
+            context.artifact,
+        ) {
             actions.push(copy_context_action(
                 COPY_PYTHON_AGENT_PACKET_TITLE,
                 COPY_PYTHON_AGENT_PACKET_TITLE,
+                "copy_python_agent_packet",
                 target,
+                context.diagnostic,
+                Some(context.snapshot),
             ));
         }
-        if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic)
-        {
+        if let Some(target) = gap_repair_packet_target(
+            params,
+            context.snapshot,
+            context.diagnostic,
+            context.artifact,
+        ) {
             actions.push(copy_context_action(
                 INSPECT_GAP_PACKET_TITLE,
                 INSPECT_GAP_PACKET_COMMAND_TITLE,
+                "copy_gap_repair_packet",
                 target,
+                context.diagnostic,
+                Some(context.snapshot),
             ));
         }
         if let Some(target) = python_repair_card_target(context.snapshot, context.data) {
-            actions.push(copy_python_repair_card_action(target));
+            actions.push(copy_python_repair_card_action(
+                target,
+                context.diagnostic,
+                Some(context.snapshot),
+            ));
         }
         if let Some(target) = python_pytest_skeleton_target(context.snapshot, context.data) {
-            actions.push(copy_python_pytest_skeleton_action(target));
+            actions.push(copy_python_pytest_skeleton_action(
+                target,
+                context.diagnostic,
+                Some(context.snapshot),
+            ));
         }
         // §PR8 (RIPR-SPEC-0088): Copy TypeScript repair packet action when
         // the TS finding is actionable (repair_packet_ready: true in the
@@ -314,53 +772,134 @@ fn push_gap_actions(
             actions.push(copy_context_action(
                 COPY_TYPESCRIPT_REPAIR_PACKET_TITLE,
                 COPY_TYPESCRIPT_REPAIR_PACKET_TITLE,
+                "copy_typescript_repair_packet",
                 target,
+                context.diagnostic,
+                Some(context.snapshot),
             ));
         }
         if let Some(target) = gap_related_test_target(context.snapshot, context.data) {
-            actions.push(open_related_test_action(target));
+            actions.push(open_related_test_action(
+                target,
+                context.diagnostic,
+                Some(context.snapshot),
+            ));
         }
         let verify_command = first_safe_command_at(
             context.snapshot.root.as_path(),
             context.data,
             &["verification_commands"],
         );
-        if let Some(command) = &verify_command {
-            actions.push(copy_agent_loop_command_action(
+        match &verify_command {
+            Some(command) => actions.push(copy_agent_loop_command_action(
                 AGENT_VERIFY_COMMAND_TITLE,
                 COPY_AGENT_VERIFY_COMMAND,
+                "copy_agent_verify_command",
                 gap_command_target(context.diagnostic, "gap_verify", command),
-            ));
+                context.diagnostic,
+                Some(context.snapshot),
+            )),
+            None => {
+                // #1892: the gap record carries no safe verification route —
+                // a disabled-capable client sees the verify handoff inert
+                // instead of absent.
+                if client_features.code_action_disabled
+                    && let Some(action) = disabled_action(
+                        AGENT_VERIFY_COMMAND_TITLE,
+                        "source.ripr.inspect",
+                        "copy_agent_verify_command",
+                        COPY_AGENT_VERIFY_COMMAND,
+                        context.diagnostic,
+                        Some(context.snapshot),
+                        ActionDisabledReason::VerificationRouteUnavailable,
+                    )
+                {
+                    actions.push(action);
+                }
+            }
         }
-        if verify_command.is_some()
-            && let Some(command) =
-                first_safe_receipt_command(context.snapshot.root.as_path(), context.data)
-        {
-            actions.push(copy_agent_loop_command_action(
-                AGENT_RECEIPT_COMMAND_TITLE,
-                COPY_AGENT_RECEIPT_COMMAND,
-                gap_command_target(context.diagnostic, "gap_receipt", &command),
-            ));
+        if verify_command.is_some() {
+            match first_safe_receipt_command(context.snapshot.root.as_path(), context.data) {
+                Some(command) => actions.push(copy_agent_loop_command_action(
+                    AGENT_RECEIPT_COMMAND_TITLE,
+                    COPY_AGENT_RECEIPT_COMMAND,
+                    "copy_agent_receipt_command",
+                    gap_command_target(context.diagnostic, "gap_receipt", &command),
+                    context.diagnostic,
+                    Some(context.snapshot),
+                )),
+                None => {
+                    // #1892: the gap record carries a verify route but no
+                    // safe receipt route — a disabled-capable client sees
+                    // the receipt handoff inert instead of absent.
+                    if client_features.code_action_disabled
+                        && let Some(action) = disabled_action(
+                            AGENT_RECEIPT_COMMAND_TITLE,
+                            "source.ripr.inspect",
+                            "copy_agent_receipt_command",
+                            COPY_AGENT_RECEIPT_COMMAND,
+                            context.diagnostic,
+                            Some(context.snapshot),
+                            ActionDisabledReason::ReceiptRouteUnavailable,
+                        )
+                    {
+                        actions.push(action);
+                    }
+                }
+            }
         }
+    } else if client_features.code_action_disabled
+        && let Some(action) = disabled_action(
+            INSPECT_GAP_PACKET_TITLE,
+            "source.ripr.inspect",
+            "copy_gap_repair_packet",
+            COPY_CONTEXT_COMMAND,
+            context.diagnostic,
+            Some(context.snapshot),
+            ActionDisabledReason::PreviewOrStaticLimitation,
+        )
+    {
+        // #1892: the producer-owned cross-language limitation suppresses the
+        // whole repair-packet block; a disabled-capable client still sees
+        // the packet action inert with the limitation named.
+        actions.push(action);
     }
     if let Some(target) = static_limit_note_target(context.diagnostic) {
         actions.push(copy_context_action(
             COPY_STATIC_LIMIT_NOTE_TITLE,
             COPY_STATIC_LIMIT_NOTE_TITLE,
+            "copy_static_limit_note",
             target,
+            context.diagnostic,
+            Some(context.snapshot),
         ));
     }
 }
 
-fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> CodeActionOrCommand {
+fn copy_context_action(
+    title: &str,
+    command_title: &str,
+    action_name: &'static str,
+    target: LSPAny,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: command_title.to_string(),
             command: COPY_CONTEXT_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            action_name,
+            COPY_CONTEXT_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
@@ -391,16 +930,27 @@ const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
 fn copy_agent_loop_command_action(
     title: &str,
     command: &str,
+    action_name: &'static str,
     target: LSPAny,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: title.to_string(),
             command: command.to_string(),
             arguments: Some(vec![target]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            action_name,
+            command,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
@@ -461,6 +1011,7 @@ fn gap_repair_packet_target(
     params: &CodeActionParams,
     snapshot: &AnalysisSnapshot,
     diagnostic: &Diagnostic,
+    artifact: &ValidatedGapArtifact,
 ) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     let repair_route = data.get("repair_route")?;
@@ -504,6 +1055,9 @@ fn gap_repair_packet_target(
     if let Some(command) = first_safe_receipt_command(snapshot.root.as_path(), data) {
         object.insert("receipt_command".to_string(), Value::String(command));
     }
+    if let Some(command_specs) = command_specs_for_projection(artifact) {
+        object.insert("command_specs".to_string(), command_specs);
+    }
     copy_optional_value(object, data, "receipt");
     if let Some(note) = static_limit_note(data) {
         object.insert("static_limit_note".to_string(), Value::String(note));
@@ -522,6 +1076,7 @@ fn python_agent_packet_target(
     params: &CodeActionParams,
     snapshot: &AnalysisSnapshot,
     diagnostic: &Diagnostic,
+    artifact: &ValidatedGapArtifact,
 ) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     if string_at(data, &["source"]) != Some("gap_decision_ledger")
@@ -538,7 +1093,7 @@ fn python_agent_packet_target(
     }
     first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;
     first_safe_receipt_command(snapshot.root.as_path(), data)?;
-    let mut target = gap_repair_packet_target(params, snapshot, diagnostic)?;
+    let mut target = gap_repair_packet_target(params, snapshot, diagnostic, artifact)?;
     let object = target.as_object_mut()?;
     object.insert(
         "label".to_string(),
@@ -562,6 +1117,7 @@ fn python_agent_packet_target(
 fn first_repair_packet_target(
     snapshot: &AnalysisSnapshot,
     diagnostic: &Diagnostic,
+    artifact: &ValidatedGapArtifact,
 ) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     let gap_identity = first_gap_identity(data)?;
@@ -601,6 +1157,9 @@ fn first_repair_packet_target(
         "receipt_command".to_string(),
         Value::String(receipt_command),
     );
+    if let Some(command_specs) = command_specs_for_projection(artifact) {
+        target.insert("command_specs".to_string(), command_specs);
+    }
     Some(Value::Object(target))
 }
 
@@ -1281,8 +1840,14 @@ fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
     Some(target)
 }
 
+/// Whether a gap diagnostic carries the producer-owned cross-language
+/// test-target limitation. The category string is emitted by the producer
+/// authority (`analysis::repair_route::cross_language_test_target_unresolved`
+/// via `output::evidence_record` / ledger adapters); the LSP consumes the
+/// emitted category across the artifact shapes it ingests and does not
+/// re-derive the predicate — no `ClassifiedSeam` exists for ledger gaps.
 fn gap_cross_language_target_unresolved(data: &Value) -> bool {
-    const CATEGORY: &str = "cross_language_target_unresolved";
+    const CATEGORY: &str = CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY;
     string_at(data, &["static_limit_kind"]) == Some(CATEGORY)
         || string_at(data, &["static_limit_category"]) == Some(CATEGORY)
         || value_at(data, &["projection_exclusion_reasons"])
@@ -1380,10 +1945,16 @@ fn non_empty_string(value: &Value) -> Option<&str> {
     if text.is_empty() { None } else { Some(text) }
 }
 
-fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {
+fn copy_targeted_test_brief_action(
+    seam: &ClassifiedSeam,
+    brief: String,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: TARGETED_TEST_BRIEF_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: TARGETED_TEST_BRIEF_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
@@ -1392,32 +1963,63 @@ fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> Code
                 "brief": brief,
             })]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            "copy_targeted_test_brief",
+            COPY_TARGETED_TEST_BRIEF_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
 
-fn copy_python_pytest_skeleton_action(target: LSPAny) -> CodeActionOrCommand {
+fn copy_python_pytest_skeleton_action(
+    target: LSPAny,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            "copy_python_pytest_skeleton",
+            COPY_TARGETED_TEST_BRIEF_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
 
-fn copy_python_repair_card_action(target: LSPAny) -> CodeActionOrCommand {
+fn copy_python_repair_card_action(
+    target: LSPAny,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            "copy_python_repair_card",
+            COPY_TARGETED_TEST_BRIEF_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
@@ -1425,10 +2027,13 @@ fn copy_python_repair_card_action(target: LSPAny) -> CodeActionOrCommand {
 fn copy_suggested_assertion_action(
     seam: &ClassifiedSeam,
     assertion: String,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: SUGGESTED_ASSERTION_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: SUGGESTED_ASSERTION_TITLE.to_string(),
             command: COPY_SUGGESTED_ASSERTION_COMMAND.to_string(),
@@ -1437,19 +2042,38 @@ fn copy_suggested_assertion_action(
                 "assertion": assertion,
             })]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.inspect",
+            "copy_suggested_assertion",
+            COPY_SUGGESTED_ASSERTION_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
 
-fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
+fn open_related_test_action(
+    target: LSPAny,
+    diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: OPEN_RELATED_TEST_TITLE.to_string(),
-        kind: Some(CodeActionKind::QUICKFIX),
+        kind: Some(CodeActionKind::new("source.ripr.navigate")),
+        diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: OPEN_RELATED_TEST_TITLE.to_string(),
             command: OPEN_RELATED_TEST_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
+        data: Some(action_data_payload(
+            "source.ripr.navigate",
+            "open_related_test",
+            OPEN_RELATED_TEST_COMMAND,
+            Some(diagnostic),
+            snapshot,
+        )),
         ..CodeAction::default()
     })
 }
@@ -1524,6 +2148,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             "language_status",
             "owner_kind",
             "static_limit_kind",
+            "explain_command",
         ] {
             if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
                 target.insert(
@@ -1533,6 +2158,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
             }
         }
         copy_optional_value(&mut target, data, "preview_actionability");
+        copy_optional_value(&mut target, data, "witness");
     }
     serde_json::Value::Object(target)
 }
@@ -1584,6 +2210,9 @@ fn relation_confidence_rank(confidence: RelationConfidence) -> u8 {
 
 fn related_test_target(snapshot: &AnalysisSnapshot, related: &RelatedTestGrip) -> Option<LSPAny> {
     let path = absolute_related_test_path(snapshot, related);
+    if !super::uri::path_is_within_root(snapshot.root.as_path(), &path) {
+        return None;
+    }
     let uri = file_uri_for_path(&path).ok()?;
     Some(serde_json::json!({
         "uri": uri.as_str(),
@@ -1603,7 +2232,10 @@ fn absolute_related_test_path(snapshot: &AnalysisSnapshot, related: &RelatedTest
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::command_specs::{agent_receipt_command_spec, agent_verify_command_spec};
     use crate::app::Mode;
+    use crate::domain::{LanguageId, LanguageStatus};
+    use crate::lsp::gap_artifacts::{GapArtifactIdentity, GapArtifactKind};
     use crate::lsp::state::RefreshMetadata;
     use std::collections::BTreeMap;
     use tower_lsp_server::ls_types::{
@@ -1615,10 +2247,76 @@ mod tests {
         let diagnostic = gap_diagnostic();
         let params = code_action_params(vec![diagnostic])?;
 
-        let actions = code_action_response(&params, None);
+        let actions = code_action_response(&params, None, &ClientFeatureProfile::unsupported());
         let titles = action_titles(&actions);
 
         assert_eq!(titles, vec![REFRESH_ANALYSIS_TITLE]);
+        Ok(())
+    }
+
+    #[test]
+    fn disabled_action_fails_closed_for_reserved_reasons() -> Result<(), String> {
+        // #1892: the emit guard keeps the closed vocabulary honest — a
+        // reserved reason (no real producer yet) yields no action at all,
+        // while every emitted reason yields an inert action with no command
+        // or edit attached.
+        let diagnostic = gap_diagnostic();
+        for reason in crate::lsp::action_contract::RESERVED_DISABLED_REASONS {
+            if disabled_action(
+                TARGETED_TEST_BRIEF_TITLE,
+                "source.ripr.inspect",
+                "copy_targeted_test_brief",
+                COPY_TARGETED_TEST_BRIEF_COMMAND,
+                &diagnostic,
+                None,
+                *reason,
+            )
+            .is_some()
+            {
+                return Err(format!(
+                    "reserved reason {} must not be emittable",
+                    reason.as_str()
+                ));
+            }
+        }
+        for reason in crate::lsp::action_contract::EMITTED_DISABLED_REASONS {
+            let action = disabled_action(
+                TARGETED_TEST_BRIEF_TITLE,
+                "source.ripr.inspect",
+                "copy_targeted_test_brief",
+                COPY_TARGETED_TEST_BRIEF_COMMAND,
+                &diagnostic,
+                None,
+                *reason,
+            )
+            .ok_or_else(|| format!("emitted reason {} was rejected", reason.as_str()))?;
+            let CodeActionOrCommand::CodeAction(action) = action else {
+                return Err("expected code action literal".to_string());
+            };
+            if action.command.is_some() || action.edit.is_some() {
+                return Err(format!(
+                    "disabled action for {} must not carry a command or edit",
+                    reason.as_str()
+                ));
+            }
+            if action.kind.is_none() || action.is_preferred == Some(true) {
+                return Err(format!(
+                    "disabled action for {} must keep its kind and stay un-preferred",
+                    reason.as_str()
+                ));
+            }
+            let machine_reason = action
+                .data
+                .as_ref()
+                .and_then(|data| data.get("disabled_reason"))
+                .and_then(Value::as_str);
+            if machine_reason != Some(reason.as_str()) {
+                return Err(format!(
+                    "disabled action must name {} in its data payload",
+                    reason.as_str()
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -1666,6 +2364,70 @@ mod tests {
         data["repair_route"]["target_file"] = serde_json::json!("../outside/test_pricing.py");
 
         assert!(python_pytest_skeleton_target(&snapshot, &data).is_none());
+    }
+
+    #[test]
+    fn gap_repair_packet_projects_only_validated_command_specs() -> Result<(), String> {
+        let (params, diagnostic) = gap_action_request()?;
+        let snapshot = python_snapshot();
+        let artifact = action_artifact();
+        let valid_target = gap_repair_packet_target(&params, &snapshot, &diagnostic, &artifact)
+            .ok_or_else(|| "valid gap repair target was omitted".to_string())?;
+        if !valid_target
+            .get("command_specs")
+            .is_some_and(|value| value["verify"]["command_id"] == "ripr:agent:verify")
+        {
+            return Err(format!(
+                "valid command specs were not projected: {valid_target}"
+            ));
+        }
+
+        let mut multiple = artifact.clone();
+        let verify_spec = multiple
+            .verify_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "artifact omitted verify command spec".to_string())?;
+        let receipt_spec = multiple
+            .receipt_command_specs
+            .first()
+            .cloned()
+            .ok_or_else(|| "artifact omitted receipt command spec".to_string())?;
+        multiple.verify_command_specs.push(verify_spec);
+        multiple.receipt_command_specs.push(receipt_spec);
+        let multiple_target = gap_repair_packet_target(&params, &snapshot, &diagnostic, &multiple)
+            .ok_or_else(|| "multi-route gap repair target was omitted".to_string())?;
+        if !multiple_target
+            .get("command_specs")
+            .is_some_and(|value| value["verify"].is_array() && value["receipt"].is_array())
+        {
+            return Err(format!(
+                "multi-route specs were not arrays: {multiple_target}"
+            ));
+        }
+
+        let mut empty = artifact.clone();
+        empty.verify_command_specs.clear();
+        empty.receipt_command_specs.clear();
+        assert_command_specs_omitted(&params, &snapshot, &diagnostic, &empty)?;
+
+        let mut invalid = artifact.clone();
+        invalid
+            .verify_command_specs
+            .first_mut()
+            .ok_or_else(|| "artifact omitted verify command spec".to_string())?
+            .program
+            .clear();
+        assert_command_specs_omitted(&params, &snapshot, &diagnostic, &invalid)?;
+
+        let mut mismatched = artifact;
+        mismatched
+            .receipt_command_specs
+            .first_mut()
+            .ok_or_else(|| "artifact omitted receipt command spec".to_string())?
+            .role = crate::domain::CommandRole::Verify;
+        assert_command_specs_omitted(&params, &snapshot, &diagnostic, &mismatched)?;
+        Ok(())
     }
 
     #[test]
@@ -1720,6 +2482,93 @@ mod tests {
         })
     }
 
+    fn gap_action_request() -> Result<(CodeActionParams, Diagnostic), String> {
+        let diagnostic = Diagnostic {
+            range: Range {
+                start: Position {
+                    line: 11,
+                    character: 0,
+                },
+                end: Position {
+                    line: 11,
+                    character: 120,
+                },
+            },
+            severity: Some(DiagnosticSeverity::WARNING),
+            code: None,
+            code_description: None,
+            source: Some("ripr".to_string()),
+            message: "ripr gap: MissingBoundaryAssertion".to_string(),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({
+                "source": "gap_decision_ledger",
+                "gap_id": "gap:py:pricing",
+                "canonical_gap_id": "gap:py:pricing",
+                "language": "python",
+                "gap_state": "actionable",
+                "repairability": "repairable",
+                "repair_route": {
+                    "route_kind": "existing_test_strengthening",
+                    "target_file": "tests/test_pricing.py",
+                    "related_test": "tests/test_pricing.py::test_discount_boundary"
+                },
+                "verification_commands": ["ripr agent verify --root . --json"],
+                "receipt_command": "ripr agent receipt --root . --verify-json verify.json --seam-id seam-a --json"
+            })),
+        };
+        Ok((code_action_params(vec![diagnostic.clone()])?, diagnostic))
+    }
+
+    fn action_artifact() -> ValidatedGapArtifact {
+        ValidatedGapArtifact {
+            kind: GapArtifactKind::GapDecisionLedger,
+            root: Some(".".to_string()),
+            identities: vec![GapArtifactIdentity {
+                canonical_gap_id: Some("gap:py:pricing".to_string()),
+                seam_id: Some("seam-a".to_string()),
+                finding_id: None,
+            }],
+            language: Some(LanguageId::Python),
+            language_status: Some(LanguageStatus::Preview),
+            gap_state: Some("actionable".to_string()),
+            related_paths: vec!["tests/test_pricing.py".to_string()],
+            verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+            receipt_commands: vec![
+                "ripr agent receipt --root . --verify-json verify.json --seam-id seam-a --json"
+                    .to_string(),
+            ],
+            verify_command_specs: vec![agent_verify_command_spec(
+                ".",
+                "before.json",
+                "after.json",
+                None,
+            )],
+            receipt_command_specs: vec![agent_receipt_command_spec(
+                ".",
+                "verify.json",
+                "seam-a",
+                Some("receipt.json"),
+            )],
+            static_limit_kinds: Vec::new(),
+            has_text_static_limit: false,
+        }
+    }
+
+    fn assert_command_specs_omitted(
+        params: &CodeActionParams,
+        snapshot: &AnalysisSnapshot,
+        diagnostic: &Diagnostic,
+        artifact: &ValidatedGapArtifact,
+    ) -> Result<(), String> {
+        let target = gap_repair_packet_target(params, snapshot, diagnostic, artifact)
+            .ok_or_else(|| "gap repair target was omitted before projection".to_string())?;
+        if target.get("command_specs").is_some() {
+            return Err(format!("invalid command specs were projected: {target}"));
+        }
+        Ok(())
+    }
+
     fn gap_diagnostic() -> Diagnostic {
         Diagnostic {
             range: Range {
@@ -1752,15 +2601,21 @@ mod tests {
     fn python_snapshot() -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
+            delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
         }
     }
 

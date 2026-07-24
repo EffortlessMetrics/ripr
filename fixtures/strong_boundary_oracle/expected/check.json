@@ -4,20 +4,20 @@
   "mode": "fast",
   "root": "fixtures/strong_boundary_oracle/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "findings": [
     {
-      "id": "probe:src_lib.rs:predicate:8390dd91",
+      "id": "probe:src_lib.rs:predicate:c80557eb",
       "classification": "exposed",
       "severity": "info",
       "confidence": 1.00,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:8390dd91",
+        "id": "probe:src_lib.rs:predicate:c80557eb",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/strong_boundary_oracle/input/src/lib.rs",
         "line": 2,
-        "expression": "if amount >= discount_threshold {"
+        "expression": "amount >= discount_threshold"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: below_threshold_has_no_discount, equality_threshold_discounts, far_above_threshold_discounts"},

@@ -17,6 +17,27 @@ vocabulary; the next section separates current wiring from target behavior.
 | `clippy-future` | Runs future or candidate Clippy lint lanes in advisory mode. |
 | `ripr-waive` | Target label for acknowledging a `ripr` soft-gate finding for this PR. Requires a written reason in the PR body. |
 
+### Status labels (`status/*`)
+
+The `status/*` set is the closed status vocabulary used by the status-comment
+verification contract (`AGENTS.md` § "Status-comment verification contract").
+A status label is the primary status signal; a status comment is secondary and
+must not contradict the label. See `AGENTS.md` for the full contract — this
+table only documents the label meanings.
+
+| Label | Meaning |
+| --- | --- |
+| `status/done-open` | Delivered; the issue is intentionally kept open. |
+| `status/blocked-upstream` | Blocked on `cargo-allow` or an external repository. |
+| `status/blocked-repo` | Blocked on a tracked in-repo item (PR, issue, or code). |
+| `status/needs-work` | Actionable and not started. Do **not** use it for partially landed work; that understates delivery and invites duplicate implementation. |
+| `status/mis-scoped` | Re-scope, close, or supersede — the issue is the wrong scope or stale. |
+| `status/partial` | A bounded portion has merged to `main` (or another authoritative repository) and the residual acceptance plus next owner are recorded. Apply only when a merged deliverable exists — never merely planned. |
+
+These labels do not modify CI lane selection. They are consumed by agents and
+reviewers as the durable campaign-record signal; the open-issue list is the
+campaign record and a low-truth status comment buries substantive signal.
+
 ## When labels take effect
 
 Current behavior: labels are read directly by the workflows that already have

@@ -23,6 +23,90 @@ use std::path::Path;
 use std::time::Duration;
 use tower_lsp_server::ls_types::{CodeLens, Command, Position, Range, Uri};
 
+/// Deterministic identity of the *visible* lens set for one committed
+/// snapshot (#2032, RIPR-SPEC-0138).
+///
+/// The publish path compares this identity against the last one for which it
+/// requested `workspace/codeLens/refresh` and sends the request only when the
+/// identity changed. The identity is built from structured inputs only:
+/// per-finding (finding id, canonical document URI, lens line, related-test
+/// count, classification class, preview/limitation markers) plus the
+/// snapshot's input identity. Wall-clock fields (snapshot age, the rendered
+/// `· as of Xs ago` title suffix) are deliberately excluded — they change on
+/// every snapshot without changing the semantic lens view, so comparing
+/// rendered titles would falsely trigger a refresh on every commit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct LensViewIdentity {
+    input_identity: Option<String>,
+    items: Vec<LensViewItem>,
+}
+
+impl LensViewIdentity {
+    /// The empty visible view: no snapshot is current (root removed,
+    /// ambiguous, or analysis state cleared), so every lens should vanish.
+    pub(super) fn cleared() -> Self {
+        Self {
+            input_identity: None,
+            items: Vec::new(),
+        }
+    }
+}
+
+/// One finding's contribution to the visible lens set.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct LensViewItem {
+    finding_id: String,
+    document_uri: String,
+    line: u32,
+    related_test_count: usize,
+    class: String,
+    preview: bool,
+    static_limit_kind: Option<String>,
+}
+
+/// Compute the lens-view identity for a snapshot. Pure: reads only the
+/// snapshot's structured fields, never the wall clock or rendered titles.
+pub(super) fn lens_view_identity(snapshot: &AnalysisSnapshot) -> LensViewIdentity {
+    let mut items: Vec<LensViewItem> = snapshot
+        .findings
+        .iter()
+        .map(|finding| {
+            let file = &finding.probe.location.file;
+            let absolute = if file.is_absolute() {
+                file.clone()
+            } else {
+                snapshot.root.join(file)
+            };
+            let document_uri = match file_uri_for_path(&absolute) {
+                Ok(uri) => uri.as_str().to_string(),
+                Err(_) => absolute.display().to_string(),
+            };
+            LensViewItem {
+                finding_id: finding.id.clone(),
+                document_uri,
+                line: finding.probe.location.line.saturating_sub(1) as u32,
+                related_test_count: finding.related_tests.len(),
+                class: finding.class.as_str().to_string(),
+                preview: finding
+                    .language_status
+                    .as_ref()
+                    .is_some_and(|status| *status == LanguageStatus::Preview),
+                static_limit_kind: finding
+                    .static_limit_kind
+                    .as_ref()
+                    .map(|kind| kind.as_str().to_string()),
+            }
+        })
+        .collect();
+    // Sort so a findings-order change that does not alter the visible set
+    // does not read as a lens-view change.
+    items.sort();
+    LensViewIdentity {
+        input_identity: snapshot.input_identity_id(),
+        items,
+    }
+}
+
 /// Produce advisory `CodeLens` items for all findings that map to `uri`
 /// inside `snapshot`.
 ///
@@ -283,16 +367,160 @@ mod tests {
         }
         AnalysisSnapshot {
             root: PathBuf::from(root),
+            input_identity: None,
             base: None,
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings,
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::<ValidatedGapArtifact>::new(),
             gap_artifact_rejections: Vec::<GapArtifactRejection>::new(),
             diagnostics_by_uri,
+            delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
         }
+    }
+
+    #[test]
+    fn lens_view_identity_ignores_wall_clock_age() -> Result<(), String> {
+        // The wall-clock trap (#2032): a byte-identical re-commit differs only
+        // in refresh metadata, which feeds the rendered `· as of Xs ago`
+        // title suffix. The structured identity must NOT change, or every
+        // snapshot would falsely trigger a codeLens refresh.
+        let root = "/workspace";
+        let finding = make_finding("src/lib.rs", 10, ExposureClass::Exposed, 2, None);
+        let first = make_snapshot_with_findings(root, vec![finding.clone()]);
+        let mut second = make_snapshot_with_findings(root, vec![finding]);
+        second.refresh.generated_at = first
+            .refresh
+            .generated_at
+            .checked_add(Duration::from_hours(1))
+            .ok_or_else(|| "failed to offset test timestamp".to_string())?;
+        second.refresh.duration = Some(Duration::from_millis(42));
+
+        if lens_view_identity(&first) != lens_view_identity(&second) {
+            return Err(
+                "wall-clock-only snapshot difference must not change the lens-view identity"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lens_view_identity_tracks_semantic_lens_fields() -> Result<(), String> {
+        let root = "/workspace";
+        let base = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        ));
+
+        let count_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                3,
+                None,
+            )],
+        ));
+        if base == count_changed {
+            return Err(
+                "a related-test count change must change the lens-view identity".to_string(),
+            );
+        }
+
+        let class_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::WeaklyExposed,
+                2,
+                None,
+            )],
+        ));
+        if base == class_changed {
+            return Err("a classification change must change the lens-view identity".to_string());
+        }
+
+        let line_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                11,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        ));
+        if base == line_changed {
+            return Err("a lens line change must change the lens-view identity".to_string());
+        }
+
+        let preview_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                Some(LanguageStatus::Preview),
+            )],
+        ));
+        if base == preview_changed {
+            return Err("a preview-marker change must change the lens-view identity".to_string());
+        }
+
+        // Findings order alone does not change the visible lens set.
+        let finding_a = make_finding("src/a.rs", 10, ExposureClass::Exposed, 1, None);
+        let finding_b = make_finding("src/b.rs", 20, ExposureClass::NoStaticPath, 0, None);
+        let ordered = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![finding_a.clone(), finding_b.clone()],
+        ));
+        let reversed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![finding_b, finding_a],
+        ));
+        if ordered != reversed {
+            return Err("findings order must not change the lens-view identity".to_string());
+        }
+
+        // The snapshot's input identity is part of the view identity.
+        let mut identified = make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        );
+        let config = crate::lsp::config::LspAnalysisConfig::default();
+        identified.input_identity = Some(
+            crate::lsp::input_identity::LspAnalysisInputIdentity::from_refresh_inputs(
+                PathBuf::from(root),
+                7,
+                &config,
+            ),
+        );
+        if lens_view_identity(&identified) == base {
+            return Err("an input-identity change must change the lens-view identity".to_string());
+        }
+        Ok(())
     }
 
     #[test]
