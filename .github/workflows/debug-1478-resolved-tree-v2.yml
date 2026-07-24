@@ -41,7 +41,9 @@ jobs:
           test "$(git diff --name-only --diff-filter=U | wc -l)" -eq 8
 
       - name: Apply reviewed resolution and assert tree identity
-        run: python3 /tmp/debug-1478-resolve.py
+        run: |
+          set -o pipefail
+          python3 /tmp/debug-1478-resolve.py 2>&1 | tee /tmp/debug-1478-resolve.log
 
       - uses: dtolnay/rust-toolchain@v1
         with:
@@ -80,6 +82,7 @@ jobs:
         if: always()
         run: |
           mkdir -p target/resolved-tree-v2
+          cp /tmp/debug-1478-resolve.log target/resolved-tree-v2/resolver.log 2>/dev/null || true
           git show -s --format='%H%n%P%n%T%n%s' HEAD | tee target/resolved-tree-v2/identity.txt
           git diff --stat "$SOURCE_PARENT" HEAD > target/resolved-tree-v2/source-delta.stat
           git diff --stat "$SWARM_PARENT" HEAD > target/resolved-tree-v2/swarm-delta.stat
