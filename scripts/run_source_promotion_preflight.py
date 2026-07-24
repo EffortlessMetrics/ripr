@@ -3,14 +3,30 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import traceback
 
-from source_promotion_preflight import OUTPUT_DIR, main, write_json
+from source_promotion_preflight import OUTPUT_DIR, ROOT, main, write_json
+
+
+def configure_disposable_identity() -> None:
+    """Configure the local identity Git requires to prepare a no-commit merge."""
+    for key, value in (
+        ("user.name", "RIPR Source Promotion Preflight"),
+        ("user.email", "source-promotion-preflight@example.invalid"),
+    ):
+        subprocess.run(
+            ["git", "config", "--local", key, value],
+            cwd=ROOT,
+            check=True,
+            text=True,
+        )
 
 
 def run() -> int:
     try:
+        configure_disposable_identity()
         return main()
     except Exception as error:  # noqa: BLE001 - boundary must retain every failure
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
