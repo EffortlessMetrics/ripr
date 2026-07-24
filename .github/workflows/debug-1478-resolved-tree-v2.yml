@@ -19,14 +19,50 @@ jobs:
     env:
       SOURCE_PARENT: 2b45cffe4353cc055ce201070555450f4c85d6ac
       SWARM_PARENT: c86807ecdbf359594ef88c0ff38b10b446139dca
-      EXPECTED_TREE: efd9b25a1d5642e1cb9eb0ca8be28ca482d5e1e9
+      EXPECTED_TREE: 4146719129a2d657052c1491d2d5262a3138aab9
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Preserve resolver outside the parent worktree
-        run: cp .github/scripts/debug-1478-resolve.py /tmp/debug-1478-resolve.py
+      - name: Preserve and complete resolver outside the parent worktree
+        run: |
+          cp .github/scripts/debug-1478-resolve.py /tmp/debug-1478-resolve.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/debug-1478-resolve.py')
+          text = p.read_text()
+          needle = "\ngit('add', '-A')\n"
+          insertion = r'''
+          # Cross-repository diff-check exposes historical trailing spaces that
+          # were not conflicts inside either parent. Normalize only the named
+          # imported evidence/fixture files and retire the surviving live goal
+          # pointer before validating the resolved tree.
+          whitespace_files = [
+              'docs/handoffs/2026-07-11-targeted-rerun-benchmark.md',
+              'docs/handoffs/2026-07-12-call-presence-evidence-packet.md',
+              'docs/status/RUST_ROUTE_QUALITY.md',
+              'fixtures/assertion_shaped_control_production_caller/diff.patch',
+              'fixtures/evidence-promotion-honesty-corpus/patches/semver-matches-greater.diff',
+              'fixtures/rust_transitive_reach_test_helper_chain/diff.patch',
+              'fixtures/typescript_adversarial_hoc_wrapped_owner/diff.patch',
+              'fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch',
+              'plans/rust-one-shot-evidence-to-repair.md',
+          ]
+          for name in whitespace_files:
+              path = Path(name)
+              path.write_text('\n'.join(line.rstrip() for line in path.read_text().splitlines()) + '\n')
+
+          path = Path('plans/rust-one-shot-evidence-to-repair.md')
+          plan = path.read_text()
+          old = 'Linked goal: `.ripr/goals/active.toml`\n'
+          new = 'Live execution: GitHub issues, pull requests, checks, reviews, and PR-local `ImplementationSliceV1` records\n'
+          assert plan.count(old) == 1
+          path.write_text(plan.replace(old, new, 1))
+          '''
+          assert text.count(needle) == 1
+          p.write_text(text.replace(needle, '\n' + insertion + needle, 1))
+          PY
 
       - name: Fetch and merge exact parents
         run: |
