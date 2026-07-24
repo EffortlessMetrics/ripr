@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_source_promotion_preflight_inputs",
+  "release_line": "0.11.0",
+  "source_parent": "2b45cffe4353cc055ce201070555450f4c85d6ac",
+  "swarm_candidate": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "swarm_freeze_ref": "freeze/source-sync-2026-07-23",
+  "previous_swarm_promotion": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+  "expected_merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+  "audit_record_set_sha256": "ea7373162affc0ddb6e7e54cf5f3d8ab56c4f4f82d833b67e93b29565845c1e4",
+  "source_survivor_contract": "docs/release/0.11.0/post-freeze-source-survivors.json",
+  "version_boundary": {
+    "promotion_version": "0.10.1",
+    "metadata_target": "0.11.0",
+    "metadata_issue": "EffortlessMetrics/ripr#1466"
+  },
+  "authority_boundary": "These inputs authorize read-only preflight only. They do not authorize a join commit, version change, tag, publication, signing, marketplace mutation, release-secret use, or support-tier promotion."
+}
