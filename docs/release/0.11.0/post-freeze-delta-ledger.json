@@ -23,84 +23,39 @@
   "candidate_decision": "pending_category_review",
   "coverage": {
     "expected_commits": 142,
-    "recorded_commits": 58,
-    "remaining_commits": 84,
+    "recorded_commits": 64,
+    "remaining_commits": 78,
     "complete": false,
     "status": "provisional_tranches_recorded"
   },
   "review_summary": {
     "review_status": "all_records_provisional_until_category_receipts_merge",
     "by_category": {
-      "analyzer": 11,
-      "editor": 19,
-      "ops": 16,
-      "trust": 12
+      "analyzer": 12,
+      "editor": 20,
+      "ops": 18,
+      "trust": 14
     },
     "by_disposition": {
-      "must_include_0_11": 41,
-      "needs_operator_decision": 4,
-      "release_infrastructure_only": 2,
-      "safe_defer_post_0_11": 7,
+      "must_include_0_11": 43,
+      "needs_operator_decision": 5,
+      "release_infrastructure_only": 4,
+      "safe_defer_post_0_11": 8,
       "structural_no_semantic_delta": 4
     }
   },
   "fragments": [
-    {
-      "category": "trust",
-      "sequence": 1,
-      "path": "post-freeze-trust-fragment.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2350",
-      "record_count": 12,
-      "review_status": "provisional"
-    },
-    {
-      "category": "editor",
-      "sequence": 1,
-      "path": "post-freeze-editor-fragment.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2351",
-      "record_count": 16,
-      "review_status": "provisional"
-    },
-    {
-      "category": "editor",
-      "sequence": 2,
-      "path": "post-freeze-editor-fragment-2.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2351",
-      "record_count": 3,
-      "review_status": "provisional"
-    },
-    {
-      "category": "analyzer",
-      "sequence": 1,
-      "path": "post-freeze-analyzer-fragment.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2352",
-      "record_count": 5,
-      "review_status": "provisional"
-    },
-    {
-      "category": "analyzer",
-      "sequence": 2,
-      "path": "post-freeze-analyzer-fragment-2.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2352",
-      "record_count": 6,
-      "review_status": "provisional"
-    },
-    {
-      "category": "ops",
-      "sequence": 1,
-      "path": "post-freeze-ops-fragment.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2353",
-      "record_count": 8,
-      "review_status": "provisional"
-    },
-    {
-      "category": "ops",
-      "sequence": 2,
-      "path": "post-freeze-ops-fragment-2.json",
-      "issue": "EffortlessMetrics/ripr-swarm#2353",
-      "record_count": 8,
-      "review_status": "provisional"
-    }
+    {"category":"trust","sequence":1,"path":"post-freeze-trust-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2350","record_count":12,"review_status":"provisional"},
+    {"category":"trust","sequence":2,"path":"post-freeze-trust-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2350","record_count":2,"review_status":"provisional"},
+    {"category":"editor","sequence":1,"path":"post-freeze-editor-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":16,"review_status":"provisional"},
+    {"category":"editor","sequence":2,"path":"post-freeze-editor-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":3,"review_status":"provisional"},
+    {"category":"editor","sequence":3,"path":"post-freeze-editor-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2351","record_count":1,"review_status":"provisional"},
+    {"category":"analyzer","sequence":1,"path":"post-freeze-analyzer-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":5,"review_status":"provisional"},
+    {"category":"analyzer","sequence":2,"path":"post-freeze-analyzer-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":6,"review_status":"provisional"},
+    {"category":"analyzer","sequence":3,"path":"post-freeze-analyzer-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2352","record_count":1,"review_status":"provisional"},
+    {"category":"ops","sequence":1,"path":"post-freeze-ops-fragment.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":8,"review_status":"provisional"},
+    {"category":"ops","sequence":2,"path":"post-freeze-ops-fragment-2.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":8,"review_status":"provisional"},
+    {"category":"ops","sequence":3,"path":"post-freeze-ops-fragment-3.json","issue":"EffortlessMetrics/ripr-swarm#2353","record_count":2,"review_status":"provisional"}
   ],
   "disposition_vocabulary": [
     "must_include_0_11",
@@ -112,15 +67,8 @@
     "needs_operator_decision"
   ],
   "open_execution_receipt_posture": {
-    "issues": [
-      "EffortlessMetrics/ripr-swarm#2332",
-      "EffortlessMetrics/ripr-swarm#2333",
-      "EffortlessMetrics/ripr-swarm#2334"
-    ],
-    "required_decision": [
-      "include_before_refreeze",
-      "defer_post_0_11_with_release_nonclaim"
-    ],
+    "issues": ["EffortlessMetrics/ripr-swarm#2332","EffortlessMetrics/ripr-swarm#2333","EffortlessMetrics/ripr-swarm#2334"],
+    "required_decision": ["include_before_refreeze","defer_post_0_11_with_release_nonclaim"],
     "default_until_reviewed": "needs_operator_decision"
   },
   "completion_requirements": [
