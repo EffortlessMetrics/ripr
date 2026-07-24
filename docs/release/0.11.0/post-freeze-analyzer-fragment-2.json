@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "sequence": 2,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 6,
+  "disposition_counts": {
+    "must_include_0_11": 5,
+    "safe_defer_post_0_11": 1
+  },
+  "records": [
+    {
+      "commit_sha": "a6e5f0726a83b63cb70ebfb7cfba63e99630c100",
+      "pr": "EffortlessMetrics/ripr-swarm#2170",
+      "title": "analysis: reframe discriminator guidance for assertion-shaped owners",
+      "primary_category": "analyzer",
+      "change_class": "production_guidance_correctness",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "focused repair guidance remains coherent when the changed owner is itself an assertion/oracle helper",
+      "reason": "The old guidance could recommend testing the oracle itself or replacing an intentional invariant with an inapplicable equality assertion.",
+      "non_claim": "Owner-shape evidence reframes guidance and does not promote exposure class or repair readiness.",
+      "secondary_impacts": ["fixtures", "human_output", "agent_guidance", "spec_0133"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "b59c3bc1c57f173c735ea6cc5d1f994d9350c234",
+      "pr": "EffortlessMetrics/ripr-swarm#2171",
+      "title": "perf(analysis): cap the repo-scoped working set like the diff path",
+      "primary_category": "analyzer",
+      "change_class": "production_resource_safety",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "deep and ready repo analysis fail closed before unbounded workspace indexing",
+      "reason": "The old repo path could exhaust memory without a named stop reason or bounded continuation.",
+      "non_claim": "The default cap is an operational bound, not evidence that the uninspected repository is clean.",
+      "secondary_impacts": ["configuration", "limited_output", "deep_mode", "tests"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "b128a0bb16da0b3cdc3531f7abb87f8f71ccad3d",
+      "pr": "EffortlessMetrics/ripr-swarm#2175",
+      "title": "perf(analysis): stat-only corpus fingerprint for the seam cache key",
+      "primary_category": "analyzer",
+      "change_class": "production_performance_and_cache_contract",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "warm repository analysis avoids rereading every Rust file while preserving the exact content-hash cache identity",
+      "reason": "The measured warm path remained tens of seconds without this layer; its stale-key review finding was fixed with Unix ctime and a schema bump.",
+      "non_claim": "Non-Unix fingerprint residuals remain documented and every mapping failure is a cache miss.",
+      "secondary_impacts": ["cache_schema", "lsp_latency", "targeted_rerun", "badge_path"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "7af6150a1b2b054270cf37239e02a547d20d81b5",
+      "pr": "EffortlessMetrics/ripr-swarm#2179",
+      "title": "test(analysis): cover fingerprint cache-key reconstruction",
+      "primary_category": "analyzer",
+      "change_class": "required_integration_evidence",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "the stat-only mapping reconstructs the same content-based key and fails closed on a missing mapping",
+      "reason": "This is direct parity evidence required by the included cache acceleration.",
+      "non_claim": "The test does not broaden cache authority beyond the production contract.",
+      "secondary_impacts": ["cache_tests", "windows_build"],
+      "source_conflict_risk": "low"
+    },
+    {
+      "commit_sha": "e748bd3feeb1e1919a339519c6f71a941d00c985",
+      "pr": "EffortlessMetrics/ripr-swarm#2183",
+      "title": "feat(doctor): probe verify-route runtimes for detected languages",
+      "primary_category": "analyzer",
+      "change_class": "production_cli_and_safety",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "doctor names missing runtimes required by the recommended verification route without executing repository-controlled tooling unsafely",
+      "reason": "Multi-language repair guidance is not usable when required runtimes are discovered only after delegation; the review also isolated Yarn probing from checkout-controlled configuration.",
+      "non_claim": "Runtime availability remains advisory and does not change static analysis or language support tier.",
+      "secondary_impacts": ["doctor_json", "process_policy", "python", "typescript", "bun"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "c920d9c0838334c921ccb6bd80104856efd2edc7",
+      "pr": "EffortlessMetrics/ripr-swarm#2178",
+      "title": "ux(cli): report missing scope before the JSON requirement in agent subcommands",
+      "primary_category": "analyzer",
+      "change_class": "presentation_and_validation_order",
+      "candidate_disposition": "safe_defer_post_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "agent commands report the fundamental missing identity or scope before format ceremony",
+      "reason": "Useful first-use correction, but independently deferrable if help and known-limit copy describe the old ordering honestly.",
+      "non_claim": "Validation order does not change artifact, scope, or command authority.",
+      "secondary_impacts": ["cli_help", "agent_workflow", "tests"],
+      "source_conflict_risk": "medium"
+    }
+  ]
+}
