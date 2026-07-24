@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "sequence": 8,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 4,
+  "disposition_counts": {"must_include_0_11": 2, "release_infrastructure_only": 2},
+  "records": [
+    {
+      "commit_sha": "c563563fa02b44744df47d2f92057ad32f36a124",
+      "pr": "EffortlessMetrics/ripr-swarm#2237",
+      "title": "output: reword three masked banned-vocabulary guidance strings",
+      "primary_category": "analyzer",
+      "change_class": "output_contract_and_claim_honesty",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "static guidance uses conservative demonstration language rather than vocabulary that sounds like runtime proof",
+      "reason": "The #2119 extraction exposed three strings previously hidden by a whole-file allowlist. Rewording removes the fine-grained debt without changing classifications, schemas, or goldens.",
+      "non_claim": "The word change does not strengthen the analyzer evidence or claim that a repair route is runtime confirmed.",
+      "secondary_impacts": ["evidence_audit", "evidence_quality", "static_language_policy", "user_guidance"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "7422bed8e7527a11abb82077f857ac8b16c55485",
+      "pr": "EffortlessMetrics/ripr-swarm#2245",
+      "title": "test(output): harden doctor timeout fixture materialization",
+      "primary_category": "analyzer",
+      "change_class": "release_test_infrastructure",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "doctor timeout proof uses a hermetic executable fixture and preserves timeout evidence precision across supported Unix environments",
+      "reason": "The prior hanging-tool fixture could race scheduler or shell differences and turn a correct candidate red; this hardens exact-candidate proof rather than changing normal doctor semantics.",
+      "non_claim": "Test-fixture robustness does not alter the default runtime probe deadline or promote preview support.",
+      "secondary_impacts": ["doctor_tests", "process_policy", "CI_reliability"],
+      "source_conflict_risk": "low"
+    },
+    {
+      "commit_sha": "7adc2e225eafaed3d18226fd26b53d11d11b8b79",
+      "pr": "EffortlessMetrics/ripr-swarm#2247",
+      "title": "test(output): name transient doctor tool launch failures distinctly",
+      "primary_category": "analyzer",
+      "change_class": "production_evidence_precision",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "doctor distinguishes a genuinely missing runtime from a transient process-launch failure and retries only the transient class in the stress fixture",
+      "reason": "Collapsing every launch error into 'not available' produces false environment evidence. Carrying ErrorKind preserves the user-visible distinction and keeps timeout results from being retried away.",
+      "non_claim": "A transient launch failure does not prove the tool exists or that a later verification command would pass.",
+      "secondary_impacts": ["doctor_output", "process_errors", "tests"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "c48f2167075271a8f5a5bb5d1267d029d7d9c69f",
+      "pr": "EffortlessMetrics/ripr-swarm#2253",
+      "title": "test(output): add brief backoff between doctor launch retries",
+      "primary_category": "analyzer",
+      "change_class": "release_test_infrastructure",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "the doctor stress fixture gives transient process-table pressure time to clear without masking a real timeout or exceeding the bounded test deadline",
+      "reason": "This is the final flake control in the #2242 sequence and affects qualification reliability rather than product behavior.",
+      "non_claim": "Normal doctor execution does not gain hidden retries or a changed timeout contract.",
+      "secondary_impacts": ["doctor_tests", "CI_reliability"],
+      "source_conflict_risk": "low"
+    }
+  ]
+}
