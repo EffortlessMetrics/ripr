@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/source-promotion-preflight.yml
       - scripts/source_promotion_preflight.py
+      - scripts/run_source_promotion_preflight.py
       - docs/release/0.11.0/source-promotion-preflight-inputs.json
   workflow_dispatch:
 
@@ -26,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Derive ancestry, overlap, and dry-merge conflict receipt
-        run: python3 scripts/source_promotion_preflight.py
+        run: python3 scripts/run_source_promotion_preflight.py
       - name: Upload preflight receipt
         if: always()
         uses: actions/upload-artifact@v7
