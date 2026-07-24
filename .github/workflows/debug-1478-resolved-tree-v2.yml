@@ -19,7 +19,7 @@ jobs:
     env:
       SOURCE_PARENT: 2b45cffe4353cc055ce201070555450f4c85d6ac
       SWARM_PARENT: c86807ecdbf359594ef88c0ff38b10b446139dca
-      EXPECTED_TREE: b29b7aa14d1d660e2deeb7265f265abed7192b71
+      EXPECTED_TREE: efd9b25a1d5642e1cb9eb0ca8be28ca482d5e1e9
     steps:
       - uses: actions/checkout@v6
         with:
