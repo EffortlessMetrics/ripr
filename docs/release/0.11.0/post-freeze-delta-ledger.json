@@ -23,29 +23,31 @@
   "candidate_decision": "pending_category_review",
   "coverage": {
     "expected_commits": 142,
-    "recorded_commits": 41,
-    "remaining_commits": 101,
+    "recorded_commits": 58,
+    "remaining_commits": 84,
     "complete": false,
-    "status": "provisional_tranche_recorded"
+    "status": "provisional_tranches_recorded"
   },
   "review_summary": {
     "review_status": "all_records_provisional_until_category_receipts_merge",
     "by_category": {
-      "analyzer": 5,
-      "editor": 16,
-      "ops": 8,
+      "analyzer": 11,
+      "editor": 19,
+      "ops": 16,
       "trust": 12
     },
     "by_disposition": {
-      "must_include_0_11": 30,
+      "must_include_0_11": 41,
       "needs_operator_decision": 4,
-      "safe_defer_post_0_11": 5,
-      "structural_no_semantic_delta": 2
+      "release_infrastructure_only": 2,
+      "safe_defer_post_0_11": 7,
+      "structural_no_semantic_delta": 4
     }
   },
   "fragments": [
     {
       "category": "trust",
+      "sequence": 1,
       "path": "post-freeze-trust-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2350",
       "record_count": 12,
@@ -53,21 +55,48 @@
     },
     {
       "category": "editor",
+      "sequence": 1,
       "path": "post-freeze-editor-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2351",
       "record_count": 16,
       "review_status": "provisional"
     },
     {
+      "category": "editor",
+      "sequence": 2,
+      "path": "post-freeze-editor-fragment-2.json",
+      "issue": "EffortlessMetrics/ripr-swarm#2351",
+      "record_count": 3,
+      "review_status": "provisional"
+    },
+    {
       "category": "analyzer",
+      "sequence": 1,
       "path": "post-freeze-analyzer-fragment.json",
       "issue": "EffortlessMetrics/ripr-swarm#2352",
       "record_count": 5,
       "review_status": "provisional"
     },
     {
+      "category": "analyzer",
+      "sequence": 2,
+      "path": "post-freeze-analyzer-fragment-2.json",
+      "issue": "EffortlessMetrics/ripr-swarm#2352",
+      "record_count": 6,
+      "review_status": "provisional"
+    },
+    {
       "category": "ops",
+      "sequence": 1,
       "path": "post-freeze-ops-fragment.json",
+      "issue": "EffortlessMetrics/ripr-swarm#2353",
+      "record_count": 8,
+      "review_status": "provisional"
+    },
+    {
+      "category": "ops",
+      "sequence": 2,
+      "path": "post-freeze-ops-fragment-2.json",
       "issue": "EffortlessMetrics/ripr-swarm#2353",
       "record_count": 8,
       "review_status": "provisional"
