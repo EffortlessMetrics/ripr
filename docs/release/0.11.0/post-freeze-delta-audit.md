@@ -18,10 +18,40 @@ source parent         ec7dc6beaec8ad2efca4abd502f9253cdb4f939c
 The audit head is fixed. Later `ripr-swarm/main` commits are outside this
 denominator unless a supplemental range is explicitly recorded and reviewed.
 
+## Current coverage
+
 The machine-readable denominator is
 [`post-freeze-delta-ledger.json`](post-freeze-delta-ledger.json).
-It deliberately reports `0/142` records at creation. That fail-closed state is
-preferable to presenting a sampled or inferred commit list as complete.
+
+```text
+recorded     41
+expected    142
+remaining   101
+complete     no
+```
+
+All 41 current records use exact merged `ripr-swarm/main` commit identities.
+Their dispositions are **provisional** until the owning category review is
+accepted.
+
+| Category | Fragment | Records | Provisional posture |
+| --- | --- | ---: | --- |
+| Trust | [`post-freeze-trust-fragment.json`](post-freeze-trust-fragment.json) | 12 | 11 must-include; 1 operator decision |
+| Editor | [`post-freeze-editor-fragment.json`](post-freeze-editor-fragment.json) | 16 | 15 must-include; 1 safe defer |
+| Analyzer | [`post-freeze-analyzer-fragment.json`](post-freeze-analyzer-fragment.json) | 5 | 2 must-include; 2 operator decisions; 1 safe defer |
+| Operations | [`post-freeze-ops-fragment.json`](post-freeze-ops-fragment.json) | 8 | 2 must-include; 1 operator decision; 3 safe defer; 2 structural |
+
+Current aggregate provisional dispositions:
+
+```text
+must_include_0_11             30
+needs_operator_decision        4
+safe_defer_post_0_11           5
+structural_no_semantic_delta   2
+```
+
+The audit remains fail-closed: missing records are not treated as deferred,
+structural, or irrelevant, and this draft must not merge at partial coverage.
 
 ## Why the July 21 candidate cannot proceed unchanged by default
 
