@@ -1,0 +1,37 @@
+name: Source Promotion Preflight
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/source-promotion-preflight.yml
+      - scripts/source_promotion_preflight.py
+      - docs/release/0.11.0/source-promotion-preflight-inputs.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-promotion-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Exact parent and conflict preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Derive ancestry, overlap, and dry-merge conflict receipt
+        run: python3 scripts/source_promotion_preflight.py
+      - name: Upload preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-promotion-preflight
+          path: target/source-promotion-preflight/
+          if-no-files-found: error
+          retention-days: 30
