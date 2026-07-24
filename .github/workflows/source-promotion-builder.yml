@@ -1,0 +1,44 @@
+name: Source Promotion Builder
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/source-promotion-builder.yml
+      - scripts/build_source_promotion_join.py
+      - docs/release/0.11.0/source-promotion-resolution-plan.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-promotion-builder-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'release/0.11-promotion-builder'
+    name: Build, validate, and push exact join
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-source-promotion-builder-1.95-${{ runner.os }}
+          save-if: false
+      - name: Build and validate replacement source join
+        run: python3 scripts/build_source_promotion_join.py
+      - name: Upload builder receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-promotion-builder
+          path: target/source-promotion-builder/
+          if-no-files-found: error
+          retention-days: 30
