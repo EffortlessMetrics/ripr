@@ -2808,8 +2808,11 @@ suite('Extension Smoke', () => {
       await context.controller.start();
       const report = await diagnoseSetupReport(context);
       assertReportIncludes(report, [
+        'Status: ripr requires a trusted workspace to start the server.',
         'Workspace trust state: workspace_untrusted',
-        'ripr server state: ripr_version_ok (ripr 0.8.0-test)'
+        'ripr server state: ripr_missing',
+        'Server: not resolved',
+        'Server started: no; server stopped'
       ]);
 
       await withCurrentFirstPrDiagnostic({

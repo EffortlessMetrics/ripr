@@ -35,8 +35,10 @@ const EXPECTED_FLOW: Array<{ id: string; media: string; completionEvents: string
 ];
 
 suite('Walkthrough Contribution Contract', () => {
-  const packageJsonPath = path.resolve(__dirname, '../../package.json');
-  const extensionRoot = path.resolve(__dirname, '../..');
+  // Compiled tests live under out/test/suite; walk three levels back
+  // to the extension root rather than resolving package/media under out/.
+  const packageJsonPath = path.resolve(__dirname, '../../../package.json');
+  const extensionRoot = path.resolve(__dirname, '../../..');
 
   function manifest(): { id: string; steps: WalkthroughStep[] } {
     const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));

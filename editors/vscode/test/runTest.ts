@@ -32,7 +32,11 @@ async function main() {
     fs.rmSync(clipboardCapturePath, { force: true });
     process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;
 
+    // VS Code parses workspace trust switches before the workspace path.
+    // This affects only the isolated extension-test host; production keeps
+    // defaultRuntime.isWorkspaceTrusted() bound to vscode.workspace.isTrusted.
     const launchArgs = [
+      '--disable-workspace-trust',
       workspacePath,
       '--disable-extensions',
       '--extensions-dir',
@@ -51,6 +55,7 @@ async function main() {
           'ripr.server.autoDownload': false,
           'ripr.baseRef': 'HEAD',
           'ripr.check.mode': 'instant',
+          'security.workspace.trust.enabled': false,
         }, null, 2)}\n`
       );
     }

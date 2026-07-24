@@ -36,8 +36,10 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
-      # Campaign 31 PR 11/C1: exercise the lang-perl feature-gated code path.
-      - run: cargo check -p ripr --no-default-features --features lang-perl
+      # Exercise Perl alongside the product's required/default adapters. A
+      # Perl-only no-default build is invalid because RIPR requires lang-rust,
+      # and doctor intentionally shares optional Python framework detection.
+      - run: cargo check -p ripr --features lang-perl
       - run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
       - run: cargo xtask check-static-language
       - run: cargo xtask check-no-panic-family
