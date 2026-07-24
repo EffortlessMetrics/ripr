@@ -28,14 +28,18 @@
   "semantic_resolutions": [
     "rename source RIPR-SPEC-0112 bounded subprocess contract to RIPR-SPEC-0144 because swarm owns 0112 and 0133-0143",
     "retain source subprocess.rs, module registration, test corpus, traceability, changelog, process allowlist, and network allowlist under 0144",
-    "retain the complete source .github/workflows tree, repository settings, workflow allowlist, release runbooks, and merged audit package",
-    "exclude every swarm-only repository workflow and workflow policy row from the source tree",
+    "retain source release, publish, signing, badge, repository-settings, promotion-runbook, and merged audit authority",
+    "use the current swarm normal CI workflow contract required by the promoted xtask workflow checker",
+    "delete the swarm-only ub-review workflow while retaining current routed CI, coverage, test analytics, security, and source-of-truth checks",
     "use current swarm analyzer, editor, schema, fixture, dependency, and generated consumer-workflow structure",
     "retain source crate, Cargo.lock, extension, npm lock, and changelog version at 0.10.1 until issue 1466",
     "retain the release nonclaim that 0.11.0 does not execute verification commands or issue RepairReceiptV2"
   ],
   "source_authority_paths": [
     ".github/settings.yml",
+    ".github/workflows/release-server-binaries.yml",
+    ".github/workflows/publish-extension.yml",
+    ".github/workflows/badge-endpoints.yml",
     "docs/SOURCE_PROMOTION.md",
     "docs/RELEASE.md",
     "docs/REPO_SETTINGS.md"
