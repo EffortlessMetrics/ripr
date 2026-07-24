@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "kind": "ripr_post_freeze_delta_ledger",
-  "status": "coverage_complete_category_review_pending",
+  "status": "denominator_validated_category_review_pending",
   "as_of_date": "2026-07-23",
   "base": {"repository":"EffortlessMetrics/ripr-swarm","sha":"3a80c634f2157dee0e7f74fc72b7975f07699143","ref":"freeze/source-sync-2026-07-21"},
   "audit_head": {"repository":"EffortlessMetrics/ripr-swarm","sha":"c86807ecdbf359594ef88c0ff38b10b446139dca","ahead_by":142,"behind_by":0},
@@ -13,9 +13,12 @@
     "recorded_commits": 142,
     "remaining_commits": 0,
     "complete": true,
-    "status": "exact_sha_denominator_recorded",
+    "status": "exact_sha_denominator_validated",
     "enumeration_basis": "GitHub compare count plus exact post-freeze commit-date windows",
-    "automated_uniqueness_validation": "pending"
+    "automated_uniqueness_validation": "passed",
+    "validation_receipt": "post-freeze-delta-validation.json",
+    "canonical_sha_list": "post-freeze-delta-shas.txt",
+    "record_set_commitment": "sha256:ea7373162affc0ddb6e7e54cf5f3d8ab56c4f4f82d833b67e93b29565845c1e4"
   },
   "review_summary": {
     "review_status": "all_dispositions_provisional_until_category_receipts_are_accepted",
@@ -60,6 +63,6 @@
   ],
   "disposition_vocabulary": ["must_include_0_11","safe_defer_post_0_11","source_only_followup","release_infrastructure_only","structural_no_semantic_delta","superseded_or_reverted","needs_operator_decision"],
   "open_execution_receipt_posture": {"issues":["EffortlessMetrics/ripr-swarm#2332","EffortlessMetrics/ripr-swarm#2333","EffortlessMetrics/ripr-swarm#2334"],"required_decision":["include_before_refreeze","defer_post_0_11_with_release_nonclaim"],"default_until_reviewed":"needs_operator_decision"},
-  "completion_requirements": ["automated duplicate and coverage validation passes","every record has one reviewed disposition","category receipts are accepted","reverts and superseding commits remain linked","required schemas, fixtures, dependencies, generated files, and docs follow included semantics","source-only 0.10.1 survivors remain represented separately","the final ledger carries a canonical content commitment","ripr#1509 records the reviewed candidate decision"],
-  "constraints": ["this file does not authorize a candidate ref","this file does not authorize source promotion","this file does not authorize a version bump, tag, publication, signing, marketplace mutation, or release-secret use","a floating main branch is not a valid audit or release candidate","coverage completion does not make provisional dispositions final"]
+  "completion_requirements": ["every record has one reviewed disposition","category receipts are accepted","fragment-to-denominator mapping is reviewed with supersession relationships","required schemas, fixtures, dependencies, generated files, and docs follow included semantics","source-only 0.10.1 survivors remain represented separately","ripr#1509 records the reviewed candidate decision"],
+  "constraints": ["this file does not authorize a candidate ref","this file does not authorize source promotion","this file does not authorize a version bump, tag, publication, signing, marketplace mutation, or release-secret use","a floating main branch is not a valid audit or release candidate","denominator validation does not make provisional dispositions final"]
 }
