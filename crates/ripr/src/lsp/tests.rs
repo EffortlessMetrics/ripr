@@ -1065,8 +1065,8 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
         let mut client_read = client_read;
         // Keep this protocol smoke bounded now that seam diagnostics default on;
         // whole-repo inventory behavior is covered by fixture and report tests.
-        let repo_root =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+        let fixture = boundary_gap_git_fixture_root("framed-protocol-smoke")?;
+        let repo_root = fixture.path().to_path_buf();
         let root_uri = file_uri_for_path(&repo_root)?;
 
         // Advertise the riprEditor block exactly as the VS Code extension
@@ -9487,10 +9487,11 @@ fn workspace_diagnostics_exclude_changed_test_files_from_published_findings() ->
 
 #[test]
 fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
-    let fixture_root = boundary_gap_fixture_root();
+    let fixture = boundary_gap_git_fixture_root("workspace-diagnostics")?;
+    let fixture_root = fixture.path();
     let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
 
-    let batches = workspace_diagnostic_batches_with_config(&fixture_root, &config)?;
+    let batches = workspace_diagnostic_batches_with_config(fixture_root, &config)?;
     let seam_diagnostic = batches
         .iter()
         .flat_map(|batch| &batch.diagnostics)
@@ -9550,7 +9551,8 @@ pub(crate) fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String
 
 #[test]
 fn boundary_gap_lsp_explicit_rust_language_matches_default_projection() -> Result<(), String> {
-    let fixture_root = boundary_gap_fixture_root();
+    let fixture = boundary_gap_git_fixture_root("explicit-rust-language")?;
+    let fixture_root = fixture.path();
     let default_config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
     let rust_only_config = boundary_gap_lsp_config(crate::config::tests_only_parse(
         r#"
@@ -9559,8 +9561,8 @@ enabled = ["rust"]
 "#,
     )?);
 
-    let default_projection = workspace_projection_contract(&fixture_root, &default_config)?;
-    let rust_only_projection = workspace_projection_contract(&fixture_root, &rust_only_config)?;
+    let default_projection = workspace_projection_contract(fixture_root, &default_config)?;
+    let rust_only_projection = workspace_projection_contract(fixture_root, &rust_only_config)?;
 
     assert_eq!(
         rust_only_projection, default_projection,
@@ -9571,7 +9573,8 @@ enabled = ["rust"]
 
 #[test]
 fn boundary_gap_lsp_empty_languages_suppresses_saved_workspace_diagnostics() -> Result<(), String> {
-    let fixture_root = boundary_gap_fixture_root();
+    let fixture = boundary_gap_git_fixture_root("empty-languages")?;
+    let fixture_root = fixture.path();
     let config = boundary_gap_lsp_config(crate::config::tests_only_parse(
         r#"
 [languages]
@@ -9579,7 +9582,7 @@ enabled = []
 "#,
     )?);
 
-    let diagnostics = workspace_diagnostics_with_config(&fixture_root, &config, false)?;
+    let diagnostics = workspace_diagnostics_with_config(fixture_root, &config, false)?;
     let diagnostic_count = diagnostics
         .batches
         .iter()
@@ -10400,6 +10403,38 @@ fn boundary_gap_fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("fixtures/boundary_gap/input")
+}
+
+/// A writable, independently committed copy for saved-workspace tests.
+///
+/// The tracked fixture is suitable for static inventory checks, but a
+/// saved-workspace analysis must not borrow `HEAD` from the enclosing
+/// checkout: PR merge refs and other Git layouts can make that implicit
+/// authority unavailable. Each caller gets a private repository with a
+/// deterministic baseline commit instead.
+fn boundary_gap_git_fixture_root(name: &str) -> Result<TempLspRoot, String> {
+    let root = unique_lsp_test_root(name)?;
+    copy_fixture_tree(&boundary_gap_fixture_root(), root.path())?;
+    run_lsp_scope_git(root.path(), &["init", "-q"])?;
+    // Do not inherit commit.gpgSign from the host environment: a
+    // signing-enabled host would fail the fixture baseline before the saved-
+    // workspace assertions run.
+    run_lsp_scope_git(root.path(), &["config", "commit.gpgSign", "false"])?;
+    run_lsp_scope_git(root.path(), &["add", "-A"])?;
+    run_lsp_scope_git(
+        root.path(),
+        &[
+            "-c",
+            "user.email=ripr-test@example.com",
+            "-c",
+            "user.name=ripr-test",
+            "commit",
+            "-qm",
+            "fixture baseline",
+        ],
+    )?;
+    run_lsp_scope_git(root.path(), &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    Ok(root)
 }
 
 pub(crate) struct TempLspRoot {
