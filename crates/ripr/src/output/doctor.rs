@@ -629,9 +629,59 @@ mod tests {
         Ok(())
     }
 
-    /// Deterministic missing-tool assertion: probing a guaranteed-absent
-    /// absolute path must fail closed with actionable evidence, independent
-    /// of what happens to be (or not be) on the host's PATH.
+    /// Publish a test executable only after its writable file descriptor is
+    /// closed, so the pathname handed to `exec` can never be concurrently open
+    /// for writing by this fixture.
+    #[cfg(unix)]
+    fn publish_doctor_test_tool(
+        directory: &Path,
+        name: &str,
+        script: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let published = directory.join(name);
+        let staged = directory.join(format!(".{name}.staged"));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+            .map_err(|err| format!("create staged tool: {err}"))?;
+        file.write_all(script.as_bytes())
+            .map_err(|err| format!("write staged tool: {err}"))?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o755))
+            .map_err(|err| format!("chmod staged tool: {err}"))?;
+        file.sync_all()
+            .map_err(|err| format!("sync staged tool: {err}"))?;
+        drop(file);
+        std::fs::rename(&staged, &published)
+            .map_err(|err| format!("publish staged tool: {err}"))?;
+        Ok(published)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn doctor_test_tool_is_closed_before_its_executable_path_is_published() -> Result<(), String> {
+        let dir = unique_test_dir("atomic-publish");
+        std::fs::create_dir(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let shim = publish_doctor_test_tool(&dir, "ripr-atomic-probe-tool", "#!/bin/sh\nexit 0\n")?;
+        let staged = dir.join(".ripr-atomic-probe-tool.staged");
+        if staged.exists() {
+            return Err("staged tool remained after atomic publication".to_string());
+        }
+        let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
+        let (status, evidence) =
+            doctor_tool_check_with_timeout(shim_text, std::time::Duration::from_secs(1));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        if status != DoctorStatus::Pass {
+            return Err(format!(
+                "atomically published tool did not execute: {evidence}"
+            ));
+        }
+        Ok(())
+    }
+
     #[cfg(unix)]
     #[test]
     fn doctor_tool_check_times_out_a_hanging_tool_100_times() -> Result<(), String> {
@@ -642,36 +692,19 @@ mod tests {
         for attempt in 0..100 {
             let dir = unique_test_dir("timeout");
             std::fs::create_dir(&dir).map_err(|err| format!("create dir: {err}"))?;
-            let shim = dir.join("ripr-hanging-probe-tool");
-            {
-                use std::io::Write;
-                use std::os::unix::fs::PermissionsExt;
-
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&shim)
-                    .map_err(|err| format!("create shim: {err}"))?;
-                let sleep = ["/usr/bin/sleep", "/bin/sleep"]
-                    .into_iter()
-                    .find(|candidate| std::path::Path::new(candidate).is_file())
-                    .ok_or("no portable Unix sleep utility found")?;
-                let script = format!("#!/bin/sh\nexec {sleep} 60\n");
-                file.write_all(script.as_bytes())
-                    .map_err(|err| format!("write shim: {err}"))?;
-                file.set_permissions(std::fs::Permissions::from_mode(0o755))
-                    .map_err(|err| format!("chmod shim: {err}"))?;
-                file.sync_all().map_err(|err| format!("sync shim: {err}"))?;
-            }
+            let sleep = ["/usr/bin/sleep", "/bin/sleep"]
+                .into_iter()
+                .find(|candidate| std::path::Path::new(candidate).is_file())
+                .ok_or("no portable Unix sleep utility found")?;
+            let script = format!("#!/bin/sh\nexec {sleep} 60\n");
+            let shim = publish_doctor_test_tool(&dir, "ripr-hanging-probe-tool", &script)?;
 
             let start = std::time::Instant::now();
             let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
-            // #2242: a transient spawn failure under full-suite load
-            // (resource exhaustion) is named `could not be launched` — retry
-            // only that transient class, never a real timeout result. A
-            // brief backoff between attempts lets an exec race (observed as
-            // ExecutableFileBusy right after the shim write) clear; an
-            // immediate retry loop fails the same way three times in a row.
+            // #2242/#2378: publish the executable pathname only after the
+            // writer is closed. Retain the bounded retry for independent
+            // host-level resource exhaustion or external exec contention;
+            // never retry a real timeout result.
             let mut launch_attempt = 0usize;
             let (status, evidence) = loop {
                 launch_attempt += 1;
@@ -741,6 +774,9 @@ mod tests {
         Ok(())
     }
 
+    /// Deterministic missing-tool assertion: probing a guaranteed-absent
+    /// absolute path must fail closed with actionable evidence, independent
+    /// of what happens to be (or not be) on the host's PATH.
     #[test]
     fn doctor_tool_check_fails_closed_for_guaranteed_missing_tool() {
         let missing = std::env::temp_dir().join(format!(
