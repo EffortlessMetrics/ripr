@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the promotion builder with explicit staging for reviewed resolutions."""
+"""Run the promotion builder with explicit staging and source authority boundaries."""
 
 from __future__ import annotations
 
@@ -7,12 +7,11 @@ import build_source_promotion_join as builder
 
 _original_git = builder.git
 _original_validate_tree = builder.validate_tree
+_original_preserve_source_authority = builder.preserve_source_authority
 
 _RESOLUTION_PATHS = (
     ".github/settings.yml",
-    ".github/workflows/badge-endpoints.yml",
-    ".github/workflows/publish-extension.yml",
-    ".github/workflows/release-server-binaries.yml",
+    ".github/workflows",
     ".ripr/traceability.toml",
     "CHANGELOG.md",
     "Cargo.lock",
@@ -50,6 +49,40 @@ def git_with_reviewed_boundaries(
     return _original_git(*args, check=check)
 
 
+def preserve_complete_source_authority(source_parent, plan):
+    """Keep the source workflow/settings policy byte-for-byte authoritative."""
+    _original_preserve_source_authority(source_parent, plan)
+
+    source_workflows = {
+        line.strip()
+        for line in builder.git(
+            "ls-tree",
+            "-r",
+            "--name-only",
+            source_parent,
+            "--",
+            ".github/workflows",
+        ).stdout.splitlines()
+        if line.strip()
+    }
+    merged_workflows = {
+        line.strip()
+        for line in builder.git("ls-files", ".github/workflows").stdout.splitlines()
+        if line.strip()
+    }
+
+    for path in sorted(merged_workflows - source_workflows):
+        builder.git("rm", "-f", "--ignore-unmatch", path)
+    for path in sorted(source_workflows):
+        builder.write(path, builder.git_text(source_parent, path))
+
+    # The workflow allowlist is part of the same source-owned control plane.
+    builder.write(
+        "policy/workflow_allowlist.txt",
+        builder.git_text(source_parent, "policy/workflow_allowlist.txt"),
+    )
+
+
 def validate_staged_tree(plan):
     """Mark every reviewed ours/theirs/manual resolution as resolved before checks."""
     builder.git("add", "-A")
@@ -57,5 +90,6 @@ def validate_staged_tree(plan):
 
 
 builder.git = git_with_reviewed_boundaries
+builder.preserve_source_authority = preserve_complete_source_authority
 builder.validate_tree = validate_staged_tree
 raise SystemExit(builder.main())
