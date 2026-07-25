@@ -7648,10 +7648,9 @@ fn framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_relea
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
 
     runtime.block_on(async {
-        let repo_root = std::fs::canonicalize(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input"),
-        )
-        .map_err(|err| format!("failed to canonicalize fixture root: {err}"))?;
+        let repo_fixture =
+            boundary_gap_git_fixture_root("framed-config-pull-deferred-fixture")?;
+        let repo_root = repo_fixture.path().to_path_buf();
         let fixture_uri = file_uri_for_path(&repo_root)?;
         let other = unique_lsp_test_root("framed-config-pull-deferred")?;
         let other_uri = file_uri_for_path(other.path())?;
@@ -7865,10 +7864,9 @@ fn framed_lsp_root_switch_repulls_scoped_to_new_root() -> Result<(), String> {
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
 
     runtime.block_on(async {
-        let root_a = std::fs::canonicalize(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input"),
-        )
-        .map_err(|err| format!("failed to canonicalize fixture root: {err}"))?;
+        let root_a_fixture =
+            boundary_gap_git_fixture_root("framed-config-pull-root-switch-a")?;
+        let root_a = root_a_fixture.path().to_path_buf();
         let root_a_uri = file_uri_for_path(&root_a)?;
         let root_b = unique_lsp_test_root("framed-config-pull-root-switch")?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
@@ -8111,10 +8109,9 @@ fn framed_lsp_direct_root_switch_repulls_on_reselection() -> Result<(), String> 
         .map_err(|err| format!("failed to start test runtime: {err}"))?;
 
     runtime.block_on(async {
-        let root_a = std::fs::canonicalize(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input"),
-        )
-        .map_err(|err| format!("failed to canonicalize fixture root: {err}"))?;
+        let root_a_fixture =
+            boundary_gap_git_fixture_root("framed-config-pull-direct-switch-a")?;
+        let root_a = root_a_fixture.path().to_path_buf();
         let root_a_uri = file_uri_for_path(&root_a)?;
         let root_b = unique_lsp_test_root("framed-config-pull-direct-switch")?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
@@ -10416,10 +10413,6 @@ fn boundary_gap_git_fixture_root(name: &str) -> Result<TempLspRoot, String> {
     let root = unique_lsp_test_root(name)?;
     copy_fixture_tree(&boundary_gap_fixture_root(), root.path())?;
     run_lsp_scope_git(root.path(), &["init", "-q"])?;
-    // Do not inherit commit.gpgSign from the host environment: a
-    // signing-enabled host would fail the fixture baseline before the saved-
-    // workspace assertions run.
-    run_lsp_scope_git(root.path(), &["config", "commit.gpgSign", "false"])?;
     run_lsp_scope_git(root.path(), &["add", "-A"])?;
     run_lsp_scope_git(
         root.path(),
@@ -10428,6 +10421,8 @@ fn boundary_gap_git_fixture_root(name: &str) -> Result<TempLspRoot, String> {
             "user.email=ripr-test@example.com",
             "-c",
             "user.name=ripr-test",
+            "-c",
+            "commit.gpgSign=false",
             "commit",
             "-qm",
             "fixture baseline",
@@ -10435,6 +10430,39 @@ fn boundary_gap_git_fixture_root(name: &str) -> Result<TempLspRoot, String> {
     )?;
     run_lsp_scope_git(root.path(), &["rev-parse", "--verify", "HEAD^{commit}"])?;
     Ok(root)
+}
+
+#[test]
+fn boundary_gap_git_fixture_is_committed_isolated_and_removed_on_drop() -> Result<(), String> {
+    let tracked_root = boundary_gap_fixture_root();
+    let tracked_lib = tracked_root.join("src/lib.rs");
+    let tracked_before = std::fs::read(&tracked_lib)
+        .map_err(|err| format!("read tracked boundary-gap fixture failed: {err}"))?;
+    let temp_path;
+
+    {
+        let fixture = boundary_gap_git_fixture_root("isolation-contract")?;
+        temp_path = fixture.path().to_path_buf();
+        if temp_path == tracked_root {
+            return Err("saved-workspace fixture reused the tracked fixture root".to_string());
+        }
+        run_lsp_scope_git(fixture.path(), &["diff", "--quiet", "HEAD", "--"])?;
+        std::fs::write(
+            fixture.path().join("src/lib.rs"),
+            "pub fn isolated_fixture_edit() {}\n",
+        )
+        .map_err(|err| format!("write isolated boundary-gap fixture failed: {err}"))?;
+        let tracked_after = std::fs::read(&tracked_lib)
+            .map_err(|err| format!("re-read tracked boundary-gap fixture failed: {err}"))?;
+        if tracked_after != tracked_before {
+            return Err("editing the saved-workspace copy mutated the tracked fixture".to_string());
+        }
+    }
+
+    if temp_path.exists() {
+        return Err("saved-workspace fixture root remained after its guard dropped".to_string());
+    }
+    Ok(())
 }
 
 pub(crate) struct TempLspRoot {
@@ -15258,29 +15286,8 @@ fn framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save() -> 
     // above; this session proves the wire route chains them without ever
     // presenting the unsaved buffer as the current diagnostics authority.
     work_done_progress_runtime()?.block_on(async {
-        // A writable copy of the boundary_gap fixture with its own git HEAD,
-        // same as the component-degradation wire test: the on-disk fixture
-        // resolves `HEAD` through the enclosing repository, which a temp
-        // copy does not have.
-        let temp = unique_lsp_test_root("saved-workspace-e2e")?;
-        let root = temp.path().join("workspace");
-        let fixture =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
-        copy_fixture_tree(&fixture, &root)?;
-        run_lsp_scope_git(&root, &["init", "-q"])?;
-        run_lsp_scope_git(&root, &["add", "-A"])?;
-        run_lsp_scope_git(
-            &root,
-            &[
-                "-c",
-                "user.email=ripr-test@example.com",
-                "-c",
-                "user.name=ripr-test",
-                "commit",
-                "-qm",
-                "fixture baseline",
-            ],
-        )?;
+        let temp = boundary_gap_git_fixture_root("saved-workspace-e2e")?;
+        let root = temp.path().to_path_buf();
         let lib_path = root.join("src/lib.rs");
         let saved_text = std::fs::read_to_string(&lib_path)
             .map_err(|err| format!("read fixture lib.rs failed: {err}"))?;
@@ -16290,28 +16297,8 @@ fn analysis_status_params(notifications: &[serde_json::Value]) -> Vec<serde_json
 #[test]
 fn framed_lsp_component_degradation_is_typed_logged_and_recovers() -> Result<(), String> {
     work_done_progress_runtime()?.block_on(async {
-        // A writable copy of the boundary_gap fixture with its own git HEAD:
-        // the on-disk fixture resolves `HEAD` through the enclosing
-        // repository, which a temp copy does not have.
-        let temp = unique_lsp_test_root("component-degradation")?;
-        let root = temp.path().join("workspace");
-        let fixture =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
-        copy_fixture_tree(&fixture, &root)?;
-        run_lsp_scope_git(&root, &["init", "-q"])?;
-        run_lsp_scope_git(&root, &["add", "-A"])?;
-        run_lsp_scope_git(
-            &root,
-            &[
-                "-c",
-                "user.email=ripr-test@example.com",
-                "-c",
-                "user.name=ripr-test",
-                "commit",
-                "-qm",
-                "fixture baseline",
-            ],
-        )?;
+        let temp = boundary_gap_git_fixture_root("component-degradation")?;
+        let root = temp.path().to_path_buf();
 
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (mut client_read, mut client_write) = tokio::io::split(client_io);
