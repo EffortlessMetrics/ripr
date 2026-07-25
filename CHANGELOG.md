@@ -23,6 +23,18 @@ are scoped or reviewed.
 
 ### Fixed
 
+- The doctor atomic-publication test no longer fails intermittently with
+  `ExecutableFileBusy`. Publishing a tool atomically removes this process's
+  writer, but it cannot remove host-level exec contention: `ETXTBSY` is raised
+  while any process holds the file open for writing, and under full-suite
+  parallelism another thread can `fork` while such a descriptor is open.
+  `FD_CLOEXEC` closes the descriptor at `exec`, not during the fork/exec
+  window. The bounded launch retry that already guarded the sibling
+  hanging-tool test now lives in one shared helper used by both, so every test
+  that publishes and immediately executes a tool agrees on what a retryable
+  launch failure is. Only a retryable launch failure is retried; a real timeout
+  or non-executing tool still fails (#2441).
+
 - Advisory command strings emitted by `ripr` (first-PR packets, agent loop
   commands, receipt commands, pilot commands) now encode every argument as a
   single-quoted bash token instead of a double-quoted one. Double quotes do not

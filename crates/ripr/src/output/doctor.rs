@@ -660,6 +660,37 @@ mod tests {
         Ok(published)
     }
 
+    /// Probe a just-published shim, retrying only a retryable launch failure.
+    ///
+    /// Atomic publication (#2242/#2378) removes the writer this process holds,
+    /// but it cannot remove host-level exec contention. `ETXTBSY`
+    /// (`ExecutableFileBusy`) is raised when *any* process holds the file open
+    /// for writing: under full-suite parallelism another thread can `fork`
+    /// while some writable descriptor is open, and that descriptor keeps the
+    /// file un-executable until the child reaches its own `exec`. `FD_CLOEXEC`
+    /// closes the descriptor *at* exec — it does not close the fork/exec
+    /// window.
+    ///
+    /// Every test that publishes a tool and immediately executes it is exposed
+    /// to this, so the retry lives here rather than at one call site. The
+    /// bound is deliberate: only `retryable_launch_failure` is retried, so a
+    /// real verdict — a timeout, a non-zero exit, a tool that genuinely did not
+    /// execute — is never retried into a pass.
+    #[cfg(unix)]
+    fn probe_published_tool(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
+        let mut launch_attempt = 0usize;
+        loop {
+            launch_attempt += 1;
+            let outcome = doctor_tool_check_with_timeout_result(tool, timeout);
+            let retryable_launch_failure = outcome.retryable_launch_failure;
+            let result = outcome.into_public();
+            if launch_attempt >= 3 || !retryable_launch_failure {
+                break result;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn doctor_test_tool_is_closed_before_its_executable_path_is_published() -> Result<(), String> {
@@ -671,8 +702,11 @@ mod tests {
             return Err("staged tool remained after atomic publication".to_string());
         }
         let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
-        let (status, evidence) =
-            doctor_tool_check_with_timeout(shim_text, std::time::Duration::from_secs(1));
+        // #2441: this test publishes and immediately execs, exactly like its
+        // sibling below, so it needs the same bounded launch retry. Without it
+        // the test failed intermittently on CI with `ExecutableFileBusy` while
+        // proving nothing about the publication contract it exists to check.
+        let (status, evidence) = probe_published_tool(shim_text, Duration::from_secs(1));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
         if status != DoctorStatus::Pass {
             return Err(format!(
@@ -702,23 +736,11 @@ mod tests {
             let start = std::time::Instant::now();
             let shim_text = shim.to_str().ok_or("shim path is not utf-8")?;
             // #2242/#2378: publish the executable pathname only after the
-            // writer is closed. Retain the bounded retry for independent
-            // host-level resource exhaustion or external exec contention;
-            // never retry a real timeout result.
-            let mut launch_attempt = 0usize;
-            let (status, evidence) = loop {
-                launch_attempt += 1;
-                let outcome = doctor_tool_check_with_timeout_result(
-                    shim_text,
-                    std::time::Duration::from_millis(250),
-                );
-                let retryable_launch_failure = outcome.retryable_launch_failure;
-                let result = outcome.into_public();
-                if launch_attempt >= 3 || !retryable_launch_failure {
-                    break result;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            };
+            // writer is closed. The bounded retry for independent host-level
+            // exec contention now lives in `probe_published_tool`, shared with
+            // the atomic-publication test (#2441); a real timeout result is
+            // still never retried.
+            let (status, evidence) = probe_published_tool(shim_text, Duration::from_millis(250));
             let elapsed = start.elapsed();
 
             std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
