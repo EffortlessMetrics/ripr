@@ -15,6 +15,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
         XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
+        XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
         XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => super::precommit(),

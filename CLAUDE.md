@@ -116,6 +116,7 @@ cargo xtask critic                # advisory adversarial review packet
 cargo xtask reports index         # write target/ripr/reports/index.md (reviewer front door)
 cargo xtask receipts              # machine-readable evidence receipts; pair with `receipts check`
 cargo xtask metrics
+cargo xtask windows-advisory-summary --run1 <log> --run1-status <f> --run2 <log> --run2-status <f>   # Windows lane verdict; absence is never a pass
 ```
 
 Policy / shape gates (all run in CI):

@@ -35,6 +35,7 @@ mod reports;
 mod ripr_swarm;
 mod run;
 mod verification_contracts;
+mod windows_advisory;
 
 use command::{
     CommandCatalogEntry, XtaskCommand, command_catalog, known_command_root, known_commands,
@@ -5143,6 +5144,7 @@ fn check_workflows_impl() -> Result<(), String> {
             &runtime_allowlist,
         ));
         violations.extend(workflow_bare_self_hosted_violations(&normalized, &text));
+        violations.extend(workflow_plain_scalar_comment_violations(&normalized, &text));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -5191,6 +5193,42 @@ fn check_workflows_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+/// Flag a `run:` written as a plain YAML scalar that contains ` #`.
+///
+/// YAML treats ` #` in a plain scalar as the start of a comment, so the command
+/// is silently truncated at that point. When the truncated remainder holds an
+/// unterminated quote the shell fails with `unexpected EOF`, and when it does
+/// not the step runs a *different, shorter* command with no error at all — the
+/// worse outcome. A block scalar (`run: |`) has no comment rule and is immune.
+///
+/// This is enforced because it actually happened: a `printf` summary line
+/// containing an issue reference was cut mid-string, and nothing local caught it
+/// — `check-workflows` passed because it never parsed the YAML.
+fn workflow_plain_scalar_comment_violations(path: &str, text: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let Some((_, after)) = line.split_once("run:") else {
+            continue;
+        };
+        // Only plain scalars are affected; `run: |` and `run: >` are safe, and a
+        // fully quoted scalar carries its own delimiters.
+        let body = after.trim_start();
+        if body.starts_with('|') || body.starts_with('>') || body.is_empty() {
+            continue;
+        }
+        if body.starts_with('"') || body.starts_with('\'') {
+            continue;
+        }
+        if body.contains(" #") {
+            violations.push(format!(
+                "{path}:{} plain-scalar `run:` contains ` #`, which YAML reads as a comment and truncates the command; use a `run: |` block scalar",
+                index + 1
+            ));
+        }
+    }
+    violations
 }
 
 fn workflow_bare_self_hosted_violations(path: &str, text: &str) -> Vec<String> {
