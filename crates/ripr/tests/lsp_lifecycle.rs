@@ -1065,7 +1065,30 @@ fn compat_file_uri(path: &Path) -> Result<String, String> {
     let text = path
         .to_str()
         .ok_or_else(|| format!("fixture root is not UTF-8: {}", path.display()))?;
-    Ok(format!("file://{}", text.replace(' ', "%20")))
+    // A `file:` URI always uses forward slashes and an absolute path that begins
+    // with `/`. On Unix the path already satisfies both, so `file://` + `/home/x`
+    // yields a valid `file:///home/x`. A Windows path starts with a drive letter
+    // and uses backslashes, so concatenating it directly produces a URI whose
+    // first backslash the server rejects as `Invalid params` — the whole session
+    // then fails to initialize.
+    let text = text.replace('\\', "/");
+    let absolute = if text.starts_with('/') {
+        text
+    } else {
+        format!("/{text}")
+    };
+    // The production encoder is `lsp::uri::file_uri_for_path`, but it is
+    // `pub(super)` within the `lsp` module and so unreachable from this
+    // integration-test binary; widening the crate's internal surface for a
+    // fixture is not worth it. Encode the characters that would otherwise change
+    // the URI's meaning. `%` must be encoded first, or the escapes introduced
+    // below would themselves be re-encoded.
+    let encoded = absolute
+        .replace('%', "%25")
+        .replace(' ', "%20")
+        .replace('#', "%23")
+        .replace('?', "%3F");
+    Ok(format!("file://{encoded}"))
 }
 
 /// Process-local digest of the committed fixture contents. `DefaultHasher`

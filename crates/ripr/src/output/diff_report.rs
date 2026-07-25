@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::path::{Component, Path};
 
 use crate::app::CheckOutput;
 
@@ -9,6 +10,32 @@ pub(crate) struct DiffChangedFile {
     pub(crate) removed_lines: Vec<usize>,
     pub(crate) added_count: usize,
     pub(crate) removed_count: usize,
+}
+
+/// Render a workspace-relative path for a portable output contract.
+///
+/// Emitted paths must use forward slashes on every host. The value reaching this
+/// function is a `PathBuf` that the #2099 confinement guard rebuilt with
+/// `PathBuf::push`, which joins with the platform separator — so on Windows a
+/// path git emitted as `src/lib.rs` is stored as `src\lib.rs`.
+///
+/// The components are re-joined with `/` rather than string-replacing `\`,
+/// because a backslash is a legal filename character on Unix: blind replacement
+/// would rewrite a real Unix filename that happens to contain one. Only `Normal`
+/// components can appear here — the confinement guard rejects parent, root, and
+/// prefix components before a path is registered — so dropping anything else
+/// cannot silently truncate a path that reaches this point.
+pub(crate) fn portable_relative_path(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy()),
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -136,7 +163,11 @@ pub(crate) fn build_diff_report(
                 .canonical_gap
                 .as_ref()
                 .map(|canonical| canonical.id.clone()),
-            file: finding.probe.location.file.display().to_string(),
+            // Same portable contract as `changed_files[].path`. This value
+            // arrives as `.\src\lib.rs` on Windows — a host separator plus a
+            // leading `./` — so it also drops the redundant current-dir
+            // component and matches how `changed_files` renders the same file.
+            file: portable_relative_path(&finding.probe.location.file),
             line: finding.probe.location.line,
             classification: finding.class.as_str().to_string(),
             evidence: finding.evidence.clone(),
@@ -283,6 +314,65 @@ mod tests {
         RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId,
     };
     use std::path::PathBuf;
+
+    /// Component joining, asserted on a path built the way the confinement guard
+    /// builds one: `PathBuf::push` per component, so the stored separator is the
+    /// platform's.
+    #[test]
+    fn portable_relative_path_joins_components_with_forward_slashes() {
+        let mut path = PathBuf::new();
+        for part in ["crates", "ripr", "src", "lib.rs"] {
+            path.push(part);
+        }
+        assert_eq!(
+            portable_relative_path(&path),
+            "crates/ripr/src/lib.rs",
+            "stored form was {path:?}"
+        );
+        assert_eq!(
+            portable_relative_path(Path::new("src/lib.rs")),
+            "src/lib.rs"
+        );
+        assert_eq!(portable_relative_path(Path::new("lib.rs")), "lib.rs");
+        // A redundant leading `./` is dropped so `changed_seams[].file` renders
+        // the same file identically to `changed_files[].path`, which never
+        // carries one.
+        assert_eq!(
+            portable_relative_path(Path::new("./src/lib.rs")),
+            "src/lib.rs"
+        );
+    }
+
+    /// The separator defect is only *observable* on Windows: there, and only
+    /// there, does a component-built `PathBuf` store a backslash. On Unix the
+    /// stored form is already `/`, so no Unix assertion can distinguish this
+    /// function from the previous `display()` rendering. Asserting that
+    /// explicitly is more honest than a cross-platform test that proves nothing
+    /// on one of them.
+    #[cfg(windows)]
+    #[test]
+    fn portable_relative_path_replaces_the_windows_separator() {
+        let mut path = PathBuf::new();
+        path.push("src");
+        path.push("lib.rs");
+        assert!(
+            path.display().to_string().contains('\\'),
+            "precondition: Windows stores a backslash, got {path:?}"
+        );
+        assert_eq!(portable_relative_path(&path), "src/lib.rs");
+    }
+
+    /// A backslash is a legal filename character on Unix, so it must survive as
+    /// data. This is why the implementation joins components instead of
+    /// string-replacing `\` — a blind replacement would rewrite a real filename.
+    #[cfg(unix)]
+    #[test]
+    fn portable_relative_path_keeps_a_unix_filename_containing_a_backslash() {
+        let mut path = PathBuf::new();
+        path.push("src");
+        path.push(r"od\d.rs");
+        assert_eq!(portable_relative_path(&path), r"src/od\d.rs");
+    }
 
     #[test]
     fn diff_report_preserves_diff_complete_full_repo_limited_status() -> Result<(), String> {

@@ -3060,7 +3060,10 @@ fn diff_changed_files_from_text(diff_text: &str) -> Vec<output::diff_report::Dif
                 .map(|line| line.line)
                 .collect::<Vec<_>>();
             output::diff_report::DiffChangedFile {
-                path: file.path.display().to_string(),
+                // Rendering policy lives in the output layer; this stays an
+                // adapter. The internal `PathBuf` remains platform-native for
+                // filesystem joins.
+                path: output::diff_report::portable_relative_path(&file.path),
                 added_count: added_lines.len(),
                 removed_count: removed_lines.len(),
                 added_lines,
@@ -3233,6 +3236,25 @@ mod tests {
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    /// The adapter must route path rendering through the output-layer policy.
+    ///
+    /// This asserts the wiring only; `portable_relative_path`'s own behavior,
+    /// including the platform-specific separator branch, is covered in
+    /// `output::diff_report`.
+    #[test]
+    fn diff_changed_files_render_paths_through_the_output_policy() {
+        let diff = "--- a/crates/ripr/src/lib.rs\n+++ b/crates/ripr/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let files = diff_changed_files_from_text(diff);
+        assert_eq!(files.len(), 1, "expected one changed file: {files:?}");
+        assert_eq!(
+            files[0].path,
+            output::diff_report::portable_relative_path(std::path::Path::new(
+                "crates/ripr/src/lib.rs"
+            ))
+        );
+        assert_eq!(files[0].path, "crates/ripr/src/lib.rs");
     }
 
     pub(super) fn unique_command_test_dir(label: &str) -> PathBuf {
