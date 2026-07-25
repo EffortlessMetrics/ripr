@@ -273,7 +273,7 @@ implement and validate the lane-selection logic.
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
 | `ci-budget-ack` | Acknowledge that this PR intentionally exceeds the expected LEM band. |
 | `clippy-future` | Run future or candidate Clippy lint lanes in advisory mode. |
-| `windows` | Run the advisory Windows smoke lane on a pull request without opting into every `full-ci` lane. |
+| `windows-ci` | Run the advisory Windows lane on a pull request without opting into every `full-ci` lane. |
 
 New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
@@ -285,47 +285,56 @@ wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
 
-### Advisory Windows Smoke Lane
+### Advisory Windows Lane
 
 This repository is developed on Windows and Linux but was only continuously
 validated on Linux. Platform-specific test-harness bugs therefore shipped and
-stayed green on `main`: an audit found 14 tests failing on a clean checkout on
-Windows while every one of them passed on Linux (#2393).
+stayed green on `main`: four separate classes were found only once someone ran
+the suite on Windows by hand — #2390 (path interpolated into JSON), #2391 (host
+separator compared against server output), #2409 (fixture swallowed a git
+failure), #2429 (host separator in a portable output contract).
 
 The drift runs in both directions. #2337 is the inverse case — goldens blessed
 on Windows that fail on Linux. Each platform was blind to the other's breakage,
 and single-platform CI was the root cause enabling both.
 
-The `windows` job in `.github/workflows/ci.yml` closes the gap:
+`.github/workflows/windows-advisory.yml` (#2442) closes the gap:
 
-- **Scope.** `cargo test --workspace` only. No `cargo xtask` gates, no goldens,
-  and no blessing. Goldens are excluded on purpose: a Windows lane that blessed
-  or checked them would institutionalize the #2337 drift it exists to catch.
-- **Status: advisory.** The job sets `continue-on-error`, so a red Windows
-  result does not fail the workflow, and it is not in the required set. The
-  single required check remains `Ripr Rust Small Result`. An advisory red is a
-  signal to investigate, not a merge block.
-- **Selection.** Runs on pushes to `main`, and on a pull request when labelled
-  `full-ci` or `windows`.
+- **Scope.** `cargo test --workspace`, twice. No test or golden `cargo xtask`
+  gates and no blessing — a Windows lane that blessed or checked goldens would
+  institutionalize the #2337 drift it exists to catch. There is one required
+  `cargo xtask` step, `windows-advisory-summary`, which validates the two run
+  logs and their captured exit statuses; it is evidence validation, not a test
+  gate, and it fails the job when the evidence is missing or unusable.
+- **Two samples per run.** The suite runs twice on purpose: one sample cannot
+  separate a reproducible failure from a load-dependent flake. The summarizer
+  tracks three states per test (failed, observed pass, not observed) and reports
+  `masked_unknown` rather than guessing about a test it never saw. Two failures
+  are reported as `repeated_failure`, not "deterministic" — a shared race can
+  reproduce twice.
+- **Advisory outcomes, non-advisory evidence.** A failing test does not fail the
+  job. A missing log, a missing captured exit status, or a summarizer crash
+  does. A lane that reports success while proving nothing is exactly the
+  false-confidence condition it exists to prevent.
+- **Selection.** A daily schedule for standing signal, `workflow_dispatch`, and
+  pull requests labeled `windows-ci` or `full-ci`.
 
-Promotion to required needs a demonstrated green history on `main` first.
+Promotion to required is gated on #2430 and on stability across repeated runs on
+hardware that reproduces the failures — the hosted runner does not reproduce the
+parallel-load class in #2419 at all, so green runs there prove nothing about it.
 Promoting a lane that is already red converts a useful signal into background
-noise that reviewers learn to skip — the false-confidence failure mode in
+noise reviewers learn to skip, which is the false-confidence failure mode in
 reverse.
 
-Baseline measured on `7b7d1322` before the lane landed: 3781 library tests and
-150 CLI smoke tests passed on Windows, with a single failure in
-`lsp_lifecycle::compat_journey_collect_workspace_status_over_real_wire`
-(`ripr.refresh` exceeding the 15s harness response budget). The earlier count of
-14 was reduced by the fixes in #2417, #2416, and #2431.
-
-The lane's first run answered the question the baseline could not. A clean
-`windows-latest` runner reproduced that failure exactly — same test, same
-`timed out waiting for response id 3` — so it is a real Windows failure and not
-an artifact of one developer host. That is the lane working as intended: a
-platform question that could not be settled from a single machine was settled
-by one CI run. The failure is tracked separately; the lane stays advisory until
-it is fixed.
+Measured on `7b7d1322`: 3781 library tests and 150 CLI smoke tests pass on
+Windows. The original count of 14 known failures was reduced by #2417, #2416,
+and #2431. One failure remains — #2430,
+`lsp_lifecycle::compat_journey_collect_workspace_status_over_real_wire`, where
+`ripr.refresh` exceeds the harness's 15s response budget. Unlike the #2419
+class, it reproduces on the hosted runner: two independent `windows-latest` runs
+produced the identical `timed out waiting for response id 3`, and it reproduces
+5 of 5 on a Windows developer host. That is the lane doing its job — a platform
+question that could not be settled from one machine, settled by CI.
 
 ### Cheaper Signal First
 

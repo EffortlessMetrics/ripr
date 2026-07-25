@@ -83,7 +83,7 @@ budget_effect = "medium"
 notes = "Runs future or candidate Clippy lint lanes in advisory mode."
 
 [[label]]
-name = "windows"
-effect = "run_advisory_windows_smoke_lane"
+name = "windows-ci"
+effect = "run_advisory_windows_lane"
 budget_effect = "medium"
-notes = "Runs the advisory Windows smoke lane on a pull request without opting into every full-ci lane. The lane is continue-on-error and is not in the required set."
+notes = "Runs the advisory Windows lane (.github/workflows/windows-advisory.yml) on a pull request without opting into every full-ci lane. Test outcomes are advisory; evidence generation is not."

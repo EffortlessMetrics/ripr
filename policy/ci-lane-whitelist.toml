@@ -230,14 +230,14 @@ artifact_families = []
 description = "Scheduled Droid security scan signal."
 
 [[lane]]
-id = "windows-smoke"
+id = "windows-advisory"
 posture = "advisory"
-workflow = ".github/workflows/ci.yml"
-jobs = ["windows"]
+workflow = ".github/workflows/windows-advisory.yml"
+jobs = ["windows-advisory"]
 commands = ["cargo test --workspace"]
-estimated_lem = 12
+estimated_lem = 24
 artifact_families = []
-description = "Advisory Windows smoke lane (#2393): cargo test --workspace on windows-latest. Deliberately excludes goldens and xtask gates so it cannot institutionalize the #2337 Windows-blessed-golden drift. Promotion to required is gated on a green history."
+description = "Advisory Windows lane (#2393): runs the suite twice on windows-latest and summarizes per-test verdicts. Test outcomes are advisory; missing evidence fails the job. Promotion to required is gated on #2430 and on stability across repeated runs."
 
 [[lane]]
 id = "future-clippy"

@@ -63,9 +63,9 @@ labels:
   - name: clippy-future
     color: "d4c5f9"
     description: Run future or candidate Clippy lint lanes in advisory mode.
-  - name: windows
+  - name: windows-ci
     color: "1d76db"
-    description: Run the advisory Windows smoke lane even without full-ci.
+    description: Run the advisory Windows lane on a pull request without opting into every full-ci lane.
   # Status labels — the closed status vocabulary used by the status-comment
   # verification contract (AGENTS.md § "Status-comment verification contract").
   # These are the primary status signal; a status comment is secondary.

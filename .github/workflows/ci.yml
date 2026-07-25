@@ -159,40 +159,6 @@ jobs:
             target/xtask/impacted-evidence/
           if-no-files-found: ignore
 
-  # Advisory Windows smoke lane (#2393).
-  #
-  # This repository is developed on Windows and Linux but was only continuously
-  # validated on Linux, so Windows-only harness bugs shipped and stayed green on
-  # `main` indefinitely. A developer running `cargo test --workspace` on Windows
-  # saw failures that were not theirs, which hides real regressions.
-  #
-  # Advisory on purpose. `continue-on-error` keeps a red Windows result from
-  # failing the workflow, and this job is not in the required set — the single
-  # required check remains `Ripr Rust Small Result`. Promote to required only
-  # after it has a demonstrated green history (#2393 acceptance).
-  #
-  # Deliberately runs `cargo test --workspace` only: no `cargo xtask goldens`
-  # and no blessing. #2337 is the inverse failure — goldens blessed on Windows
-  # fail on Linux — so a Windows lane that touched goldens would institutionalize
-  # the drift this lane exists to catch.
-  windows:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') || contains(github.event.pull_request.labels.*.name, 'windows')
-    runs-on: windows-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          # The CLI smoke tests resolve a concrete repository HEAD, so the lane
-          # needs real history rather than a shallow clone.
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ripr-windows-${{ runner.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo test --workspace
-
   msrv:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
