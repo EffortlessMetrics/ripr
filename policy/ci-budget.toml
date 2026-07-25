@@ -81,3 +81,9 @@ name = "clippy-future"
 effect = "run_future_clippy_lanes"
 budget_effect = "medium"
 notes = "Runs future or candidate Clippy lint lanes in advisory mode."
+
+[[label]]
+name = "windows"
+effect = "run_advisory_windows_smoke_lane"
+budget_effect = "medium"
+notes = "Runs the advisory Windows smoke lane on a pull request without opting into every full-ci lane. The lane is continue-on-error and is not in the required set."

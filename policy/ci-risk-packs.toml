@@ -20,7 +20,7 @@ reason = "Documentation and review-template changes should pay for docs and stat
 [risk_pack.rust_product]
 paths = ["crates/ripr/src/**", "crates/ripr/Cargo.toml"]
 required = ["rust", "msrv", "static-language", "policy", "output-contracts", "traceability"]
-advisory = ["coverage", "ripr-self-dogfood", "agent-loop-artifacts"]
+advisory = ["coverage", "ripr-self-dogfood", "agent-loop-artifacts", "windows-smoke"]
 on_demand = []
 artifact_families = ["ripr-evidence", "editor-agent-loop"]
 estimated_lem = 24
@@ -30,7 +30,7 @@ reason = "Product analyzer, CLI, output, LSP, or library Rust changes can alter 
 [risk_pack.rust_tests]
 paths = ["crates/ripr/tests/**", "crates/ripr/examples/**"]
 required = ["rust", "policy", "output-contracts"]
-advisory = ["coverage", "test-analytics"]
+advisory = ["coverage", "test-analytics", "windows-smoke"]
 on_demand = []
 artifact_families = ["ripr-evidence"]
 estimated_lem = 18
