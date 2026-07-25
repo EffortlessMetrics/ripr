@@ -88,12 +88,21 @@ cargo publish -p ripr --dry-run
 
 ### Crate tarball contents
 
-`crates/ripr/Cargo.toml` intentionally includes `tests/**` and `examples/**`
-in the published source distribution. The package list therefore carries the
-checked integration corpus and sample workspace used by release and dogfood
-evidence. This does not change the installed binary or library API, but
-removing either surface is a release-contract change that must be reviewed
-against `cargo package -p ripr --list` and this document.
+`crates/ripr/Cargo.toml` intentionally includes `tests/**` and the tracked
+example paths (`examples/*/example.diff`, `examples/*/src/**`,
+`examples/*/tests/**`) in the published source distribution. The package list
+therefore carries the checked integration corpus and sample workspace used by
+release and dogfood evidence. This does not change the installed binary or
+library API, but removing either surface is a release-contract change that must
+be reviewed against `cargo package -p ripr --list` and this document.
+
+The example paths are enumerated rather than globbed as `examples/**` on
+purpose. `ripr` runs against the sample workspace during tests and writes a
+fact cache into `crates/ripr/examples/sample/target/`. That directory is
+gitignored, but a wildcard include still pulls it into the package, and
+`cargo package` then fails its uncommitted-files check after any test run.
+Widening the glob reintroduces that failure; add new example subdirectories to
+the list instead.
 
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).

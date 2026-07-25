@@ -12,10 +12,17 @@ keywords = ["mutation-testing", "testing", "rust", "static-analysis", "lsp"]
 categories = ["development-tools", "development-tools::testing"]
 # Keep the integration tests and sample workspace in the source distribution.
 # This is intentional release evidence; see docs/RELEASE.md before changing it.
+# The example paths are enumerated rather than globbed as `examples/**` so that
+# `examples/*/target/` test residue cannot enter the package. `ripr` runs
+# against the sample workspace during tests and writes a fact cache there; that
+# residue is gitignored, so a wildcard include makes `cargo package` fail on an
+# uncommitted-files check.
 include = [
   "src/**",
   "tests/**",
-  "examples/**",
+  "examples/*/example.diff",
+  "examples/*/src/**",
+  "examples/*/tests/**",
   "README.md",
   "LICENSE-*",
   "Cargo.toml"
