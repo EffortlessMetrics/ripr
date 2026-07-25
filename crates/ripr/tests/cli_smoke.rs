@@ -46,6 +46,76 @@ fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
     ))
 }
 
+fn is_concrete_commit_id(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn bounded_command_text(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).chars().take(512).collect()
+}
+
+fn strip_optional_git_line_ending(bytes: &[u8]) -> &[u8] {
+    bytes
+        .strip_suffix(b"\r\n")
+        .or_else(|| bytes.strip_suffix(b"\n"))
+        .unwrap_or(bytes)
+}
+
+fn select_fixture_repository_head(
+    git_succeeded: bool,
+    stdout: &[u8],
+    stderr: &[u8],
+    actions_fallback: Option<&str>,
+) -> Result<String, String> {
+    let candidate = String::from_utf8_lossy(strip_optional_git_line_ending(stdout)).to_string();
+    if git_succeeded {
+        if is_concrete_commit_id(&candidate) {
+            return Ok(candidate.to_ascii_lowercase());
+        }
+        return Err(format!(
+            "git rev-parse --verify HEAD^{{commit}} returned non-concrete repository HEAD `{candidate}`"
+        ));
+    }
+
+    if let Some(fallback) = actions_fallback
+        && is_concrete_commit_id(fallback)
+    {
+        return Ok(fallback.to_ascii_lowercase());
+    }
+
+    Err(format!(
+        "git rev-parse --verify HEAD^{{commit}} failed; stdout: {}; stderr: {}",
+        bounded_command_text(stdout),
+        bounded_command_text(stderr)
+    ))
+}
+
+fn concrete_fixture_repository_head(root: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let output = run_command(
+        "git",
+        Some(root),
+        &["rev-parse", "--verify", "HEAD^{commit}"],
+    )?;
+    let root_is_workspace = root
+        .canonicalize()
+        .ok()
+        .zip(workspace_root().canonicalize().ok())
+        .is_some_and(|(root, workspace)| root == workspace);
+    let actions_fallback =
+        if root_is_workspace && std::env::var("GITHUB_ACTIONS").ok().as_deref() == Some("true") {
+            std::env::var("GITHUB_SHA").ok()
+        } else {
+            None
+        };
+    select_fixture_repository_head(
+        output.status.success(),
+        &output.stdout,
+        &output.stderr,
+        actions_fallback.as_deref(),
+    )
+    .map_err(Into::into)
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -110,8 +180,7 @@ fn write_bound_repo_exposure_fixture(
     path: &Path,
     seam_json: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let head = run_command("git", Some(root), &["rev-parse", "HEAD"])?;
-    let head = String::from_utf8(head.stdout)?.trim().to_string();
+    let head = concrete_fixture_repository_head(root)?;
     let root_identity = root.canonicalize()?.to_string_lossy().replace('\\', "/");
     let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
     let raw = format!(
@@ -227,8 +296,7 @@ fn bind_repo_exposure_fixture_with_worktree(
     let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(source)?)?;
     value["schema_version"] = serde_json::Value::String("0.3".to_string());
     value["run_status"] = serde_json::Value::String("complete".to_string());
-    let head = run_command("git", Some(root), &["rev-parse", "HEAD"])?;
-    let head = String::from_utf8(head.stdout)?.trim().to_string();
+    let head = concrete_fixture_repository_head(root)?;
     let root_identity = root.canonicalize()?.to_string_lossy().replace('\\', "/");
     let placeholder = serde_json::Value::String(
         "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
@@ -339,6 +407,121 @@ fn agent_brief_sample_workspace(
         "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -8,1 +8,1 @@\n-old\n+new\n",
     )?;
     Ok((root, diff))
+}
+
+#[test]
+fn concrete_fixture_repository_head_matches_a_committed_fixture()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("concrete-head");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let actual = concrete_fixture_repository_head(&root)?;
+    let expected = run_command(
+        "git",
+        Some(&root),
+        &["rev-parse", "--verify", "HEAD^{commit}"],
+    )?;
+    if !expected.status.success() {
+        return Err(format!(
+            "fixture rev-parse failed: {}",
+            bounded_command_text(&expected.stderr)
+        )
+        .into());
+    }
+    let expected = String::from_utf8(expected.stdout)?
+        .trim()
+        .to_ascii_lowercase();
+    std::fs::remove_dir_all(&root)?;
+    if actual != expected {
+        return Err(format!("fixture HEAD mismatch: actual={actual} expected={expected}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn fixture_repository_head_rejects_unresolved_head_and_malformed_actions_fallback()
+-> Result<(), String> {
+    let result = select_fixture_repository_head(
+        false,
+        b"HEAD\n",
+        b"fatal: ambiguous argument 'HEAD'",
+        Some("not-a-commit"),
+    );
+    let Err(error) = result else {
+        return Err("unresolved HEAD unexpectedly became fixture authority".to_string());
+    };
+    if !error.contains("stdout: HEAD") || !error.contains("fatal: ambiguous argument") {
+        return Err(format!("fixture HEAD error lost command context: {error}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn fixture_repository_head_accepts_valid_actions_checkout_fallback_after_git_failure()
+-> Result<(), String> {
+    let fallback = "0123456789abcdef0123456789abcdef01234567";
+    let actual = select_fixture_repository_head(
+        false,
+        b"HEAD\n",
+        b"fatal: ambiguous argument 'HEAD'",
+        Some(fallback),
+    )?;
+    if actual != fallback {
+        return Err(format!(
+            "valid Actions checkout fallback changed: actual={actual} expected={fallback}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn fixture_repository_head_does_not_replace_malformed_success_output_with_fallback()
+-> Result<(), String> {
+    let fallback = "0123456789abcdef0123456789abcdef01234567";
+    let result = select_fixture_repository_head(true, b"HEAD\n", b"", Some(fallback));
+    let Err(error) = result else {
+        return Err("successful but symbolic git output used the Actions fallback".to_string());
+    };
+    if !error.contains("non-concrete repository HEAD `HEAD`") {
+        return Err(format!("unexpected non-concrete HEAD error: {error}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn fixture_repository_head_accepts_only_an_optional_git_line_ending() -> Result<(), String> {
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    for stdout in [
+        commit.to_string(),
+        format!("{commit}\n"),
+        format!("{commit}\r\n"),
+    ] {
+        let actual = select_fixture_repository_head(true, stdout.as_bytes(), b"", None)?;
+        if actual != commit {
+            return Err(format!(
+                "optional line ending changed commit identity: {actual}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fixture_repository_head_rejects_whitespace_padded_success_output() -> Result<(), String> {
+    let commit = "0123456789abcdef0123456789abcdef01234567";
+    for stdout in [
+        format!(" {commit}\n"),
+        format!("{commit} \n"),
+        format!("{commit}\n\n"),
+    ] {
+        let result = select_fixture_repository_head(true, stdout.as_bytes(), b"", None);
+        if result.is_ok() {
+            return Err(format!(
+                "whitespace-padded commit became authority: {stdout:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]
