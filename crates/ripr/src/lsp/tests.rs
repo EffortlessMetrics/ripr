@@ -5744,7 +5744,7 @@ fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> R
             COPY_AFTER_SNAPSHOT_COMMAND,
             "after_snapshot",
             "target/ripr/pilot/after.repo-exposure.json",
-            "ripr check --root . --base \"origin/main with space\" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+            "ripr check --root . --base 'origin/main with space' --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
                 .to_string(),
         ),
         (

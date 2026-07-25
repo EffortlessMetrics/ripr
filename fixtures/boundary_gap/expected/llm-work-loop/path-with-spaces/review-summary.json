@@ -22,7 +22,7 @@
     "step": "before_snapshot",
     "artifact": "target/ripr/workflow/before.repo-exposure.json",
     "reason": "before snapshot artifact is missing",
-    "command": "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    "command": "ripr check --root 'repo root' --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
   },
   "surfaces": [
     {
@@ -32,7 +32,7 @@
       "state": "computed",
       "status": "incomplete",
       "required": true,
-      "summary": "0 required artifacts present, 6 missing, 0 warnings. Command: ripr agent status --root \"repo root\" --json > target/ripr/workflow/agent-status.json"
+      "summary": "0 required artifacts present, 6 missing, 0 warnings. Command: ripr agent status --root 'repo root' --json > target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",

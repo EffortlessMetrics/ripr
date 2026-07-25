@@ -41,6 +41,7 @@
 //! the projection only ever produces `Some(record)` for synthetic test
 //! findings. PR 16 lands the real Perl evidence path.
 
+use crate::agent::loop_commands::shell_arg;
 use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::gap_decision_ledger::{
     GapAnchor, GapRecord, GapRepairRoute, ProjectionEligibility,
@@ -255,8 +256,14 @@ pub(crate) fn perl_receipt_command(canonical_gap_id: &str, verify_command: &str)
         .map(|c| if c == ':' || c == '/' { '_' } else { c })
         .collect::<String>();
     let receipt_path = format!("target/ripr/receipts/{slug}.targeted-test-outcome.json");
+    // Route both operator-supplied values through the shared bash encoder
+    // rather than wrapping them in double quotes here: a verify command
+    // containing `$`, a backtick, or a redirect would otherwise execute when
+    // this advisory string is copied into a shell (#2347).
     format!(
-        "ripr outcome --before <baseline> --after <repair> --verify-cmd \"{verify_command}\" --out {receipt_path}"
+        "ripr outcome --before <baseline> --after <repair> --verify-cmd {} --out {}",
+        shell_arg(verify_command),
+        shell_arg(&receipt_path)
     )
 }
 

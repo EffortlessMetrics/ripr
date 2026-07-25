@@ -660,7 +660,7 @@ mod tests {
         assert!(report.missing_commands.iter().any(|command| {
             command.step == "agent_packet"
                 && command.command
-                    == "ripr agent packet --root \"repo root\" --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
+                    == "ripr agent packet --root 'repo root' --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
         }));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
@@ -795,7 +795,7 @@ mod tests {
     fn agent_status_quotes_paths_with_spaces() {
         assert_eq!(
             agent_packet_command("repo root", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),
-            "ripr agent packet --root \"repo root\" --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
+            "ripr agent packet --root 'repo root' --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
         );
     }
 }

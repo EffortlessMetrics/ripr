@@ -192,3 +192,17 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2347: advisory command strings route every argument through the shared bash
+argv encoder, so the TypeScript packet's receipt command now single-quotes the
+verify command instead of double-quoting it.
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_complete --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human-full.txt`

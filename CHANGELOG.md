@@ -23,6 +23,18 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Advisory command strings emitted by `ripr` (first-PR packets, agent loop
+  commands, receipt commands, pilot commands) now encode every argument as a
+  single-quoted bash token instead of a double-quoted one. Double quotes do not
+  stop bash from expanding `$VAR`, `$(cmd)`, or `` `cmd` ``, and the previous
+  encoder additionally left a bare `\` unquoted and emitted the empty string as
+  nothing at all. A gap id shaped like `gap:pr:1 > file` could therefore open a
+  second redirect when the command was copied into a shell, truncating a file
+  the operator never named and changing the id the command received. Values made
+  only of unambiguous characters are still emitted unquoted, so ordinary
+  commands are unchanged; the published shape changes only where a value
+  actually needs quoting (#2347).
+
 - Rust equality-boundary analysis now credits exact, source-ordered direct
   field assignments from same-file literal constants and bounded `+/-` integer
   offsets. Other owners, fields, similarly named constants, helper-only writes,

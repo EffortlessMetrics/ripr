@@ -14,6 +14,7 @@
 //! - No parallel TypeScript-specific completeness validator is introduced.
 //!   The only flip gate is `validate_agent_gap_record_packet(..) == Ok(())`.
 
+use crate::agent::loop_commands::shell_arg;
 use crate::domain::Finding;
 use crate::output::gap_decision_ledger::{
     GapAnchor, GapRecord, GapRepairRoute, ProjectionEligibility,
@@ -240,8 +241,14 @@ pub(crate) fn typescript_receipt_command(canonical_gap_id: &str, verify_command:
         .map(|c| if c == ':' || c == '/' { '_' } else { c })
         .collect::<String>();
     let receipt_path = format!("target/ripr/receipts/{slug}.targeted-test-outcome.json");
+    // Route both operator-supplied values through the shared bash encoder
+    // rather than wrapping them in double quotes here: a verify command
+    // containing `$`, a backtick, or a redirect would otherwise execute when
+    // this advisory string is copied into a shell (#2347).
     format!(
-        "ripr outcome --before <baseline> --after <repair> --verify-cmd \"{verify_command}\" --out {receipt_path}"
+        "ripr outcome --before <baseline> --after <repair> --verify-cmd {} --out {}",
+        shell_arg(verify_command),
+        shell_arg(&receipt_path)
     )
 }
 

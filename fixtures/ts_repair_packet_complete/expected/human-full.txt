@@ -71,7 +71,7 @@ TypeScript repair packet (advisory)
   oracle: expect(result).toBe(50)
   edit surface: tests/discount.test.ts
   verify: jest tests/discount.test.ts
-  receipt: ripr outcome --before <baseline> --after <repair> --verify-cmd "jest tests/discount.test.ts" --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json
+  receipt: ripr outcome --before <baseline> --after <repair> --verify-cmd 'jest tests/discount.test.ts' --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json
   must not change:
     - Do not edit production code unless the focused proof exposes a real product defect.
     - Do not broaden the change beyond this GapRecord and its repair route.

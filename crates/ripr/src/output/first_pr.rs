@@ -2819,7 +2819,7 @@ mod tests {
         );
         assert_eq!(
             packet["selected"]["next_command"],
-            "git -C . rev-parse --verify \"missing-head^{commit}\""
+            "git -C . rev-parse --verify 'missing-head^{commit}'"
         );
         cleanup(&repo)
     }
@@ -3354,7 +3354,7 @@ mod tests {
                     "verification_commands": [
                         "jest tests/discount.test.ts"
                     ],
-                    "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-cmd \"jest tests/discount.test.ts\" --out target/ripr/receipts/gap-typescript-typescript-preview-2396aec1.targeted-test-outcome.json"
+                    "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-cmd 'jest tests/discount.test.ts' --out target/ripr/receipts/gap-typescript-typescript-preview-2396aec1.targeted-test-outcome.json"
                 }
             ]
         })
