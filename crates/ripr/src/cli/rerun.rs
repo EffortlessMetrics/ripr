@@ -1837,14 +1837,14 @@ mod tests {
             .ok_or_else(|| "expected TypeScript finding from rerun scope".to_string())?;
         let canonical_gap_id = typescript_canonical_gap_id(&finding.id);
         let ledger_path = root.join("target/ripr/gaps.json");
-        write_file(
+        write_gap_ledger(
             &ledger_path,
-            &format!(
-                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"src/discount.ts","line":2,"owner":"applyDiscount"}},"evidence_ids":["{}"],"verification_commands":["npm test -- tests/discount.test.ts"],"receipt_command":"ripr outcome --before before.json --after after.json --format json"}}]}}"#,
-                root.display(),
-                canonical_gap_id,
-                finding.id
-            ),
+            &root,
+            &[
+                LedgerRecord::new(&canonical_gap_id, "src/discount.ts", 2, "applyDiscount")
+                    .evidence_id(&finding.id)
+                    .verification_command("npm test -- tests/discount.test.ts"),
+            ],
         )?;
 
         let report = rerun_gap(&root, &config, &canonical_gap_id, &ledger_path)?;
@@ -1889,15 +1889,13 @@ mod tests {
                 .ok_or_else(|| format!("expected TypeScript finding for .{extension} scope"))?;
             let canonical_gap_id = typescript_canonical_gap_id(&finding.id);
             let ledger_path = root.join("target/ripr/gaps.json");
-            write_file(
+            write_gap_ledger(
                 &ledger_path,
-                &format!(
-                    r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"{}","line":2,"owner":"applyDiscount"}},"evidence_ids":["{}"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
-                    root.display(),
-                    canonical_gap_id,
-                    source,
-                    finding.id
-                ),
+                &root,
+                &[
+                    LedgerRecord::new(&canonical_gap_id, &source, 2, "applyDiscount")
+                        .evidence_id(&finding.id),
+                ],
             )?;
             let report = rerun_gap(&root, &config, &canonical_gap_id, &ledger_path)?;
             let _ = std::fs::remove_dir_all(&root);
@@ -1944,13 +1942,13 @@ mod tests {
             .ok_or_else(|| "expected applyDiscount finding in shifted file".to_string())?;
         let canonical_gap_id = typescript_canonical_gap_id(&finding.id);
         let ledger_path = root.join("target/ripr/gaps.json");
-        write_file(
+        write_gap_ledger(
             &ledger_path,
-            &format!(
-                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"src/discount.ts","line":2,"owner":"applyDiscount"}},"evidence_ids":["stale-evidence"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
-                root.display(),
-                canonical_gap_id
-            ),
+            &root,
+            &[
+                LedgerRecord::new(&canonical_gap_id, "src/discount.ts", 2, "applyDiscount")
+                    .evidence_id("stale-evidence"),
+            ],
         )?;
         let report = rerun_gap(&root, &config, &canonical_gap_id, &ledger_path)?;
         let _ = std::fs::remove_dir_all(&root);
@@ -2005,13 +2003,19 @@ mod tests {
         // Two records for the same file: alpha's record first, beta's second
         // with a stale line. The fallback must resolve beta, not alpha.
         let ledger_path = root.join("target/ripr/gaps.json");
-        write_file(
+        write_gap_ledger(
             &ledger_path,
-            &format!(
-                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"gap:typescript:typescript_preview:aaaaaaaa","language":"typescript","anchor":{{"file":"src/multi.ts","line":1,"owner":"alpha"}},"evidence_ids":["a"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}},{{"canonical_gap_id":"{}","language":"typescript","anchor":{{"file":"src/multi.ts","line":1,"owner":"beta"}},"evidence_ids":["b"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
-                root.display(),
-                beta_gap_id
-            ),
+            &root,
+            &[
+                LedgerRecord::new(
+                    "gap:typescript:typescript_preview:aaaaaaaa",
+                    "src/multi.ts",
+                    1,
+                    "alpha",
+                )
+                .evidence_id("a"),
+                LedgerRecord::new(&beta_gap_id, "src/multi.ts", 1, "beta").evidence_id("b"),
+            ],
         )?;
         let report = rerun_gap(&root, &config, &beta_gap_id, &ledger_path)?;
         let _ = std::fs::remove_dir_all(&root);
@@ -2079,12 +2083,13 @@ mod tests {
         )?;
         let config = RiprConfig::default();
         let ledger_path = root.join("target/ripr/gaps.json");
-        write_file(
+        write_gap_ledger(
             &ledger_path,
-            &format!(
-                r#"{{"schema_version":"ripr-gap-decision-ledger-v1","root":"{}","records":[{{"canonical_gap_id":"gap:typescript:missing","language":"typescript","anchor":{{"file":"src/other.ts","line":1,"owner":"other"}},"evidence_ids":["missing"],"verification_commands":["npm test"],"receipt_command":"ripr outcome --before b.json --after a.json --format json"}}]}}"#,
-                root.display()
-            ),
+            &root,
+            &[
+                LedgerRecord::new("gap:typescript:missing", "src/other.ts", 1, "other")
+                    .evidence_id("missing"),
+            ],
         )?;
         let report = rerun_gap(&root, &config, "gap:typescript:missing", &ledger_path)?;
         let _ = std::fs::remove_dir_all(&root);
@@ -2126,6 +2131,82 @@ mod tests {
         ));
         std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
         Ok(root)
+    }
+
+    /// One gap-ledger record for a rerun fixture.
+    #[cfg(feature = "lang-typescript")]
+    struct LedgerRecord<'a> {
+        canonical_gap_id: &'a str,
+        file: &'a str,
+        line: u64,
+        owner: &'a str,
+        evidence_id: &'a str,
+        verification_command: &'a str,
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    impl<'a> LedgerRecord<'a> {
+        fn new(canonical_gap_id: &'a str, file: &'a str, line: u64, owner: &'a str) -> Self {
+            Self {
+                canonical_gap_id,
+                file,
+                line,
+                owner,
+                evidence_id: "fixture-evidence",
+                verification_command: "npm test",
+            }
+        }
+
+        fn evidence_id(mut self, evidence_id: &'a str) -> Self {
+            self.evidence_id = evidence_id;
+            self
+        }
+
+        fn verification_command(mut self, verification_command: &'a str) -> Self {
+            self.verification_command = verification_command;
+            self
+        }
+    }
+
+    /// Write a gap-decision ledger for a rerun fixture.
+    ///
+    /// The ledger is built with `serde_json`, never by interpolating values into
+    /// a raw JSON string literal. `root` is an absolute path, and on Windows it
+    /// contains backslashes: interpolated, those become invalid JSON escape
+    /// sequences (`\C`, `\r`, ...), the ledger fails to parse, and the fixture
+    /// silently degrades to zero records — so every assertion downstream fails
+    /// for a reason unrelated to what it tests.
+    #[cfg(feature = "lang-typescript")]
+    fn write_gap_ledger(
+        path: &Path,
+        root: &Path,
+        records: &[LedgerRecord<'_>],
+    ) -> Result<(), String> {
+        let records = records
+            .iter()
+            .map(|record| {
+                serde_json::json!({
+                    "canonical_gap_id": record.canonical_gap_id,
+                    "language": "typescript",
+                    "anchor": {
+                        "file": record.file,
+                        "line": record.line,
+                        "owner": record.owner,
+                    },
+                    "evidence_ids": [record.evidence_id],
+                    "verification_commands": [record.verification_command],
+                    "receipt_command": "ripr outcome --before b.json --after a.json --format json",
+                })
+            })
+            .collect::<Vec<_>>();
+        let ledger = serde_json::json!({
+            "schema_version": "ripr-gap-decision-ledger-v1",
+            "root": root.to_string_lossy(),
+            "records": records,
+        });
+        let rendered =
+            serde_json::to_string(&ledger).map_err(|err| format!("render ledger failed: {err}"))?;
+        write_file(path, &rendered)
     }
 
     #[cfg(feature = "lang-typescript")]

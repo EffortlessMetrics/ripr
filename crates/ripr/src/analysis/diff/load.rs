@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn load_diff_from_file_returns_content() -> std::io::Result<()> {
-        let dir = std::env::temp_dir().join("ripr-load-diff-test");
+        let dir = unique_fixture_root("load-diff-test")?;
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir)?;
         let diff_file = dir.join("test.diff");
@@ -354,46 +354,81 @@ mod tests {
     /// Helper: initialise a git repo, create an initial commit, and return the
     /// repo root. Uses `--initial-branch` if available; falls back to renaming
     /// the default branch via `git symbolic-ref`.
+    /// A unique fixture root, so two concurrent or overlapping suite runs cannot
+    /// share a git repo.
+    ///
+    /// Fixed names are unsafe here beyond the obvious collision: the cleanup is
+    /// `let _ = fs::remove_dir_all(..)`, and on Windows that cannot delete a git
+    /// object store whose files are read-only, so a half-deleted repo would be
+    /// silently reused by the next run.
+    fn unique_fixture_root(name: &str) -> std::io::Result<PathBuf> {
+        let dir = unique_fixture_path(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    /// A unique fixture path that is **not** created, for fixtures that need the
+    /// path to be something other than a directory.
+    fn unique_fixture_path(name: &str) -> PathBuf {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0);
+        let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "ripr-{name}-{}-{stamp}-{counter}",
+            std::process::id()
+        ))
+    }
+
+    /// Run one git command and fail with its stderr if it does not succeed.
+    ///
+    /// `Command::output()?` only propagates a *spawn* failure. A git command
+    /// that runs and exits nonzero must not be ignored: the fixture would return
+    /// `Ok(())` having produced a repo with no commit and no refs, and every
+    /// assertion downstream would then fail for a reason unrelated to what it
+    /// tests.
+    fn run_git_checked(dir: &Path, args: &[&str]) -> std::io::Result<()> {
+        let output = Command::new("git").args(args).current_dir(dir).output()?;
+        if output.status.success() {
+            return Ok(());
+        }
+        Err(std::io::Error::other(format!(
+            "git {args:?} in {} failed with {:?}: {}{}",
+            dir.display(),
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim(),
+            String::from_utf8_lossy(&output.stdout).trim()
+        )))
+    }
+
     fn init_git_repo(dir: &Path, branch: &str) -> std::io::Result<()> {
         fs::create_dir_all(dir)?;
-        // Try --initial-branch first (git >= 2.28).
-        let status = Command::new("git")
-            .args(["init", "--initial-branch", branch])
-            .current_dir(dir)
-            .output()?
-            .status;
-        if !status.success() {
-            Command::new("git").arg("init").current_dir(dir).output()?;
-            Command::new("git")
-                .args(["symbolic-ref", "HEAD", &format!("refs/heads/{branch}")])
-                .current_dir(dir)
-                .output()?;
+        // Try --initial-branch first (git >= 2.28); fall back to symbolic-ref.
+        if run_git_checked(dir, &["init", "--initial-branch", branch]).is_err() {
+            run_git_checked(dir, &["init"])?;
+            run_git_checked(
+                dir,
+                &["symbolic-ref", "HEAD", &format!("refs/heads/{branch}")],
+            )?;
         }
-        Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(dir)
-            .output()?;
-        Command::new("git")
-            .args(["config", "user.name", "Test"])
-            .current_dir(dir)
-            .output()?;
+        run_git_checked(dir, &["config", "user.email", "test@example.com"])?;
+        run_git_checked(dir, &["config", "user.name", "Test"])?;
+        // Signing would make the fixture depend on host gpg configuration.
+        run_git_checked(dir, &["config", "commit.gpgsign", "false"])?;
         // Create an initial commit so rev-parse works.
         fs::write(dir.join("README"), "init")?;
-        Command::new("git")
-            .args(["add", "."])
-            .current_dir(dir)
-            .output()?;
-        Command::new("git")
-            .args(["commit", "-m", "init"])
-            .current_dir(dir)
-            .output()?;
+        run_git_checked(dir, &["add", "."])?;
+        run_git_checked(dir, &["commit", "-m", "init"])?;
         Ok(())
     }
 
     #[test]
     fn explicit_base_resolves_to_exact_commit_and_unknown_refs_fail_closed() -> std::io::Result<()>
     {
-        let dir = std::env::temp_dir().join("ripr-resolve-exact-base");
+        let dir = unique_fixture_root("resolve-exact-base")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
@@ -424,7 +459,7 @@ mod tests {
         // Simulates a repo whose remote default branch is "master" (not "main").
         // We create a local repo, then set refs/remotes/origin/HEAD to point at
         // refs/remotes/origin/master, and create that ref.
-        let dir = std::env::temp_dir().join("ripr-resolve-base-origin-master");
+        let dir = unique_fixture_root("resolve-base-origin-master")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "master")?;
         // Create the remote-tracking ref manually (simulates a fetched remote).
@@ -455,7 +490,7 @@ mod tests {
     #[test]
     fn resolve_default_base_uses_local_main_when_no_remote() -> std::io::Result<()> {
         // Simulates a fresh git init with no remote; local branch is "main".
-        let dir = std::env::temp_dir().join("ripr-resolve-base-local-main");
+        let dir = unique_fixture_root("resolve-base-local-main")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         // Confirm no remote refs exist.
@@ -477,7 +512,7 @@ mod tests {
     fn resolve_default_base_returns_named_error_when_nothing_resolves() -> std::io::Result<()> {
         // Simulates a bare repo with no commits and no remote refs. We create
         // a temp dir, run git init, but do NOT create any commits or refs.
-        let dir = std::env::temp_dir().join("ripr-resolve-base-no-base");
+        let dir = unique_fixture_root("resolve-base-no-base")?;
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir)?;
         Command::new("git").arg("init").current_dir(&dir).output()?;
@@ -515,7 +550,7 @@ mod tests {
         // When an explicit base is given, load_diff does not attempt resolution.
         // A nonexistent explicit base should produce a git-diff error (not the
         // named "could not resolve" message), confirming the explicit path is kept.
-        let dir = std::env::temp_dir().join("ripr-explicit-base-no-subst");
+        let dir = unique_fixture_root("explicit-base-no-subst")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
@@ -542,7 +577,7 @@ mod tests {
         // #2261 (RIPR-SPEC-0142 amendment): the combined export reports the
         // same base the candidate search picks and the exact commit the
         // analysis will diff against.
-        let dir = std::env::temp_dir().join("ripr-resolve-default-base-commit");
+        let dir = unique_fixture_root("resolve-default-base-commit")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
@@ -566,7 +601,7 @@ mod tests {
         // named error instead of fabricating a commit identity. A repo whose
         // only branch is neither main nor master has no candidate in the
         // loader's default-base search order.
-        let bare = std::env::temp_dir().join("ripr-resolve-default-base-commit-empty");
+        let bare = unique_fixture_root("resolve-default-base-commit-empty")?;
         let _ = fs::remove_dir_all(&bare);
         init_git_repo(&bare, "trunk")?;
         let err = resolve_default_base_commit(&bare, None)
@@ -599,7 +634,7 @@ mod tests {
         // on every host: spawn errors with "not a directory" (#2074). A plain
         // non-repo temp dir is NOT a portable error case — git walks up to a
         // parent repo when one exists.
-        let file = std::env::temp_dir().join("ripr-wt-probe-notdir");
+        let file = unique_fixture_path("wt-probe-notdir");
         fs::write(&file, "not a directory\n")?;
 
         match working_tree_probe(&file) {
@@ -629,7 +664,7 @@ mod tests {
 
     #[test]
     fn tracked_change_detector_ignores_untracked_only_files() -> std::io::Result<()> {
-        let dir = std::env::temp_dir().join("ripr-tracked-change-untracked-only");
+        let dir = unique_fixture_root("tracked-change-untracked-only")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         fs::write(dir.join("scratch.rs"), "fn scratch() {}\n")?;
@@ -646,7 +681,7 @@ mod tests {
 
     #[test]
     fn tracked_change_detector_detects_tracked_edit() -> std::io::Result<()> {
-        let dir = std::env::temp_dir().join("ripr-tracked-change-edit");
+        let dir = unique_fixture_root("tracked-change-edit")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         fs::write(dir.join("README"), "changed\n")?;
@@ -663,7 +698,7 @@ mod tests {
 
     #[test]
     fn tracked_change_detector_ignores_parent_repo_changes_outside_root() -> std::io::Result<()> {
-        let dir = std::env::temp_dir().join("ripr-tracked-change-parent-dirty");
+        let dir = unique_fixture_root("tracked-change-parent-dirty")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         let nested = dir.join("nested-workspace");
@@ -685,7 +720,7 @@ mod tests {
         // #2303: a deadline that cannot be met fails before spawning with the
         // named, matchable `git_invocation_timeout` error — the string the
         // LSP refresh path converts into a committed limited snapshot.
-        let dir = std::env::temp_dir().join("ripr-load-diff-zero-deadline");
+        let dir = unique_fixture_root("load-diff-zero-deadline")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
@@ -704,7 +739,7 @@ mod tests {
     fn zero_deadline_base_probes_fail_closed_instead_of_hanging() -> std::io::Result<()> {
         // #2303: probe-path timeouts degrade to the same fail-closed states
         // as an unresolvable ref — never to a fabricated base or commit.
-        let dir = std::env::temp_dir().join("ripr-probe-zero-deadline");
+        let dir = unique_fixture_root("probe-zero-deadline")?;
         let _ = fs::remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 

@@ -69,6 +69,18 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{LspService, Server};
 
+/// Render a fixture path the way the LSP surface renders paths.
+///
+/// The server normalizes every emitted path to forward slashes on all
+/// platforms, so a harness that compares against `Path::display()` matches on
+/// Unix and fails on Windows only — where `display()` yields backslashes. Every
+/// expectation built from a fixture root must go through this helper, otherwise
+/// the test is asserting on a host-specific separator rather than on server
+/// behavior.
+fn server_path_text(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
 #[test]
 fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
     let result = initialize_result();
@@ -8562,7 +8574,7 @@ fn workspace_folder_transitions_first_folder_after_none_starts_single_fresh_tran
         async {
             let root_a = unique_lsp_test_root("wft-first-folder-a")?;
             let root_a_uri = file_uri_for_path(root_a.path())?;
-            let root_a_path = root_a.path().display().to_string();
+            let root_a_path = server_path_text(root_a.path());
             let mut client = WorkspaceFolderTransitionsClient::spawn();
             client
                 .initialize_with_workspace_folders(serde_json::json!([]))
@@ -8655,8 +8667,8 @@ fn workspace_folder_transitions_second_folder_becomes_ambiguous_without_fallback
             let root_b = unique_lsp_test_root("wft-ambiguous-b")?;
             let root_a_uri = file_uri_for_path(root_a.path())?;
             let root_b_uri = file_uri_for_path(root_b.path())?;
-            let root_a_path = root_a.path().display().to_string();
-            let root_b_path = root_b.path().display().to_string();
+            let root_a_path = server_path_text(root_a.path());
+            let root_b_path = server_path_text(root_b.path());
             let mut client = WorkspaceFolderTransitionsClient::spawn();
             client
                 .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -8720,7 +8732,7 @@ fn workspace_folder_transitions_ambiguous_resolves_to_remaining_folder_on_remova
             let root_b = unique_lsp_test_root("wft-resolve-b")?;
             let root_a_uri = file_uri_for_path(root_a.path())?;
             let root_b_uri = file_uri_for_path(root_b.path())?;
-            let root_a_path = root_a.path().display().to_string();
+            let root_a_path = server_path_text(root_a.path());
             let mut client = WorkspaceFolderTransitionsClient::spawn();
             client
                 .initialize_with_workspace_folders(serde_json::json!([
@@ -8770,7 +8782,7 @@ fn workspace_folder_transitions_direct_switch_lands_on_root_changed() -> Result<
         let root_b = unique_lsp_test_root("wft-switch-b")?;
         let root_a_uri = file_uri_for_path(root_a.path())?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
-        let root_b_path = root_b.path().display().to_string();
+        let root_b_path = server_path_text(root_b.path());
         let mut client = WorkspaceFolderTransitionsClient::spawn();
         client
             .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -8873,8 +8885,8 @@ fn workspace_folder_transitions_non_active_folder_removal_keeps_ambiguous_select
         let root_a_uri = file_uri_for_path(root_a.path())?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
         let root_c_uri = file_uri_for_path(root_c.path())?;
-        let root_a_path = root_a.path().display().to_string();
-        let root_b_path = root_b.path().display().to_string();
+        let root_a_path = server_path_text(root_a.path());
+        let root_b_path = server_path_text(root_b.path());
         let mut client = WorkspaceFolderTransitionsClient::spawn();
         client
             .initialize_with_workspace_folders(serde_json::json!([
@@ -8929,8 +8941,8 @@ fn workspace_folder_transitions_duplicate_and_contradictory_events_rejected_type
         let root_a_uri = file_uri_for_path(root_a.path())?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
         let root_c_uri = file_uri_for_path(root_c.path())?;
-        let root_a_path = root_a.path().display().to_string();
-        let root_b_path = root_b.path().display().to_string();
+        let root_a_path = server_path_text(root_a.path());
+        let root_b_path = server_path_text(root_b.path());
         let mut client = WorkspaceFolderTransitionsClient::spawn();
         client
             .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -9051,8 +9063,8 @@ fn workspace_folder_transitions_invalid_file_uri_event_rejected_typed() -> Resul
             let root_b = unique_lsp_test_root("wft-invalid-b")?;
             let root_a_uri = file_uri_for_path(root_a.path())?;
             let root_b_uri = file_uri_for_path(root_b.path())?;
-            let root_a_path = root_a.path().display().to_string();
-            let root_b_path = root_b.path().display().to_string();
+            let root_a_path = server_path_text(root_a.path());
+            let root_b_path = server_path_text(root_b.path());
             let mut client = WorkspaceFolderTransitionsClient::spawn();
             client
                 .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -9120,7 +9132,7 @@ fn workspace_folder_transitions_stale_reconciliation_response_is_dropped() -> Re
         let root_b = unique_lsp_test_root("wft-stale-b")?;
         let root_a_uri = file_uri_for_path(root_a.path())?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
-        let root_a_path = root_a.path().display().to_string();
+        let root_a_path = server_path_text(root_a.path());
         let mut client = WorkspaceFolderTransitionsClient::spawn();
         client
             .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -9194,9 +9206,9 @@ fn workspace_folder_transitions_lagging_contradictory_reconciliation_is_dropped(
             let root_a_uri = file_uri_for_path(root_a.path())?;
             let root_b_uri = file_uri_for_path(root_b.path())?;
             let root_c_uri = file_uri_for_path(root_c.path())?;
-            let root_a_path = root_a.path().display().to_string();
-            let root_b_path = root_b.path().display().to_string();
-            let root_c_path = root_c.path().display().to_string();
+            let root_a_path = server_path_text(root_a.path());
+            let root_b_path = server_path_text(root_b.path());
+            let root_c_path = server_path_text(root_c.path());
             let mut client = WorkspaceFolderTransitionsClient::spawn();
             client
                 .initialize_with_workspace_folders(serde_json::json!([workspace_folder_json(
@@ -9274,8 +9286,8 @@ fn workspace_folder_transitions_equivalent_set_different_order_is_noop() -> Resu
         let root_b = unique_lsp_test_root("wft-reorder-b")?;
         let root_a_uri = file_uri_for_path(root_a.path())?;
         let root_b_uri = file_uri_for_path(root_b.path())?;
-        let root_a_path = root_a.path().display().to_string();
-        let root_b_path = root_b.path().display().to_string();
+        let root_a_path = server_path_text(root_a.path());
+        let root_b_path = server_path_text(root_b.path());
         let mut client = WorkspaceFolderTransitionsClient::spawn();
         client
             .initialize_with_workspace_folders(serde_json::json!([
