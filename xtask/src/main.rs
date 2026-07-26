@@ -4795,20 +4795,40 @@ fn check_local_context_impl() -> Result<(), String> {
         .map(|entry| ((entry.path.clone(), entry.pattern.clone()), entry.max_count))
         .collect::<BTreeMap<_, _>>();
 
-    for ((path, pattern), (problems, lines)) in grouped {
+    for ((path, pattern), (problems, lines)) in &grouped {
         let actual = lines.len();
         let allowed_count = allowed
             .get(&(path.clone(), pattern.clone()))
             .copied()
             .unwrap_or(0);
-        if actual <= allowed_count {
+        if actual <= allowed_count && actual == 0 {
             continue;
         }
-        let line_summary = local_context_line_summary(&lines);
-        violations.push(format!(
-            "Path: {path}\nProblem: {}\nPattern: {pattern}\nCount: {actual}, allowed: {allowed_count}\nLines: {line_summary}\nWhy this matters: Repository docs should contain durable project state, not local runtime/session state from one machine or Codex run.\nRecommended fixes:\n1. Delete runtime/session artifacts instead of committing them.\n2. Move durable learnings to docs/LEARNINGS.md.\n3. Move generated state to target/ripr/reports, target/ripr/receipts, or target/ripr/learning.",
-            problems.into_iter().collect::<Vec<_>>().join("; ")
-        ));
+        if actual > allowed_count {
+            let line_summary = local_context_line_summary(lines);
+            violations.push(format!(
+                "Path: {path}\nProblem: {}\nPattern: {pattern}\nCount: {actual}, allowed: {allowed_count}\nLines: {line_summary}\nWhy this matters: Repository docs should contain durable project state, not local runtime/session state from one machine or Codex run.\nRecommended fixes:\n1. Delete runtime/session artifacts instead of committing them.\n2. Move durable learnings to docs/LEARNINGS.md.\n3. Move generated state to target/ripr/reports, target/ripr/receipts, or target/ripr/learning.",
+                problems.iter().cloned().collect::<Vec<_>>().join("; ")
+            ));
+        } else if actual < allowed_count && actual > 0 {
+            // Stale bound: the allowlist grants more budget than the code uses
+            // (#2413). Flag so the bound is tightened.
+            violations.push(format!(
+                "Path: {path}\nPattern: {pattern}\nStale allowlist bound: max_count={allowed_count} but actual={actual}; tighten to {actual}"
+            ));
+        }
+    }
+
+    // Flag orphaned allowlist entries whose path/pattern no longer appears in
+    // any tracked file (count dropped to zero or the file was removed).
+    for entry in &allowlist {
+        let key = (entry.path.clone(), entry.pattern.clone());
+        if !grouped.contains_key(&key) && entry.max_count > 0 {
+            violations.push(format!(
+                "Path: {}\nPattern: {}\nOrphaned allowlist entry: max_count={} but pattern not found in any tracked file; remove the entry",
+                entry.path, entry.pattern, entry.max_count
+            ));
+        }
     }
 
     write_local_context_json(&violations)?;
@@ -15557,6 +15577,26 @@ fn check_count_policy(
         if *count > allowed {
             violations.push(format!(
                 "{path} contains `{pattern}` {count} time(s), allowed {allowed}"
+            ));
+        } else if *count < allowed {
+            // Stale bound: the allowlist grants more budget than the code
+            // uses. This is the reverse-direction check that prevents the
+            // bound from silently rotting (#2413). A stale bound lets new
+            // occurrences slip through without an allowlist update, so flag
+            // it so the bound is tightened to the actual count.
+            violations.push(format!(
+                "{path} allowlist entry for `{pattern}` is stale: max_count={allowed} but actual={count}; tighten to {count}"
+            ));
+        }
+    }
+
+    // Also flag allowlist entries for paths that no longer contain the pattern
+    // at all (count dropped to zero, or the file was removed). These are fully
+    // orphaned entries whose bound provides invisible slack.
+    for ((path, pattern), allowed) in &allowlist {
+        if !counts.contains_key(&(path.clone(), pattern.clone())) && *allowed > 0 {
+            violations.push(format!(
+                "{path} allowlist entry for `{pattern}` is orphaned: max_count={allowed} but pattern not found in any tracked file; remove the entry"
             ));
         }
     }

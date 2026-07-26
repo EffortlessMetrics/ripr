@@ -45635,3 +45635,22 @@ fn precommit_gate_commands_are_catalog_ci_enforced() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn count_policy_gates_have_no_stale_bounds() -> Result<(), String> {
+    // Regression for #2413: the count-based gates now check bidirectionally.
+    // A stale max_count (actual < allowed) or an orphaned entry (pattern not
+    // found) must produce a violation. This test runs the real gates against
+    // the real allowlists to catch drift introduced by refactoring that drops
+    // process/network occurrences without updating the allowlist.
+    //
+    // If this test fails, tighten the stale max_count or remove the orphaned
+    // entry in the cited allowlist file.
+    use crate::{check_local_context, check_network_policy, check_process_policy};
+    with_repo_cwd(|| {
+        check_process_policy()?;
+        check_network_policy()?;
+        check_local_context()?;
+        Ok(())
+    })
+}
