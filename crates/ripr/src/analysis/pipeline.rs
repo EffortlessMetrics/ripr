@@ -209,6 +209,27 @@ fn run_pipeline_for_diff_text(
         eprintln!("{message}");
     }
 
+    // Disclose when the diff parsed to zero changed files (#2425): the input
+    // may be a non-diff file (a log, a source file, random text) or a
+    // malformed diff with no parseable hunks. Without this disclosure, the
+    // "0 probe(s)" output looks like a clean bill of health when the input
+    // was garbage. This is the honesty complement to #2304: #2304 handles
+    // "diff had files but no source"; this handles "diff had no files at all."
+    if findings.is_empty()
+        && rust_changed_files == 0
+        && changed_files.is_empty()
+        && changed_files_by_language
+            .iter()
+            .all(|(_, count)| *count == 0)
+        && !diff_text.trim().is_empty()
+    {
+        eprintln!(
+            "ripr: the diff input contained no parseable file changes (0 hunks, 0 files). \
+             If this is unexpected, verify the --diff path points to a valid unified diff. \
+             The empty result may not reflect sufficient tests — it reflects an empty analysis scope."
+        );
+    }
+
     sort::sort_findings(&mut findings);
     cancellation::checkpoint()?;
     let mut summary_result = summary::summarize_findings(rust_changed_files, &findings);
@@ -633,6 +654,22 @@ mod tests {
             return Err("an empty diff must not disclose".to_string());
         }
         Ok(())
+    }
+
+    #[test]
+    fn malformed_diff_yields_zero_changed_files() {
+        // #2425: a non-diff text file must parse to zero changed files. The
+        // pipeline's empty-diff disclosure depends on this: if the parser
+        // accidentally extracted file entries from non-diff text, the
+        // disclosure would not fire and the user would see a silent "0 probes"
+        // that looks like a clean result.
+        let non_diff = "this is not a diff\njust some random text\n";
+        let changed = diff::parse_unified_diff(non_diff);
+        assert!(
+            changed.is_empty(),
+            "non-diff text must parse to zero changed files, got {}",
+            changed.len()
+        );
     }
 
     #[test]

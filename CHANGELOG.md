@@ -30,6 +30,13 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check --diff <path>` now discloses when the diff input contains no
+  parseable file changes (0 hunks, 0 files). Previously a non-diff file (a
+  log, a source file, random text) silently produced "0 probe(s)" with exit
+  0, which could be mistaken for a clean bill of health. The stderr
+  disclosure now explains the empty result may reflect an empty analysis
+  scope, not sufficient tests (#2425).
+
 - The doctor atomic-publication test no longer fails intermittently with
   `ExecutableFileBusy`. Publishing a tool atomically removes this process's
   writer, but it cannot remove host-level exec contention: `ETXTBSY` is raised
