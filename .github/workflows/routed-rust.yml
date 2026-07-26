@@ -118,6 +118,7 @@ jobs:
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+      RUSTC_WRAPPER: sccache
       SCCACHE_DIR: /mnt/ci-cache/sccache
       SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
@@ -131,6 +132,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.95.0
+      - name: Install sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+      - name: Start sccache server
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
+          sccache --start-server || true
       - name: Prepare scratch
         id: scratch
         run: |
@@ -186,6 +195,7 @@ jobs:
           cargo xtask pr-summary || true
           cargo xtask receipts || true
           cargo xtask reports index || true
+          sccache --show-stats || true
       - name: PR evidence
         if: github.event_name == 'pull_request'
         env:
@@ -248,6 +258,7 @@ jobs:
     env:
       CARGO_BUILD_JOBS: "8"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+      RUSTC_WRAPPER: sccache
       SCCACHE_DIR: /mnt/ci-cache/sccache
       SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
@@ -261,6 +272,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.95.0
+      - name: Install sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+      - name: Start sccache server
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
+          sccache --start-server || true
       - name: Prepare CPX42 scratch
         id: scratch
         run: |
@@ -317,6 +336,7 @@ jobs:
           cargo xtask pr-summary || true
           cargo xtask receipts || true
           cargo xtask reports index || true
+          sccache --show-stats || true
       - name: PR evidence
         if: github.event_name == 'pull_request'
         env:
@@ -379,6 +399,7 @@ jobs:
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+      RUSTC_WRAPPER: sccache
       SCCACHE_DIR: /mnt/ci-cache/sccache
       SCCACHE_CACHE_SIZE: 15G
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
@@ -392,6 +413,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.95.0
+      - name: Install sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+      - name: Start sccache server
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
+          sccache --start-server || true
       - name: Prepare scratch
         id: scratch
         run: |
@@ -447,6 +476,7 @@ jobs:
           cargo xtask pr-summary || true
           cargo xtask receipts || true
           cargo xtask reports index || true
+          sccache --show-stats || true
       - name: PR evidence
         if: github.event_name == 'pull_request'
         env:
