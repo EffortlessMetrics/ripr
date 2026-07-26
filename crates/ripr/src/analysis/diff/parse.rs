@@ -1032,6 +1032,37 @@ deleted file mode 100644
     }
 
     #[test]
+    fn old_path_marker_accepts_traversal_as_boundary_signal() {
+        // #2402: parse_old_path_marker is a boundary detector, not a path
+        // validator. It must accept traversal paths so the parser recognizes
+        // the `---` line as a file-section boundary and clears the current
+        // file (preventing payload mis-attribution, #2099). The path itself
+        // is confined separately by parse_old_path_for_confinement.
+        assert!(parse_old_path_marker("--- a/../../../etc/passwd"));
+    }
+
+    #[test]
+    fn old_path_for_confinement_rejects_traversal() {
+        // #2402: the confined old-path extractor rejects traversal paths
+        // symmetrically with parse_new_path_marker.
+        use super::super::path::parse_old_path_for_confinement;
+        assert_eq!(
+            parse_old_path_for_confinement("--- a/../../../etc/passwd"),
+            None
+        );
+        assert_eq!(parse_old_path_for_confinement("--- /etc/passwd"), None);
+    }
+
+    #[test]
+    fn old_path_for_confinement_accepts_normal_path() {
+        use super::super::path::parse_old_path_for_confinement;
+        assert_eq!(
+            parse_old_path_for_confinement("--- a/src/lib.rs"),
+            Some(PathBuf::from("src/lib.rs"))
+        );
+    }
+
+    #[test]
     fn normalizes_new_path_marker_with_cur_dir_components() {
         assert_eq!(
             parse_new_path_marker("+++ b/./src/lib.rs"),

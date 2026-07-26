@@ -59,6 +59,21 @@ fn confine_to_relative_path(path: &str) -> Option<PathBuf> {
     }
 }
 
+/// Detect whether `raw` is a syntactically valid `--- <path>` old-path marker.
+///
+/// Returns `true` for any plausible old-path marker, including paths that
+/// would be rejected by `confine_to_relative_path`. This function is a
+/// **boundary detector** for the parser — it must recognize `---` lines as
+/// file-section boundaries even when the path escapes the workspace, so the
+/// parser can clear the current file and prevent payload mis-attribution
+/// (#2099).
+///
+/// The old path is **not** confined here because it is currently discarded
+/// (the parser does not build a `SourceLocation` from it). Any future feature
+/// that consumes the old path (rename-aware probe, copy detection) MUST call
+/// [`confine_to_relative_path`] on the extracted path before joining it to
+/// the workspace root. Use [`parse_old_path_for_confinement`] for that
+/// purpose (#2402).
 pub(super) fn parse_old_path_marker(raw: &str) -> bool {
     let Some(marker) = raw.strip_prefix("--- ") else {
         return false;
@@ -71,6 +86,24 @@ pub(super) fn parse_old_path_marker(raw: &str) -> bool {
     }
     let path = path.strip_prefix("a/").unwrap_or(&path);
     is_plausible_unquoted_diff_path(path)
+}
+
+/// Extract and confine the old path from a `--- <path>` marker, symmetrically
+/// with [`parse_new_path_marker`]. Returns `None` when the path escapes the
+/// workspace (traversal, absolute, prefix). Future features that consume the
+/// old path should use this instead of raw string extraction (#2402).
+#[allow(
+    dead_code,
+    reason = "reserved for future rename/copy-detection features that consume the old path (#2402)"
+)]
+pub(super) fn parse_old_path_for_confinement(raw: &str) -> Option<PathBuf> {
+    let marker = raw.strip_prefix("--- ")?;
+    let path = parse_diff_path_token(marker)?;
+    if path == "/dev/null" {
+        return None;
+    }
+    let path = path.strip_prefix("a/").unwrap_or(&path);
+    confine_to_relative_path(path)
 }
 
 fn is_plausible_unquoted_diff_path(path: &str) -> bool {
