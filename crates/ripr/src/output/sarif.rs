@@ -243,8 +243,19 @@ fn sarif_level(severity: ConfigSeverity) -> Option<&'static str> {
 }
 
 fn physical_location(file: &str, line: usize, column: Option<usize>) -> Value {
+    // SARIF 2.1.0: `region` is optional. When the finding has no known line
+    // (line == 0 — an unlocated probe or a producer bug), omit the region
+    // entirely rather than fabricating startLine:1, which would point SARIF
+    // viewers (GitHub code scanning, VS Code) at the wrong line (#2407).
+    if line == 0 {
+        return json!({
+            "physicalLocation": {
+                "artifactLocation": { "uri": file }
+            }
+        });
+    }
     let mut region = Map::new();
-    region.insert("startLine".to_string(), json!(line.max(1)));
+    region.insert("startLine".to_string(), json!(line));
     if let Some(column) = column
         && column > 0
     {
@@ -1731,6 +1742,28 @@ weakly_gripped = "note"
             evidence,
             class,
         }
+    }
+
+    #[test]
+    fn physical_location_omits_region_for_unlocated_finding() {
+        // #2407: a finding with line == 0 (unlocated probe) must not fabricate
+        // startLine:1. The region should be omitted entirely so SARIF viewers
+        // don't point at the wrong line.
+        let loc = physical_location("src/lib.rs", 0, None);
+        assert!(
+            loc["physicalLocation"]["region"].is_null(),
+            "line-0 finding must omit region, got: {loc}"
+        );
+        assert_eq!(
+            loc["physicalLocation"]["artifactLocation"]["uri"],
+            "src/lib.rs"
+        );
+    }
+
+    #[test]
+    fn physical_location_includes_region_for_located_finding() {
+        let loc = physical_location("src/lib.rs", 42, None);
+        assert_eq!(loc["physicalLocation"]["region"]["startLine"], 42);
     }
 
     fn stage(state: StageState, summary: &str) -> StageEvidence {
