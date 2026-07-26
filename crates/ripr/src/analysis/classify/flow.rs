@@ -495,8 +495,11 @@ fn looks_like_field_store_of(line: &str, receiver: &str) -> bool {
 /// flagged (the value continues to flow).
 fn value_is_swallowed(text: &str) -> bool {
     let trimmed = text.trim();
-    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding
-    if trimmed.starts_with("let _ =") {
+    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding.
+    // Also `let _: <ty> = <expr>;`  — typed wildcard discard (#2401).
+    // Must match both so the flow stage agrees with the infection stage's
+    // `is_wildcard_discard` (infection.rs:112), which already handles both.
+    if trimmed.starts_with("let _ =") || trimmed.starts_with("let _:") {
         return true;
     }
     // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
@@ -1000,6 +1003,21 @@ mod tests {
         let sinks = local_flow_sinks(&probe, None);
         assert_eq!(sinks.len(), 1);
         assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn typed_wildcard_discard_binding_yields_unknown_sink() {
+        // #2401: `let _: Ty = expr;` is a typed wildcard discard. The flow
+        // stage must flag it as swallowed, matching the infection stage's
+        // is_wildcard_discard (which already handles `let _:`).
+        let probe = probe(ProbeFamily::SideEffect, "let _: i32 = compute(x);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(
+            sinks[0].kind,
+            FlowSinkKind::Unknown,
+            "typed wildcard `let _:` must be swallowed, matching infection stage"
+        );
     }
 
     #[test]
