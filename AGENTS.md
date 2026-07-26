@@ -249,6 +249,17 @@ Prefer small, high-signal changes:
   so it catches a dishonest re-bless that `goldens check` would accept — goldens
   can encode dishonesty. Share the invariant + corpus across languages; do **not**
   unify the per-language matchers (different taxonomies, different edge policies).
+- **False-confidence gates and fields.** A gate, field, or command whose
+  stated contract is stronger than its enforcement is a false-confidence
+  surface — the policy-layer mirror of a wrong `repair_packet_ready: true`.
+  When you write or touch a gate, field, or command, bind the enforcement to
+  the claim: if the schema says "burn-down ready," the gate must compare
+  against the current date; if the field is named `analyzed`, it must reflect
+  actual analysis; if the manifest points at `path::tests::fn`, the gate must
+  resolve `fn`; if the gate claims to detect network calls, it must cover the
+  common networking crates. A gate whose stated contract is stronger than its
+  code misleads every future reader who trusts it — including agents resuming
+  campaigns from repository artifacts.
 - Performance is part of honesty: an interactive path that is too slow, or that
   defers expensive analysis off the keystroke path, must **disclose** its state
   (e.g. `run_status: "seams_deferred"`, RIPR-SPEC-0105) and never present a

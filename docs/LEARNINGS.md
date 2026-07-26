@@ -1954,3 +1954,54 @@ The #2390/#2391/#2409/#2429/#2393 wave fixed 27 deterministic Windows failures. 
 Two method notes from the same wave. A mutation experiment must make behavior wrong, not code uncompilable — deleting a match arm produced a compiler error and demonstrated nothing; making the arm inert produced the vulnerable return value and the assertion failed as intended. And in PowerShell, `-match` and `Select-String` are case-insensitive by default, so a check for `FAILED` matches `0 failed` and inverts the result: an experiment reported "3/3 runs failed" for a subset that was 8/8 clean. Detect failures with an anchored case-sensitive match on the libtest shape so the measurement yields failing test *names* rather than a boolean.
 
 Finally, two disclosure lessons. Third-party review providers post quota-exhaustion notices as ordinary comments — one as a `COMMENTED` review — so a PR page can show four reviewers "having reviewed" when none read the diff; unavailable review is evidence of missing review, never clean review (#2432). And a CI watcher must distinguish `cancelled` from `failure`: a run superseded by a newer push is expected and meaningless, and collapsing every non-success conclusion to "failed" produced two false alarms.
+
+## 2026-07-25: False-confidence gates — the enforcement-layer cardinal sin
+
+A full-repo audit (54 issues across every surface) revealed a recurring
+defect family that the existing doctrine did not name: **gates, fields, and
+commands whose stated contract is stronger than their enforcement.** This is
+the policy-layer mirror of a wrong `repair_packet_ready: true` — the cardinal
+sin applied to the enforcement layer rather than the finding layer.
+
+Thirteen instances were identified in one session:
+
+- `expires` field validated as present but never compared to today (#2344)
+- traceability paths checked for file existence but not symbol resolution (#2345)
+- `shell_arg` escaped backslash and quote but not `$` or backtick (#2347)
+- `is_absolute()` not sufficient on Windows (#2392)
+- process-allowlist `max_count` stale — bound rots silently (#2399)
+- `"analyzed"` JSON field mirrored `"enabled"` — name promises more than value (#2403)
+- receipt lifecycle defaulted unrecognized movement to RECEIPT_FOUND (#2404)
+- `goldens bless` was a raw byte-copy with no JSON parse or count sanity (#2410)
+- dogfood exit code reflected report-write success, not scenario outcomes (#2411)
+- network-policy detected only 7 hardcoded substrings (#2412)
+- count-based gates checked one direction only — stale bounds never flagged (#2413)
+- `npm test` was a no-op — compiled but ran zero tests (#2437)
+
+Four recurring shapes produce this family:
+
+1. **Presence-without-value:** a field is validated as non-empty but its value
+   is never checked (the `expires` shape).
+2. **One-directional bounds:** a count gate flags `actual > allowed` but not
+   `actual < allowed` (the `max_count` shape).
+3. **Exit-code/report mismatch:** a gate's final expression is a report-write,
+   not an outcome aggregation (the dogfood shape).
+4. **Denylist-only detection:** a policy gate detects hardcoded substrings
+   without an allowlist fallback (the network-policy shape).
+
+The doctrine fix: **when you write or touch a gate, field, or command, bind
+the enforcement to the claim.** If the schema says "burn-down ready," the gate
+must compare against the current date. If the field is named `analyzed`, it
+must reflect actual analysis. If the gate claims to detect network calls, it
+must cover the common networking crates. A gate whose stated contract is
+stronger than its code misleads every future reader who trusts it.
+
+The existing cardinal-sin doctrine covers *findings* ("under-emit before
+over-emit"). This extends it to the *enforcement layer*: a false-confidence
+gate is worse than no gate, because it creates the impression of enforcement
+where none exists. The evidence-promotion corpus defends goldens against
+dishonest re-bless; the false-confidence doctrine defends gates against
+incomplete enforcement.
+
+Cross-references: #2346 (doctrine ask), #2463 (contract-parity meta-gate),
+#2466/#2479/#2484 (implementation PRs for individual instances).
