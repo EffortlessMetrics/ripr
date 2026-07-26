@@ -261,7 +261,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             array_field(&mut out, 3, "sample_paths", &adv.sample_paths, true);
             out.push_str(&format!(
                 "      \"enabled\": {},\n      \"analyzed\": {},\n",
-                adv.enabled, adv.enabled
+                adv.enabled,
+                adv.enabled && adv.file_count > 0
             ));
             field(&mut out, 3, "category", "preview_language_advisory", true);
             let why_owned;
