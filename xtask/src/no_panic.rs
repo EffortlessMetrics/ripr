@@ -674,6 +674,41 @@ fn evaluate_semantic_no_panic_policy(
         }
     }
 
+    // Expiry enforcement (#2344): the schema 0.3 `expires` field was
+    // validated as present-and-non-empty but never compared to the current
+    // date. An entry with expires = "2020-01-01" passed indefinitely. Flag
+    // expired entries so the burn-down contract the schema promises is real.
+    let today = today_date_string();
+    for entry in entries {
+        let (id, expires) = match entry {
+            PanicAllowEntryVersioned::V1(_) => continue, // v0.1 has no expires
+            PanicAllowEntryVersioned::V2(v2) => (&v2.id, &v2.expires),
+        };
+        if let Some(expires) = expires
+            && !expires.trim().is_empty()
+            && !expires.starts_with("TODO")
+        {
+            if !is_valid_iso_date(expires.trim()) {
+                let label = entry_id_or_path(entry, id);
+                let message = format!(
+                    "malformed expires date in no-panic exception: {label} has expires = '{expires}' \
+                     (expected YYYY-MM-DD); fix the date so expiry enforcement can evaluate it"
+                );
+                report.stale_entries.push(message.clone());
+                report.violations.push(message);
+            } else if expires.trim() < today.as_str() {
+                let label = entry_id_or_path(entry, id);
+                let message = format!(
+                    "expired no-panic exception: {label} expired {} (today is {today}); \
+                     renew, remove, or roll forward the expires date with a real reason",
+                    expires.trim()
+                );
+                report.stale_entries.push(message.clone());
+                report.violations.push(message);
+            }
+        }
+    }
+
     let mut identity_to_entries = BTreeMap::<String, Vec<String>>::new();
     for (index, entry) in entries.iter().enumerate() {
         match entry {
@@ -1250,6 +1285,61 @@ fn semantic_selector_identity(entry: &PanicAllowEntryV2, selector: &PanicFamilyS
         selector.text_contains.as_deref().unwrap_or(""),
         selector.snippet.as_deref().unwrap_or("")
     )
+}
+
+/// Today's date as `YYYY-MM-DD` for expiry comparison. Uses `std::time` so
+/// the gate has no external date dependency. Returns a fallback far-future
+/// date if the system clock is before the Unix epoch (a pre-epoch clock
+/// would make expired entries appear valid — fail-safe, not fail-open).
+fn today_date_string() -> String {
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => date_from_secs(duration.as_secs()),
+        Err(_) => "9999-12-31".to_string(), // clock before epoch: fail-safe
+    }
+}
+
+/// Convert seconds-since-epoch to `YYYY-MM-DD` using the civil calendar
+/// algorithm (Howard Hinnant, http://howardhinnant.github.io/date_algorithms.html).
+fn date_from_secs(secs: u64) -> String {
+    let days = secs / 86_400;
+    let z = days as i64 + 719_468; // days from 0000-03-01
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146_096]
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let year = if m <= 2 { y + 1 } else { y };
+    format!("{year:04}-{m:02}-{d:02}")
+}
+
+/// Validate that `date` is a well-formed `YYYY-MM-DD` string with plausible
+/// month (01-12) and day (01-31) values. Used to guard the expiry comparison
+/// so a malformed date like `2026-13-45` does not silently bypass the check.
+fn is_valid_iso_date(date: &str) -> bool {
+    let bytes = date.as_bytes();
+    if bytes.len() != 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !bytes[..4].iter().all(|b| b.is_ascii_digit())
+        || !bytes[5..7].iter().all(|b| b.is_ascii_digit())
+        || !bytes[8..10].iter().all(|b| b.is_ascii_digit())
+    {
+        return false;
+    }
+    let month = date[5..7].parse::<u32>().unwrap_or(0);
+    let day = date[8..10].parse::<u32>().unwrap_or(0);
+    (1..=12).contains(&month) && (1..=31).contains(&day)
+}
+
+/// Short label for an entry, preferring the stable `id` when available.
+fn entry_id_or_path(entry: &PanicAllowEntryVersioned, id: &Option<String>) -> String {
+    match id {
+        Some(id) if !id.is_empty() => id.clone(),
+        _ => panic_allow_entry_label(entry),
+    }
 }
 
 fn panic_allow_entry_label(entry: &PanicAllowEntryVersioned) -> String {

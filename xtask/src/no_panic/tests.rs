@@ -1527,3 +1527,59 @@ fn semantic_extractor_uses_byte_offsets_for_utf8_line_column() -> Result<(), Str
     }
     Ok(())
 }
+
+#[test]
+fn today_date_string_is_valid_iso_format() {
+    use super::today_date_string;
+    let today = today_date_string();
+    // Must be YYYY-MM-DD (10 chars, dashes at positions 4 and 7).
+    assert_eq!(
+        today.len(),
+        10,
+        "today_date_string must be YYYY-MM-DD: {today}"
+    );
+    assert_eq!(
+        today.as_bytes()[4],
+        b'-',
+        "position 4 must be dash: {today}"
+    );
+    assert_eq!(
+        today.as_bytes()[7],
+        b'-',
+        "position 7 must be dash: {today}"
+    );
+    // Must sort correctly: a date from 2020 is less than today.
+    assert!(
+        "2020-01-01" < today.as_str(),
+        "2020-01-01 must be before today"
+    );
+}
+
+#[test]
+fn expired_entry_is_flagged_by_evaluation() {
+    use super::{PanicAllowEntryV2, PanicAllowEntryVersioned, evaluate_semantic_no_panic_policy};
+    // An entry expired in 2020 with no matching finding should produce
+    // both a stale-entry violation AND an expiry violation.
+    let entry = PanicAllowEntryVersioned::V2(PanicAllowEntryV2 {
+        id: Some("panic-test-0001".to_string()),
+        path: "src/test.rs".to_string(),
+        family: "unwrap".to_string(),
+        classification: Some("test_only".to_string()),
+        owner: Some("test-infra".to_string()),
+        explanation: "test".to_string(),
+        expires: Some("2020-01-01".to_string()),
+        selector: None,
+        last_seen: None,
+        count: None,
+    });
+    let report = evaluate_semantic_no_panic_policy(&[], &[entry]);
+    let has_expiry_violation = report
+        .violations
+        .iter()
+        .any(|v| v.contains("expired") && v.contains("2020-01-01"));
+    assert!(
+        has_expiry_violation,
+        "expired entry must produce an expiry violation, got: {:?}",
+        report.violations
+    );
+}
