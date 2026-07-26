@@ -154,3 +154,11 @@ blanket_clippy_restriction_lints = "deny"
 lto = true
 strip = true
 codegen-units = 1
+
+# Dev profile: line-tables-only gives backtraces with file:line resolution
+# without the full variable-debuginfo cost of the default `debug = "full"`.
+# This cuts link time and binary size for the daily check/test/xtask loop.
+# Full debuginfo is still available via `CARGO_PROFILE_DEV_DEBUG=true cargo
+# test` when a developer needs to step-debug with variable inspection.
+[profile.dev]
+debug = "line-tables-only"

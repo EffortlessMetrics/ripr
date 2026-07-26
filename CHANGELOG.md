@@ -11,6 +11,13 @@ are scoped or reviewed.
 
 ### Added
 
+- `[profile.dev]` now uses `debug = "line-tables-only"` instead of the cargo
+  default (`debug = "full"`). Line tables give backtraces with file:line
+  resolution without the full variable-debuginfo cost, cutting link time and
+  binary size (~9% smaller debug binaries). Full debuginfo is still available
+  via `CARGO_PROFILE_DEV_DEBUG=true cargo test` when a developer needs
+  step-debugging with variable inspection (#2420).
+
 - `cargo xtask module-health` now reports a **responsibility signal** alongside
   its line count: a heuristic count of distinct top-level concerns (distinct
   `impl` blocks plus distinct public-API identifier prefixes) per file, flagged
