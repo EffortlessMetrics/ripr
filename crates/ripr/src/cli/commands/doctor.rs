@@ -894,7 +894,7 @@ fn report_cache_status(root: &Path) {
     } else {
         println!("- Cache location: {}", cache_dir.display());
     }
-    println!("- Cache size: {size_display}");
+    println!("- Cache size: {size_display} (run `ripr cache status` for details)");
 }
 
 /// Recursively sum file sizes under `dir`. Returns 0 when the directory

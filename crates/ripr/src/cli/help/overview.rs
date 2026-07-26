@@ -6,6 +6,7 @@ Usage:
 Setup:
   ripr doctor
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
+  ripr cache status [--json]
 
 Analysis:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
@@ -78,6 +79,7 @@ Quick start (one command per group):
 
 Start-here path:
   - `ripr doctor` checks whether the local workspace and config can produce evidence.
+  - `ripr cache status` inspects the analysis cache (size, entries, location).
   - `ripr first-pr` and `ripr start-here` write `target/ripr/reports/start-here.{json,md}` from existing artifacts.
   - Safe next action means repair one named gap, regenerate a missing or malformed artifact, or stop on no-action.
   - Missing artifact, stale evidence, wrong root, malformed artifact, and no actionable gap are explicit recovery states.

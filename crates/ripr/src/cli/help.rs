@@ -230,6 +230,7 @@ mod tests {
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
         assert!(HELP.contains("ripr doctor"));
+        assert!(HELP.contains("ripr cache status"));
         assert!(HELP.contains("Start-here path:"));
         assert!(HELP.contains("Safe next action means repair one named gap"));
         assert!(HELP.contains("Missing artifact, stale evidence, wrong root"));
