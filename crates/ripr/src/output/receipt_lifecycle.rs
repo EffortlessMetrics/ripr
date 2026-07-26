@@ -46,7 +46,11 @@ pub fn receipt_lifecycle_state_from_movement(movement: Option<&str>) -> String {
         .map(str::trim)
         .filter(|movement| !movement.is_empty())
     else {
-        return RECEIPT_FOUND.to_string();
+        // Fail-closed (#2404): an absent movement does not confirm a receipt
+        // exists. Default to missing rather than found — the cardinal-sin
+        // doctrine applies: under-emit before over-emit on the affirmative
+        // receipt-lifecycle state.
+        return RECEIPT_MISSING.to_string();
     };
     match movement.to_ascii_lowercase().as_str() {
         "improved" | "receipt_improved" | "movement_improved" | RECEIPT_MOVEMENT_IMPROVED => {
@@ -58,13 +62,21 @@ pub fn receipt_lifecycle_state_from_movement(movement: Option<&str>) -> String {
         "missing" | "missing_receipt" | RECEIPT_MISSING => RECEIPT_MISSING.to_string(),
         "stale" | "stale_receipt" | RECEIPT_STALE => RECEIPT_STALE.to_string(),
         "gap_mismatch" | "mismatch" | RECEIPT_GAP_MISMATCH => RECEIPT_GAP_MISMATCH.to_string(),
+        // "changed" is a generic movement direction from actionable-gap receipts
+        // (summary.next_action.kind). It confirms the receipt exists and the
+        // evidence was reviewed — map to RECEIPT_FOUND, not the unrecognized
+        // default. Without this, the fail-closed default (#2404) would
+        // downgrade a receipt that explicitly reports a movement to MISSING.
+        "changed" | "present" | "found" => RECEIPT_FOUND.to_string(),
         "not_attempted"
         | "not_applicable"
         | "not_available"
         | "n/a"
         | "none"
         | RECEIPT_NOT_APPLICABLE => RECEIPT_NOT_APPLICABLE.to_string(),
-        _ => RECEIPT_FOUND.to_string(),
+        // Fail-closed (#2404): an unrecognized movement token (typo, schema
+        // drift, future value) does not confirm a receipt exists.
+        _ => RECEIPT_MISSING.to_string(),
     }
 }
 
@@ -141,7 +153,18 @@ mod tests {
         );
         assert_eq!(
             receipt_lifecycle_state_from_movement(Some("regressed")),
-            RECEIPT_FOUND
+            RECEIPT_MISSING,
+            "unrecognized movement must default to missing, not found (#2404 fail-closed)"
+        );
+    }
+
+    #[test]
+    fn absent_movement_defaults_to_missing_not_found() {
+        // #2404: None and empty movement must not confirm a receipt exists.
+        assert_eq!(receipt_lifecycle_state_from_movement(None), RECEIPT_MISSING);
+        assert_eq!(
+            receipt_lifecycle_state_from_movement(Some("")),
+            RECEIPT_MISSING
         );
     }
 
