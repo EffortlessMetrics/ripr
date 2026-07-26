@@ -173,3 +173,77 @@ where
 
     char::from_u32(value).unwrap_or('\u{FFFD}')
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_new_path_marker_strips_b_prefix() {
+        let path = parse_new_path_marker("+++ b/src/lib.rs");
+        assert_eq!(path, Some(PathBuf::from("src/lib.rs")));
+    }
+
+    #[test]
+    fn parse_new_path_marker_accepts_no_prefix() {
+        let path = parse_new_path_marker("+++ src/lib.rs");
+        assert_eq!(path, Some(PathBuf::from("src/lib.rs")));
+    }
+
+    #[test]
+    fn parse_new_path_marker_returns_none_for_dev_null() {
+        assert_eq!(parse_new_path_marker("+++ /dev/null"), None);
+    }
+
+    #[test]
+    fn parse_new_path_marker_rejects_traversal() {
+        assert_eq!(parse_new_path_marker("+++ b/../escape.rs"), None);
+        assert_eq!(parse_new_path_marker("+++ ../../../etc/passwd"), None);
+    }
+
+    #[test]
+    fn parse_new_path_marker_strips_curdir() {
+        // A path like `./src/lib.rs` normalizes to `src/lib.rs`.
+        let path = parse_new_path_marker("+++ b/./src/lib.rs");
+        assert_eq!(path, Some(PathBuf::from("src/lib.rs")));
+    }
+
+    #[test]
+    fn parse_new_path_marker_parses_c_quoted_path() {
+        let path = parse_new_path_marker("+++ \"b/src/my file.rs\"");
+        assert_eq!(path, Some(PathBuf::from("src/my file.rs")));
+    }
+
+    #[test]
+    fn parse_new_path_marker_parses_octal_escape() {
+        // \040 is the C-quoted form of a space.
+        let path = parse_new_path_marker("+++ \"b/src/my\\040file.rs\"");
+        assert_eq!(path, Some(PathBuf::from("src/my file.rs")));
+    }
+
+    #[test]
+    fn is_new_path_marker_recognizes_valid_markers() {
+        assert!(is_new_path_marker("+++ b/src/lib.rs"));
+        assert!(is_new_path_marker("+++ /dev/null"));
+        assert!(is_new_path_marker("+++ \"b/src/file with space.rs\""));
+    }
+
+    #[test]
+    fn is_new_path_marker_rejects_non_markers() {
+        assert!(!is_new_path_marker("--- a/src/lib.rs"));
+        assert!(!is_new_path_marker("++ payload with spaces"));
+        assert!(!is_new_path_marker("regular line"));
+    }
+
+    #[test]
+    fn parse_old_path_marker_recognizes_valid_markers() {
+        assert!(parse_old_path_marker("--- a/src/lib.rs"));
+        assert!(parse_old_path_marker("--- /dev/null"));
+    }
+
+    #[test]
+    fn parse_old_path_marker_rejects_non_markers() {
+        assert!(!parse_old_path_marker("+++ b/src/lib.rs"));
+        assert!(!parse_old_path_marker("regular line"));
+    }
+}
