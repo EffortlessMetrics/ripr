@@ -299,7 +299,7 @@
       },
       {
         "command": "ripr.copyTopReceiptCommand",
-        "title": "ripr: Copy Receipt Command"
+        "title": "ripr: Copy Receipt Command (Top Repair Packet)"
       },
       {
         "command": "ripr.openReport",
