@@ -11,6 +11,7 @@
 //! existing call sites (`reports/repo.rs` and `tests.rs`) compile unchanged.
 
 use super::*;
+use crate::reports::release_server::sha256_file;
 
 const EVIDENCE_QUALITY_SCORECARD_SCHEMA_VERSION: &str = "0.1";
 const EVIDENCE_QUALITY_SCORECARD_REPAIR_LIMIT: usize = 5;

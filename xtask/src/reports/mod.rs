@@ -23,6 +23,10 @@ mod proof_route;
 mod receipts;
 mod recommendation;
 mod release;
+pub(crate) mod release_server;
+pub(crate) use release_server::{
+    release_server_archive, release_server_manifest, release_upload_assets,
+};
 mod repo;
 mod review_comments;
 mod rust_repair_trust;
