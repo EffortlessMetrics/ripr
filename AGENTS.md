@@ -464,6 +464,38 @@ Merge-safety rules, learned the hard way:
   *ran* and failed (e.g. `xtask: goldens check failed`, a `FAILED` test) is real
   — read the report and fix it. Re-running a real failure wastes a CI cycle;
   debugging your own diff for an infra flake wastes a turn.
+- **Resolve all review threads before merging.** The repo's branch ruleset
+  requires `required_review_thread_resolution: true` — any unresolved review
+  comment thread blocks `gh pr merge` with "Repository rule violations found."
+  Automated review bots (codex, gemini, droid, github-actions) leave threads on
+  nearly every PR. Before attempting to merge, address or reject each finding
+  (fix the code, push, or explain why the suggestion is wrong), then resolve the
+  thread via the GraphQL API:
+  ```bash
+  # list unresolved threads
+  gh api graphql -f query='query($o:String!,$r:String!,$p:Int!){repository(owner:$o,name:$r){pullRequest(number:$p){reviewThreads(first:50){nodes{id isResolved}}}}}' -F o=EffortlessMetrics -F r=ripr-swarm -F p=<PR_NUMBER> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+  # resolve each
+  gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -f id=<THREAD_ID>
+  ```
+  Do not resolve a thread without first addressing the finding. If the bot's
+  suggestion is correct, fix it and push. If it is wrong, leave a short reply
+  explaining why before resolving. Resolving without engagement defeats the
+  review-feedback loop.
+- **Verify `required_approving_review_count` matches repo reality.** This is a
+  single-maintainer repo; the count should be `0`. If it drifts back to `1`
+  (e.g. after a GitHub UI change or a ruleset re-apply), PRs silently BLOCK with
+  no actionable error. Check and fix:
+  ```bash
+  gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews --jq '.required_approving_review_count'
+  # if it is not 0, fix it:
+  gh api -X PATCH repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews -F required_approving_review_count=0 -F dismiss_stale_reviews=false -F require_code_owner_reviews=false -F require_last_push_approval=false
+  ```
+  Also check the GitHub **ruleset** (not just branch protection), which is a
+  separate enforcement layer:
+  ```bash
+  gh api repos/EffortlessMetrics/ripr-swarm/rulesets --jq '.[].id'
+  gh api repos/EffortlessMetrics/ripr-swarm/rulesets/<ID> --jq '.rules[] | select(.type == "pull_request") | .parameters'
+  ```
 
 `stackable = false` means do not build the next dependent work item on top of
 the current branch. It does not create an approval gate.
