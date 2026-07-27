@@ -1168,14 +1168,16 @@ deleted file mode 100644
     }
 
     #[test]
-    fn bounded_parser_accepts_normal_diff() {
+    fn bounded_parser_accepts_normal_diff() -> Result<(), String> {
         let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
-        let files = parse_unified_diff_bounded(diff).unwrap();
+        let files = parse_unified_diff_bounded(diff)
+            .map_err(|e| format!("bounded parser should accept a normal diff: {e}"))?;
         assert_eq!(files.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn bounded_parser_rejects_oversized_diff() {
+    fn bounded_parser_rejects_oversized_diff() -> Result<(), String> {
         // #2398: a diff with more files than the limit must fail closed
         // with the diff_scope_oversized prefix that is_diff_scope_oversized
         // matches.
@@ -1186,7 +1188,9 @@ deleted file mode 100644
             ));
         }
         let result = parse_unified_diff_with_limit(&diff, 5);
-        let err = result.unwrap_err();
+        let Err(err) = result else {
+            return Err("oversized diff should be rejected".to_string());
+        };
         assert!(
             err.starts_with("diff_scope_oversized"),
             "error must use diff_scope_oversized prefix: {err}"
@@ -1195,5 +1199,6 @@ deleted file mode 100644
             err.contains("10 changed files"),
             "error must name the file count: {err}"
         );
+        Ok(())
     }
 }

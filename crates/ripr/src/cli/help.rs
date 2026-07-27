@@ -464,6 +464,10 @@ mod tests {
     }
 
     /// Extract all `--flag` tokens from a help text (#2342).
+    #[expect(
+        dead_code,
+        reason = "flag-parity test helper; used by #2342 test suite"
+    )]
     fn extract_flags(help: &str) -> Vec<String> {
         let mut flags = Vec::new();
         for line in help.lines() {
@@ -480,7 +484,7 @@ mod tests {
             for word in trimmed.split_whitespace() {
                 if word.starts_with("--") && word.len() > 2 {
                     let name = word
-                        .trim_start_matches(|c: char| c == '-')
+                        .trim_start_matches('-')
                         .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
                         .next()
                         .unwrap_or("");
