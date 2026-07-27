@@ -463,6 +463,144 @@ fn precommit() -> Result<(), String> {
     write_report("precommit.md", &body)
 }
 
+/// Diff-aware fast gate runner (#2343). Runs only the gates relevant to
+/// changed files, plus a cheap always-run floor. Target: sub-30s for
+/// doc-only changes, ~2min for Rust source changes.
+pub(crate) fn check_fast() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let changed = changed_files_vs_origin_main().unwrap_or_default();
+    let categories = categorize_changed_files(&changed);
+    let mut ran = Vec::new();
+    let mut skipped = Vec::new();
+
+    // Always run: these are cheap and catch cross-cutting drift.
+    run("cargo", &["fmt", "--check"])?;
+    ran.push("fmt --check");
+    check_static_language()?;
+    ran.push("check-static-language");
+    check_command_catalog()?;
+    ran.push("check-command-catalog");
+
+    // Conditional gates based on changed file categories.
+    if categories.rust_src {
+        check_no_panic_family()?;
+        ran.push("check-no-panic-family");
+        check_allow_attributes()?;
+        ran.push("check-allow-attributes");
+        check_file_policy()?;
+        ran.push("check-file-policy");
+        run(
+            "cargo",
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        )?;
+        ran.push("clippy");
+    } else {
+        skipped.extend_from_slice(&[
+            "check-no-panic-family",
+            "check-allow-attributes",
+            "check-file-policy",
+            "clippy",
+        ]);
+    }
+
+    if categories.workflow {
+        check_workflows()?;
+        ran.push("check-workflows");
+    }
+
+    if categories.policy {
+        check_process_policy()?;
+        ran.push("check-process-policy");
+        check_network_policy()?;
+        ran.push("check-network-policy");
+    }
+
+    if categories.fixture {
+        check_fixture_contracts()?;
+        ran.push("check-fixture-contracts");
+    } else {
+        skipped.push("check-fixture-contracts");
+    }
+
+    // Always run these (cheap, cross-cutting).
+    check_generated()?;
+    ran.push("check-generated");
+    check_generated_clean()?;
+    ran.push("check-generated-clean");
+    check_lint_policy()?;
+    ran.push("check-lint-policy");
+
+    eprintln!(
+        "check-fast: ran {} gate(s){}, base=origin/main, {} file(s) changed",
+        ran.len(),
+        if skipped.is_empty() {
+            String::new()
+        } else {
+            format!(", skipped {} ({})", skipped.len(), skipped.join(", "))
+        },
+        changed.len()
+    );
+
+    let body = format!(
+        "# check-fast report\n\nStatus: pass\n\nRan:\n{}\n\nSkipped:\n{}\n",
+        ran.iter()
+            .map(|g| format!("- {g}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        if skipped.is_empty() {
+            "- none".to_string()
+        } else {
+            skipped
+                .iter()
+                .map(|g| format!("- {g}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    );
+    write_report("check-fast.md", &body)
+}
+
+struct ChangedFileCategories {
+    rust_src: bool,
+    workflow: bool,
+    policy: bool,
+    fixture: bool,
+}
+
+fn categorize_changed_files(files: &[String]) -> ChangedFileCategories {
+    ChangedFileCategories {
+        rust_src: files.iter().any(|f| {
+            f.ends_with(".rs") && (f.contains("crates/ripr/src") || f.contains("xtask/src"))
+        }),
+        workflow: files.iter().any(|f| f.starts_with(".github/workflows/")),
+        policy: files
+            .iter()
+            .any(|f| f.starts_with("policy/") || f.starts_with(".ripr/")),
+        fixture: files.iter().any(|f| f.starts_with("fixtures/")),
+    }
+}
+
+fn changed_files_vs_origin_main() -> Result<Vec<String>, String> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--name-only", "origin/main...HEAD"])
+        .output()
+        .map_err(|err| format!("git diff --name-only failed: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff --name-only origin/main...HEAD failed; if origin/main is not available, run `git fetch origin main` first"
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(text.lines().map(String::from).collect())
+}
+
 fn check_pr() -> Result<(), String> {
     ensure_reports_dir()?;
     let temp_env = check_pr_temp_env()?;
