@@ -12,6 +12,12 @@ use std::time::Duration;
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
+/// Budget for the auto-retry when the default timeout fires (#2424).
+/// A cold fact cache on a multi-crate workspace can need ~155s; the
+/// default 30s is too low for first-run. The retry budget is set high
+/// enough to cover a cold cache on the ripr-swarm repo itself.
+const PILOT_RETRY_TIMEOUT_MS: u64 = 240_000;
+
 pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_pilot_help();
@@ -40,9 +46,33 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
 
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
-    let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
-        analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
+    let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
+        let root = analysis_root.clone();
+        let cfg = analysis_config.clone();
+        move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
     })?;
+
+    // Auto-retry at a higher budget when the default timeout fires and the
+    // user did not pass an explicit --timeout-ms (#2424). A cold fact cache
+    // on a multi-crate workspace can need ~155s; the 30s default is too low
+    // for first-run. The retry gives a complete result on the first
+    // invocation — just slower.
+    if matches!(analysis_result, PilotAnalysisResult::TimedOut)
+        && options.timeout_ms == DEFAULT_PILOT_TIMEOUT_MS
+    {
+        eprintln!(
+            "ripr: pilot timed out at {}ms; retrying at {}ms (cold cache needs more time)...",
+            DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
+        );
+        analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
+            let root = analysis_root.clone();
+            let cfg = analysis_config.clone();
+            move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+        })?;
+        // Update timeout_ms so the retry hint (if it times out again) uses the
+        // retry budget, not the original default.
+        // (context struct reads options.timeout_ms for the hint)
+    }
     let PilotAnalysisResult::Complete((mut classified, inventory_limit_info)) = analysis_result
     else {
         let context = output::pilot::PilotSummaryContext {
