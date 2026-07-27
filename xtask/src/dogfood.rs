@@ -1267,7 +1267,101 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         pr_inline_comment_runs: &pr_inline_comment_runs,
     };
     write_report("dogfood.md", &dogfood_report_markdown(&report_inputs))?;
-    write_report("dogfood.json", &dogfood_report_json(&report_inputs))
+    write_report("dogfood.json", &dogfood_report_json(&report_inputs))?;
+
+    // Aggregate scenario outcomes into the gate exit code (#2411).
+    // Previously the gate returned Ok(()) as long as the report file wrote,
+    // regardless of whether scenarios recorded errors. Now we scan all run
+    // families for non-empty errors vectors and return Err if any failed.
+    let mut failed: Vec<String> = Vec::new();
+    for run in runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in gate_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in first_action_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in first_pr_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in front_panel_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in report_packet_index_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in finding_alignment_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in surface_projection_alignment_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in real_repair_attempt_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in python_real_repo_eval_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in python_static_limit_eval_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in python_no_action_eval_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in typescript_preview_repair_loop_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in bun_ub_cross_language_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in user_surface_projection_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    for run in pr_inline_comment_runs {
+        if !run.errors.is_empty() {
+            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
+        }
+    }
+    if !failed.is_empty() {
+        return Err(format!(
+            "dogfood: {} scenario family/families recorded errors: {}",
+            failed.len(),
+            failed.join("; ")
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn dogfood_scenarios() -> Vec<DogfoodScenario> {
