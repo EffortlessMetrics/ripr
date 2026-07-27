@@ -359,4 +359,3 @@ pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
         .map(|text| text.trim().to_string())
         .map_err(|err| format!("failed to read {}: {err}", path.display()))
 }
-

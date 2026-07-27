@@ -10,19 +10,19 @@ use super::{
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RiprConfig {
-    pub(super) analysis: AnalysisConfig,
-    pub(super) oracles: OraclePolicy,
-    pub(super) severity: SeverityConfig,
-    pub(super) lsp: LspConfig,
-    pub(super) reports: ReportsConfig,
-    pub(super) suppressions: SuppressionsConfig,
-    pub(super) languages: LanguagesConfig,
-    pub(super) profiles: ProfilesConfig,
-    pub(super) typescript: TypescriptConfig,
-    pub(super) perl: PerlConfig,
-    pub(super) source_path: Option<PathBuf>,
-    pub(super) source_text: Option<String>,
+pub struct RiprConfig {
+    pub analysis: AnalysisConfig,
+    pub oracles: OraclePolicy,
+    pub severity: SeverityConfig,
+    pub lsp: LspConfig,
+    pub reports: ReportsConfig,
+    pub suppressions: SuppressionsConfig,
+    pub languages: LanguagesConfig,
+    pub profiles: ProfilesConfig,
+    pub typescript: TypescriptConfig,
+    pub perl: PerlConfig,
+    pub source_path: Option<PathBuf>,
+    pub source_text: Option<String>,
 }
 
 impl RiprConfig {
@@ -77,9 +77,9 @@ impl RiprConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct AnalysisConfig {
-    pub(super) mode: Option<Mode>,
-    pub(super) include_unchanged_tests: Option<bool>,
+pub struct AnalysisConfig {
+    pub mode: Option<Mode>,
+    pub include_unchanged_tests: Option<bool>,
 }
 
 impl AnalysisConfig {
@@ -93,10 +93,10 @@ impl AnalysisConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OraclePolicy {
-    pub(super) snapshot_strength: OracleStrength,
-    pub(super) mock_expectation_strength: OracleStrength,
-    pub(super) broad_error_strength: OracleStrength,
+pub struct OraclePolicy {
+    pub snapshot_strength: OracleStrength,
+    pub mock_expectation_strength: OracleStrength,
+    pub broad_error_strength: OracleStrength,
 }
 
 impl Default for OraclePolicy {
@@ -140,13 +140,13 @@ impl OraclePolicy {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LspConfig {
-    pub(super) seam_diagnostics: Option<bool>,
-    pub(super) diagnostic_profile: Option<LspDiagnosticProfile>,
+pub struct LspConfig {
+    pub seam_diagnostics: Option<bool>,
+    pub diagnostic_profile: Option<LspDiagnosticProfile>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum LspDiagnosticProfile {
+pub enum LspDiagnosticProfile {
     #[default]
     Actionable,
     Full,
@@ -191,8 +191,8 @@ impl LspConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ReportsConfig {
-    pub(super) max_related_tests: usize,
+pub struct ReportsConfig {
+    pub max_related_tests: usize,
 }
 
 impl Default for ReportsConfig {
@@ -210,8 +210,8 @@ impl ReportsConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SuppressionsConfig {
-    pub(super) path: PathBuf,
+pub struct SuppressionsConfig {
+    pub path: PathBuf,
 }
 
 impl Default for SuppressionsConfig {
@@ -237,13 +237,13 @@ impl SuppressionsConfig {
 /// All options default to `false` / off. This section may be absent from
 /// `ripr.toml`; absence is equivalent to `TypescriptConfig::default()`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TypescriptConfig {
+pub struct TypescriptConfig {
     /// When `true`, the adapter reads `compilerOptions.paths` from `tsconfig.json`
     /// (or `jsconfig.json`) and uses the alias map to resolve non-relative import
     /// specifiers to workspace files during owner↔test discovery.
     ///
     /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
-    pub(super) resolve_tsconfig_paths: bool,
+    pub resolve_tsconfig_paths: bool,
 }
 
 impl TypescriptConfig {
@@ -258,8 +258,8 @@ impl TypescriptConfig {
 /// will dispatch to. The default is `["rust"]`. Adding `typescript` or
 /// `python` opts in to the preview adapters once they ship.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LanguagesConfig {
-    pub(super) enabled: Vec<LanguageId>,
+pub struct LanguagesConfig {
+    pub enabled: Vec<LanguageId>,
 }
 
 impl Default for LanguagesConfig {
@@ -293,18 +293,18 @@ impl LanguagesConfig {
 /// When `producer` is `None` (default), the user must supply `--perl-facts
 /// PATH` explicitly. No silent invocation occurs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PerlConfig {
+pub struct PerlConfig {
     /// When `"perllsp"`, enables managed producer mode.
-    pub(super) producer: Option<String>,
+    pub producer: Option<String>,
     /// Override path to the Perl facts exporter executable. The canonical
     /// binary is `perl-ripr-facts`; `perllsp` and `perl-lsp` are
     /// compatibility wrappers. When `None`, uses `perllsp` from PATH.
-    pub(super) executable: Option<PathBuf>,
+    pub executable: Option<PathBuf>,
     /// Timeout in milliseconds for the producer invocation. Default: 30000.
-    pub(super) timeout_ms: u64,
+    pub timeout_ms: u64,
     /// Cache directory for produced fact packets. Default:
     /// `target/ripr/perl-facts/`.
-    pub(super) cache_dir: Option<PathBuf>,
+    pub cache_dir: Option<PathBuf>,
 }
 
 impl PerlConfig {
@@ -330,8 +330,8 @@ impl PerlConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProfilesConfig {
-    pub(super) bun_ub: Option<BunUbProfileConfig>,
+pub struct ProfilesConfig {
+    pub bun_ub: Option<BunUbProfileConfig>,
 }
 
 impl ProfilesConfig {
@@ -341,9 +341,9 @@ impl ProfilesConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BunUbProfileConfig {
-    pub(super) test_roots: Vec<String>,
-    pub(super) bridge_hints: PathBuf,
+pub struct BunUbProfileConfig {
+    pub test_roots: Vec<String>,
+    pub bridge_hints: PathBuf,
 }
 
 impl BunUbProfileConfig {
@@ -357,7 +357,7 @@ impl BunUbProfileConfig {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConfigSeverity {
+pub enum ConfigSeverity {
     Off,
     Info,
     Warning,
@@ -384,9 +384,9 @@ impl ConfigSeverity {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SeverityConfig {
-    pub(super) findings: FindingSeverityConfig,
-    pub(super) seams: SeamSeverityConfig,
+pub struct SeverityConfig {
+    pub findings: FindingSeverityConfig,
+    pub seams: SeamSeverityConfig,
 }
 
 impl SeverityConfig {
@@ -400,14 +400,14 @@ impl SeverityConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct FindingSeverityConfig {
-    pub(super) exposed: ConfigSeverity,
-    pub(super) weakly_exposed: ConfigSeverity,
-    pub(super) reachable_unrevealed: ConfigSeverity,
-    pub(super) no_static_path: ConfigSeverity,
-    pub(super) infection_unknown: ConfigSeverity,
-    pub(super) propagation_unknown: ConfigSeverity,
-    pub(super) static_unknown: ConfigSeverity,
+pub struct FindingSeverityConfig {
+    pub exposed: ConfigSeverity,
+    pub weakly_exposed: ConfigSeverity,
+    pub reachable_unrevealed: ConfigSeverity,
+    pub no_static_path: ConfigSeverity,
+    pub infection_unknown: ConfigSeverity,
+    pub propagation_unknown: ConfigSeverity,
+    pub static_unknown: ConfigSeverity,
 }
 
 impl Default for FindingSeverityConfig {
@@ -439,18 +439,18 @@ impl FindingSeverityConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct SeamSeverityConfig {
-    pub(super) strongly_gripped: ConfigSeverity,
-    pub(super) weakly_gripped: ConfigSeverity,
-    pub(super) ungripped: ConfigSeverity,
-    pub(super) reachable_unrevealed: ConfigSeverity,
-    pub(super) activation_unknown: ConfigSeverity,
-    pub(super) propagation_unknown: ConfigSeverity,
-    pub(super) observation_unknown: ConfigSeverity,
-    pub(super) discrimination_unknown: ConfigSeverity,
-    pub(super) opaque: ConfigSeverity,
-    pub(super) intentional: ConfigSeverity,
-    pub(super) suppressed: ConfigSeverity,
+pub struct SeamSeverityConfig {
+    pub strongly_gripped: ConfigSeverity,
+    pub weakly_gripped: ConfigSeverity,
+    pub ungripped: ConfigSeverity,
+    pub reachable_unrevealed: ConfigSeverity,
+    pub activation_unknown: ConfigSeverity,
+    pub propagation_unknown: ConfigSeverity,
+    pub observation_unknown: ConfigSeverity,
+    pub discrimination_unknown: ConfigSeverity,
+    pub opaque: ConfigSeverity,
+    pub intentional: ConfigSeverity,
+    pub suppressed: ConfigSeverity,
 }
 
 impl Default for SeamSeverityConfig {
@@ -490,7 +490,7 @@ impl SeamSeverityConfig {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CheckInputExplicit {
+pub struct CheckInputExplicit {
     pub(crate) mode: bool,
     pub(crate) include_unchanged_tests: bool,
 }
@@ -502,11 +502,11 @@ pub(crate) struct CheckInputExplicit {
 /// same PR. The classification is closed: the field enumerator destructures
 /// every config struct without `..`, so an unclassified field fails to
 /// compile, and a unit test pins the resulting role of every field.
-pub(crate) const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 1;
+pub const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 1;
 
 /// How one `ripr.toml` field participates in the check-artifact identity gate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConfigIdentityRole {
+pub enum ConfigIdentityRole {
     /// Finding-affecting: the canonical value is hashed into the config
     /// identity, so a changed value fails artifact reuse closed.
     FindingAffecting,
@@ -521,7 +521,7 @@ pub(crate) enum ConfigIdentityRole {
 
 /// One classified config field in the check-artifact identity contract.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConfigIdentityField {
+pub struct ConfigIdentityField {
     /// Dotted field path as written in `ripr.toml` (or the loader container).
     pub(crate) name: &'static str,
     pub(crate) role: ConfigIdentityRole,

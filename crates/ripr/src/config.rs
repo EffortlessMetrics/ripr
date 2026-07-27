@@ -14,7 +14,7 @@ mod model;
 mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
-pub(crate) use model::{
+pub use model::{
     CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
     LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TypescriptConfig,
 };
