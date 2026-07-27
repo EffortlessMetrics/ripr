@@ -18542,6 +18542,12 @@ fn should_skip_path(path: &str) -> bool {
 }
 
 fn is_static_language_candidate(path: &str) -> bool {
+    // Skip fixture CHANGELOG files (#2338): these contain bless reasons that
+    // may legitimately reference banned words (e.g. "reword 'proven'"). They
+    // are bookkeeping, not product output or source prose.
+    if path.contains("/expected/CHANGELOG.md") || path == "expected/CHANGELOG.md" {
+        return false;
+    }
     let extensions = [".md", ".rs", ".txt", ".json", ".toml", ".yml", ".yaml"];
     extensions.iter().any(|extension| path.ends_with(extension))
 }
