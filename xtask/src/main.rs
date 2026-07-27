@@ -19110,6 +19110,10 @@ fn is_process_policy_candidate(path: &str) -> bool {
 fn is_network_policy_candidate(path: &str) -> bool {
     path.ends_with(".rs")
         || path.ends_with(".ts")
+        || path.ends_with(".py")
+        || path.ends_with(".js")
+        || path.ends_with(".sh")
+        || path.ends_with(".ps1")
         || path.ends_with(".yml")
         || path.ends_with(".yaml")
 }
@@ -19130,6 +19134,7 @@ fn process_policy_patterns() -> Vec<String> {
 
 fn network_policy_patterns() -> Vec<String> {
     [
+        // Original patterns.
         concat!("https", ".get"),
         concat!("fetch", "("),
         concat!("req", "west"),
@@ -19137,6 +19142,20 @@ fn network_policy_patterns() -> Vec<String> {
         concat!("Tcp", "Stream"),
         concat!("cu", "rl"),
         concat!("w", "get"),
+        // Expanded patterns (#2412): cover common Rust/JS networking crates
+        // that were previously invisible to the gate. Split with concat! so
+        // the gate does not flag its own source (same technique as the
+        // original patterns above).
+        concat!("hy", "per"),
+        concat!("isa", "hc"),
+        concat!("atto", "httpc"),
+        concat!("min", "req"),
+        concat!("tokio::", "net"),
+        concat!("std::net::", "Tcp"),
+        concat!("to", "nic::"),
+        concat!("tungste", "nite"),
+        concat!("ssh", "2::"),
+        concat!("req", "west::Client"),
     ]
     .iter()
     .map(|value| value.to_string())
