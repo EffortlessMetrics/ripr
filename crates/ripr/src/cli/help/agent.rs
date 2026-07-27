@@ -25,7 +25,7 @@ Usage: ripr agent start [--root PATH] --seam-id ID [--out PATH]
 Options:
   --root PATH      Workspace root. Defaults to current directory.
   --seam-id ID     Select one visible seam by ID.
-  --out PATH       Workflow output directory. Defaults to target/ripr/workflow.
+  --out PATH       Workflow output directory (relative to --root). Defaults to target/ripr/workflow.
 
 The start command writes a source-edit-free workflow packet for one seam:
 workflow.json, commands.md, and agent-brief.json. The packet contains artifact

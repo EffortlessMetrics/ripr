@@ -93,7 +93,7 @@ fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
         &input.root,
         &options.root,
         &input.mode,
-        &options.out_dir,
+        &out_dir,
         &options.seam_id,
         &agent_brief_json,
     )?;
