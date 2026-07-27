@@ -51,6 +51,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// Generous per-read budget so a hung server fails fast with a clear
 /// message instead of blocking CI; far above healthy response latency.
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+/// Extended budget for requests that trigger a full workspace analysis
+/// (e.g. `ripr.refresh`). On Windows, NTFS I/O and process spawn latency
+/// can push analysis past the standard 15s budget (#2495). Measured at
+/// ~62s on a warm Windows cache; 90s gives headroom for cold-cache runs.
+const ANALYSIS_TIMEOUT: Duration = Duration::from_secs(90);
 /// Budget for the process to terminate after `exit`/EOF.
 const EXIT_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -219,6 +224,17 @@ impl LspSession {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
+        self.request_with_timeout(method, params, RESPONSE_TIMEOUT)
+    }
+
+    /// Like [`request`](Self::request) but with an explicit timeout for
+    /// requests that trigger heavier work (e.g. full-workspace analysis).
+    fn request_with_timeout(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<serde_json::Value, String> {
         let id = self.next_id;
         self.next_id += 1;
         let message = serde_json::json!({
@@ -228,7 +244,7 @@ impl LspSession {
             "params": params,
         });
         self.send_frame(message.to_string().as_bytes())?;
-        self.await_response(id, RESPONSE_TIMEOUT)
+        self.await_response(id, timeout)
     }
 
     fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), String> {
@@ -1263,10 +1279,13 @@ fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String
     }
 
     // Step 3: explicit refresh is the demand path that commits the first
-    // snapshot (RIPR-SPEC-0105); its result is null.
-    let refresh = session.request(
+    // snapshot (RIPR-SPEC-0105); its result is null. This request triggers
+    // a full workspace analysis and may exceed the standard RESPONSE_TIMEOUT
+    // on Windows, so it uses ANALYSIS_TIMEOUT (#2495).
+    let refresh = session.request_with_timeout(
         "workspace/executeCommand",
         serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+        ANALYSIS_TIMEOUT,
     )?;
     protocol_sequence.push("workspace/executeCommand ripr.refresh".to_string());
     let refresh_result = expect_result(&refresh, "ripr.refresh")?;
