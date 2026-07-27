@@ -80,6 +80,24 @@ jobs:
           shared-key: ripr-windows-advisory-1.95-${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # Feature-combination testing (#2400): verify --no-default-features and
+      # --all-features compile and test. These paths are never exercised by the
+      # default CI which always uses all three language features.
+      - name: Check --no-default-features (advisory)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo check -p ripr --no-default-features --features lang-rust --all-targets 2>&1 | tee target/nofeatures-check.log; printf '%s\n' "${PIPESTATUS[0]}" > target/nofeatures-check.status; exit 0
+
+      - name: Test --no-default-features (advisory)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo test -p ripr --no-default-features --features lang-rust --no-fail-fast 2>&1 | tee target/nofeatures-test.log; printf '%s\n' "${PIPESTATUS[0]}" > target/nofeatures-test.status; exit 0
+
+      - name: Check --all-features (advisory)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo check -p ripr --all-features --all-targets 2>&1 | tee target/allfeatures-check.log; printf '%s\n' "${PIPESTATUS[0]}" > target/allfeatures-check.status; exit 0
+
       # Every `run:` below uses a `|` block scalar. A plain YAML scalar treats
       # ` #` as the start of a comment, which silently truncates a command
       # mid-string and leaves an unterminated quote for the shell.
@@ -124,6 +142,25 @@ jobs:
         run: |
           cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status | tee target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Summarize feature-combination results
+        shell: bash
+        run: |
+          echo "" >> target/windows-verdict.md
+          echo "### Feature-combination tests (#2400)" >> target/windows-verdict.md
+          echo "" >> target/windows-verdict.md
+          for label in nofeatures-check nofeatures-test allfeatures-check; do
+            status_file="target/${label}.status"
+            if [ -f "$status_file" ]; then
+              status=$(cat "$status_file")
+              if [ "$status" = "0" ]; then
+                echo "- $label: PASS" >> target/windows-verdict.md
+              else
+                echo "- $label: FAIL (exit $status)" >> target/windows-verdict.md
+              fi
+            fi
+          done
+          cat target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload advisory logs
         if: always()
         uses: actions/upload-artifact@v7
@@ -136,4 +173,10 @@ jobs:
             target/windows-run2.log
             target/windows-run1.status
             target/windows-run2.status
+            target/nofeatures-check.log
+            target/nofeatures-check.status
+            target/nofeatures-test.log
+            target/nofeatures-test.status
+            target/allfeatures-check.log
+            target/allfeatures-check.status
           if-no-files-found: ignore
