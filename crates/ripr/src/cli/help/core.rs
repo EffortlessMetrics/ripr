@@ -225,6 +225,12 @@ Options:
                Limit the index to changed Rust files. With --from, an
                artifact written with this flag is consumable only when the
                same setting resolves here (flag or ripr.toml).
+
+Performance:
+  Use --from to skip re-analysis when you already ran
+  `ripr check --write-artifact PATH`. This avoids re-parsing the diff and
+  re-classifying every probe — useful for large diffs and scripted workflows
+  that run check, explain, and context in sequence.
 "#;
 pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
 
@@ -242,6 +248,10 @@ Options:
   --no-unchanged-tests
                Limit the index to changed Rust files. With --from, feeds
                the identity recomputation (see `ripr explain --help`).
+
+Performance:
+  Use --from to skip re-analysis when you already ran
+  `ripr check --write-artifact PATH` (see `ripr explain --help`).
 "#;
 pub(super) const DOCTOR_HELP: &str = r#"Diagnose the local ripr setup (Rust toolchain, workspace, paths).
 
