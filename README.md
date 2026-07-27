@@ -173,7 +173,7 @@ release and distribution authority.
 | See behavior contracts and architecture | [Specs](docs/specs/README.md) · [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) |
 | Follow direction and active work | [Roadmap](docs/ROADMAP.md) · [Plan](docs/IMPLEMENTATION_PLAN.md) · [Campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) · [Codex Goals](docs/CODEX_GOALS.md) |
 | Contribute a scoped PR | [Contributing](CONTRIBUTING.md) · [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) · [PR automation](docs/PR_AUTOMATION.md) |
-| Everything else | [Documentation index](docs/DOCUMENTATION.md) |
+| Everything else | [Documentation index](docs/README.md) |
 
 ## Contributing
 
