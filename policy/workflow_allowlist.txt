@@ -7,6 +7,7 @@
 # than embed complex shell programs. This file allows known workflow blocks
 # while keeping the budget visible.
 
+.github/workflows/auto-resolve-bot-threads.yml|1|Auto-resolve bot review threads via gh api graphql calls delegated to a single script block.
 .github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to cargo xtask and opens a PR.
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
@@ -22,5 +23,5 @@
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
-.github/workflows/windows-advisory.yml|1|Advisory Windows lane keeps each run block to one shell command; the log-to-verdict logic lives in cargo xtask windows-advisory-summary rather than in YAML.
 .github/workflows/ub-review.yml|0|ub-review workflow delegates entirely to the EffortlessMetrics/ub-review action (no inline run blocks); see #1469.
+.github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.

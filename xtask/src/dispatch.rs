@@ -57,9 +57,15 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::LspCockpitReport => super::reports::lsp_cockpit_report(),
         XtaskCommand::OperatorCockpitReport => super::reports::operator_cockpit_report(),
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),
-        XtaskCommand::ReleaseServerArchive(args) => super::release_server_archive(&args),
-        XtaskCommand::ReleaseServerManifest(args) => super::release_server_manifest(&args),
-        XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
+        XtaskCommand::ReleaseServerArchive(args) => {
+            super::reports::release_server::release_server_archive(&args)
+        }
+        XtaskCommand::ReleaseServerManifest(args) => {
+            super::reports::release_server::release_server_manifest(&args)
+        }
+        XtaskCommand::ReleaseUploadAssets(args) => {
+            super::reports::release_server::release_upload_assets(&args)
+        }
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
         XtaskCommand::BunUbCalibration(args) => super::reports::bun_ub_calibration(&args),

@@ -9,14 +9,15 @@
 
 crates/ripr/src/analysis/diff/load.rs|expect(clippy::expect_used)|1|Test module: `.expect_err("why")` carries the intended failure mode in the assertion message.
 crates/ripr/src/analysis/diff/mod.rs|allow(unused_imports)|1|ChangedLine is re-exported for use by probes.rs and other external modules; not used within diff module itself.
+crates/ripr/src/analysis/diff/path.rs|allow(dead_code)|1|parse_old_path_for_confinement reserved for future rename/copy-detection features that consume the old-path marker (#2402).
+crates/ripr/src/analysis/language/perl/mod.rs|allow(dead_code)|1|Perl strict-actionability scaffold is feature-gated and exercised by tests before public projection is enabled; reviewed suppression in place of a cfg_attr wrapper the allow-attribute gate could not inventory.
 crates/ripr/src/analysis/mod.rs|expect(clippy::unwrap_used)|1|Test module: fixture builders unwrap fs operations against fresh temp dirs.
 crates/ripr/src/analysis/pipeline.rs|expect(clippy::expect_used)|1|Test module: `.expect_err("why")` carries the intended file-system failure mode.
+crates/ripr/src/analysis/repair_route.rs|allow(dead_code)|3|Typed new-test target selection is an explicit producer contract reserved until RustIndex supplies proposal facts; no renderer infers a target.
+crates/ripr/src/app/check.rs|allow(dead_code)|2|item 4b: PERL_FACTS_MAX_AGE_SECS + cached_packet_is_fresh retained for future content-keyed cache reuse; intentionally bypassed until content-hash key is implemented
+crates/ripr/src/git.rs|allow(dead_code)|1|Shared git helper: new module awaiting call-site migration in follow-up slice (#2295).
 crates/ripr/tests/cli_smoke.rs|expect(clippy::unwrap_used)|1|CLI smoke test: unwrap on Command::output() and CARGO_MANIFEST_DIR's parent chain is the canonical fail-fast pattern.
 xtask/src/main.rs|expect(clippy::expect_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 xtask/src/no_panic.rs|expect(clippy::unwrap_used)|1|no-panic test module (extracted from main.rs in the #2119 decomposition): production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
-crates/ripr/src/app/check.rs|allow(dead_code)|2|item 4b: PERL_FACTS_MAX_AGE_SECS + cached_packet_is_fresh retained for future content-keyed cache reuse; intentionally bypassed until content-hash key is implemented
-crates/ripr/src/analysis/repair_route.rs|allow(dead_code)|3|Typed new-test target selection is an explicit producer contract reserved until RustIndex supplies proposal facts; no renderer infers a target.
-crates/ripr/src/analysis/language/perl/mod.rs|allow(dead_code)|1|Perl strict-actionability scaffold is feature-gated and exercised by tests before public projection is enabled; reviewed suppression in place of a cfg_attr wrapper the allow-attribute gate could not inventory.
-crates/ripr/src/git.rs|allow(dead_code)|1|Shared git helper: new module awaiting call-site migration in follow-up slice (#2295).
-crates/ripr/src/analysis/diff/path.rs|allow(dead_code)|1|parse_old_path_for_confinement reserved for future rename/copy-detection features that consume the old-path marker (#2402).
+xtask/src/types.rs|allow(dead_code)|4|Test-only types (CheckStatus/CheckViolation/CheckReport/AutoFixable) used via super::* glob in tests.rs; dead in non-test builds
