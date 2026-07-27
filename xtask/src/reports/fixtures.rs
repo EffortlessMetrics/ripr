@@ -730,7 +730,14 @@ fn snapshot_line_preview(line: &str) -> String {
 }
 
 pub(crate) fn normalize_fixture_json_output(value: &str) -> String {
-    value.replace("\\\\", "/")
+    // #2337: match the human normalizer's approach — replace ALL backslashes
+    // with forward slashes, not just the escaped double-backslash form. On
+    // Windows, ripr check --json can emit single-backslash paths inside
+    // free-text string values (error messages, code excerpts). The previous
+    // normalizer only handled the `\\` (JSON-escaped) form, missing these.
+    // First replace `\\` (the JSON-escaped form), then replace any remaining
+    // single `\` — matching the human normalizer at line 737.
+    value.replace("\\\\", "/").replace('\\', "/")
 }
 
 pub(crate) fn normalize_fixture_human_output(value: &str) -> String {
@@ -1452,3 +1459,37 @@ fn non_empty_reason(value: &str) -> Result<String, String> {
 pub(crate) use self::fixtures_impl as fixtures;
 pub(crate) use self::golden_drift_impl as golden_drift;
 pub(crate) use self::goldens_impl as goldens;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_json_handles_double_backslash() {
+        let input = r#"{"path":"crates\\ripr\\src\\lib.rs"}"#;
+        let out = normalize_fixture_json_output(input);
+        assert!(
+            !out.contains('\\'),
+            "double backslash must be normalized: {out}"
+        );
+    }
+
+    #[test]
+    fn normalize_json_handles_single_backslash() {
+        // #2337: single backslash in free-text fields (code excerpts, error
+        // messages) must also be normalized.
+        let input = r#"{"expression":"a\b\c"}"#;
+        let out = normalize_fixture_json_output(input);
+        assert!(
+            !out.contains('\\'),
+            "single backslash must be normalized: {out}"
+        );
+    }
+
+    #[test]
+    fn normalize_json_preserves_no_backslash_content() {
+        let input = r#"{"path":"src/lib.rs","count":42}"#;
+        let out = normalize_fixture_json_output(input);
+        assert_eq!(out, input);
+    }
+}
