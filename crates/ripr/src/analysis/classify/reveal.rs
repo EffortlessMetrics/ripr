@@ -348,7 +348,7 @@ fn assertion_matches_probe_detail_with_literals(
 ) -> (bool, bool) {
     let token_match = probe_tokens
         .iter()
-        .any(|token| token.len() > 3 && assertion.text.contains(token.as_str()));
+        .any(|token| contains_as_whole_word(&assertion.text, token));
     let effect_literal_match = !effect_literals.is_empty()
         && rust_string_literals(&assertion.text)
             .iter()
@@ -359,7 +359,7 @@ fn assertion_matches_probe_detail_with_literals(
     let has_token_match = if matches!(family, ProbeFamily::MatchArm) {
         match_arm_variants
             .iter()
-            .any(|v| v.len() > 3 && assertion.text.contains(v.as_str()))
+            .any(|v| contains_as_whole_word(&assertion.text, v))
     } else {
         token_match || effect_literal_match
     };
@@ -371,7 +371,7 @@ fn assertion_matches_probe_detail_with_literals(
         && matches!(assertion.kind, OracleKind::ExactErrorVariant)
         && let Some(variant) = error_path_variant
     {
-        let variant_matches = variant.len() > 3 && assertion.text.contains(variant);
+        let variant_matches = contains_as_whole_word(&assertion.text, variant);
         return (variant_matches, variant_matches);
         // Probe has no parseable variant: falls through to standard match below.
     }
@@ -398,6 +398,37 @@ fn assertion_matches_probe_detail(
         assertion,
         assertion_count,
     )
+}
+
+/// Check whether `text` contains `token` as a whole word — delimited by
+/// non-identifier characters (or string boundaries) on both sides. This
+/// replaces the old `token.len() > 3` gate, which filtered out short tokens
+/// like `id`, `key`, `sum` entirely. With word-boundary matching, a short
+/// token matches `result.id` or `id == 42` but NOT `provider` or `middle`
+/// (#2397).
+///
+/// Uses `is_ident_char` (alphanumeric + underscore) for boundary checks,
+/// matching Rust identifier rules: `_` is part of an identifier, so `err`
+/// does NOT match inside `is_err`.
+fn contains_as_whole_word(text: &str, token: &str) -> bool {
+    fn is_ident_char(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+    if token.is_empty() {
+        return false;
+    }
+    let mut start = 0;
+    while let Some(pos) = text[start..].find(token) {
+        let abs_pos = start + pos;
+        let end_pos = abs_pos + token.len();
+        let before_ok = abs_pos == 0 || !is_ident_char(text.as_bytes()[abs_pos - 1]);
+        let after_ok = end_pos >= text.len() || !is_ident_char(text.as_bytes()[end_pos]);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs_pos + 1;
+    }
+    false
 }
 
 fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
@@ -1548,13 +1579,15 @@ mod tests {
     #[test]
     fn call_deletion_with_token_match_does_not_emit_observation_unverified() {
         // "log_audit_event(record)" — tokens: ["log_audit_event", "record"].
-        // Assertion "assert!(log_audit_event_was_called);" contains
-        // "log_audit_event" (the full call token).
+        // Assertion "assert!(log_audit_event());" contains
+        // "log_audit_event" as a whole-word match (#2397: the word-boundary
+        // check correctly distinguishes `log_audit_event` from a different
+        // identifier like `log_audit_event_was_called`).
         let probe = probe(ProbeFamily::CallDeletion, "log_audit_event(record)");
         let test = test_with_assertions(
             "audit_event_logged",
             vec![oracle(
-                "assert!(log_audit_event_was_called);",
+                "assert!(log_audit_event());",
                 OracleKind::ExactValue,
                 OracleStrength::Strong,
             )],
@@ -1812,5 +1845,42 @@ mod tests {
             !is_effect_family(&ProbeFamily::ErrorPath),
             "ErrorPath must not be classified as an effect family (mocks must not clear observation_unverified)"
         );
+    }
+
+    // ── Short-token word-boundary matching (#2397) ───────────────────────────
+
+    #[test]
+    fn whole_word_match_accepts_short_token_in_field_access() {
+        assert!(contains_as_whole_word("assert_eq!(result.id, 42)", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_accepts_short_token_in_equality() {
+        assert!(contains_as_whole_word("assert!(id == 42)", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_rejects_short_token_as_substring() {
+        // The anti-substring property: `id` must NOT match inside `provider`
+        // or `middle`. This is what the old `> 3` gate tried to protect
+        // against — word-boundary matching achieves it without filtering by
+        // length.
+        assert!(!contains_as_whole_word("provider", "id"));
+        assert!(!contains_as_whole_word("middle", "id"));
+        assert!(!contains_as_whole_word("candidate", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_accepts_long_token() {
+        // Long tokens that matched under the old gate still match.
+        assert!(contains_as_whole_word(
+            "assert_eq!(priority, high)",
+            "priority"
+        ));
+    }
+
+    #[test]
+    fn whole_word_match_rejects_empty_token() {
+        assert!(!contains_as_whole_word("anything", ""));
     }
 }
