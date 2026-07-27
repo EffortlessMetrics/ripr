@@ -197,6 +197,12 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
         ));
     }
     let run = run_fixture_outputs(&fixture)?;
+
+    // Integrity guards (#2410): validate the run output BEFORE copying it
+    // over the expected files. A regression that produces empty/garbage
+    // output must not be silently blessed as the new golden.
+    validate_bless_output(&run, &fixture)?;
+
     let expected = fixture.join("expected");
     fs::create_dir_all(&expected)
         .map_err(|err| format!("failed to create {}: {err}", normalize_path(&expected)))?;
@@ -449,6 +455,62 @@ fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
         &run.human_full_txt,
     )?;
     Ok(FixtureRun { comparisons, ..run })
+}
+
+/// Validate the run output before blessing it as the new golden (#2410).
+/// Refuses to copy files that are malformed, empty, or show a suspicious
+/// finding-count collapse — the classic regression signature.
+fn validate_bless_output(run: &FixtureRun, fixture: &Path) -> Result<(), String> {
+    // 1. check.json must be valid JSON with expected top-level fields.
+    let json_text = read_text_lossy(&run.check_json)?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_text).map_err(|err| {
+        format!(
+            "goldens bless: check.json is not valid JSON for {}: {err}",
+            run.name
+        )
+    })?;
+    if parsed.get("findings").is_none() {
+        return Err(format!(
+            "goldens bless: check.json for {} has no 'findings' field — output may be malformed",
+            run.name
+        ));
+    }
+
+    // 2. Zero-finding guard: if the new output has 0 findings but the
+    //    previous expected had >0, this is likely a regression. Compare
+    //    against the existing expected/check.json before overwriting.
+    let new_count = parsed["findings"].as_array().map(|a| a.len()).unwrap_or(0);
+    if new_count == 0 {
+        let expected_path = fixture.join("expected/check.json");
+        if expected_path.exists()
+            && let Ok(old_text) = read_text_lossy(&expected_path)
+            && let Ok(old_json) = serde_json::from_str::<serde_json::Value>(&old_text)
+        {
+            let old_count = old_json["findings"]
+                .as_array()
+                .map(|a| a.len())
+                .unwrap_or(0);
+            if old_count > 0 {
+                return Err(format!(
+                    "goldens bless: check.json for {} dropped from {old_count} to 0 findings — \
+                     this likely indicates a regression, not a golden update. \
+                     If intentional, inspect the diff manually before re-blessing.",
+                    run.name
+                ));
+            }
+        }
+    }
+
+    // 3. human.txt must be non-empty.
+    let human_text = read_text_lossy(&run.human_txt)?;
+    if human_text.trim().is_empty() {
+        return Err(format!(
+            "goldens bless: human.txt for {} is empty — output may be malformed",
+            run.name
+        ));
+    }
+
+    Ok(())
 }
 
 fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
