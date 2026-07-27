@@ -4,6 +4,51 @@ use std::path::PathBuf;
 use super::model::{ChangedFile, ChangedLine};
 use super::path::{is_new_path_marker, parse_new_path_marker, parse_old_path_marker};
 
+/// Default file-count limit for parsed diffs. Same default as the Rust adapter
+/// (`analysis/language/rust.rs:DIFF_INDEX_FILE_LIMIT`); kept in sync so the
+/// parser-level guard is consistent with the adapter-level guard (#2398).
+const DEFAULT_DIFF_FILE_LIMIT: usize = 800;
+const DIFF_FILE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_INDEX_FILES";
+
+/// Parse a unified diff with a file-count bound that protects ALL language
+/// adapters, not just Rust (#2398). The bound is enforced at the parser level
+/// so the pipeline never hands an unbounded `Vec<ChangedFile>` to any adapter.
+///
+/// The error uses the `diff_scope_oversized:` prefix that
+/// `is_diff_scope_oversized()` (rust.rs:66) and the LSP limited-snapshot
+/// path already match, so existing detection logic works unchanged.
+pub fn parse_unified_diff_bounded(input: &str) -> Result<Vec<ChangedFile>, String> {
+    let limit = diff_file_limit_from_env();
+    parse_unified_diff_with_limit(input, limit)
+}
+
+/// Parse with an explicit file-count limit. Exposed for testing (#2398).
+pub(crate) fn parse_unified_diff_with_limit(
+    input: &str,
+    limit: usize,
+) -> Result<Vec<ChangedFile>, String> {
+    let files = parse_unified_diff(input);
+    if files.len() > limit {
+        return Err(format!(
+            "diff_scope_oversized: {} changed files exceed the {DIFF_FILE_LIMIT_ENV} \
+             limit ({limit}); analysis was not run to protect runner memory before \
+             probe expansion. Repair route: reduce the diff scope, split the extraction \
+             PR, run a narrower diff, or raise the limit via \
+             {DIFF_FILE_LIMIT_ENV}=<number>.",
+            files.len()
+        ));
+    }
+    Ok(files)
+}
+
+fn diff_file_limit_from_env() -> usize {
+    std::env::var(DIFF_FILE_LIMIT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_DIFF_FILE_LIMIT)
+}
+
 pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
     let mut state = parser_state::ParserState::default();
@@ -1120,5 +1165,35 @@ deleted file mode 100644
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         *seed
+    }
+
+    #[test]
+    fn bounded_parser_accepts_normal_diff() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let files = parse_unified_diff_bounded(diff).unwrap();
+        assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn bounded_parser_rejects_oversized_diff() {
+        // #2398: a diff with more files than the limit must fail closed
+        // with the diff_scope_oversized prefix that is_diff_scope_oversized
+        // matches.
+        let mut diff = String::new();
+        for i in 0..10 {
+            diff.push_str(&format!(
+                "diff --git a/src/file{i}.rs b/src/file{i}.rs\n--- a/src/file{i}.rs\n+++ b/src/file{i}.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+            ));
+        }
+        let result = parse_unified_diff_with_limit(&diff, 5);
+        let err = result.unwrap_err();
+        assert!(
+            err.starts_with("diff_scope_oversized"),
+            "error must use diff_scope_oversized prefix: {err}"
+        );
+        assert!(
+            err.contains("10 changed files"),
+            "error must name the file count: {err}"
+        );
     }
 }

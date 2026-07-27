@@ -96,7 +96,7 @@ fn run_pipeline_for_diff_text(
     languages: &[LanguageId],
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
-    let changed_files = diff::parse_unified_diff(diff_text);
+    let changed_files = diff::parse_unified_diff_bounded(diff_text)?;
 
     let mut findings: Vec<Finding> = Vec::new();
     // `changed_rust_files` counts Rust adapter files only (#2103); every
