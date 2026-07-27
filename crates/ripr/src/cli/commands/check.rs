@@ -274,6 +274,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if !scope_explicitly_provided && output.findings.is_empty() {
         output.no_scope_provided = true;
     }
+    // #2425: when --diff was explicitly provided but produced zero findings
+    // on a diff-scoped format, warn on stderr that the diff may be malformed.
+    // A non-diff file (log, source, random text) produces zero parsed files
+    // silently, which can be mistaken for a clean bill of health. This does
+    // NOT change the exit code or the JSON contract — stderr advisory only.
+    // Repo-scoped formats (repo-exposure-json, etc.) intentionally ignore
+    // --diff for their analysis scope, so the warning is gated to diff-scoped
+    // formats only.
+    if input_diff_file_is_some && output.findings.is_empty() && !format.is_repo_scope() {
+        eprintln!(
+            "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered."
+        );
+    }
     // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
     // diff) AND the working tree has uncommitted changes to tracked source files.
     // Those changes were NOT analyzed. A zero-finding result in this state must NOT
