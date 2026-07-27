@@ -1272,4 +1272,90 @@ mod tests {
         );
         Ok(())
     }
+
+    // ── HEAD binding (#1941, #2329) ──────────────────────────────────────────
+
+    /// Create a temp git repo with one commit and return (root, head_sha).
+    fn temp_git_repo() -> Result<(std::path::PathBuf, String), String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| err.to_string())?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-receipt-head-{stamp}"));
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        let run = |args: &[&str]| -> Result<(), String> {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .map_err(|err| format!("git {:?}: {err}", args))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "git {:?} failed: {}",
+                    args,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            Ok(())
+        };
+        run(&["init"])?;
+        run(&["config", "user.email", "test@example.com"])?;
+        run(&["config", "user.name", "Test"])?;
+        std::fs::write(dir.join("README"), "init").map_err(|err| err.to_string())?;
+        run(&["add", "."])?;
+        run(&["commit", "-m", "init"])?;
+        let head = resolve_git_head(&dir)
+            .ok_or_else(|| "resolve_git_head returned None for a fresh repo".to_string())?;
+        Ok((dir, head))
+    }
+
+    #[test]
+    fn head_binding_accepts_matching_head() -> Result<(), String> {
+        // #2329: when --root and --current-head are both provided, and the
+        // head matches git rev-parse HEAD, validation succeeds.
+        let (root, head) = temp_git_repo()?;
+        let opts = ReceiptWriteOptions {
+            canonical_gap_id: "gap:test".to_string(),
+            packet_id: None,
+            verify_command: "cargo test".to_string(),
+            verify_status: "passed".to_string(),
+            current_head: Some(head),
+            out: None,
+            json: true,
+            root: Some(root.clone()),
+        };
+        let result = validate_write_options(&opts);
+        let _ = std::fs::remove_dir_all(&root);
+        result
+    }
+
+    #[test]
+    fn head_binding_rejects_mismatched_head() -> Result<(), String> {
+        // #2329: when --current-head does not match the actual git HEAD at
+        // --root, validation fails with a #1941 message.
+        let (root, _real_head) = temp_git_repo()?;
+        let fake_head = "0".repeat(40);
+        let opts = ReceiptWriteOptions {
+            canonical_gap_id: "gap:test".to_string(),
+            packet_id: None,
+            verify_command: "cargo test".to_string(),
+            verify_status: "passed".to_string(),
+            current_head: Some(fake_head),
+            out: None,
+            json: true,
+            root: Some(root.clone()),
+        };
+        let result = validate_write_options(&opts);
+        let _ = std::fs::remove_dir_all(&root);
+        let err = match result {
+            Ok(()) => return Err("mismatched head must be rejected".to_string()),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("#1941") && err.contains("does not match"),
+            "error must reference #1941 and explain the mismatch: {err}"
+        );
+        Ok(())
+    }
 }
