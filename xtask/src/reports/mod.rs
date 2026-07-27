@@ -67,9 +67,9 @@ pub(crate) use dogfood::dogfood;
 pub(crate) use eval_sweep::eval_sweep;
 pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{
-    FixtureCheckFormat, fixture_dirs, fixtures, golden_drift, goldens, goldens_check,
-    is_manifest_only_fixture_dir, normalize_fixture_human_output, normalize_fixture_json_output,
-    ripr_fixture_binary, run_fixture_check, yes_no,
+    FixtureCheckFormat, fixture_dirs, fixtures, fixtures_with_args, golden_drift, goldens,
+    goldens_check, is_manifest_only_fixture_dir, normalize_fixture_human_output,
+    normalize_fixture_json_output, ripr_fixture_binary, run_fixture_check, yes_no,
 };
 #[cfg(test)]
 pub(crate) use fixtures::{

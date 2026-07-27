@@ -20,7 +20,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => super::precommit(),
         XtaskCommand::CheckPr => super::check_pr(),
-        XtaskCommand::Fixtures(name) => super::reports::fixtures(name.as_ref()),
+        XtaskCommand::Fixtures(args) => super::reports::fixtures_with_args(&args),
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
         XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),

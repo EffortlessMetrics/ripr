@@ -1493,3 +1493,118 @@ mod tests {
         assert_eq!(out, input);
     }
 }
+
+/// Route `fixtures` subcommands: `new <name>` scaffolds, everything else runs (#2445).
+pub(crate) fn fixtures_with_args(args: &[String]) -> Result<(), String> {
+    if let Some(sub) = args.first().map(String::as_str)
+        && sub == "new"
+    {
+        let name = args
+            .get(1)
+            .ok_or_else(|| "fixtures new requires a <name> argument".to_string())?;
+        return fixtures_new(name);
+    }
+    // Fall through to the existing runner (pass the first arg as the optional fixture name).
+    fixtures_impl(args.first())
+}
+
+/// Scaffold a new fixture directory with a seeded golden (#2445).
+fn fixtures_new(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return Err(format!(
+            "fixture name must be a simple directory name (no path separators): {name:?}"
+        ));
+    }
+    let fixture_dir = Path::new("fixtures").join(name);
+    if fixture_dir.exists() {
+        return Err(format!("fixture already exists: {}", fixture_dir.display()));
+    }
+
+    // Create the directory tree.
+    let input_dir = fixture_dir.join("input");
+    let src_dir = input_dir.join("src");
+    let expected_dir = fixture_dir.join("expected");
+    std::fs::create_dir_all(&src_dir).map_err(|err| format!("create {src_dir:?}: {err}"))?;
+    std::fs::create_dir_all(&expected_dir)
+        .map_err(|err| format!("create {expected_dir:?}: {err}"))?;
+
+    // Write SPEC.md with BDD structure.
+    let spec = format!(
+        "# Fixture: {name}\n\n\
+         Spec: RIPR-SPEC-NNNN\n\n\
+         ## Given\n\n\
+         (Describe the input code and test state.)\n\n\
+         ## When\n\n\
+         (Describe the diff that changes behavior.)\n\n\
+         ## Then\n\n\
+         (Describe the expected ripr findings.)\n\n\
+         ## Must Not\n\n\
+         (Describe what ripr must NOT report.)\n"
+    );
+    std::fs::write(fixture_dir.join("SPEC.md"), spec)
+        .map_err(|err| format!("write SPEC.md: {err}"))?;
+
+    // Write a minimal input workspace.
+    let cargo_toml =
+        format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n");
+    std::fs::write(input_dir.join("Cargo.toml"), cargo_toml)
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+
+    let lib_rs = "// Edit this file to set up the input source code.\n\
+                  pub fn example() -> i32 { 42 }\n";
+    std::fs::write(src_dir.join("lib.rs"), lib_rs).map_err(|err| format!("write lib.rs: {err}"))?;
+
+    // Write a minimal diff.patch.
+    let diff = "--- Edit this diff to describe the behavior change.\n\
+                diff --git a/src/lib.rs b/src/lib.rs\n\
+                --- a/src/lib.rs\n+++ b/src/lib.rs\n\
+                @@ -1,1 +1,1 @@\n\
+                -pub fn example() -> i32 { 42 }\n\
+                +pub fn example() -> i32 { 84 }\n";
+    std::fs::write(fixture_dir.join("diff.patch"), diff)
+        .map_err(|err| format!("write diff.patch: {err}"))?;
+
+    // Seed expected/check.json by running ripr check once.
+    let run = run_fixture_outputs(&fixture_dir);
+    match run {
+        Ok(run) => {
+            // Copy the actual output to expected.
+            std::fs::copy(&run.check_json, expected_dir.join("check.json"))
+                .map_err(|err| format!("seed check.json: {err}"))?;
+            if let Ok(human) = std::fs::read_to_string(&run.human_txt) {
+                std::fs::write(expected_dir.join("human.txt"), human)
+                    .map_err(|err| format!("seed human.txt: {err}"))?;
+            }
+        }
+        Err(err) => {
+            // Seeding failed — the fixture still has SPEC.md, input/, and diff.patch.
+            // The contributor can debug and run `cargo xtask goldens bless <name>` later.
+            eprintln!(
+                "warning: could not seed golden (the fixture is created but expected/ may be empty): {err}"
+            );
+        }
+    }
+
+    println!("Created fixture: {}", fixture_dir.display());
+    println!();
+    println!("Next steps:");
+    println!(
+        "  1. Edit {}/input/src/lib.rs to set up the source code.",
+        name
+    );
+    println!(
+        "  2. Edit {}/diff.patch to describe the behavior change.",
+        name
+    );
+    println!(
+        "  3. Edit {}/SPEC.md to fill in the Given/When/Then/Must Not.",
+        name
+    );
+    println!(
+        "  4. Run: cargo xtask goldens bless {} --reason \"initial scaffold\"",
+        name
+    );
+    println!("  5. Run: cargo xtask fixtures {} to verify.", name);
+
+    Ok(())
+}
