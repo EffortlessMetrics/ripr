@@ -24,7 +24,7 @@ pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<S
     explain_finding_with_config(input, selector, &RiprConfig::default())
 }
 
-pub(crate) fn explain_finding_with_config(
+pub fn explain_finding_with_config(
     input: CheckInput,
     selector: &str,
     config: &RiprConfig,

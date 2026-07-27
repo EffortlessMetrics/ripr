@@ -31,7 +31,7 @@ pub fn collect_context_with_input(
     collect_context_with_config(input, selector, max_related_tests, &RiprConfig::default())
 }
 
-pub(crate) fn collect_context_with_config(
+pub fn collect_context_with_config(
     input: CheckInput,
     selector: &str,
     max_related_tests: usize,

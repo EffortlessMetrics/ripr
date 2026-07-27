@@ -32,14 +32,14 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     check_workspace_with_config(input, &RiprConfig::default())
 }
 
-pub(crate) fn check_workspace_with_config(
+pub fn check_workspace_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
     run_check(input, config, AnalysisMode::Diff)
 }
 
-pub(crate) fn check_workspace_worktree_with_config(
+pub fn check_workspace_worktree_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
@@ -60,7 +60,7 @@ pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
     check_workspace_repo_with_config(input, &RiprConfig::default())
 }
 
-pub(crate) fn check_workspace_repo_with_config(
+pub fn check_workspace_repo_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
