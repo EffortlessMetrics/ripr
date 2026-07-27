@@ -15576,7 +15576,7 @@ fn check_count_policy(
             .unwrap_or(0);
         if *count > allowed {
             violations.push(format!(
-                "{path} contains `{pattern}` {count} time(s), allowed {allowed}"
+                "{path} contains `{pattern}` {count} time(s), allowed {allowed}\n  to allowlist, add to {allowlist_path}:\n  {path}|{pattern}|{count}|owner|reason"
             ));
         } else if *count < allowed {
             // Stale bound: the allowlist grants more budget than the code
