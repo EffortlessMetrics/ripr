@@ -275,13 +275,18 @@ fn language_runtime_probes(root: &Path) -> Vec<(&'static str, &'static str, &'st
             "install python3 (e.g. apt install python3)",
         ));
         // Reuse the shared framework detector (#2183 review) — no parallel
-        // marker list.
-        if analysis::detect_python_test_framework(root) == Some("pytest") {
-            probes.push((
-                "python",
-                "pytest",
-                "install pytest (e.g. pip install pytest)",
-            ));
+        // marker list. Gated behind lang-python: the detector lives in the
+        // Python adapter which is not compiled under --no-default-features
+        // --features lang-rust (#2418).
+        #[cfg(feature = "lang-python")]
+        {
+            if analysis::detect_python_test_framework(root) == Some("pytest") {
+                probes.push((
+                    "python",
+                    "pytest",
+                    "install pytest (e.g. pip install pytest)",
+                ));
+            }
         }
     }
     for id in [LanguageId::TypeScript, LanguageId::JavaScript] {
