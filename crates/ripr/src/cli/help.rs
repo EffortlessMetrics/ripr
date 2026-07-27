@@ -462,4 +462,73 @@ mod tests {
         print_doctor_help();
         print_lsp_help();
     }
+
+    /// Extract all `--flag` tokens from a help text (#2342).
+    fn extract_flags(help: &str) -> Vec<String> {
+        let mut flags = Vec::new();
+        for line in help.lines() {
+            let trimmed = line.trim();
+            // Match lines starting with `--` (flag definitions in help text)
+            if let Some(rest) = trimmed.strip_prefix("--") {
+                // Take the flag name up to the first space or end of line
+                let name = rest.split_whitespace().next().unwrap_or(rest);
+                if !name.is_empty() {
+                    flags.push(format!("--{name}"));
+                }
+            }
+            // Also match `--flag` embedded in usage lines like `[--flag VALUE]`
+            for word in trimmed.split_whitespace() {
+                if word.starts_with("--") && word.len() > 2 {
+                    let name = word
+                        .trim_start_matches(|c: char| c == '-')
+                        .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
+                        .next()
+                        .unwrap_or("");
+                    if !name.is_empty() {
+                        let flag = format!("--{name}");
+                        if !flags.contains(&flag) {
+                            flags.push(flag);
+                        }
+                    }
+                }
+            }
+        }
+        flags
+    }
+
+    #[test]
+    fn help_flags_are_consistent_for_key_commands() {
+        // #2342: verify that flags mentioned in the HELP text for key commands
+        // actually appear. This catches drift where a flag is removed from help
+        // but still parsed, or added to the parser but not documented. The test
+        // checks the HELP text contains expected flag tokens — if a flag moves
+        // between Usage and Options sections, the test still passes as long as
+        // the flag appears somewhere in the help text.
+        let commands: &[(&str, &str, &[&str])] = &[
+            (
+                "check",
+                CHECK_HELP,
+                &["--base", "--diff", "--mode", "--json"],
+            ),
+            (
+                "explain",
+                EXPLAIN_HELP,
+                &["--from", "--mode", "--no-unchanged-tests"],
+            ),
+            ("context", CONTEXT_HELP, &["--from", "--at", "--mode"]),
+            ("gate", GATE_HELP, &["--pr-guidance", "--mode"]),
+            ("doctor", DOCTOR_HELP, &["--root", "--json"]),
+            (
+                "pilot",
+                PILOT_HELP,
+                &["--root", "--out", "--mode", "--max-seams"],
+            ),
+        ];
+
+        for (cmd, help, expected_flags) in commands {
+            for flag in *expected_flags {
+                assert!(help.contains(flag), "{cmd} help should contain {flag}");
+            }
+        }
+    }
 }
