@@ -1,7 +1,7 @@
 mod allow_attributes;
 mod ci_lane_whitelist;
 mod doc_roles;
-mod droid_review;
+pub(crate) mod droid_review;
 mod executable_files;
 mod file_policy;
 mod local_context;
