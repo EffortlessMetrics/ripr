@@ -15,6 +15,7 @@ use crate::{
     collect_pr_changes, forbidden_static_terms, has_markdown_heading, json_escape, markdown_cell,
     normalize_path, read_text_lossy, ripr_debug_binary, write_json_string_array, write_report,
 };
+use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,31 +30,49 @@ pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
         Some(value) => vec![fixture_dir_for_name(value)?],
         None => fixture_dirs,
     };
+    // Parallelize fixture execution via rayon (#2415). Each fixture is
+    // independent (disjoint input/expected dirs), so parallel runs produce
+    // identical output.
+    let results: Vec<Result<(Vec<String>, Option<FixtureRun>), String>> = selected
+        .par_iter()
+        .map(|path| {
+            if !path.exists() {
+                return Ok((
+                    vec![format!("fixture does not exist: {}", normalize_path(path))],
+                    None,
+                ));
+            }
+            if !path.is_dir() {
+                return Ok((
+                    vec![format!(
+                        "fixture is not a directory: {}",
+                        normalize_path(path)
+                    )],
+                    None,
+                ));
+            }
+            let contract_violations = fixture_contract_violations(path)?;
+            if !contract_violations.is_empty() {
+                return Ok((contract_violations, None));
+            }
+            match run_fixture(path) {
+                Ok(run) => Ok((run.comparison_violations(), Some(run))),
+                Err(err) => Err(err),
+            }
+        })
+        .collect();
+
     let mut violations = Vec::new();
     let mut runs = Vec::new();
-    for path in &selected {
-        if !path.exists() {
-            violations.push(format!("fixture does not exist: {}", normalize_path(path)));
-            continue;
-        }
-        if !path.is_dir() {
-            violations.push(format!(
-                "fixture is not a directory: {}",
-                normalize_path(path)
-            ));
-            continue;
-        }
-        let contract_violations = fixture_contract_violations(path)?;
-        if contract_violations.is_empty() {
-            match run_fixture(path) {
-                Ok(run) => {
-                    violations.extend(run.comparison_violations());
+    for result in results {
+        match result {
+            Ok((vios, maybe_run)) => {
+                violations.extend(vios);
+                if let Some(run) = maybe_run {
                     runs.push(run);
                 }
-                Err(err) => violations.push(err),
             }
-        } else {
-            violations.extend(contract_violations);
+            Err(err) => violations.push(err),
         }
     }
 
@@ -165,18 +184,32 @@ pub(crate) fn golden_drift_impl() -> Result<(), String> {
 
 fn collect_golden_runs() -> Result<GoldenRunSet, String> {
     let fixture_dirs = fixture_dirs()?;
+    // Parallelize fixture execution via rayon (#2415). Each fixture is independent
+    // (disjoint input/expected dirs), so parallel runs produce identical output.
+    // The sequential results are collected in input order for deterministic reports.
+    let results: Vec<Result<(Vec<String>, Option<FixtureRun>), String>> = fixture_dirs
+        .par_iter()
+        .map(|fixture| {
+            let contract_violations = fixture_contract_violations(fixture)?;
+            if !contract_violations.is_empty() {
+                return Ok((contract_violations, None));
+            }
+            match run_fixture(fixture) {
+                Ok(run) => Ok((run.comparison_violations(), Some(run))),
+                Err(err) => Err(err),
+            }
+        })
+        .collect();
+
     let mut violations = Vec::new();
     let mut runs = Vec::new();
-    for fixture in &fixture_dirs {
-        let contract_violations = fixture_contract_violations(fixture)?;
-        if !contract_violations.is_empty() {
-            violations.extend(contract_violations);
-            continue;
-        }
-        match run_fixture(fixture) {
-            Ok(run) => {
-                violations.extend(run.comparison_violations());
-                runs.push(run);
+    for result in results {
+        match result {
+            Ok((vios, maybe_run)) => {
+                violations.extend(vios);
+                if let Some(run) = maybe_run {
+                    runs.push(run);
+                }
             }
             Err(err) => violations.push(err),
         }
