@@ -26,7 +26,13 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     field(&mut out, 2, "id", &packet.probe.id, true);
     field(&mut out, 2, "family", &packet.probe.family, true);
     field(&mut out, 2, "delta", &packet.probe.delta, true);
-    field(&mut out, 2, "file", &packet.probe.file, true);
+    field(
+        &mut out,
+        2,
+        "file",
+        &crate::output::path::display_path_text(&packet.probe.file),
+        true,
+    );
     number_field(&mut out, 2, "line", packet.probe.line, true);
     field(
         &mut out,

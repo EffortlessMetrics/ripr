@@ -48,7 +48,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         &mut out,
         1,
         "root",
-        &output.root.display().to_string(),
+        &crate::output::path::display_path(&output.root),
         true,
     );
     if let Some(base) = &output.base {
@@ -414,7 +414,7 @@ fn finding_json_with_config_and_counts(
         out,
         indent + 2,
         "file",
-        &finding.probe.location.file.display().to_string(),
+        &crate::output::path::display_path(&finding.probe.location.file),
         true,
     );
     number_field(out, indent + 2, "line", finding.probe.location.line, true);
@@ -1268,7 +1268,7 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         out,
         indent + 1,
         "file",
-        &test.file.display().to_string(),
+        &crate::output::path::display_path(&test.file),
         true,
     );
     number_field(out, indent + 1, "line", test.line, true);
