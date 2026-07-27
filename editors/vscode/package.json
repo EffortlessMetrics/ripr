@@ -29,7 +29,7 @@
     "lsp"
   ],
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.91.0"
   },
   "extensionKind": [
     "workspace"
@@ -73,7 +73,7 @@
     "test:e2e": "cargo xtask vscode-test-e2e"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "10.1.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -138,7 +138,7 @@
         "ripr.server.autoDownload": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available. Downloads over HTTPS \u2014 by default from github.com/EffortlessMetrics/ripr releases, configurable via ripr.server.downloadBaseUrl \u2014 and archives are SHA-256 verified against the release manifest before extraction.",
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available. Downloads over HTTPS — by default from github.com/EffortlessMetrics/ripr releases, configurable via ripr.server.downloadBaseUrl — and archives are SHA-256 verified against the release manifest before extraction.",
           "scope": "resource"
         },
         "ripr.server.version": {

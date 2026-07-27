@@ -59,7 +59,7 @@ suite('Show Output Warning Action', () => {
       show: () => {
         outputShown += 1;
       }
-    } as unknown as vscode.OutputChannel;
+    } as unknown as vscode.LogOutputChannel;
     const controller = new RiprClientController(
       {} as unknown as vscode.ExtensionContext,
       output,

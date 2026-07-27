@@ -40,7 +40,7 @@ export async function startAfterWorkspaceTrust(
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const output = vscode.window.createOutputChannel('ripr');
+  const output = vscode.window.createOutputChannel('ripr', { log: true });
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   controller = new RiprClientController(context, output, undefined, status);
 

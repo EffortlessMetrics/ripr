@@ -4058,7 +4058,7 @@ function assertWorkspacePathEqual(actual: string, expected: string): void {
   assert.strictEqual(normalizedActual, normalizedExpected);
 }
 
-function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
+function fakeOutputChannel(lines: string[] = []): vscode.LogOutputChannel {
   return {
     name: 'ripr test',
     append: (value: string) => {
@@ -4077,7 +4077,7 @@ function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
       lines.length = 0;
       lines.push(value);
     }
-  } as vscode.OutputChannel;
+  } as vscode.LogOutputChannel;
 }
 
 function fakeFileSystemWatcher(): vscode.FileSystemWatcher {

@@ -6,7 +6,6 @@ import {
   InitializeParams,
   LanguageClient,
   LanguageClientOptions,
-  RevealOutputChannelOn,
   ServerOptions,
   Trace
 } from 'vscode-languageclient/node';
@@ -244,7 +243,7 @@ export interface RiprClientRuntime {
   resolveServer(
     context: vscode.ExtensionContext,
     config: RiprConfig,
-    output: vscode.OutputChannel
+    output: vscode.LogOutputChannel
   ): Promise<ResolvedServer | ResolveFailure>;
   createLanguageClient(
     serverOptions: ServerOptions,
@@ -357,7 +356,7 @@ export class RiprClientController {
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly output: vscode.OutputChannel,
+    private readonly output: vscode.LogOutputChannel,
     private readonly runtime: RiprClientRuntime = defaultRuntime,
     private readonly statusBar?: vscode.StatusBarItem
   ) {
@@ -492,7 +491,6 @@ export class RiprClientController {
         includeUnchangedTests: true
       },
       outputChannel: this.output,
-      revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,
       synchronize: {
         configurationSection: 'ripr',

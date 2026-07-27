@@ -127,7 +127,7 @@ function makeController(harness: FakeRuntimeHarness): RiprClientController {
     appendLine: (line: string) => {
       harness.outputLines.push(line);
     }
-  } as unknown as vscode.OutputChannel;
+  } as unknown as vscode.LogOutputChannel;
   return new RiprClientController(
     {} as unknown as vscode.ExtensionContext,
     output,

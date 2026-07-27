@@ -66,7 +66,7 @@ suite('Workspace Trust Runtime', () => {
       appendLine: (line: string) => {
         outputLines.push(line);
       }
-    } as unknown as vscode.OutputChannel;
+    } as unknown as vscode.LogOutputChannel;
     const controller = new RiprClientController(
       {} as unknown as vscode.ExtensionContext,
       output,
