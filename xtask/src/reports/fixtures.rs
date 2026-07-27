@@ -1493,40 +1493,6 @@ pub(crate) use self::fixtures_impl as fixtures;
 pub(crate) use self::golden_drift_impl as golden_drift;
 pub(crate) use self::goldens_impl as goldens;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_json_handles_double_backslash() {
-        let input = r#"{"path":"crates\\ripr\\src\\lib.rs"}"#;
-        let out = normalize_fixture_json_output(input);
-        assert!(
-            !out.contains('\\'),
-            "double backslash must be normalized: {out}"
-        );
-    }
-
-    #[test]
-    fn normalize_json_handles_single_backslash() {
-        // #2337: single backslash in free-text fields (code excerpts, error
-        // messages) must also be normalized.
-        let input = r#"{"expression":"a\b\c"}"#;
-        let out = normalize_fixture_json_output(input);
-        assert!(
-            !out.contains('\\'),
-            "single backslash must be normalized: {out}"
-        );
-    }
-
-    #[test]
-    fn normalize_json_preserves_no_backslash_content() {
-        let input = r#"{"path":"src/lib.rs","count":42}"#;
-        let out = normalize_fixture_json_output(input);
-        assert_eq!(out, input);
-    }
-}
-
 /// Route `fixtures` subcommands: `new <name>` scaffolds, everything else runs (#2445).
 pub(crate) fn fixtures_with_args(args: &[String]) -> Result<(), String> {
     if let Some(sub) = args.first().map(String::as_str)
@@ -1640,4 +1606,37 @@ fn fixtures_new(name: &str) -> Result<(), String> {
     println!("  5. Run: cargo xtask fixtures {} to verify.", name);
 
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_json_handles_double_backslash() {
+        let input = r#"{"path":"crates\\ripr\\src\\lib.rs"}"#;
+        let out = normalize_fixture_json_output(input);
+        assert!(
+            !out.contains('\\'),
+            "double backslash must be normalized: {out}"
+        );
+    }
+
+    #[test]
+    fn normalize_json_handles_single_backslash() {
+        // #2337: single backslash in free-text fields (code excerpts, error
+        // messages) must also be normalized.
+        let input = r#"{"expression":"a\b\c"}"#;
+        let out = normalize_fixture_json_output(input);
+        assert!(
+            !out.contains('\\'),
+            "single backslash must be normalized: {out}"
+        );
+    }
+
+    #[test]
+    fn normalize_json_preserves_no_backslash_content() {
+        let input = r#"{"path":"src/lib.rs","count":42}"#;
+        let out = normalize_fixture_json_output(input);
+        assert_eq!(out, input);
+    }
 }

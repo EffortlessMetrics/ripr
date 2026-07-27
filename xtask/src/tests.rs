@@ -25161,7 +25161,7 @@ fn report_commands_dispatch_through_report_facades() -> Result<(), String> {
     with_temp_cwd("report-dispatch", |_| {
         let commands = vec![
             XtaskCommand::PrSummary,
-            XtaskCommand::Fixtures(Some("missing".to_string())),
+            XtaskCommand::Fixtures(vec!["missing".to_string()]),
             XtaskCommand::Goldens(vec!["unknown".to_string()]),
             XtaskCommand::Metrics,
             XtaskCommand::TestOracleReport,
