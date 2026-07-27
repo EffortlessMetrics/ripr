@@ -1180,7 +1180,10 @@ fn vscode_package() -> Result<(), String> {
 }
 
 fn vscode_test() -> Result<(), String> {
-    vscode_compile()
+    // #2437: npm test must actually run tests, not just compile.
+    // Delegate to the e2e runner which builds ripr, compiles TS, and
+    // invokes the mocha/test-electron suite.
+    vscode_test_e2e()
 }
 
 fn vscode_test_e2e() -> Result<(), String> {
