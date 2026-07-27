@@ -79,7 +79,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - name: Check whether every changed file is docs/spec/markdown
@@ -117,7 +117,7 @@ jobs:
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - name: Prepare toolchain temp
@@ -237,7 +237,7 @@ jobs:
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - name: Prepare toolchain temp
@@ -358,7 +358,7 @@ jobs:
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - name: Prepare toolchain temp
@@ -469,7 +469,7 @@ jobs:
     if: needs.route.outputs.router_target == 'github' && needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@v1
@@ -565,7 +565,7 @@ jobs:
     if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5.1.0
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@v1
