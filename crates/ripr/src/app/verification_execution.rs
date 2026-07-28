@@ -430,13 +430,11 @@ fn run(
     response.result_committed = true;
     let committed = atomic_write(&result_path, render(&response).as_bytes());
     match committed {
-        Ok(()) => {
-            Ok(ExecutionOutcome {
-                rendered: render(&response),
-                disposition,
-                failed: false,
-            })
-        }
+        Ok(()) => Ok(ExecutionOutcome {
+            rendered: render(&response),
+            disposition,
+            failed: false,
+        }),
         Err(reason) => {
             response.result_committed = false;
             response.disposition = DISPOSITION_WRITE_FAILED;
