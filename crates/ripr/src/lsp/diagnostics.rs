@@ -5,7 +5,7 @@ use super::gap_artifacts::{
     validate_workspace_gap_artifact_report,
 };
 use super::state::{AnalysisSnapshot, RefreshMetadata};
-use super::uri::{file_uri_for_path, path_from_file_uri};
+use super::uri::{absolute_join, display_path, file_uri_for_path, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
@@ -1606,14 +1606,10 @@ fn absolute_gap_anchor_path(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn display_lsp_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
 fn display_repo_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
-        .map(display_lsp_path)
-        .unwrap_or_else(|_| display_lsp_path(path))
+        .map(display_path)
+        .unwrap_or_else(|_| display_path(path))
 }
 
 /// A finding is advisory when it carries a static limit or a preview language
@@ -2048,7 +2044,7 @@ fn related_information_for_finding(
 ) -> Option<Vec<DiagnosticRelatedInformation>> {
     let witness = DiagnosticWitness::from_finding(finding)?;
     let fix_site = witness.fix_site.as_ref()?;
-    let path = absolute_path(root, Path::new(&fix_site.file));
+    let path = absolute_join(root, Path::new(&fix_site.file));
     let uri = file_uri_for_path(&path).ok()?;
     let line = fix_site
         .oracle_location
@@ -2190,15 +2186,7 @@ fn finding_anchor_is_out_of_scope_rust_path(root: &Path, finding: &Finding) -> b
 
 #[cfg(test)]
 fn absolute_related_test_path(root: &Path, test: &RelatedTest) -> PathBuf {
-    absolute_path(root, &test.file)
-}
-
-fn absolute_path(root: &Path, path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    }
+    absolute_join(root, &test.file)
 }
 
 #[cfg(test)]

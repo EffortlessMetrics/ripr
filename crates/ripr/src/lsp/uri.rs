@@ -126,6 +126,25 @@ fn normalized_file_uri_path(uri: &Uri) -> Option<String> {
     Some(path.replace('\\', "/"))
 }
 
+/// Render a path with forward slashes for LSP display (diagnostic messages,
+/// hover text, context packets). Replaces native OS separators so Windows
+/// backslash paths display consistently. Previously duplicated as
+/// `display_lsp_path` in both `backend.rs` and `diagnostics.rs`.
+pub(super) fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Resolve a path to an absolute PathBuf, joining to `root` when relative.
+/// Previously duplicated as `absolute_context_path` in `backend.rs` and
+/// `absolute_path` in `diagnostics.rs` (byte-identical bodies, different names).
+pub(super) fn absolute_join(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
+
 fn canonical_or_normalized(path: &Path) -> PathBuf {
     canonicalize_with_missing_tail(path).unwrap_or_else(|| normalize_path(path))
 }

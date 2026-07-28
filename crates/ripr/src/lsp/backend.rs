@@ -30,8 +30,8 @@ use super::state::{
     content_digest, format_duration,
 };
 use super::uri::{
-    file_uri_for_path, file_uri_is_within_root, file_uris_match, path_from_file_uri,
-    path_is_within_root,
+    absolute_join, display_path, file_uri_for_path, file_uri_is_within_root, file_uris_match,
+    path_from_file_uri, path_is_within_root,
 };
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -5214,14 +5214,13 @@ fn collect_gap_record_context_packet(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_GAP_DECISION_LEDGER_OUT);
-    let ledger_path = absolute_context_path(root, Path::new(ledger_arg));
+    let ledger_path = absolute_join(root, Path::new(ledger_arg));
     let contents = fs::read_to_string(&ledger_path).ok()?;
     let records = parse_gap_records_json(&contents).ok()?;
     let record = records
         .iter()
         .find(|record| gap_record_matches(record, gap_id))?;
-    let rendered =
-        render_agent_gap_record_packet_json(&display_lsp_path(&ledger_path), record).ok()?;
+    let rendered = render_agent_gap_record_packet_json(&display_path(&ledger_path), record).ok()?;
     serde_json::from_str(&rendered).ok()
 }
 
@@ -5250,7 +5249,7 @@ impl Backend {
             .map(ToOwned::to_owned);
 
         // Try actionable-gaps.json first (preferred: projection-validated).
-        let actionable_path = absolute_context_path(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
+        let actionable_path = absolute_join(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
         if let Some(result) =
             collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id_arg.as_deref())
         {
@@ -5258,7 +5257,7 @@ impl Backend {
         }
 
         // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
-        let ledger_path = absolute_context_path(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
+        let ledger_path = absolute_join(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
         collect_repair_packet_from_ledger(&ledger_path, gap_id_arg.as_deref())
     }
 
@@ -5320,7 +5319,7 @@ impl Backend {
         // open_attempt_ledger: path to swarm-attempt-ledger.json if it exists.
         let attempt_ledger_path = root.join("target/ripr/reports/swarm-attempt-ledger.json");
         let open_attempt_ledger_val = if attempt_ledger_path.is_file() {
-            serde_json::Value::String(display_lsp_path(&attempt_ledger_path))
+            serde_json::Value::String(display_path(&attempt_ledger_path))
         } else {
             serde_json::Value::String("not_available".to_string())
         };
@@ -5868,14 +5867,6 @@ fn repair_packet_sentinel(reason: &str) -> LSPAny {
     })
 }
 
-fn absolute_context_path(root: &Path, path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    }
-}
-
 fn gap_record_matches(record: &GapRecord, gap_id: &str) -> bool {
     record.gap_id == gap_id || record.canonical_gap_id == gap_id
 }
@@ -5897,7 +5888,7 @@ fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) 
         "base": snapshot.base.as_deref(),
         "mode": snapshot.mode.as_str(),
         "seam_id": seam_id,
-        "file": display_lsp_path(seam.file()),
+        "file": display_path(seam.file()),
         "range": {
             "start": seam.display_line(),
             "end": seam.display_line(),
@@ -5930,11 +5921,11 @@ fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) 
             })
         }).collect::<Vec<_>>(),
         "related_test": related_test.map(|test| {
-            format!("{}::{}", display_lsp_path(&test.file), test.test_name)
+            format!("{}::{}", display_path(&test.file), test.test_name)
         }),
         "related_test_location": related_test.map(|test| {
             serde_json::json!({
-                "file": display_lsp_path(&test.file),
+                "file": display_path(&test.file),
                 "line": test.line,
                 "test_name": test.test_name.as_str(),
                 "oracle_kind": test.oracle_kind.as_str(),
@@ -5989,10 +5980,6 @@ fn evidence_stage_status(evidence: &StageEvidence) -> &'static str {
         StageState::Opaque => "opaque",
         StageState::NotApplicable => "not_applicable",
     }
-}
-
-fn display_lsp_path(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -6079,7 +6066,7 @@ mod gap_record_context_tests {
         assert_eq!(packet["source"], "gap_decision_ledger");
         assert_eq!(
             packet["packets"][0]["repair_card"]["source_artifact"],
-            display_lsp_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
+            display_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
         );
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
@@ -6260,7 +6247,7 @@ mod gap_record_context_tests {
                 .ok_or_else(|| "expected gap packet".to_string())?;
         assert_eq!(
             packet["packets"][0]["repair_card"]["source_artifact"],
-            display_lsp_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
+            display_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
         );
 
         fs::remove_dir_all(&root)
@@ -6300,7 +6287,7 @@ mod gap_record_context_tests {
     }
 
     #[test]
-    fn absolute_context_path_keeps_absolute_paths_and_joins_relative_paths() -> Result<(), String> {
+    fn absolute_join_keeps_absolute_paths_and_joins_relative_paths() -> Result<(), String> {
         // Use the host platform's temp_dir to produce an absolute path
         // without embedding a platform-specific literal — the policy gate
         // rejects literal Windows-drive paths committed to repository docs.
@@ -6313,12 +6300,9 @@ mod gap_record_context_tests {
             ));
         }
 
+        assert_eq!(absolute_join(&root, &already_absolute), already_absolute);
         assert_eq!(
-            absolute_context_path(&root, &already_absolute),
-            already_absolute
-        );
-        assert_eq!(
-            absolute_context_path(&root, Path::new("nested/file.json")),
+            absolute_join(&root, Path::new("nested/file.json")),
             root.join("nested/file.json")
         );
         Ok(())
@@ -6348,9 +6332,9 @@ mod gap_record_context_tests {
     }
 
     #[test]
-    fn display_lsp_path_normalizes_backslashes_to_forward_slashes() {
+    fn display_path_normalizes_backslashes_to_forward_slashes() {
         let path = std::path::PathBuf::from(r"a\b\c.rs");
-        assert_eq!(display_lsp_path(&path), "a/b/c.rs");
+        assert_eq!(display_path(&path), "a/b/c.rs");
     }
 
     #[test]
