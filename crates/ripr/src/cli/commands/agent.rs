@@ -12,9 +12,9 @@ use crate::app::agent_brief::{
     AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
 use crate::cli::agent::{
-    AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
-    AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions, AgentVerifyOptions,
-    parse_agent_args,
+    AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions, AgentRepairOptions,
+    AgentRepairPhase, AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions,
+    AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::commands_agent_support::{
     build_agent_receipt_provenance, read_agent_verify_snapshot, resolve_agent_brief_working_set,
@@ -43,6 +43,7 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), String> {
         AgentCommand::Receipt(options) => run_agent_receipt(options),
         AgentCommand::Status(options) => run_agent_status(options),
         AgentCommand::ReviewSummary(options) => run_agent_review_summary(options),
+        AgentCommand::Repair(options) => run_agent_repair(options),
         help_command @ (AgentCommand::Help
         | AgentCommand::StartHelp
         | AgentCommand::BriefHelp
@@ -50,7 +51,8 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), String> {
         | AgentCommand::VerifyHelp
         | AgentCommand::ReceiptHelp
         | AgentCommand::StatusHelp
-        | AgentCommand::ReviewSummaryHelp) => agent_dispatch::run_agent_help_command(&help_command)
+        | AgentCommand::ReviewSummaryHelp
+        | AgentCommand::RepairHelp) => agent_dispatch::run_agent_help_command(&help_command)
             .unwrap_or_else(|| Err("agent help command was not dispatched".to_string())),
     }
 }
@@ -299,6 +301,105 @@ fn run_agent_review_summary(options: AgentReviewSummaryOptions) -> Result<(), St
     Ok(())
 }
 
+/// Two-phase agent repair loop (#2443). Composes the existing 7 subcommands
+/// into 2 phases:
+/// - `--phase before`: runs before-snapshot + packet (the agent then edits in
+///   the workspace between phases).
+/// - `--phase after`: runs after-snapshot + verify + receipt + status.
+///
+/// This reduces the 7-command loop to 2 while preserving the agent's control
+/// over the edit step.
+fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
+    let root = &options.root;
+    let seam_id = &options.seam_id;
+
+    match options.phase {
+        AgentRepairPhase::Before => {
+            ensure_command_root(root, "agent repair --phase before")?;
+            eprintln!(
+                "ripr: agent repair --phase before for seam `{seam_id}` at {}",
+                root.display()
+            );
+
+            // Compose existing commands: start (creates workflow + brief) + packet.
+            run_agent_start(AgentStartOptions {
+                root: root.clone(),
+                seam_id: seam_id.clone(),
+                out_dir: std::path::PathBuf::from("target/ripr/workflow"),
+            })?;
+
+            run_agent_packet(AgentPacketOptions {
+                root: root.clone(),
+                seam_id: Some(seam_id.clone()),
+                gap_ledger: None,
+                gap_id: None,
+                json: true,
+            })?;
+
+            eprintln!("ripr: before phase complete. Next:");
+            eprintln!("  1. Edit the source code to add or strengthen the discriminator.");
+            eprintln!(
+                "  2. Run: ripr agent repair --root {} --seam-id {} --phase after",
+                root.display(),
+                seam_id
+            );
+            Ok(())
+        }
+        AgentRepairPhase::After => {
+            ensure_command_root(root, "agent repair --phase after")?;
+            eprintln!(
+                "ripr: agent repair --phase after for seam `{seam_id}` at {}",
+                root.display()
+            );
+
+            // Compose existing commands: verify + receipt + status.
+            // The before/after snapshots must exist from the before phase.
+            let before = root.join("target/ripr/workflow/before.repo-exposure.json");
+            let after = root.join("target/ripr/workflow/after.repo-exposure.json");
+            if !before.exists() {
+                return Err(format!(
+                    "before snapshot not found at {}; run `ripr agent repair --phase before` first",
+                    before.display()
+                ));
+            }
+            if !after.exists() {
+                return Err(format!(
+                    "after snapshot not found at {}; run `ripr check --root {} --mode ready --format repo-exposure-json > {}` to create it",
+                    after.display(),
+                    root.display(),
+                    after.display()
+                ));
+            }
+
+            run_agent_verify(AgentVerifyOptions {
+                root: root.clone(),
+                before: before.clone(),
+                after: after.clone(),
+                json: true,
+            })?;
+
+            let verify_json = root.join("target/ripr/workflow/agent-verify.json");
+            run_agent_receipt(AgentReceiptOptions {
+                root: root.clone(),
+                verify_json: verify_json.clone(),
+                seam_id: seam_id.clone(),
+                test_changed: None,
+                commands_run: Vec::new(),
+                json: true,
+                out: None,
+            })?;
+
+            run_agent_status(AgentStatusOptions {
+                root: root.clone(),
+                json: true,
+            })?;
+
+            eprintln!("ripr: after phase complete. Review the receipt and status output.");
+            Ok(())
+        }
+    }
+}
+
 fn resolve_agent_start_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
     if out_dir.is_absolute() {
         out_dir.to_path_buf()
@@ -425,7 +526,7 @@ mod tests {
             "--root",
             &dir.display().to_string(),
             "--before",
-            &before.display().to_string(),
+            &before.to_string_lossy().to_string(),
             "--after",
             &dir.join("missing-after.json").display().to_string(),
             "--json",
@@ -455,9 +556,9 @@ mod tests {
             "--root",
             &root.display().to_string(),
             "--before",
-            &before.display().to_string(),
+            &before.to_string_lossy().to_string(),
             "--after",
-            &after.display().to_string(),
+            &after.to_string_lossy().to_string(),
             "--json",
         ]));
 

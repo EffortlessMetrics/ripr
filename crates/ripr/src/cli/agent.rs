@@ -12,6 +12,7 @@ pub(super) enum AgentCommand {
     ReceiptHelp,
     StatusHelp,
     ReviewSummaryHelp,
+    RepairHelp,
     Start(AgentStartOptions),
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
@@ -19,6 +20,7 @@ pub(super) enum AgentCommand {
     Receipt(AgentReceiptOptions),
     Status(AgentStatusOptions),
     ReviewSummary(AgentReviewSummaryOptions),
+    Repair(AgentRepairOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +79,19 @@ pub(super) struct AgentReviewSummaryOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentRepairOptions {
+    pub(super) root: PathBuf,
+    pub(super) seam_id: String,
+    pub(super) phase: AgentRepairPhase,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum AgentRepairPhase {
+    Before,
+    After,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentBriefWorkingSet {
     Diff(PathBuf),
     Base(String),
@@ -113,8 +128,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some("status") => parse_agent_status_command(&args[1..]),
         Some("review-summary") => parse_agent_review_summary_command(&args[1..]),
+        Some("repair") => parse_agent_repair_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, `review-summary`, or `repair`"
         )),
     }
 }
@@ -166,6 +182,50 @@ fn parse_agent_review_summary_command(args: &[String]) -> Result<AgentCommand, S
         return Ok(AgentCommand::ReviewSummaryHelp);
     }
     parse_agent_review_summary_options(args).map(AgentCommand::ReviewSummary)
+}
+
+fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::RepairHelp);
+    }
+    let mut root = PathBuf::from(".");
+    let mut seam_id: Option<String> = None;
+    let mut phase: Option<AgentRepairPhase> = None;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--seam-id" => {
+                i += 1;
+                seam_id = Some(expect_value(args, i, "--seam-id")?.to_string());
+            }
+            "--phase" => {
+                i += 1;
+                let value = expect_value(args, i, "--phase")?;
+                phase = Some(match value {
+                    "before" => AgentRepairPhase::Before,
+                    "after" => AgentRepairPhase::After,
+                    other => {
+                        return Err(format!(
+                            "unknown --phase {other:?}; expected `before` or `after`"
+                        ));
+                    }
+                });
+            }
+            other => return Err(format!("unknown agent repair argument {other:?}")),
+        }
+        i += 1;
+    }
+    let seam_id = seam_id.ok_or_else(|| "agent repair requires --seam-id <id>".to_string())?;
+    let phase = phase.unwrap_or(AgentRepairPhase::Before);
+    Ok(AgentCommand::Repair(AgentRepairOptions {
+        root,
+        seam_id,
+        phase,
+    }))
 }
 
 pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOptions, String> {
