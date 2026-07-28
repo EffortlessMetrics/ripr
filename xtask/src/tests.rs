@@ -109,18 +109,18 @@ use super::{
     evidence_quality_trend_json, evidence_quality_trend_markdown,
     evidence_quality_trend_report_impl, extract_json_object_usize_map, extract_json_string,
     extract_json_warnings, extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-    finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
-    first_line_difference, generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
-    gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-    glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-    guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
-    install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_dependency_surface_candidate,
-    is_generated_candidate, is_non_rust_programming_candidate, is_public_badge_basis_surface,
-    is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape,
-    json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-    known_xtask_command, lane1_actionable_gap_packets_json, lane1_actionable_gap_packets_markdown,
-    lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-    lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
+    finding_alignment_verify_command_is_missing, finish_traceability_report,
+    finish_worktree_doctor_report, first_line_difference, generated_clean_violations,
+    gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+    github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+    golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+    help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
+    is_dependency_surface_candidate, is_generated_candidate, is_non_rust_programming_candidate,
+    is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook, is_snake_case_id,
+    is_spec_id, json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+    known_commands, known_xtask_command, lane1_actionable_gap_packets_json,
+    lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
+    lane1_evidence_audit_json, lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
     lane1_evidence_audit_repo_exposure_args,
     lane1_evidence_audit_report_from_complete_repo_exposure, lane1_evidence_audit_timeout_error,
     lane1_readiness_packet_specs, limited_badge_artifacts_json, limited_badge_artifacts_markdown,
@@ -178,7 +178,7 @@ use super::{
     suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
     targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
     test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-    test_oracle_tests_in_text, unknown_command_message,
+    test_oracle_tests_in_text, traceability_recommended_fixes, unknown_command_message,
     user_surface_projection_required_run_status_violations,
     validate_actionable_gap_outcomes_fixture_case, validate_actionable_gap_outcomes_fixture_corpus,
     validate_local_context_allowlist, validate_swarm_plan_packet_fixture_case,
@@ -25207,6 +25207,34 @@ fn specs_command_rejects_missing_or_unknown_subcommand() {
     };
     assert!(unknown.contains("unknown specs command"));
     assert!(unknown.contains("cargo xtask specs next"));
+}
+
+#[test]
+fn traceability_recommended_fixes_explain_spec_allocation_and_format() {
+    let fixes = traceability_recommended_fixes();
+    assert!(
+        fixes
+            .iter()
+            .any(|fix| fix.contains("cargo xtask specs next"))
+    );
+    assert!(fixes.iter().any(|fix| fix.contains("exactly 4 digits")));
+    assert!(fixes.iter().any(|fix| fix.contains("docs/specs/README.md")));
+}
+
+#[test]
+fn traceability_failure_report_renders_recommended_fixes() -> Result<(), String> {
+    with_temp_cwd("traceability-recommended-fixes-report", |_| {
+        let error = finish_traceability_report(&["invalid spec reference".to_string()], &[])
+            .expect_err("violations should fail the traceability report");
+        let report = fs::read_to_string("target/ripr/reports/traceability.md")
+            .map_err(|err| format!("read traceability report: {err}"))?;
+
+        assert!(error.contains("check-traceability failed"));
+        assert!(report.contains("cargo xtask specs next"));
+        assert!(report.contains("docs/specs/README.md"));
+        assert!(report.contains("valid RIPR-SPEC-NNNN IDs (exactly 4 digits)"));
+        Ok(())
+    })
 }
 
 #[test]

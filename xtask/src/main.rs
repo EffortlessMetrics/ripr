@@ -5307,18 +5307,9 @@ fn finish_traceability_report(violations: &[String], advisories: &[String]) -> R
         body.push_str("\n```\n\n");
 
         body.push_str("## Recommended Fixes\n\n");
-        body.push_str(
-            "1. Add or update the matching [[behavior]] entry in .ripr/traceability.toml.\n",
-        );
-        body.push_str(
-            "2. Keep every docs/specs/RIPR-SPEC-*.md file represented in the manifest.\n",
-        );
-        body.push_str(
-            "3. Use valid RIPR-SPEC-NNNN IDs in specs, fixtures, and manifest entries.\n",
-        );
-        body.push_str(
-            "4. List only paths that exist, or leave planned fields empty until the artifact exists.\n",
-        );
+        for (index, fix) in traceability_recommended_fixes().iter().enumerate() {
+            body.push_str(&format!("{}. {fix}\n", index + 1));
+        }
         body.push('\n');
     }
 
@@ -5351,6 +5342,17 @@ fn finish_traceability_report(violations: &[String], advisories: &[String]) -> R
             violations.join("\n")
         ))
     }
+}
+
+fn traceability_recommended_fixes() -> &'static [&'static str] {
+    &[
+        "Add or update the matching [[behavior]] entry in .ripr/traceability.toml.",
+        "Run `cargo xtask specs next` to get the next free RIPR-SPEC-NNNN number.",
+        "Known spec IDs are listed in docs/specs/README.md.",
+        "Keep every docs/specs/RIPR-SPEC-*.md file represented in the manifest.",
+        "Use valid RIPR-SPEC-NNNN IDs (exactly 4 digits) in specs, fixtures, and manifest entries.",
+        "List only paths that exist, or leave planned fields empty until the artifact exists.",
+    ]
 }
 
 fn validate_trace_behavior(
