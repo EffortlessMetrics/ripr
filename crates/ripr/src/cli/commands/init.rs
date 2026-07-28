@@ -191,13 +191,28 @@ fn ensure_creatable_parent(path: &Path) -> Result<(), String> {
 }
 
 fn apply_init_plan(plan: &[InitTarget]) -> Result<(), String> {
+    let mut wrote_any = false;
     for target in plan {
         match target.action {
             InitAction::LeaveUnchanged => {
                 println!("Left existing {} unchanged", target.path.display());
             }
-            InitAction::Create | InitAction::Overwrite => write_init_target(target)?,
+            InitAction::Create => {
+                write_init_target(target)?;
+                wrote_any = true;
+            }
+            InitAction::Overwrite => {
+                println!("Overwrote existing {}", target.path.display());
+                write_init_target(target)?;
+                wrote_any = true;
+            }
         }
+    }
+    if wrote_any {
+        println!();
+        println!(
+            "Next: run `ripr doctor` to verify your setup, then `ripr check --base origin/main` to analyze a diff."
+        );
     }
     Ok(())
 }

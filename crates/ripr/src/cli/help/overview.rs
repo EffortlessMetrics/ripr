@@ -62,6 +62,8 @@ Policy & Gate:
 Reports:
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
+  ripr reports ts-limitations --check-output <path> [--out target/ripr/reports/ts-limitations.json]
+  ripr reports ts-false-actionable --corpus <path> [--out target/ripr/reports/ts-false-actionable.json]
   ripr receipt write --gap <canonical_gap_id> --verify-command "<cmd>" --status <verify_status> [--packet <packet_id>] [--out PATH] [--json]
   ripr receipt check [--path PATH] [--gap <canonical_gap_id>]
 

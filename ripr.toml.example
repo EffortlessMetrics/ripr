@@ -73,3 +73,18 @@ enabled = ["rust"]
 #   "test/js/**/*.test.js",
 # ]
 # bridge_hints = "ripr.bun.bridge.toml"
+
+# Optional TypeScript adapter settings (preview). Requires
+# enabled = ["typescript"] in [languages] and the `lang-typescript` Cargo feature.
+#
+# [typescript]
+# resolve_tsconfig_paths = false
+
+# Optional Perl adapter settings (scaffold-only, preview — see Campaign 31 #1379).
+#
+# [perl]
+# producer = "ripr"        # "ripr" (in-process) or "perllsp" (managed LSP)
+# executable = "perl"      # Perl binary path
+# timeout_ms = 30000       # Per-invocation timeout
+# cache_dir = "target/ripr/perl-facts"  # Fact cache location
+

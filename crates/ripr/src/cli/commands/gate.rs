@@ -31,6 +31,16 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
     }
 
     let options = parse_gate_options(rest)?;
+    // Surface the missing-input requirement directly instead of burying it
+    // inside the gate-decision.json config_errors array (#2589 review).
+    if options.input.pr_guidance.is_none()
+        && options.input.gap_ledger.is_none()
+        && options.input.repo_exposure.is_none()
+    {
+        return Err(
+            "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options".to_string(),
+        );
+    }
     let report = output::gate::build_gate_decision_report(&options.input)?;
     let rendered_json = output::gate::render_gate_decision_json(&report)?;
     let rendered_md = output::gate::render_gate_decision_markdown(&report);
@@ -278,7 +288,7 @@ mod tests {
         assert_eq!(
             bare_result,
             Err(
-                "ripr gate decision is config_error; see target/ripr/reports/gate-decision.json"
+                "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options"
                     .to_string()
             )
         );
