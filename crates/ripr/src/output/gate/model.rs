@@ -18,7 +18,9 @@ impl GateMode {
             "acknowledgeable" => Ok(Self::Acknowledgeable),
             "baseline-check" => Ok(Self::BaselineCheck),
             "calibrated-gate" => Ok(Self::CalibratedGate),
-            other => Err(format!("unknown gate mode `{other}`")),
+            other => Err(format!(
+                "unknown gate mode `{other}`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+            )),
         }
     }
 

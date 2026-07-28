@@ -298,7 +298,7 @@ mod tests {
         );
         assert_eq!(
             parse_gate_options(&args(&["--mode", "strict"])),
-            Err("unknown gate mode `strict`".to_string())
+            Err("unknown gate mode `strict`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`".to_string())
         );
         assert_eq!(
             parse_gate_options(&args(&["--out", ""])),

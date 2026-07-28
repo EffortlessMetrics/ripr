@@ -683,7 +683,7 @@ fn gate_mode_parse_covers_all_values_and_unknowns() {
     );
     assert_eq!(
         GateMode::parse("hard"),
-        Err("unknown gate mode `hard`".to_string())
+        Err("unknown gate mode `hard`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`".to_string())
     );
 }
 

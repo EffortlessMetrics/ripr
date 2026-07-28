@@ -115,7 +115,7 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Gate(args(&["evaluate", "--mode", "strict"]))),
-            Err("unknown gate mode `strict`".to_string())
+            Err("unknown gate mode `strict`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Baseline(args(&["create", "--from"]))),
