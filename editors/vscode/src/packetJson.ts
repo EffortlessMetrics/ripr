@@ -12,7 +12,7 @@ import * as path from 'path';
  * Join a workspace root with a forward-slash relative path.
  */
 export function setupFilePath(workspaceRoot: string, relativePath: string): string {
-  return path.join(workspaceRoot, ...relativePath.split('/'));
+  return path.join(workspaceRoot, relativePath);
 }
 
 /**
