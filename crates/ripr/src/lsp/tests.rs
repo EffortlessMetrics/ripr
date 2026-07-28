@@ -7848,7 +7848,8 @@ fn framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_relea
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+        // Allow extra drain time under parallel test load (#2567).
+        match tokio::time::timeout(Duration::from_secs(10), &mut server_task).await {
             Ok(join_result) => {
                 join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
             }
@@ -8092,7 +8093,8 @@ fn framed_lsp_root_switch_repulls_scoped_to_new_root() -> Result<(), String> {
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(5), &mut server_task).await {
+        // Allow extra drain time under parallel test load (#2567).
+        match tokio::time::timeout(Duration::from_secs(10), &mut server_task).await {
             Ok(join_result) => {
                 join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
             }
@@ -8328,7 +8330,8 @@ fn framed_lsp_direct_root_switch_repulls_on_reselection() -> Result<(), String> 
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+        // Allow extra drain time under parallel test load (#2567).
+        match tokio::time::timeout(Duration::from_secs(10), &mut server_task).await {
             Ok(join_result) => {
                 join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
             }
