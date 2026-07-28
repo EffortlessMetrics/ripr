@@ -861,6 +861,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn digest_surfaces_preview_language_metadata() {
+        let mut finding = sample_finding();
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(digest.contains("  Language: python\n"), "digest:\n{digest}");
+        assert!(
+            digest.contains("  Language status: preview\n"),
+            "digest:\n{digest}"
+        );
+    }
+
+    #[test]
+    fn digest_omits_stable_rust_language_metadata() {
+        let mut finding = sample_finding();
+        finding.language = Some(LanguageId::Rust);
+        finding.language_status = Some(LanguageStatus::Stable);
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(!digest.contains("  Language:"), "digest:\n{digest}");
+    }
+
     // #2273: the preview_limited safe next action distinguishes a
     // complete-but-advisory repair packet (shared validator authority) from
     // one with missing fields.

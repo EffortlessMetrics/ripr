@@ -142,3 +142,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+show preview language metadata in human finding digests
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_script --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

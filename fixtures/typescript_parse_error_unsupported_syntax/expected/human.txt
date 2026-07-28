@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
   File: src/broken.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: const next = ;
   Missing discriminator: Static limit `unsupported_syntax`: malformed TypeScript/JavaScript prevented syntax-first owner, test, and probe extraction for `src/broken.ts`. Repair route: fix or isolate the un…

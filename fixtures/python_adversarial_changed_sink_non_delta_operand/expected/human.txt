@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/account.py:7
+  Language: python
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: return max(0, self._balance)
   Missing discriminator: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.

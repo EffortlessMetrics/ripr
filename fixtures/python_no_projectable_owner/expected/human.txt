@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/constants.py:1
+  Language: python
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Canonical gap: gap:python:src/constants.py:<module>:predicate_boundary:predicate:base_discount=12
   Changed behavior: BASE_DISCOUNT = 12

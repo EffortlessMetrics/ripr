@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/parseint.py:3
+  Language: python
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Canonical gap: gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty
   Changed behavior: raise KeyError("empty")

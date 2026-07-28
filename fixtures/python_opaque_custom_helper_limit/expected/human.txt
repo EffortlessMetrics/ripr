@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/pricing.py:2
+  Language: python
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: if amount >= threshold:
   Missing discriminator: Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or d…

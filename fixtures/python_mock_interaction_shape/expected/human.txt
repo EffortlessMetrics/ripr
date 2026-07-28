@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/callbacks.py:4
+  Language: python
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
   Changed behavior: callback = MagicMock(name="receipt.sent")

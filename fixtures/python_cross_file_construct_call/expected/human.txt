@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/formatter.py:4
+  Language: python
+  Language status: preview
   Static exposure: exposed (info, confidence 0.60)
   Canonical gap: gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key
   Changed behavior: if any(c < " " for c in key):

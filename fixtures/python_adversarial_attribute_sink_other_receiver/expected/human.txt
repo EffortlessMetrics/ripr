@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/session.py:3
+  Language: python
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Canonical gap: gap:python:src/session.py:Session.refresh:field_value:field_construction:self.status=active
   Changed behavior: self.status = "active"

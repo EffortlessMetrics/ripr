@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/stream.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: return chunks.join("|");
   Missing discriminator: Only heuristic TypeScript test links were found for `buffer`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.

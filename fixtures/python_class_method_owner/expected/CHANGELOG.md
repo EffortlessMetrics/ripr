@@ -251,3 +251,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+show preview language metadata in human finding digests
+
+Command:
+`cargo xtask goldens bless python_class_method_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

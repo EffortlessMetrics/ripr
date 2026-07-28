@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/profile.ts:3
+  Language: typescript
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: return await Promise.reject(new Error("missing id"));
   Missing discriminator: Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repai…

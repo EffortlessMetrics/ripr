@@ -204,3 +204,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+show preview language metadata in human finding digests
+
+Command:
+`cargo xtask goldens bless python_metaclass_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

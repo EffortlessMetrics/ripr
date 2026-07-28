@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/pricing.py:2
+  Language: python
+  Language status: preview
   Static exposure: no_static_path (warning, confidence 0.40)
   Canonical gap: gap:python:src/pricing.py:calculate_total:return_value:return_value:amount+7
   Changed behavior: return amount + 7

@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/discount.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: if (amount >= threshold) {
   Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…

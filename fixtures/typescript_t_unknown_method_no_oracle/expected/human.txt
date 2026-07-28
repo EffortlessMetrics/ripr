@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/score.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: return total - penalty + 0;
   Missing discriminator: Related test reaches `score` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form …

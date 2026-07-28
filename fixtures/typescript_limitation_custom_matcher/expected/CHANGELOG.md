@@ -143,3 +143,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+show preview language metadata in human finding digests
+
+Command:
+`cargo xtask goldens bless typescript_limitation_custom_matcher --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

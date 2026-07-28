@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/mapper.py:2
+  Language: python
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: return lambda value: value + 2
   Missing discriminator: Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.

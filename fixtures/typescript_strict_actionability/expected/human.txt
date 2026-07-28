@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/pricing.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: if (amount >= threshold) {
   Missing discriminator: Related test reaches `discountedTotal` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing …

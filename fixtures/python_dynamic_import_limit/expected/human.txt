@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/plugin_loader.py:4
+  Language: python
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: return importlib.import_module(module_name).handle(payload, strict=True)
   Missing discriminator: Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not bu…

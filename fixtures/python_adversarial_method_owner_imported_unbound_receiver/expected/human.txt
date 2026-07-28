@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: src/auth.py:6
+  Language: python
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Canonical gap: gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid
   Changed behavior: return token.strip() in self._valid

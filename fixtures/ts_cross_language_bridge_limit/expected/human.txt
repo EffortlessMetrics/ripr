@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
   File: src/bridge.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: if (input.length >= 0) {
   Discriminator (observed, advisory): Related test reaches `processData` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.

@@ -26,6 +26,14 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         display_path(&finding.probe.location.file),
         finding.probe.location.line
     ));
+    if should_render_language_metadata(finding) {
+        if let Some(language) = finding.language {
+            out.push_str(&format!("  Language: {}\n", language.as_str()));
+        }
+        if let Some(status) = finding.language_status {
+            out.push_str(&format!("  Language status: {}\n", status.as_str()));
+        }
+    }
     out.push_str(&format!(
         "  Static exposure: {} ({}, confidence {:.2})\n",
         finding.class.as_str(),

@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
   File: src/dispatch.ts:2
+  Language: typescript
+  Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Changed behavior: actions[key]();
   Missing discriminator: Related test reaches `dispatch` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repai…

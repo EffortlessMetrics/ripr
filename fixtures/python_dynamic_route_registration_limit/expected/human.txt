@@ -10,6 +10,8 @@ Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
   File: app/checkout.py:17
+  Language: python
+  Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
   Changed behavior: return {"detail": "coupon expired"}
   Missing discriminator: Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a concrete…
