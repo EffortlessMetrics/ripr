@@ -956,8 +956,6 @@ npm --prefix editors/vscode run package
 cargo xtask check-pr
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1033,8 +1031,6 @@ cargo test -p ripr calibration
 cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1113,8 +1109,6 @@ cargo xtask lsp-cockpit-report
 cargo xtask repo-exposure-latency-report
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-pr
 cargo test --workspace
 ```
@@ -1274,8 +1268,6 @@ Closeout:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1665,8 +1657,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -1805,8 +1795,6 @@ Closeout:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -1924,8 +1912,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2030,8 +2016,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2132,8 +2116,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2233,8 +2215,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2349,8 +2329,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2439,8 +2417,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2545,8 +2521,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -3021,8 +2995,6 @@ cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-output-contracts
 cargo xtask check-architecture
 cargo xtask check-workspace-shape
@@ -3118,8 +3090,6 @@ Commands:
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-pr
 ```
 
@@ -3416,9 +3386,6 @@ Blocking conditions:
 Commands:
 
 ```bash
-cargo xtask goals status
-cargo xtask goals next
-cargo xtask check-goals
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -3583,7 +3550,6 @@ Commands:
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
-cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```
@@ -3682,7 +3648,6 @@ cargo xtask check-static-language
 cargo xtask check-generated-clean
 cargo xtask pr-ready
 cargo xtask cockpit
-cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```
@@ -4157,8 +4122,6 @@ Commands:
 
 ```bash
 cargo xtask check-doc-artifacts
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4252,8 +4215,6 @@ Work items:
 Commands:
 
 ```bash
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4339,8 +4300,6 @@ git status --short --branch
 gh pr list --repo EffortlessMetrics/ripr-swarm --state open
 gh pr list --repo EffortlessMetrics/ripr --state open
 cargo xtask pr-triage-report
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4435,8 +4394,6 @@ Work items:
 Commands:
 
 ```bash
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4517,8 +4474,6 @@ cargo test -p ripr seam_cache -- --test-threads=1
 cargo test -p ripr seam_inventory -- --test-threads=1
 cargo test -p xtask cache -- --test-threads=1
 cargo xtask cache report
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4606,8 +4561,6 @@ cargo test -p ripr lsp --lib
 cargo xtask ripr-swarm readiness
 cargo xtask evidence-quality-scorecard
 cargo xtask check-output-contracts
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4719,8 +4672,6 @@ cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- -
 cargo xtask ripr-swarm readiness
 cargo xtask evidence-quality-scorecard
 cargo xtask check-output-contracts
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4951,8 +4902,6 @@ Work items:
 Commands:
 
 ```bash
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -5038,7 +4987,6 @@ contract.
 Commands:
 
 ```bash
-cargo xtask check-goals
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-doc-artifacts

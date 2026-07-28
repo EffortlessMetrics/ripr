@@ -311,7 +311,6 @@ Tracker-opening validation:
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
-cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```

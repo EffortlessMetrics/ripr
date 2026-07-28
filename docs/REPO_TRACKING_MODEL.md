@@ -154,10 +154,8 @@ Run:
 
 ```bash
 cargo xtask check-doc-index
-cargo xtask check-goals
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask goals next
 cargo xtask check-pr
 ```
 

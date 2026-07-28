@@ -786,7 +786,7 @@ impl Discriminator for ReachSummary {}
 ";
         write_source(&root.join("crates/ripr/src/entangled.rs"), src);
         let mut files = Vec::new();
-        collect_rs_files(&root, &root, &mut files)?;
+        collect_source_files(&root, &root, &mut files)?;
         let entry = files
             .iter()
             .find(|f| f.path.ends_with("entangled.rs"))
@@ -822,7 +822,7 @@ impl Discriminator for ReachSummary {}
         src.push_str("pub fn token_run() {}\n");
         write_source(&root.join("crates/ripr/src/tokens.rs"), &src);
         let mut files = Vec::new();
-        collect_rs_files(&root, &root, &mut files)?;
+        collect_source_files(&root, &root, &mut files)?;
         let entry = files
             .iter()
             .find(|f| f.path.ends_with("tokens.rs"))
@@ -851,8 +851,8 @@ impl Discriminator for ReachSummary {}
         write_source(&root.join("xtask/src/c.rs"), "pub fn c() {}\n");
 
         let mut files = Vec::new();
-        collect_rs_files(&root.join("crates/ripr/src"), &root, &mut files)?;
-        collect_rs_files(&root.join("xtask/src"), &root, &mut files)?;
+        collect_source_files(&root.join("crates/ripr/src"), &root, &mut files)?;
+        collect_source_files(&root.join("xtask/src"), &root, &mut files)?;
 
         for f in &files {
             assert!(!f.path.contains('\\'), "path not normalized: {}", f.path);

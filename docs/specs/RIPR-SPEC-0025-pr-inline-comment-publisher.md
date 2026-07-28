@@ -552,8 +552,6 @@ cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-pr
 git diff --check
 ```
