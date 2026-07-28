@@ -78,7 +78,7 @@ translate it into the existing RIPR graph and the accepted
 
 The rule is substitution, not duplication. If a handoff asks for a proof stack
 or source-of-truth stack, use the existing source-of-truth docs, proposals,
-specs, ADRs, campaign docs, the active manifest, traceability, capability
+specs, ADRs, campaign docs, GitHub issues and PRs, traceability, capability
 metadata, and handoffs. If a field is missing from that graph, add it to the
 appropriate existing artifact or validator instead of creating a runner-specific
 goals tree or another status ledger.
@@ -241,10 +241,9 @@ To keep individual docs from being overloaded:
   conditions that would justify revisiting it.
 - A **campaign ledger entry** sequences PRs. It must not redefine specs
   or duplicate proposal reasoning.
-- The **active manifest** names the current execution campaign. It may stay on
-  a closed campaign only when the manifest also declares
-  `successor = "<campaign-id>"` or `no_current_goal = true`; closed manifests
-  also move to the archive.
+- **GitHub issues and PRs** name current execution work. Campaign docs and
+  spec-system slices sequence that work; they do not create a second scheduler
+  or active-manifest authority.
 - A **scoped PR** is the smallest reviewable unit. It must not bundle
   unrelated contracts. See [`SCOPED_PR_CONTRACT.md`](../SCOPED_PR_CONTRACT.md).
 - A **closeout handoff** records what happened. It must not invent new
@@ -253,8 +252,8 @@ To keep individual docs from being overloaded:
 When in doubt, ask which question the reader is asking when they reach
 for the doc. A reader asking "why does this exist?" wants the proposal.
 "What must ripr do?" wants the spec. "What constrains this change?" wants
-the ADR. "What is the agent doing right now, or what campaign just closed
-with a successor or explicit idle marker?" wants the active manifest.
+the ADR. "What is the agent doing right now?" wants the campaign ledger and
+its linked GitHub issues and PRs.
 "What shipped last week?" wants the handoff.
 
 ## PR alignment cadence
@@ -308,7 +307,7 @@ agent-side task state (Codex /goal, Kiro tasks, Claude Code TaskCreate, ...)
   |  reads / writes
   v
 repo-side typed context graph
-  proposals -> specs -> ADRs -> campaigns -> active.toml -> work items
+  proposals -> specs -> ADRs -> campaigns -> GitHub work items
                      -> traceability -> context manifests -> reports
                      -> handoffs / learnings
 ```

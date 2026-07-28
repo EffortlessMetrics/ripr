@@ -2019,6 +2019,99 @@ fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn s
 }
 
 #[test]
+fn agent_repair_phases_materialize_snapshots_and_verify_json()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-repair-phases");
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("tests"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"boundary_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lib]\nname = \"boundary_gap_fixture\"\npath = \"src/lib.rs\"\n",
+    )?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}\n",
+    )?;
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        "use boundary_gap_fixture::discounted_total;\n\n#[test]\nfn below_threshold_has_no_discount() {\n    assert_eq!(discounted_total(50, 100), 50);\n}\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n",
+    )?;
+    init_git_fixture_repo(&root)?;
+    run_git(&root, &["add", "Cargo.toml", "src", "tests"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "fixture source",
+        ],
+    )?;
+    assert!(
+        commit.status.success(),
+        "fixture source commit failed: {commit:?}"
+    );
+
+    let root_arg = root.display().to_string();
+    let before = run_ripr(&[
+        "agent",
+        "repair",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "67fc764ba37d77bd",
+        "--phase",
+        "before",
+    ]);
+    assert_success(&before);
+
+    let before_snapshot = root.join("target/ripr/workflow/before.repo-exposure.json");
+    assert!(before_snapshot.is_file());
+    let packet_path = root.join("target/ripr/workflow/agent-packet.json");
+    let packet: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&packet_path)?)?;
+    assert_eq!(packet["packets_total"], 1);
+    assert_eq!(packet["packets"][0]["seam_id"], "67fc764ba37d77bd");
+
+    let after_snapshot = root.join("target/ripr/workflow/after.repo-exposure.json");
+    let stale_after = serde_json::json!({
+        "stale_marker": "previous repair run",
+        "source": std::fs::read_to_string(&before_snapshot)?,
+    });
+    std::fs::write(&after_snapshot, serde_json::to_vec(&stale_after)?)?;
+
+    let after = run_ripr(&[
+        "agent",
+        "repair",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "67fc764ba37d77bd",
+        "--phase",
+        "after",
+    ]);
+    assert_success(&after);
+    let after_snapshot_text = std::fs::read_to_string(&after_snapshot)?;
+    assert!(!after_snapshot_text.contains("previous repair run"));
+
+    let verify_json = root.join("target/ripr/workflow/agent-verify.json");
+    assert!(verify_json.is_file());
+    let verify: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(verify_json)?)?;
+    assert_eq!(verify["tool"], "ripr");
+    let receipt_path = root.join("target/ripr/reports/agent-receipt.json");
+    let receipt: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(receipt_path)?)?;
+    assert_eq!(receipt["provenance"]["seam_id"], "67fc764ba37d77bd");
+    assert!(String::from_utf8_lossy(&after.stdout).contains("\"status\": \"complete\""));
+    assert!(String::from_utf8_lossy(&after.stderr).contains("after phase complete"));
+
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::Error>> {
     let (root, diff) = agent_brief_sample_workspace("agent-packet-config-off")?;
     let root_path = root.display().to_string();

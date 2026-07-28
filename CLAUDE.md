@@ -28,7 +28,7 @@ editors/vscode     # VS Code extension that hosts `ripr lsp --stdio`
 docs/              # specs, ADRs, capability matrix, plans, learnings
 fixtures/          # input diffs + expected outputs for golden tests
 policy/            # allowlists for non-Rust files, deps, processes, network, generated files, public API, architecture
-.ripr/             # in-repo state: traceability.toml, goals/active.toml, allow attribute lists
+.ripr/             # in-repo state: traceability.toml and allow attribute lists
 ```
 
 ### Internal modules (under `crates/ripr/src/`, enforced by `cargo xtask check-architecture`)
@@ -178,7 +178,7 @@ Avoid: bundling unrelated behaviors, mixing schema changes with analyzer rewrite
 This repo is intentionally organized so agents can resume long-running goals from repository artifacts instead of chat history. When picking up unfamiliar work:
 
 - `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md` — current direction and checkpoints
-- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active multi-PR campaigns (GitHub issues + `.allow/spec-system/slices/` are the live work-selection model; the `.ripr/goals/` scheduler was retired in #1701)
+- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active multi-PR campaigns (GitHub issues + `.allow/spec-system/slices/` are the live work-selection model; the retired scheduler is historical context in #1701)
 - `docs/CAPABILITY_MATRIX.md` — current capability status per area
 - `docs/PR_AUTOMATION.md` — the shape/check/guide model
 - `docs/CODEX_GOALS.md`, `docs/SCOPED_PR_CONTRACT.md` — the PR-shaping contract

@@ -1556,7 +1556,7 @@ pub(crate) fn unknown_command_message(command: &str) -> String {
         "goals" | "check-goals" | "check-campaign" | "closeout" | "pr-body"
     ) {
         return format!(
-            "unknown xtask command `{normalized}`.\nThe `{normalized}` command was retired when the .ripr/goals/ scheduler was deleted (#1701).\nLive work selection now comes from GitHub issues, PRs, and the local worktree.\nRun `gh issue list --state open` or `cargo xtask help` for the full list of current commands."
+            "unknown xtask command `{normalized}`.\nThe `{normalized}` command was retired when the .ripr/goals/ scheduler was deleted (#1701).\nLive work selection now comes from GitHub issues, PRs, and checks; implementation slices are scope records for already-selected work.\nRun `gh issue list --state open` or `cargo xtask help` for the full list of current commands."
         );
     }
     let suggestion = known_commands()

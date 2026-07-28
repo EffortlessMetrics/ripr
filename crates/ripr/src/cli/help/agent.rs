@@ -187,11 +187,11 @@ Options:
   --phase before|after Which half of the repair loop to run. Defaults to `before`.
 
 The repair command drives the two-phase repair loop:
-  before  — capture the pre-edit repo-exposure snapshot and emit the
-            repair packet for the selected seam.
-  after   — capture the post-edit repo-exposure snapshot, verify the
-            change against the before snapshot, and emit a receipt.
+  before  — write the pre-edit repo-exposure snapshot and repair packet for
+            the selected seam.
+  after   — write the post-edit repo-exposure snapshot, persist the verify
+            JSON, and emit a receipt.
 
-Run `ripr agent repair --phase before` before editing, then
-`ripr agent repair --phase after` after editing.
+Run `ripr agent repair --seam-id ID --phase before` before editing, then
+`ripr agent repair --seam-id ID --phase after` after editing.
 "#;

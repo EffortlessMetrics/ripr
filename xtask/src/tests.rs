@@ -24289,6 +24289,14 @@ fn unknown_command_message_includes_help_without_nearby_match() {
     assert!(message.contains("cargo xtask help"));
 }
 
+#[test]
+fn retired_command_message_keeps_scope_records_out_of_live_selection() {
+    let message = unknown_command_message("goals");
+    assert!(message.contains("GitHub issues, PRs, and checks"));
+    assert!(message.contains("implementation slices are scope records"));
+    assert!(!message.contains(".allow/spec-system/slices/"));
+}
+
 fn changed_path(path: &str, statuses: &[&str]) -> ChangedPath {
     ChangedPath {
         path: path.to_string(),

@@ -23,8 +23,8 @@ will diverge from current `main`.
 
 - [ ] Local `main` is up to date (`git fetch origin && git status` shows no
       lag versus `origin/main`).
-- [ ] The work item id corresponds to a GitHub issue (the `.ripr/goals/`
-      scheduler was retired in #1701; work selection comes from GitHub
+- [ ] The work item id corresponds to a GitHub issue (the scheduler was
+      retired in #1701; work selection comes from GitHub
       issues, PRs, and `.allow/spec-system/slices/`).
 - [ ] The "latest merged PR" listed above matches `git log -1 origin/main
       --oneline` at the time of cut.
