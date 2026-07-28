@@ -28,23 +28,26 @@ git fetch origin --prune
 git status --short --branch
 gh pr list --repo EffortlessMetrics/ripr-swarm --state open
 gh pr list --repo EffortlessMetrics/ripr --state open
-cargo xtask goals next
+gh issue list --repo EffortlessMetrics/ripr-swarm --state open --limit 100
 ```
 
 Treat ordinary development PRs in `EffortlessMetrics/ripr` as source/swarm
 drift. Port, redirect, or close them unless they are release, security, or
 explicit promotion work.
 
-When `cargo xtask goals next` reports `no_current_goal = true`, do not continue
-the closed campaign and do not infer a successor from chat history. Select work
-from repo-owned state in this order:
+The retired `.ripr/goals` scheduler is not live execution authority. Do not
+continue a closed campaign or infer a successor from chat history. Select work from
+repo-owned evidence in this order:
 
-1. open `ripr-swarm` PRs and required checks;
+1. open `ripr-swarm` PRs, reviews, and required checks;
 2. ordinary source-repo PRs that should be ported or redirected;
-3. `docs/IMPLEMENTATION_CAMPAIGNS.md`;
-4. `docs/IMPLEMENTATION_PLAN.md`;
-5. accepted proposals, specs, ADRs, and campaign plans;
-6. open issues that cite those repo artifacts.
+3. open issues with explicit ownership and current acceptance criteria;
+4. accepted RIPR-SPEC requirements and linked proposals, ADRs, or plans;
+5. historical campaign documents only as context, never as current authorization.
+
+After a PR has been selected, consult its PR-local `ImplementationSliceV1`
+under `.allow/spec-system/slices/` to bound that PR's change. Slices are scope
+evidence, not a task database or live work pointer.
 
 If no aligned work is available, leave the trunk clean. Record new routed-runner
 proof on #24 or #34 only when there is fresh evidence; otherwise do not create a

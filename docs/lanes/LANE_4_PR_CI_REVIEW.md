@@ -48,15 +48,16 @@ Use one document for one job:
 | ADRs | durable architecture decisions | [ADRs](../adr/) |
 | Lane tracker | lane-local scope, boundaries, current plan, validation gates | this document |
 | Implementation plan | PR-sized sequencing and proof commands | [Lane 4 plan](../../plans/lane4-pr-ci-review-cockpit/implementation-plan.md) |
-| Active goal manifest | current Codex/Droid execution state | `.ripr/goals/active.toml` or a lane manifest when Lane 4 is active |
+| Live work evidence | current ownership, scope, and review state | GitHub issues, PRs, checks, reviews, the local worktree, and the PR-local `ImplementationSliceV1` |
 | Policy ledgers | CI, gate, exception, and allowlist truth | `policy/*.toml`, generated workflow policy checks |
 | Capability and proof map | public claim to evidence linkage | [Capability matrix](../CAPABILITY_MATRIX.md), `metrics/capabilities.toml` |
 | Closeout / handoff | what landed, validation, remaining work, restart context | [Handoffs](../handoffs/) |
 
 Proposal explains why. Specs define what must be true. ADRs record durable
-architecture decisions. Plans sequence PRs. Active manifests tell agents what
-to do now. Policy ledgers own authority and exceptions. Closeouts record what
-happened and what remains.
+architecture decisions. Plans sequence bounded work but do not authorize it.
+Current GitHub and local-worktree evidence identifies what is live; the PR-local
+implementation slice bounds the change. Policy ledgers own authority and exceptions.
+Closeouts record what happened and what remains.
 
 ## Scope
 

@@ -1,12 +1,13 @@
 # Implementation Campaigns
 
-This is the campaign-level plan for Codex Goals and long-context contributor
-work. Campaigns are larger than one PR. Each campaign has an objective, an end
-state, and work items that should each follow the
-[scoped PR contract](SCOPED_PR_CONTRACT.md).
+This document preserves historical campaign-level context for Codex Goals and
+long-context contributor work. It is not live execution authority. The campaigns
+below remain useful for chronology, objectives, and completed work-item context.
 
-The operational checklist remains in [Implementation plan](IMPLEMENTATION_PLAN.md).
-The machine-readable active campaign is `.ripr/goals/active.toml`.
+Live work selection and ownership come from GitHub issues, pull requests, checks,
+reviews, and the local worktree. One PR's scope is its `ImplementationSliceV1`
+under `.allow/spec-system/slices/`; normative behavior lives in RIPR-SPEC
+requirements. Do not infer current work from a campaign status below.
 
 ## Campaign 1: Agentic DevEx Foundation
 
