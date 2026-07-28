@@ -1216,6 +1216,24 @@ export class RiprClientController {
     }
   }
 
+  async refreshDiagnostics(): Promise<void> {
+    const client = this.client;
+    if (!client) {
+      this.runtime.showInformationMessage('ripr diagnostics refresh requires a running server.');
+      return;
+    }
+    try {
+      await client.sendRequest('workspace/executeCommand', {
+        command: 'ripr.refresh',
+        arguments: []
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr refresh diagnostics failed: ${message}`);
+      this.warnWithOutput('ripr could not refresh diagnostics.');
+    }
+  }
+
   private async firstPrPacketForAction(kind: FirstPrPacketActionKind): Promise<RiprFirstPrPacketStatus | undefined> {
     await this.refreshSetupStatusFiles();
     const packet = this.setupStatus.firstPr;
@@ -1399,11 +1417,6 @@ export class RiprClientController {
       : 'The last analysis attempt failed.';
     const retry = typeof status.retry_command === 'string'
       ? status.retry_command
-      // Fallback must reference a registered command. `ripr.refresh` is not
-      // registered in package.json/extension.ts, so instructing the user to
-      // run it produces a palette error. `ripr: Restart Server` IS registered
-      // (ripr.restartServer) and triggers a full re-analysis. The title form
-      // matches the next-step convention used elsewhere in this file (#2001).
       : 'ripr: Restart Server';
     const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
     switch (status.state) {
@@ -1441,12 +1454,23 @@ export class RiprClientController {
         });
         return;
       case 'succeeded':
-        if (status.run_status === 'stale') {
+        if (status.run_status === 'stale' || this.dirtyRiprDocuments.size > 0) {
+          const dirtyDetail = this.dirtyRiprDocuments.size > 0
+            ? [
+              analysisStatusDetail(status),
+              'Current diagnostics describe the last saved workspace state.',
+              `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
+            ].join('\n')
+            : analysisStatusDetail(status);
           this.updateStatus({
             kind: 'stale',
-            summary: 'ripr analysis completed with stale or limited evidence.',
-            detail: analysisStatusDetail(status),
-            nextStep: `Run ${retry} after resolving the reported limitation.`
+            summary: this.dirtyRiprDocuments.size > 0
+              ? 'ripr analysis completed, but unsaved routed-file changes remain.'
+              : 'ripr analysis completed with stale or limited evidence.',
+            detail: dirtyDetail,
+            nextStep: this.dirtyRiprDocuments.size > 0
+              ? 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
+              : `Run ${retry} after resolving the reported limitation.`
           });
         } else {
           this.updateStatus({

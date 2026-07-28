@@ -43,6 +43,7 @@
     "onLanguage:python",
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
+    "onCommand:ripr.refreshDiagnostics",
     "onCommand:ripr.showStatus",
     "onCommand:ripr.showOutput",
     "onCommand:ripr.diagnoseSetup",
@@ -197,6 +198,10 @@
       {
         "command": "ripr.restartServer",
         "title": "ripr: Restart Server"
+      },
+      {
+        "command": "ripr.refreshDiagnostics",
+        "title": "ripr: Refresh Diagnostics"
       },
       {
         "command": "ripr.selectWorkspaceRoot",
