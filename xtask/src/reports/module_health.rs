@@ -51,7 +51,9 @@ pub(crate) fn module_health(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{MODULE_HEALTH_USAGE}");
         println!();
-        println!("Walks crates/ripr/src/ and xtask/src/ for *.rs files and writes an advisory");
+        println!(
+            "Walks crates/ripr/src/, xtask/src/, and editors/vscode/src/ for *.rs and *.ts files and writes an advisory"
+        );
         println!("ranked report to target/ripr/reports/ carrying two signals per file:");
         println!("  - line count (flagged over --threshold);");
         println!(
@@ -73,10 +75,10 @@ pub(crate) fn module_health(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("failed to read current directory: {err}"))?;
 
     let mut files: Vec<FileEntry> = Vec::new();
-    for search_root in &["crates/ripr/src", "xtask/src"] {
+    for search_root in &["crates/ripr/src", "xtask/src", "editors/vscode/src"] {
         let dir = root.join(search_root);
         if dir.exists() {
-            collect_rs_files(&dir, &root, &mut files)?;
+            collect_source_files(&dir, &root, &mut files)?;
         }
     }
 
@@ -187,7 +189,12 @@ fn parse_threshold(args: &[String]) -> Result<usize, String> {
     Ok(threshold)
 }
 
-fn collect_rs_files(dir: &Path, repo_root: &Path, out: &mut Vec<FileEntry>) -> Result<(), String> {
+/// Collect source files (.rs and .ts) recursively (#2544: extended to .ts).
+fn collect_source_files(
+    dir: &Path,
+    repo_root: &Path,
+    out: &mut Vec<FileEntry>,
+) -> Result<(), String> {
     let read_dir = std::fs::read_dir(dir)
         .map_err(|err| format!("failed to read directory {}: {err}", dir.display()))?;
     for entry in read_dir {
@@ -197,8 +204,17 @@ fn collect_rs_files(dir: &Path, repo_root: &Path, out: &mut Vec<FileEntry>) -> R
             .file_type()
             .map_err(|err| format!("failed to stat {}: {err}", path.display()))?;
         if file_type.is_dir() {
-            collect_rs_files(&path, repo_root, out)?;
-        } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+            // Skip node_modules and dist directories in the VS Code extension.
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name == "node_modules" || name == "dist" || name == "out" || name == "test" {
+                continue;
+            }
+            collect_source_files(&path, repo_root, out)?;
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .is_some_and(|ext| ext == "rs" || ext == "ts")
+        {
             let text = std::fs::read_to_string(&path)
                 .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
             let lines = count_lines(&text);
