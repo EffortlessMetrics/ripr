@@ -181,6 +181,8 @@ pub(super) struct ActionDataInputs<'a> {
     pub(super) diagnostic: Option<&'a Diagnostic>,
     /// The snapshot's `stable_id()` input identity, when a snapshot exists.
     pub(super) input_identity: Option<String>,
+    /// The refresh snapshot identity for seam actions, when one exists.
+    pub(super) evidence_identity: Option<Value>,
     /// The disabled reason, only when the action is disabled.
     pub(super) disabled_reason: Option<ActionDisabledReason>,
 }
@@ -238,6 +240,9 @@ pub(super) fn action_data(inputs: &ActionDataInputs<'_>) -> Value {
             "input_identity".to_string(),
             Value::String(identity.clone()),
         );
+    }
+    if let Some(identity) = &inputs.evidence_identity {
+        payload.insert("evidence_identity".to_string(), identity.clone());
     }
     payload.insert(
         "required_client_capability".to_string(),
@@ -305,6 +310,8 @@ pub(super) struct ParsedActionData {
     /// The snapshot `stable_id()` input identity the action was built
     /// against, when the payload carries one.
     pub(super) input_identity: Option<String>,
+    /// The refresh snapshot identity the seam action was built against.
+    pub(super) evidence_identity: Option<Value>,
     /// The capability the client must hold for the action's command: the
     /// client-command id, or `"server"` for server-executed commands.
     pub(super) required_client_capability: String,
@@ -374,6 +381,10 @@ pub(super) fn parse_validated_action_data(
         seam_id: optional_payload_string(object, "seam_id"),
         finding_id: optional_payload_string(object, "finding_id"),
         input_identity: optional_payload_string(object, "input_identity"),
+        evidence_identity: object
+            .get("evidence_identity")
+            .filter(|value| !value.is_null())
+            .cloned(),
         required_client_capability,
     };
     let canonical_identity = parsed.canonical_identity().unwrap_or_default();
@@ -453,6 +464,7 @@ mod tests {
             required_client_capability: "ripr.copyContext",
             diagnostic,
             input_identity: Some("input:fnv1a64:0123456789abcdef".to_string()),
+            evidence_identity: Some(serde_json::json!({"snapshot_id": null})),
             disabled_reason: None,
         }
     }
@@ -513,6 +525,7 @@ mod tests {
             "action_name",
             "canonical_gap_id",
             "diagnostic_id",
+            "evidence_identity",
             "finding_id",
             "gap_id",
             "input_identity",

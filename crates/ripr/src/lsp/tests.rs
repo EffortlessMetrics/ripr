@@ -1234,6 +1234,7 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                     "command": COLLECT_EVIDENCE_CONTEXT_COMMAND,
                     "arguments": [{
                         "seam_id": seam_id,
+                        "evidence_identity": seam_diagnostic["data"]["evidence_identity"],
                         "uri": text_uri,
                         "line": 2
                     }]
@@ -4574,6 +4575,28 @@ fn code_action_resolve_stale_input_identity_yields_disabled_stale_snapshot() -> 
 }
 
 #[test]
+fn code_action_resolve_stale_seam_snapshot_yields_disabled_stale_snapshot() -> Result<(), String> {
+    let vscode = vscode_client_features()?;
+    let (seam_params, mut old_snapshot) = seam_code_action_request()?;
+    old_snapshot.refresh.snapshot_id = Some("snapshot:old".to_string());
+    let actions = code_action_response(&seam_params, Some(&old_snapshot), &vscode);
+    let action = first_enabled_action(&actions)?;
+
+    let mut current_snapshot = old_snapshot.clone();
+    current_snapshot.refresh.snapshot_id = Some("snapshot:new".to_string());
+    let resolved = resolve_action(action, Some(&current_snapshot), &vscode)
+        .map_err(|err| format!("stale seam action was rejected instead of disabled: {err}"))?;
+    assert_disabled_action_invariants(&resolved)?;
+    if disabled_reason_of(&resolved) != Some("stale_snapshot") {
+        return Err(format!(
+            "expected stale_snapshot, got {:?}",
+            disabled_reason_of(&resolved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn code_action_resolve_missing_addressed_artifact_yields_disabled_stale_snapshot()
 -> Result<(), String> {
     // #1751: the current snapshot no longer carries the seam the action
@@ -6042,7 +6065,11 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
     );
     snapshot.classified_seams = vec![seam];
     let actions = code_action_response(
-        &code_action_params(vec![diagnostic])?,
+        &code_action_params_for(
+            test_uri("file:///workspace/src/service.rs")?,
+            diagnostic.range.start.line,
+            vec![diagnostic],
+        )?,
         Some(&snapshot),
         &vscode_client_features()?,
     );
@@ -6132,7 +6159,11 @@ fn seam_code_actions_keep_navigation_when_related_test_is_unresolved() -> Result
     );
     snapshot.classified_seams = vec![seam];
     let actions = code_action_response(
-        &code_action_params(vec![diagnostic])?,
+        &code_action_params_for(
+            test_uri("file:///workspace/src/service.rs")?,
+            diagnostic.range.start.line,
+            vec![diagnostic],
+        )?,
         Some(&snapshot),
         &vscode_client_features()?,
     );
@@ -11784,7 +11815,246 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
 }
 
 #[test]
-fn execute_command_collect_evidence_context_returns_none_for_unknown_seam() -> Result<(), String> {
+fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_result()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let seam = sample_classified_seam();
+        let seam_id = seam.seam.id().as_str().to_string();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let seam_diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+            .ok_or_else(|| "expected seam diagnostic".to_string())?;
+
+        let mut full = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![seam_diagnostic],
+            Vec::new(),
+        );
+        full.snapshot.classified_seams = vec![seam];
+        full.snapshot.refresh.snapshot_id = Some("snapshot:full".to_string());
+        let pending_analyzed = BTreeMap::new();
+        let pending_entered = Vec::new();
+        let transaction = backend
+            .prepare_refresh_transaction(full)
+            .ok_or_else(|| "expected full refresh transaction".to_string())?;
+        let super::backend::RefreshTransaction { plan, snapshot, .. } = transaction;
+        assert!(
+            backend
+                .commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
+                .is_some()
+        );
+
+        let full_snapshot = backend
+            .latest_analysis_snapshot()
+            .ok_or_else(|| "expected full snapshot".to_string())?;
+        let published_diagnostic = full_snapshot
+            .diagnostics_by_uri
+            .get(&uri)
+            .and_then(|diagnostics| diagnostics.first())
+            .ok_or_else(|| "expected published seam diagnostic".to_string())?;
+        let evidence_identity = published_diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("evidence_identity"))
+            .cloned()
+            .ok_or_else(|| "expected seam evidence identity".to_string())?;
+        assert_eq!(evidence_identity["snapshot_id"], "snapshot:full");
+
+        let current_packet = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_CONTEXT_COMMAND.to_string(),
+                arguments: vec![serde_json::json!({
+                    "seam_id": seam_id.clone(),
+                    "evidence_identity": evidence_identity.clone(),
+                })],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("current seam command failed: {err}"))?
+            .ok_or_else(|| "expected current seam packet".to_string())?;
+        assert_eq!(current_packet["packets_total"], 1);
+        backend.set_analysis_attempt_state_for_test(AnalysisAttemptState::Succeeded);
+
+        for cited_identity in [
+            serde_json::json!({"snapshot_id": "snapshot:older"}),
+            serde_json::Value::Null,
+        ] {
+            let stale = backend
+                .execute_command(ExecuteCommandParams {
+                    command: COLLECT_CONTEXT_COMMAND.to_string(),
+                    arguments: vec![serde_json::json!({
+                        "seam_id": seam_id.clone(),
+                        "evidence_identity": cited_identity,
+                    })],
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+                .map_err(|err| format!("mismatched seam command failed: {err}"))?
+                .ok_or_else(|| "expected typed stale result for mismatched identity".to_string())?;
+            assert_eq!(stale["kind"], "lsp_seam_evidence");
+            assert_eq!(stale["status"], "stale");
+            assert_eq!(stale["current_snapshot_id"], "snapshot:full");
+            assert_eq!(stale["recovery_route"], "ripr.refreshDiagnostics");
+            assert_eq!(
+                stale["invalidation_reason"],
+                "the cited seam evidence belongs to an older snapshot"
+            );
+        }
+
+        let stale_without_identity = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_CONTEXT_COMMAND.to_string(),
+                arguments: vec![serde_json::json!({"seam_id": seam_id.clone()})],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("unbound seam command failed: {err}"))?
+            .ok_or_else(|| "expected typed stale result without evidence identity".to_string())?;
+        assert_eq!(stale_without_identity["status"], "stale");
+        assert_eq!(
+            stale_without_identity["invalidation_reason"],
+            "the cited seam action has no evidence identity"
+        );
+
+        let mut deferred = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            Vec::new(),
+            Vec::new(),
+        );
+        deferred.batches.clear();
+        deferred.snapshot.diagnostics_by_uri.clear();
+        deferred.snapshot.refresh.snapshot_id = Some("snapshot:deferred".to_string());
+        deferred.snapshot.seams_deferred = true;
+        let transaction = backend
+            .prepare_refresh_transaction(deferred)
+            .ok_or_else(|| "expected deferred refresh transaction".to_string())?;
+        let super::backend::RefreshTransaction { plan, snapshot, .. } = transaction;
+        assert_eq!(plan.clear_uris, vec![uri]);
+        assert!(
+            backend
+                .commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
+                .is_some()
+        );
+
+        for command in [COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND] {
+            let stale = backend
+                .execute_command(ExecuteCommandParams {
+                    command: command.to_string(),
+                    arguments: vec![serde_json::json!({
+                        "seam_id": seam_id.clone(),
+                        "evidence_identity": evidence_identity.clone(),
+                    })],
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+                .map_err(|err| format!("stale seam command failed: {err}"))?
+                .ok_or_else(|| "expected typed stale seam result".to_string())?;
+            assert_eq!(stale["kind"], "lsp_seam_evidence");
+            assert_eq!(stale["status"], "stale");
+            assert_eq!(
+                stale["stale_evidence_identity"]["snapshot_id"],
+                "snapshot:full"
+            );
+            assert_eq!(stale["current_snapshot_id"], "snapshot:deferred");
+            assert_eq!(stale["recovery_route"], "ripr.refreshDiagnostics");
+            assert!(
+                stale["invalidation_reason"]
+                    .as_str()
+                    .is_some_and(|reason| reason.contains("deferred"))
+            );
+        }
+
+        backend.clear_all_diagnostic_uris();
+        backend.reset_analysis_health_for_test();
+        let stale_without_snapshot = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_CONTEXT_COMMAND.to_string(),
+                arguments: vec![serde_json::json!({
+                    "seam_id": seam_id,
+                    "evidence_identity": evidence_identity,
+                })],
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .map_err(|err| format!("cleared seam command failed: {err}"))?
+            .ok_or_else(|| "expected typed stale result without snapshot".to_string())?;
+        assert_eq!(stale_without_snapshot["status"], "stale");
+        assert!(stale_without_snapshot["current_snapshot_id"].is_null());
+        assert_eq!(
+            stale_without_snapshot["recovery_route"],
+            "ripr.refreshDiagnostics"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn seam_code_actions_reject_a_mismatched_evidence_identity() -> Result<(), String> {
+    let seam = sample_classified_seam();
+    let mut current = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![current.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    snapshot.refresh.snapshot_id = Some("snapshot:current".to_string());
+    current
+        .data
+        .as_mut()
+        .and_then(|data| data.as_object_mut())
+        .ok_or_else(|| "expected seam diagnostic data".to_string())?
+        .insert(
+            "evidence_identity".to_string(),
+            snapshot.evidence_identity(),
+        );
+    snapshot
+        .diagnostics_by_uri
+        .values_mut()
+        .flatten()
+        .for_each(|diagnostic| diagnostic.data = current.data.clone());
+    let mut stale = current.clone();
+    stale
+        .data
+        .as_mut()
+        .and_then(|data| data.as_object_mut())
+        .ok_or_else(|| "expected stale seam diagnostic data".to_string())?
+        .insert(
+            "evidence_identity".to_string(),
+            serde_json::json!({
+                "snapshot_id": "snapshot:old",
+                "input_identity": "input:old",
+            }),
+        );
+
+    let actions = code_action_response(
+        &code_action_params(vec![stale])?,
+        Some(&snapshot),
+        &vscode_client_features()?,
+    );
+    let commands = code_action_commands(&actions)?;
+    assert!(
+        commands
+            .iter()
+            .all(|(_, command, _)| command == REFRESH_COMMAND),
+        "mismatched seam evidence must expose only refresh: {commands:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn execute_command_collect_evidence_context_returns_typed_stale_for_unknown_seam()
+-> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -11816,7 +12086,14 @@ fn execute_command_collect_evidence_context_returns_none_for_unknown_seam() -> R
         };
         let result = backend.execute_command(params).await;
         let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
-        assert!(packet.is_none(), "expected None for unknown seam");
+        let packet = packet.ok_or_else(|| "expected typed stale packet".to_string())?;
+        assert_eq!(packet["status"], "stale");
+        assert_eq!(packet["seam_id"], "unknown-seam");
+        assert_eq!(
+            packet["invalidation_reason"],
+            "the cited seam is absent from the current full-seam evidence"
+        );
+        assert_eq!(packet["recovery_command"], "ripr.refreshDiagnostics");
         Ok(())
     })
 }

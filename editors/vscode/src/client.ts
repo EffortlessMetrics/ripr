@@ -180,6 +180,7 @@ export interface RiprContextTarget {
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  evidence_identity?: unknown;
   gap_id?: string;
   canonical_gap_id?: string;
   gap_kind?: string;
@@ -808,6 +809,7 @@ export class RiprClientController {
           probe_id: target.probe_id,
           seam_id: target.seam_id,
           seam_kind: target.seam_kind,
+          evidence_identity: target.evidence_identity,
           uri: target.uri,
           line: target.line,
         };

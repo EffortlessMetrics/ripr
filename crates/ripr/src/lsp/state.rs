@@ -383,6 +383,9 @@ impl WorkspaceFolderSet {
 pub(super) struct RefreshMetadata {
     pub(super) generated_at: SystemTime,
     pub(super) duration: Option<Duration>,
+    /// Stable identity assigned by the refresh transaction. Unit-test
+    /// snapshots may leave this unset until they enter that transaction.
+    pub(super) snapshot_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -550,6 +553,7 @@ impl RefreshMetadata {
         Self {
             generated_at: SystemTime::now(),
             duration: None,
+            snapshot_id: None,
         }
     }
 
@@ -639,6 +643,19 @@ impl AnalysisSnapshot {
         self.input_identity
             .as_ref()
             .map(LspAnalysisInputIdentity::stable_id)
+    }
+
+    pub(super) fn evidence_identity(&self) -> serde_json::Value {
+        serde_json::json!({
+            "snapshot_id": self.refresh.snapshot_id,
+        })
+    }
+
+    pub(super) fn evidence_identities_match(
+        left: Option<&serde_json::Value>,
+        right: Option<&serde_json::Value>,
+    ) -> bool {
+        left == right
     }
 
     pub(super) fn is_consistent(&self) -> bool {

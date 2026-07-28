@@ -423,6 +423,8 @@ impl Backend {
         let diagnostics = match diagnostics_result {
             Ok(Ok(mut diagnostics)) => {
                 diagnostics.snapshot.input_identity = Some(request.input_identity.clone());
+                diagnostics.snapshot.refresh.snapshot_id =
+                    Some(snapshot_id_for_generation(generation));
                 diagnostics
                     .snapshot
                     .refresh
@@ -809,8 +811,12 @@ impl Backend {
     ) -> Option<RefreshTransaction> {
         let WorkspaceDiagnostics {
             mut snapshot,
-            batches,
+            mut batches,
         } = diagnostics;
+        if snapshot.refresh.snapshot_id.is_none() {
+            snapshot.refresh.snapshot_id = Some("snapshot:legacy".to_string());
+        }
+        bind_seam_evidence_identity(&mut snapshot, &mut batches);
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
@@ -1188,6 +1194,11 @@ impl Backend {
         }
     }
 
+    #[cfg(test)]
+    pub(super) fn reset_analysis_health_for_test(&self) {
+        self.reset_health_for_input_change();
+    }
+
     fn effective_health_for_snapshot(
         &self,
         mut health: AnalysisHealth,
@@ -1365,7 +1376,7 @@ impl Backend {
             RefreshAttemptOutcome::Published => {
                 health.state = AnalysisAttemptState::Succeeded;
                 health.failure = None;
-                let snapshot_id = format!("snapshot:{}", request.generation);
+                let snapshot_id = snapshot_id_for_generation(request.generation);
                 health.snapshot_id = Some(snapshot_id.clone());
                 health.last_success_snapshot_id = Some(snapshot_id);
                 health.last_success_at =
@@ -2893,6 +2904,44 @@ fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri,
         .collect()
 }
 
+fn snapshot_id_for_generation(generation: u64) -> String {
+    format!("snapshot:{generation}")
+}
+
+fn bind_seam_evidence_identity(snapshot: &mut AnalysisSnapshot, batches: &mut [DiagnosticBatch]) {
+    let evidence_identity = snapshot.evidence_identity();
+    for diagnostics in snapshot.diagnostics_by_uri.values_mut() {
+        for diagnostic in diagnostics {
+            bind_seam_diagnostic_identity(diagnostic, &evidence_identity);
+        }
+    }
+    for batch in batches {
+        for diagnostic in &mut batch.diagnostics {
+            bind_seam_diagnostic_identity(diagnostic, &evidence_identity);
+        }
+    }
+}
+
+fn bind_seam_diagnostic_identity(
+    diagnostic: &mut Diagnostic,
+    evidence_identity: &serde_json::Value,
+) {
+    let Some(data) = diagnostic
+        .data
+        .as_mut()
+        .and_then(|data| data.as_object_mut())
+    else {
+        return;
+    };
+    if data
+        .get("seam_id")
+        .and_then(|value| value.as_str())
+        .is_some()
+    {
+        data.insert("evidence_identity".to_string(), evidence_identity.clone());
+    }
+}
+
 fn workspace_diagnostics_are_root_contained(
     root: &Path,
     diagnostics: &WorkspaceDiagnostics,
@@ -3949,11 +3998,21 @@ impl Backend {
 
     async fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
         let args = context_arguments(arguments)?;
-        let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        let snapshot = self.latest_analysis.lock().ok()?.clone();
         if let Some(gap_id) = args.get("gap_id").and_then(|v| v.as_str()) {
+            let snapshot = snapshot.as_ref()?;
             return collect_gap_record_context_packet(&snapshot.root, args, gap_id);
         }
         if let Some(seam_id) = args.get("seam_id").and_then(|v| v.as_str()) {
+            let Some(snapshot) = snapshot.as_ref() else {
+                return Some(self.stale_seam_evidence_response(
+                    args,
+                    "the workspace input changed and no current analysis snapshot is available",
+                ));
+            };
+            if let Some(reason) = self.seam_command_stale_reason(args, snapshot) {
+                return Some(self.stale_seam_evidence_response(args, reason));
+            }
             let seam = snapshot.classified_seam_by_id(seam_id)?;
             let (causal_projection, causal_projection_warning) =
                 crate::app::causal_projection::CausalDeltaArtifact::load_optional(&snapshot.root);
@@ -3975,6 +4034,7 @@ impl Backend {
                 );
             return serde_json::from_str(&packet).ok();
         }
+        let snapshot = snapshot?;
         let finding_id = args.get("finding_id").and_then(|v| v.as_str())?;
         let finding = snapshot.finding_by_id(finding_id)?;
         let max_related_tests = self
@@ -3993,10 +4053,93 @@ impl Backend {
 
     fn collect_evidence_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
         let args = context_arguments(arguments)?;
-        let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        let snapshot = self.latest_analysis.lock().ok()?.clone();
         let seam_id = args.get("seam_id").and_then(|v| v.as_str())?;
+        let Some(snapshot) = snapshot.as_ref() else {
+            return Some(self.stale_seam_evidence_response(
+                args,
+                "the workspace input changed and no current analysis snapshot is available",
+            ));
+        };
+        if let Some(reason) = self.seam_command_stale_reason(args, snapshot) {
+            return Some(self.stale_seam_evidence_response(args, reason));
+        }
         let seam = snapshot.classified_seam_by_id(seam_id)?;
-        Some(evidence_context_packet(&snapshot, seam))
+        Some(evidence_context_packet(snapshot, seam))
+    }
+
+    fn seam_command_stale_reason(
+        &self,
+        args: &serde_json::Map<String, serde_json::Value>,
+        snapshot: &AnalysisSnapshot,
+    ) -> Option<&'static str> {
+        let health = self.analysis_health_snapshot();
+        let legacy_test_snapshot = health.snapshot_id.is_none()
+            && health.attempt_id.is_none()
+            && health.reason.is_none()
+            && health.current_input_identity.is_none();
+        if !legacy_test_snapshot && !health.allows_current_repairs() {
+            return Some("analysis input is no longer current; refresh the workspace evidence");
+        }
+        if snapshot.seams_deferred {
+            return Some(
+                "the current deferred refresh does not retain the cited full-seam evidence",
+            );
+        }
+        let cited_identity = args.get("evidence_identity");
+        if let Some(cited_identity) = cited_identity {
+            if !AnalysisSnapshot::evidence_identities_match(
+                Some(cited_identity),
+                Some(&snapshot.evidence_identity()),
+            ) {
+                return Some("the cited seam evidence belongs to an older snapshot");
+            }
+        } else if !legacy_test_snapshot {
+            return Some("the cited seam action has no evidence identity");
+        }
+        let seam_id = args.get("seam_id").and_then(|v| v.as_str());
+        if seam_id.is_some_and(|id| snapshot.classified_seam_by_id(id).is_none()) {
+            return Some("the cited seam is absent from the current full-seam evidence");
+        }
+        None
+    }
+
+    fn stale_seam_evidence_response(
+        &self,
+        args: &serde_json::Map<String, serde_json::Value>,
+        reason: &str,
+    ) -> LSPAny {
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        let health = self.analysis_health_snapshot();
+        let stale_evidence_identity = args.get("evidence_identity").cloned().unwrap_or_else(|| {
+            serde_json::json!({
+                "seam_id": args.get("seam_id").and_then(|value| value.as_str()),
+            })
+        });
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "lsp_seam_evidence",
+            "status": "stale",
+            "seam_id": args.get("seam_id").and_then(|value| value.as_str()),
+            "stale_evidence_identity": stale_evidence_identity,
+            "current_snapshot_id": snapshot
+                .as_ref()
+                .and_then(|value| value.refresh.snapshot_id.clone())
+                .or(health.snapshot_id),
+            "current_input_identity": snapshot
+                .as_ref()
+                .and_then(|value| value.input_identity_id())
+                .or(health.current_input_identity),
+            "invalidation_reason": reason,
+            "recovery_route": "ripr.refreshDiagnostics",
+            "recovery_command": "ripr.refreshDiagnostics",
+            "limits_note": "Static editor evidence only; refresh before using seam context or repair guidance.",
+        })
     }
 
     /// Per-document dirty/quarantine projection for the workspace status

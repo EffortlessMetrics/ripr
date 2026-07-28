@@ -212,6 +212,7 @@ fn action_data_payload(
         required_client_capability: required_client_capability(command_id),
         diagnostic,
         input_identity: snapshot.and_then(AnalysisSnapshot::input_identity_id),
+        evidence_identity: snapshot.map(AnalysisSnapshot::evidence_identity),
         disabled_reason: None,
     })
 }
@@ -295,6 +296,19 @@ pub(super) fn resolve_action(
         if let Some(payload_identity) = parsed.input_identity.as_deref()
             && Some(payload_identity) != snapshot.input_identity_id().as_deref()
         {
+            disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
+            return Ok(action);
+        }
+        if parsed.seam_id.is_some()
+            && snapshot.refresh.snapshot_id.is_some()
+            && !AnalysisSnapshot::evidence_identities_match(
+                parsed.evidence_identity.as_ref(),
+                Some(&snapshot.evidence_identity()),
+            )
+        {
+            // A cached action can outlive an otherwise identical full refresh.
+            // The command target already carries this identity; keep resolve
+            // fail-closed too so an old enabled action cannot execute.
             disable_action_in_place(&mut action, ActionDisabledReason::StaleSnapshot);
             return Ok(action);
         }
@@ -405,6 +419,7 @@ fn disabled_action(
             required_client_capability: required_client_capability(command_id),
             diagnostic: Some(diagnostic),
             input_identity: snapshot.and_then(AnalysisSnapshot::input_identity_id),
+            evidence_identity: snapshot.map(AnalysisSnapshot::evidence_identity),
             disabled_reason: Some(reason),
         })),
         ..CodeAction::default()
@@ -459,12 +474,42 @@ fn seam_action_context<'a>(
         .find_map(|diagnostic| {
             snapshot
                 .classified_seam_for_diagnostic(diagnostic)
+                .filter(|_| snapshot_has_current_seam_diagnostic(params, snapshot, diagnostic))
                 .map(|seam| SeamActionContext {
                     diagnostic,
                     seam,
                     snapshot,
                 })
         })
+}
+
+fn snapshot_has_current_seam_diagnostic(
+    params: &CodeActionParams,
+    snapshot: &AnalysisSnapshot,
+    cited: &Diagnostic,
+) -> bool {
+    let Some(cited_data) = cited.data.as_ref() else {
+        return false;
+    };
+    snapshot
+        .diagnostics_for_uri(&params.text_document.uri)
+        .is_some_and(|diagnostics| {
+            diagnostics.iter().any(|current| {
+                is_ripr_diagnostic(current)
+                    && is_seam_diagnostic(current)
+                    && current.data.as_ref().is_some_and(|current_data| {
+                        string_at(current_data, &["seam_id"]) == string_at(cited_data, &["seam_id"])
+                            && evidence_identities_match(current_data, cited_data)
+                    })
+            })
+        })
+}
+
+fn evidence_identities_match(left: &Value, right: &Value) -> bool {
+    AnalysisSnapshot::evidence_identities_match(
+        left.get("evidence_identity"),
+        right.get("evidence_identity"),
+    )
 }
 
 fn gap_action_context<'a>(
@@ -970,6 +1015,7 @@ fn agent_loop_command_target(
         "base": snapshot.base.as_deref(),
         "mode": snapshot.mode.as_str(),
         "seam_id": seam.seam.id().as_str(),
+        "evidence_identity": snapshot.evidence_identity(),
         "seam_kind": seam.seam.kind().as_str(),
         "seam_file": seam.seam.file().to_string_lossy(),
         "owner": seam.seam.owner(),
@@ -2159,6 +2205,7 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
         }
         copy_optional_value(&mut target, data, "preview_actionability");
         copy_optional_value(&mut target, data, "witness");
+        copy_optional_value(&mut target, data, "evidence_identity");
     }
     serde_json::Value::Object(target)
 }
