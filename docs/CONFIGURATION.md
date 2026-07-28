@@ -100,8 +100,43 @@ ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 | --- | --- | --- |
 | `--root PATH` | current directory | Workspace root where `ripr.toml` should be written. |
 | `--ci github` | _(off)_ | Also write `.github/workflows/ripr.yml`. The workflow installs `ripr`, runs `ripr pilot`, uploads pilot/report/agent artifacts, writes repo badge JSON, optionally renders and uploads SARIF when `RIPR_UPLOAD_SARIF` is true, and uses `continue-on-error` so the default path is advisory. |
-| `--dry-run` | _(off)_ | Print the generated config to stdout without writing. |
+| `--dry-run` | _(off)_ | Preview the run without writing. Prints a plan naming each target path and what would happen to it (`create`, `overwrite`, `leave existing`), then the body of each file that would be written. |
 | `--force` | _(off)_ | Overwrite an existing `ripr.toml` or generated workflow. Without this flag, existing repo policy and workflow files are left unchanged. |
+
+`--dry-run` resolves the same preconditions as the real run, so the preview
+cannot disagree with the run it previews. Whenever the real run would fail, the
+dry run fails with the same message and the same exit status instead of
+printing a config it could not have written. The blockers are:
+
+| Blocker | Applies when |
+| --- | --- |
+| `--root` is not a directory | always |
+| `ripr.toml` already exists, no `--force` | only without `--ci` — see below |
+| the target workflow already exists, no `--force` | with `--ci` |
+| a target's parent exists but is not a directory (for example `.github` is a file) | always |
+
+An existing `ripr.toml` is only a blocker when there is nothing else to do.
+With `--ci`, the run still has a workflow to write, so an existing config is
+reported as `leave existing` and the run proceeds — that is the case shown
+below. Because every target is checked before anything is written, a run that
+cannot finish writes nothing at all rather than half-initializing the
+repository.
+
+```text
+$ ripr init --ci github --dry-run
+ripr init plan (dry run — nothing was written)
+  leave existing ./ripr.toml
+  create         ./.github/workflows/ripr.yml
+
+# ./.github/workflows/ripr.yml
+name: RIPR
+...
+
+Rerun without --dry-run to apply.
+```
+
+A target listed as `leave existing` prints no body, because nothing about that
+file would change.
 
 ### `ripr pilot`
 

@@ -30,6 +30,18 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr init --dry-run` now previews the run it is actually a preview of.
+  It previously returned before every precondition check and printed file
+  bodies unconditionally, so it reported success for two runs that fail: an
+  existing `ripr.toml` without `--force`, and a `--root` that is not a
+  directory. `--dry-run` and the real run now resolve the same plan, so the
+  dry run fails with the same message and exit status when the real run would
+  fail. On a run that can proceed, `--dry-run` prints a plan naming each
+  target path and its action (`create`, `overwrite`, `leave existing`) before
+  the file bodies, and closes with `Rerun without --dry-run to apply.`.
+  Body headers now carry the full target path for both files; the config
+  header previously showed only the bare file name (#2572).
+
 - Default `ripr check --format human` output no longer prints a `Hidden:`
   heading over a literal `0 lower-priority finding(s) omitted from default
   human output.` line when nothing was actually omitted. That block claimed a

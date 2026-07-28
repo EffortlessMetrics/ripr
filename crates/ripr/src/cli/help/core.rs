@@ -10,7 +10,10 @@ not unlock basic CLI, editor, or pilot usefulness.
 Options:
   --root PATH      Workspace root where ripr.toml should be written. Defaults to current directory.
   --ci github      Also write .github/workflows/ripr.yml with advisory reports and optional SARIF rendering/upload.
-  --dry-run        Print the generated config without writing.
+  --dry-run        Show the plan and the file bodies without writing anything.
+                   Resolves the same preconditions as the real run, so it
+                   fails the same way (existing file without --force, root
+                   that is not a directory) instead of reporting success.
   --force          Overwrite an existing ripr.toml or generated workflow.
 
 Generated config:
