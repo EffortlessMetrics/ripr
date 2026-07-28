@@ -783,18 +783,18 @@ pub(crate) fn normalize_fixture_json_output(value: &str) -> String {
     // represents a literal backslash in the source text). Then replace any
     // remaining single `\` that is NOT part of a JSON escape sequence.
     let after_double = value.replace("\\\\", "/");
+    // #2556: operate on CHARS, not bytes — byte-wise push corrupts multi-byte
+    // UTF-8 sequences (e.g. é = 0xC3 0xA9 becomes two wrong chars).
     let mut result = String::with_capacity(after_double.len());
-    let bytes = after_double.as_bytes();
+    let chars: Vec<char> = after_double.chars().collect();
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' && i + 1 < bytes.len() {
-            let next = bytes[i + 1];
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() {
+            let next = chars[i + 1];
             // Preserve JSON escape sequences: \" \\ \n \t \r \uXXXX
-            // (\/ \b \f are rarely-used JSON escapes that in practice appear as
-            // raw backslashes in code excerpts — normalize them as path separators)
-            if matches!(next, b'"' | b'\\' | b'n' | b't' | b'r' | b'u') {
+            if matches!(next, '"' | '\\' | 'n' | 't' | 'r' | 'u') {
                 result.push('\\');
-                result.push(next as char);
+                result.push(next);
                 i += 2;
                 continue;
             }
@@ -803,7 +803,7 @@ pub(crate) fn normalize_fixture_json_output(value: &str) -> String {
             i += 1;
             continue;
         }
-        result.push(bytes[i] as char);
+        result.push(chars[i]);
         i += 1;
     }
     result
