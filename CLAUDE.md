@@ -178,7 +178,7 @@ Avoid: bundling unrelated behaviors, mixing schema changes with analyzer rewrite
 This repo is intentionally organized so agents can resume long-running goals from repository artifacts instead of chat history. When picking up unfamiliar work:
 
 - `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md` — current direction and checkpoints
-- `docs/IMPLEMENTATION_CAMPAIGNS.md` + `.ripr/goals/active.toml` — active multi-PR campaigns (Codex Goals model)
+- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active multi-PR campaigns (GitHub issues + `.allow/spec-system/slices/` are the live work-selection model; the `.ripr/goals/` scheduler was retired in #1701)
 - `docs/CAPABILITY_MATRIX.md` — current capability status per area
 - `docs/PR_AUTOMATION.md` — the shape/check/guide model
 - `docs/CODEX_GOALS.md`, `docs/SCOPED_PR_CONTRACT.md` — the PR-shaping contract

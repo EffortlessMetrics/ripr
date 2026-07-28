@@ -132,6 +132,10 @@ pub(super) fn print_agent_review_summary_help() {
     println!("{AGENT_REVIEW_SUMMARY_HELP}");
 }
 
+pub(super) fn print_agent_repair_help() {
+    println!("{AGENT_REPAIR_HELP}");
+}
+
 pub(super) fn print_swarm_help() {
     println!("{SWARM_HELP}");
 }

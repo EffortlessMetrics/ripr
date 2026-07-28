@@ -35,7 +35,7 @@ mod tests {
     fn run_dispatches_check_parse_errors() {
         assert_eq!(
             run(args(&["ripr", "check", "--format", "xml"])),
-            Err("unknown format \"xml\"".to_string())
+            Err("unknown format \"xml\"; expected `human` or `json`".to_string())
         );
     }
 

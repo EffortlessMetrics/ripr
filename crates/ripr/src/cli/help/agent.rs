@@ -13,13 +13,15 @@ Subcommands:
   status     Report existing agent-loop artifacts and the next missing command.
   review-summary
              Join agent-loop artifacts into a compact review packet.
+  repair    Two-phase before/after repair loop for one seam.
 
 Run `ripr agent start --help` for the workflow manifest, `ripr agent brief
 --help`, `ripr agent packet --help`, `ripr agent verify --help`, or
 `ripr agent verify-execute --help` for
 JSON-only agent surfaces. Run `ripr agent receipt --help` for the verification
-receipt surface, `ripr agent status --help` for the artifact status lens, and
-`ripr agent review-summary --help` for the PR-review packet.
+receipt surface, `ripr agent status --help` for the artifact status lens,
+`ripr agent review-summary --help` for the PR-review packet, and
+`ripr agent repair --help` for the two-phase repair loop.
 "#;
 pub(super) const AGENT_START_HELP: &str = r#"Start a source-edit-free workflow packet for one selected change.
 
@@ -174,4 +176,22 @@ status, receipt, workflow, operator cockpit, repo exposure, LSP cockpit when
 present, and local CI artifact state into a compact review packet. It remains
 advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+"#;
+pub(super) const AGENT_REPAIR_HELP: &str = r#"Run a two-phase before/after repair loop for one seam.
+
+Usage: ripr agent repair [--root PATH] --seam-id ID [--phase before|after]
+
+Options:
+  --root PATH          Workspace root. Defaults to current directory.
+  --seam-id ID         Select one visible seam by ID.
+  --phase before|after Which half of the repair loop to run. Defaults to `before`.
+
+The repair command drives the two-phase repair loop:
+  before  — capture the pre-edit repo-exposure snapshot and emit the
+            repair packet for the selected seam.
+  after   — capture the post-edit repo-exposure snapshot, verify the
+            change against the before snapshot, and emit a receipt.
+
+Run `ripr agent repair --phase before` before editing, then
+`ripr agent repair --phase after` after editing.
 "#;

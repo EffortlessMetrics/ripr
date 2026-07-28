@@ -77,7 +77,7 @@ mod tests {
     fn execute_dispatches_subcommand_args_without_reparsing_argv() {
         assert_eq!(
             execute(CliCommand::Check(args(&["--format", "xml"]))),
-            Err("unknown format \"xml\"".to_string())
+            Err("unknown format \"xml\"; expected `human` or `json`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Doctor(args(&["--root"]))),

@@ -9,7 +9,7 @@ assignees: []
 ## Source of truth
 
 - Active campaign:
-- Work item id (matches `.ripr/goals/active.toml`):
+- Work item id:
 - Branch (will be cut from `main`):
 - Latest merged PR on `main` at planning time:
 - Follow-up / next-blocked work item:
@@ -23,8 +23,9 @@ will diverge from current `main`.
 
 - [ ] Local `main` is up to date (`git fetch origin && git status` shows no
       lag versus `origin/main`).
-- [ ] The work item id appears in `.ripr/goals/active.toml` with
-      `status = "ready"` (or `status = "active"`) and is not blocked.
+- [ ] The work item id corresponds to a GitHub issue (the `.ripr/goals/`
+      scheduler was retired in #1701; work selection comes from GitHub
+      issues, PRs, and `.allow/spec-system/slices/`).
 - [ ] The "latest merged PR" listed above matches `git log -1 origin/main
       --oneline` at the time of cut.
 - [ ] Any source files / line numbers cited below still exist and contain

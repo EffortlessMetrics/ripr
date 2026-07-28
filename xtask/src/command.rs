@@ -1549,6 +1549,15 @@ const fn command_entry(
 
 pub(crate) fn unknown_command_message(command: &str) -> String {
     let normalized = command.trim();
+    // Retired commands: point users to the GitHub-based reconciliation flow.
+    if matches!(
+        normalized,
+        "goals" | "check-goals" | "check-campaign" | "closeout" | "pr-body"
+    ) {
+        return format!(
+            "unknown xtask command `{normalized}`.\nThe `{normalized}` command was retired when the .ripr/goals/ scheduler was deleted (#1701).\nLive work selection now comes from GitHub issues, PRs, and the local worktree.\nRun `gh issue list --state open` or `cargo xtask help` for the full list of current commands."
+        );
+    }
     let suggestion = known_commands()
         .into_iter()
         .filter_map(|candidate| {

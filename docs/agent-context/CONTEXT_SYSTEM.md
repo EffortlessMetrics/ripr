@@ -49,7 +49,7 @@ typed manifests:
 | Orientation | What the repo is, where to start, what is risky. | `AGENTS.md`, `docs/agent-context/`. |
 | Product truth | What `ripr` must do (durable behavior contracts). | `docs/specs/`, `docs/OUTPUT_SCHEMA.md`, `docs/STATIC_EXPOSURE_MODEL.md`, `docs/CONFIGURATION.md`. |
 | Decision | Why a load-bearing decision was made and what it constrains. | `docs/adr/`. |
-| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, `.ripr/goals/active.toml`, `.ripr/goals/archive/`. |
+| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, GitHub issues and PRs, `.allow/spec-system/slices/`. |
 | Evidence | What actually happened, with provenance. | `target/ripr/reports/`, `target/ripr/receipts/`, `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. |
 
 A doc lives in exactly one layer. A spec is not a plan; a plan is not a
@@ -70,7 +70,7 @@ translate it into the existing RIPR graph and the accepted
 | Spec | `docs/specs/RIPR-SPEC-*` |
 | ADR | `docs/adr/` |
 | Implementation plan | `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_CAMPAIGNS.md` |
-| Active goal manifest | `.ripr/goals/active.toml` |
+| Active work items | GitHub issues, PRs, and `.allow/spec-system/slices/` |
 | Support tiers | `docs/status/SUPPORT_TIERS.md` |
 | Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
 | Closeout | `docs/handoffs/` |
@@ -216,12 +216,11 @@ proposal (docs/proposals/RIPR-PROP-NNNN-*.md)
   -> specs (docs/specs/RIPR-SPEC-NNNN-*.md)
   -> ADRs when a durable decision is needed (docs/adr/)
   -> campaign entry (docs/IMPLEMENTATION_CAMPAIGNS.md)
-  -> active manifest (.ripr/goals/active.toml)
+  -> active work items (GitHub issues and .allow/spec-system/slices/)
   -> scoped PRs (one production delta + evidence package)
   -> receipts and reports (target/ripr/)
   -> closeout handoff (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)
   -> learnings worth surviving sessions (docs/LEARNINGS.md)
-  -> archive (.ripr/goals/archive/YYYY-MM-DD-<campaign>.toml)
 ```
 
 A change does not touch every layer. Most behavior PRs touch a spec, a

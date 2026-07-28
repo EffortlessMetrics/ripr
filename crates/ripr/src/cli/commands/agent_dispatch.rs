@@ -12,6 +12,7 @@ pub(super) fn run_agent_help_command(command: &AgentCommand) -> Option<Result<()
         AgentCommand::ReceiptHelp => Some(print_help(help::print_agent_receipt_help)),
         AgentCommand::StatusHelp => Some(print_help(help::print_agent_status_help)),
         AgentCommand::ReviewSummaryHelp => Some(print_help(help::print_agent_review_summary_help)),
+        AgentCommand::RepairHelp => Some(print_help(help::print_agent_repair_help)),
         _ => None,
     }
 }

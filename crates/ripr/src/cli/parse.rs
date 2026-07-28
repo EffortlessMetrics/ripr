@@ -152,7 +152,10 @@ mod tests {
             },
             ModeScenario {
                 given_mode: "slow",
-                then_result: Err("unknown mode \"slow\"".to_string()),
+                then_result: Err(
+                    "unknown mode \"slow\"; expected `instant`, `draft`, `fast`, `deep`, or `ready`"
+                        .to_string(),
+                ),
             },
         ];
 
@@ -181,7 +184,7 @@ mod tests {
         );
         assert_eq!(
             parse_format("xml"),
-            Err("unknown format \"xml\"".to_string())
+            Err("unknown format \"xml\"; expected `human` or `json`".to_string())
         );
     }
 
