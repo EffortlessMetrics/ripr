@@ -21,3 +21,5 @@ xtask/src/main.rs|expect(clippy::expect_used)|1|xtask test module: production pa
 xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 xtask/src/no_panic.rs|expect(clippy::unwrap_used)|1|no-panic test module (extracted from main.rs in the #2119 decomposition): production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 xtask/src/types.rs|allow(dead_code)|4|Test-only types (CheckStatus/CheckViolation/CheckReport/AutoFixable) used via super::* glob in tests.rs; dead in non-test builds
+crates/ripr/src/cli/help.rs|expect(dead_code)|1|Flag-parity test helper used by #2342 test suite; dead in non-test builds
+xtask/src/main.rs|allow(dead_code)|1|test-only struct field dead in non-test builds
