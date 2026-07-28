@@ -153,7 +153,8 @@ use super::{
     repo_seam_inventory_command_args_for_root, report_index_lane1_overall_status,
     report_index_lane1_readiness_packets, report_index_missing_artifact_count,
     report_index_missing_expected, report_index_next_commands, report_index_repo_ops_packets,
-    report_index_repo_ops_status, report_status_from_text, ripr_command_literals_in_text,
+    report_index_repo_ops_status, report_status_from_text,
+    repository_owned_review_thread_mutation_violations, ripr_command_literals_in_text,
     ripr_debug_binary, ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
     ripr_plus_receipt_from_repo_badge_json, ripr_plus_receipt_from_repo_exposure_summary_json,
     ripr_plus_receipt_from_repo_exposure_summary_json_with_source, ripr_plus_receipt_markdown,
@@ -184,8 +185,8 @@ use super::{
     validate_swarm_plan_packet_fixture_corpus, vscode_compile_command, vscode_extension_dir,
     vscode_package_command, vscode_package_version, vscode_test_e2e_command,
     windows_absolute_path_tokens, workflow_bare_self_hosted_violations,
-    workflow_runtime_violations, worktree, worktree_doctor_findings,
-    write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
+    workflow_review_thread_mutation_violations, workflow_runtime_violations, worktree,
+    worktree_doctor_findings, write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
     write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
     write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     write_repo_exposure_summary_report_with_runner,
@@ -8507,6 +8508,80 @@ jobs:
     assert!(violations.iter().any(|violation| {
         violation.contains("uses `actions/dependency-review-action@v4` 2 time(s), allowed 1")
     }));
+}
+
+#[test]
+fn workflow_review_thread_mutation_policy_rejects_graphql_resolver() {
+    let resolver_name = ["resolve", "ReviewThread"].concat();
+    let workflow = format!(
+        r#"
+jobs:
+  review:
+    steps:
+      - run: gh api graphql -f query='mutation {{ {resolver_name}(input: {{}}) {{ thread {{ isResolved }} }} }}'
+"#
+    );
+
+    let violations =
+        workflow_review_thread_mutation_violations(".github/workflows/review.yml", &workflow);
+
+    assert_eq!(violations.len(), 1);
+    assert!(violations[0].contains("review-thread resolution mutation"));
+}
+
+#[test]
+fn workflow_review_thread_mutation_policy_rejects_runtime_constructed_resolver() {
+    let workflow = r#"
+jobs:
+  review:
+    steps:
+      - run: const resolver = 'resolve' + 'ReviewThread'; gh api graphql "$resolver"
+"#;
+
+    let violations =
+        workflow_review_thread_mutation_violations(".github/workflows/review.yml", workflow);
+
+    assert_eq!(violations.len(), 1);
+}
+
+#[test]
+fn repository_owned_review_thread_mutation_policy_rejects_delegated_action() -> Result<(), String> {
+    with_temp_cwd("workflow-delegated-review-resolver", |root| {
+        let action = root.join(".github/actions/blind-review-resolver/action.yml");
+        let script = root.join(".github/scripts/review-resolver.sh");
+        write(
+            &action,
+            "name: blind resolver\nruns:\n  using: composite\n  steps:\n    - run: bash .github/scripts/review-resolver.sh\n",
+        );
+        write(
+            &script,
+            "#!/usr/bin/env bash\nresolver='resolve'+'ReviewThread'\ngh api graphql \"$resolver\"\n",
+        );
+
+        let violations = repository_owned_review_thread_mutation_violations()?;
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains(".github/scripts/review-resolver.sh") })
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn workflow_review_thread_mutation_policy_accepts_adjudication_guidance() {
+    let workflow = r#"
+name: Review guidance
+jobs:
+  review:
+    steps:
+      - run: echo "Reply with evidence before resolving review threads"
+"#;
+
+    assert!(
+        workflow_review_thread_mutation_violations(".github/workflows/review.yml", workflow,)
+            .is_empty()
+    );
 }
 
 #[test]

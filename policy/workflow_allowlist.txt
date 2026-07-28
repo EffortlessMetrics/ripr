@@ -7,7 +7,6 @@
 # than embed complex shell programs. This file allows known workflow blocks
 # while keeping the budget visible.
 
-.github/workflows/auto-resolve-bot-threads.yml|1|Auto-resolve bot review threads via gh api graphql calls delegated to a single script block.
 .github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to cargo xtask and opens a PR.
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
