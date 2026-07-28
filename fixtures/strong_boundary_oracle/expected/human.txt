@@ -16,7 +16,6 @@ Start here:
     - infection yes: Detected related test input at the changed boundary
     - 15 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

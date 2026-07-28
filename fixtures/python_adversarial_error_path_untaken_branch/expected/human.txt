@@ -25,8 +25,7 @@ Start here:
     - infection yes: Changed Python error path can alter raised exception/control behavior: `raise KeyError("empty")`
     - 5 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

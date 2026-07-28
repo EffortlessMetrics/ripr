@@ -25,8 +25,7 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "active"`
     - 5 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

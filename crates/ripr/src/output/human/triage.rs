@@ -148,11 +148,21 @@ pub(crate) fn render_human_triage(
     if let Some(finding) = triage.selected {
         out.push_str(&render_finding_digest_with_config(finding, config));
     }
-    out.push_str("\nHidden:\n");
-    out.push_str(&format!(
-        "  {} lower-priority finding(s) omitted from default human output.\n",
-        triage.omitted_findings
-    ));
+    // #2567: the default human render is the release-facing surface, so it must
+    // not claim a hidden remainder that does not exist. `Hidden:` plus a literal
+    // `0 lower-priority finding(s) omitted` reads as suppressed evidence and was
+    // the dominant case in fixture output. When nothing is omitted, keep only the
+    // format pointers under a `More:` heading; the count line stays for the real
+    // truncation case, where it is the whole point of the section.
+    if triage.omitted_findings == 0 {
+        out.push_str("\nMore:\n");
+    } else {
+        out.push_str("\nHidden:\n");
+        out.push_str(&format!(
+            "  {} lower-priority finding(s) omitted from default human output.\n",
+            triage.omitted_findings
+        ));
+    }
     out.push_str("  Full evidence: rerun with --format human-full\n");
     out.push_str("  Machine data: rerun with --format json\n\n");
 }

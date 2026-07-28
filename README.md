@@ -125,8 +125,16 @@ Start here:
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 12 more evidence line(s) hidden
 
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+```
+
+When lower-priority findings were omitted, that last block instead reads:
+
+```text
 Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+  12 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 ```

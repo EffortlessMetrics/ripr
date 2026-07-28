@@ -6905,6 +6905,8 @@ name = "bounded human check output"
 spec = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
 tests = [
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_caps_many_findings_and_reports_omitted_count",
+  "crates/ripr/src/output/human.rs::tests::render_replaces_hidden_block_with_more_when_nothing_is_omitted",
+  "crates/ripr/src/output/human.rs::tests::render_keeps_hidden_block_when_findings_are_omitted",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_keeps_preview_language_in_preview_limited_state",

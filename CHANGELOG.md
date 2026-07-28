@@ -30,6 +30,16 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Default `ripr check --format human` output no longer prints a `Hidden:`
+  heading over a literal `0 lower-priority finding(s) omitted from default
+  human output.` line when nothing was actually omitted. That block claimed a
+  suppressed remainder that did not exist, and it was the dominant case: 136 of
+  175 human goldens rendered it. When the omitted count is zero the heading is
+  now `More:` and the count line is dropped; when findings really were omitted
+  the `Hidden:` heading and the non-zero count line are unchanged. The two
+  `Full evidence:` / `Machine data:` pointer lines render identically in both
+  states, so consumers scraping them are unaffected (#2567).
+
 - Windows LSP refreshes now isolate shared Git subprocesses from the JSON-RPC
   server stdin and terminate timed-out process trees with bounded pipe draining.
   Explicit refreshes therefore return trustworthy results within the ordinary

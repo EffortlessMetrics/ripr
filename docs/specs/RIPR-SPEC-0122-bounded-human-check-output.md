@@ -73,11 +73,24 @@ Summary counts
 Start here:
   State: top_gap | no_actionable_gap | preview_limited | static_limited | missing_scope
   One selected finding or safe next action
-Hidden:
+Hidden:                                    (only when N > 0)
   N lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 ```
+
+The trailing block is state-dependent, because a `Hidden:` heading over a
+literal `0 lower-priority finding(s) omitted` line claims a suppressed
+remainder that does not exist:
+
+- `N > 0` — the heading is `Hidden:` and the count line is rendered. The
+  omission is the reason the section exists.
+- `N == 0` — the heading is `More:` and the count line is not rendered. The
+  two format pointers still render, unchanged, because they remain useful
+  when nothing was omitted.
+
+The two format-pointer lines are identical in both states, so a consumer
+scraping them does not need to know which heading was used.
 
 When a selected finding exists, the digest includes file and line, static
 exposure class, changed behavior, first missing discriminator when known,
@@ -256,6 +269,8 @@ inputs where present.
 
 - Default human output line count is bounded by rendering one selected finding
   digest plus hidden-count pointers instead of every finding body.
+- The hidden-count line is rendered only when it reports a non-zero omission,
+  so a bounded run that omitted nothing costs two trailing lines, not four.
 - `human-full` remains available for full evidence inspection.
 - Repo-scoped formats disclose when diff-bounding flags do not bound the run.
 
@@ -278,3 +293,8 @@ inputs where present.
 7. `--format human-full` renders every visible finding body.
 8. `--format repo-exposure-json --base origin/main` emits the repo-scope
    warning.
+9. A run whose findings all fit in the bounded view renders `More:` with the
+   two format pointers and no `Hidden:` heading and no
+   `0 lower-priority finding(s) omitted` line.
+10. A run that omitted at least one finding renders `Hidden:` with the non-zero
+    count line above the same two format pointers.

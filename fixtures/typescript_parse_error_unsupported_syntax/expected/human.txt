@@ -19,8 +19,7 @@ Start here:
     - infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
     - 6 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

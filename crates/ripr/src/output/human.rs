@@ -460,6 +460,79 @@ mod tests {
         assert!(rendered.contains("No diff-derived static exposure probes found."));
     }
 
+    /// #2567: nothing was omitted, so the render must not advertise a hidden
+    /// remainder. The format pointers stay under `More:`.
+    #[test]
+    fn render_replaces_hidden_block_with_more_when_nothing_is_omitted() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![sample_finding()],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("\nMore:\n"));
+        assert!(!rendered.contains("Hidden:"));
+        assert!(!rendered.contains("lower-priority finding(s) omitted"));
+        assert!(rendered.contains("  Full evidence: rerun with --format human-full\n"));
+        assert!(rendered.contains("  Machine data: rerun with --format json\n"));
+    }
+
+    /// #2567: a real truncated remainder keeps the `Hidden:` heading and the
+    /// count line, because that is the section's entire purpose.
+    #[test]
+    fn render_keeps_hidden_block_when_findings_are_omitted() {
+        let mut findings = Vec::new();
+        for index in 0..3 {
+            let mut finding = sample_finding();
+            finding.id = format!("finding-{index}");
+            finding.probe.location = SourceLocation::new(format!("src/f{index}.rs"), 1, 1);
+            findings.push(finding);
+        }
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 3,
+                findings: 3,
+                weakly_exposed: 3,
+                ..Summary::default()
+            },
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("\nHidden:\n"));
+        assert!(rendered.contains("2 lower-priority finding(s) omitted"));
+        assert!(!rendered.contains("More:"));
+    }
+
     /// #2103: a Rust-only run emits no per-language breakdown line, so
     /// Rust-only human output stays byte-identical.
     #[test]

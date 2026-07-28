@@ -19,8 +19,7 @@ Start here:
     - infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.
     - 4 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

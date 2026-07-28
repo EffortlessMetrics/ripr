@@ -17,8 +17,7 @@ Start here:
     - infection unknown: No reachable tests were found, so infection cannot be established
     - 4 more evidence line(s) hidden
 
-Hidden:
-  0 lower-priority finding(s) omitted from default human output.
+More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 
