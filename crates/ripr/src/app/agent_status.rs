@@ -397,6 +397,7 @@ fn string_field(value: &Value, key: &str) -> Option<String> {
 
 fn stale_warnings(artifacts: &[AgentStatusArtifact]) -> Vec<AgentStatusWarning> {
     let mut warnings = Vec::new();
+    push_snapshot_order_warning(artifacts, &mut warnings);
     push_stale_warning(
         artifacts,
         "agent_verify",
@@ -419,6 +420,28 @@ fn stale_warnings(artifacts: &[AgentStatusArtifact]) -> Vec<AgentStatusWarning> 
         &mut warnings,
     );
     warnings
+}
+
+fn push_snapshot_order_warning(
+    artifacts: &[AgentStatusArtifact],
+    warnings: &mut Vec<AgentStatusWarning>,
+) {
+    let Some(before) = artifact_by_name(artifacts, "before_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let Some(after) = artifact_by_name(artifacts, "after_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let (Some(before_modified), Some(after_modified)) = (before.modified, after.modified) else {
+        return;
+    };
+    if before_modified > after_modified {
+        warnings.push(AgentStatusWarning {
+            kind: "stale_artifact".to_string(),
+            artifact: before.name.clone(),
+            message: "before snapshot is newer than after snapshot; the before artifact may have been overwritten after editing".to_string(),
+        });
+    }
 }
 
 fn push_stale_warning(
@@ -747,6 +770,27 @@ mod tests {
             warning.artifact == "agent_receipt"
                 && warning.message.contains("older than agent verify")
         }));
+    }
+
+    #[test]
+    fn agent_status_warns_when_before_snapshot_is_newer_than_after() {
+        let after = UNIX_EPOCH + Duration::from_secs(2);
+        let before = UNIX_EPOCH + Duration::from_secs(3);
+        let completed = UNIX_EPOCH + Duration::from_secs(4);
+        let warnings = stale_warnings(&[
+            artifact("before_snapshot", true, Some(before)),
+            artifact("after_snapshot", true, Some(after)),
+            artifact("agent_verify", true, Some(completed)),
+            artifact("agent_receipt", true, Some(completed)),
+        ]);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].artifact, "before_snapshot");
+        assert!(
+            warnings[0]
+                .message
+                .contains("before snapshot is newer than after snapshot")
+        );
     }
 
     #[test]
