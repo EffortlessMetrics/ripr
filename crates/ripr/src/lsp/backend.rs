@@ -4086,7 +4086,9 @@ impl Backend {
                 "the current deferred refresh does not retain the cited full-seam evidence",
             );
         }
-        let cited_identity = args.get("evidence_identity");
+        let cited_identity = args
+            .get("evidence_identity")
+            .filter(|value| !value.is_null());
         if let Some(cited_identity) = cited_identity {
             if !AnalysisSnapshot::evidence_identities_match(
                 Some(cited_identity),
@@ -4115,11 +4117,15 @@ impl Backend {
             .ok()
             .and_then(|value| value.clone());
         let health = self.analysis_health_snapshot();
-        let stale_evidence_identity = args.get("evidence_identity").cloned().unwrap_or_else(|| {
-            serde_json::json!({
-                "seam_id": args.get("seam_id").and_then(|value| value.as_str()),
-            })
-        });
+        let stale_evidence_identity = args
+            .get("evidence_identity")
+            .filter(|value| !value.is_null())
+            .cloned()
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "seam_id": args.get("seam_id").and_then(|value| value.as_str()),
+                })
+            });
         serde_json::json!({
             "schema_version": "0.1",
             "tool": "ripr",

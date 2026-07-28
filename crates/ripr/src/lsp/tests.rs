@@ -11881,9 +11881,15 @@ fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_resu
         assert_eq!(current_packet["packets_total"], 1);
         backend.set_analysis_attempt_state_for_test(AnalysisAttemptState::Succeeded);
 
-        for cited_identity in [
-            serde_json::json!({"snapshot_id": "snapshot:older"}),
-            serde_json::Value::Null,
+        for (cited_identity, expected_reason) in [
+            (
+                serde_json::json!({"snapshot_id": "snapshot:older"}),
+                "the cited seam evidence belongs to an older snapshot",
+            ),
+            (
+                serde_json::Value::Null,
+                "the cited seam action has no evidence identity",
+            ),
         ] {
             let stale = backend
                 .execute_command(ExecuteCommandParams {
@@ -11901,10 +11907,10 @@ fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_resu
             assert_eq!(stale["status"], "stale");
             assert_eq!(stale["current_snapshot_id"], "snapshot:full");
             assert_eq!(stale["recovery_route"], "ripr.refreshDiagnostics");
-            assert_eq!(
-                stale["invalidation_reason"],
-                "the cited seam evidence belongs to an older snapshot"
-            );
+            assert_eq!(stale["invalidation_reason"], expected_reason);
+            if cited_identity.is_null() {
+                assert_eq!(stale["stale_evidence_identity"]["seam_id"], seam_id);
+            }
         }
 
         let stale_without_identity = backend

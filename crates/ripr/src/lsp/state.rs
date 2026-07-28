@@ -655,7 +655,7 @@ impl AnalysisSnapshot {
         left: Option<&serde_json::Value>,
         right: Option<&serde_json::Value>,
     ) -> bool {
-        left == right
+        left.filter(|value| !value.is_null()) == right.filter(|value| !value.is_null())
     }
 
     pub(super) fn is_consistent(&self) -> bool {
