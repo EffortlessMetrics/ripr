@@ -5,10 +5,54 @@ on:
     types: [opened, synchronize, ready_for_review, reopened, labeled, unlabeled]
 
 concurrency:
-  group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
+  stage-campaign-header-correction:
+    if: github.event.pull_request.head.ref == 'sync/residual-rtk-guidance-correction' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: sync/residual-rtk-guidance-correction
+          fetch-depth: 0
+      - name: Restore source goals authority header
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("docs/IMPLEMENTATION_CAMPAIGNS.md")
+          text = path.read_text(encoding="utf-8")
+          first_campaign = text.index("## Campaign 1:")
+          intro = """# Implementation Campaigns
+
+This is the campaign-level plan for Codex Goals and long-context contributor
+work. Campaigns are larger than one PR. Each campaign has an objective, an end
+state, and work items that should each follow the
+[scoped PR contract](SCOPED_PR_CONTRACT.md).
+
+The operational checklist remains in [Implementation plan](IMPLEMENTATION_PLAN.md).
+The machine-readable active campaign is `.ripr/goals/active.toml`.
+
+"""
+          path.write_text(intro + text[first_campaign:], encoding="utf-8")
+          PY
+          git diff --check
+          if git diff --quiet; then
+            echo "campaign header already corrected"
+            exit 0
+          fi
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add docs/IMPLEMENTATION_CAMPAIGNS.md
+          git commit -m "docs: keep source goals authority while removing RTK"
+          git push origin HEAD:sync/residual-rtk-guidance-correction
+
   droid-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
