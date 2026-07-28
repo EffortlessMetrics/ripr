@@ -225,6 +225,7 @@ fn collect_golden_runs() -> Result<GoldenRunSet, String> {
 }
 
 fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
+    validate_bless_reason(reason)?;
     let fixture = fixture_dir_for_name(name)?;
     if !fixture.exists() {
         return Err(format!(
@@ -1519,9 +1520,95 @@ pub(crate) fn parse_reason(args: &[String]) -> Result<String, String> {
 fn non_empty_reason(value: &str) -> Result<String, String> {
     let reason = value.trim();
     if reason.is_empty() {
-        Err("--reason must not be empty".to_string())
-    } else {
-        Ok(reason.to_string())
+        return Err("--reason must not be empty".to_string());
+    }
+    if spec_ids_in_reason(reason).is_empty() {
+        return Err(format!(
+            "--reason must cite a spec id (e.g. RIPR-SPEC-0001: output contract changed); got: {reason:?}"
+        ));
+    }
+    Ok(reason.to_string())
+}
+
+pub(crate) fn validate_bless_reason(reason: &str) -> Result<(), String> {
+    let referenced = spec_ids_in_reason(reason);
+    if referenced.is_empty() {
+        return Err(format!(
+            "--reason must cite a spec id (e.g. RIPR-SPEC-0001: output contract changed); got: {reason:?}"
+        ));
+    }
+    let known = known_spec_ids()?;
+    let unknown: Vec<_> = referenced.difference(&known).cloned().collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "--reason cites unknown spec id(s): {}; use an existing docs/specs/RIPR-SPEC-NNNN-*.md id",
+            unknown.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn spec_ids_in_reason(value: &str) -> BTreeSet<String> {
+    const PREFIX: &str = "RIPR-SPEC-";
+    let mut ids = BTreeSet::new();
+    for (offset, _) in value.match_indices(PREFIX) {
+        let suffix = &value[offset + PREFIX.len()..];
+        let digits: String = suffix.chars().take(4).collect();
+        if digits.len() != 4 || !digits.chars().all(|character| character.is_ascii_digit()) {
+            continue;
+        }
+        if suffix
+            .chars()
+            .nth(4)
+            .is_some_and(|character| character.is_ascii_alphanumeric() || character == '-')
+        {
+            continue;
+        }
+        ids.insert(format!("{PREFIX}{digits}"));
+    }
+    ids
+}
+
+fn known_spec_ids() -> Result<BTreeSet<String>, String> {
+    let specs_dir = repository_specs_dir()?;
+    let entries = fs::read_dir(&specs_dir)
+        .map_err(|err| format!("failed to read {}: {err}", normalize_path(&specs_dir)))?;
+    let mut ids = BTreeSet::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|err| format!("failed to read spec entry: {err}"))?
+            .path();
+        let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let mut parts = stem.splitn(4, '-');
+        if parts.next() != Some("RIPR")
+            || parts.next() != Some("SPEC")
+            || parts.next().is_none_or(|value| {
+                value.len() != 4 || !value.chars().all(|character| character.is_ascii_digit())
+            })
+        {
+            continue;
+        }
+        let Some(number) = stem.split('-').nth(2) else {
+            continue;
+        };
+        ids.insert(format!("RIPR-SPEC-{number}"));
+    }
+    Ok(ids)
+}
+
+fn repository_specs_dir() -> Result<PathBuf, String> {
+    let mut directory = std::env::current_dir()
+        .map_err(|err| format!("failed to determine current directory: {err}"))?;
+    loop {
+        let candidate = directory.join("docs").join("specs");
+        if candidate.is_dir() {
+            return Ok(candidate);
+        }
+        if !directory.pop() {
+            return Err("could not locate repository docs/specs directory".to_string());
+        }
     }
 }
 

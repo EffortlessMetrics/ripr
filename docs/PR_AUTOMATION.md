@@ -308,9 +308,10 @@ fixture directories exist yet.
 outputs without mutating checked-in files. It also writes
 `target/ripr/reports/golden-drift.md` and
 `target/ripr/reports/golden-drift.json` so reviewers can inspect semantic drift
-before any blessing. `goldens bless <fixture> --reason <reason>` records an
-explicit blessing reason, updates expected JSON and human outputs, and appends
-the fixture expected-output changelog.
+before any blessing. `goldens bless <fixture> --reason <reason>` requires the
+reason to cite an existing `RIPR-SPEC-NNNN` under `docs/specs/`, then records
+the explicit blessing reason, updates expected JSON and human outputs, and
+appends the fixture expected-output changelog.
 
 `golden-drift` writes the same advisory drift reports without failing merely
 because output drift exists. It still reports fixture execution errors as

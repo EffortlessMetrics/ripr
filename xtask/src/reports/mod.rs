@@ -75,7 +75,7 @@ pub(crate) use fixtures::{
 pub(crate) use fixtures::{
     GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_contract_violations,
     golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
-    json_string_values_for_key, normalize_golden_text, parse_reason,
+    json_string_values_for_key, normalize_golden_text, parse_reason, validate_bless_reason,
 };
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};

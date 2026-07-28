@@ -33,6 +33,7 @@ use super::run::{
     TimedFileOutput, TimedOutput, capture_output, run, run_output, run_output_optional,
     run_output_owned,
 };
+use super::validate_bless_reason;
 use super::{
     BUN_UB_CROSS_LANGUAGE_DOGFOOD_REQUIRED_CASES, BadgeArtifactJob, BadgeBasisReport,
     BadgeBasisSignal, BadgeCanonicalProjection, BadgeCountBreakdown, BadgeEndpointSnapshot,
@@ -10252,12 +10253,49 @@ fn json_string_values_for_key_reads_multiline_arrays() {
 
 #[test]
 fn parse_reason_accepts_flag_forms() {
-    let spaced = vec!["--reason".to_string(), "intentional update".to_string()];
-    let equals = vec!["--reason=intentional update".to_string()];
+    let spaced = vec![
+        "--reason".to_string(),
+        "RIPR-SPEC-0001: intentional update".to_string(),
+    ];
+    let equals = vec!["--reason=RIPR-SPEC-0001: intentional update".to_string()];
 
-    assert_eq!(parse_reason(&spaced), Ok("intentional update".to_string()));
-    assert_eq!(parse_reason(&equals), Ok("intentional update".to_string()));
+    assert_eq!(
+        parse_reason(&spaced),
+        Ok("RIPR-SPEC-0001: intentional update".to_string())
+    );
+    assert_eq!(
+        parse_reason(&equals),
+        Ok("RIPR-SPEC-0001: intentional update".to_string())
+    );
     parse_reason(&[]).expect_err("empty args should fail to produce a reason");
+}
+
+#[test]
+fn parse_reason_rejects_missing_or_malformed_spec_ids() {
+    for reason in [
+        "x",
+        "updated output",
+        "RIPR-SPEC-1: short id",
+        "RIPR-SPEC-12345: too many digits",
+        "RIPR-SPEC-0001x: invalid boundary",
+    ] {
+        let args = vec!["--reason".to_string(), reason.to_string()];
+        assert!(
+            parse_reason(&args).is_err(),
+            "reason without a well-formed spec id should fail: {reason}"
+        );
+    }
+}
+
+#[test]
+fn validate_bless_reason_rejects_unknown_spec_ids() {
+    assert_eq!(
+        validate_bless_reason("RIPR-SPEC-0001: valid existing spec"),
+        Ok(())
+    );
+    let error = validate_bless_reason("RIPR-SPEC-9999: not a repository spec")
+        .expect_err("unknown spec ids must not be accepted");
+    assert!(error.contains("RIPR-SPEC-9999"));
 }
 
 #[test]

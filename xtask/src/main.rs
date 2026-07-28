@@ -276,7 +276,7 @@ pub(crate) use reports::{
 pub(crate) use reports::{
     GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_contract_violations,
     golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
-    json_string_values_for_key, normalize_golden_text, parse_reason,
+    json_string_values_for_key, normalize_golden_text, parse_reason, validate_bless_reason,
 };
 #[cfg(test)]
 pub(crate) use reports::{
