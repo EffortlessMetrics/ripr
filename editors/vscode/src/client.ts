@@ -83,6 +83,7 @@ const RIPR_CLIENT_COMMANDS: readonly string[] = [
   'ripr.copyFirstPrReceiptCommand',
   'ripr.copyFirstPrRegenerationGuidance',
   'ripr.copyFirstPrRepairPacket',
+  'ripr.copyRepairPacketAtCursor',
   'ripr.copyFirstPrSummary',
   'ripr.copyFirstPrVerifyCommand',
   'ripr.copyReceiptCommand',
@@ -1094,6 +1095,55 @@ export class RiprClientController {
       return;
     }
     await this.copyFirstPrText(firstPrRepairPacket(packet), 'repair packet');
+  }
+
+  async copyRepairPacketAtCursor(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !isRiprFileDocument(editor.document)) {
+      this.runtime.showInformationMessage('Open the diagnostic file before copying the repair packet at the cursor.');
+      return;
+    }
+    const rootBlocker = this.activeDocumentRootBlocker(editor.document);
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
+      return;
+    }
+    const setupBlocker = setupRepairBlocker(this.statusContext());
+    if (setupBlocker) {
+      this.runtime.showInformationMessage(setupBlocker);
+      return;
+    }
+    const diagnostic = containingGapDiagnostic(editor);
+    if (!diagnostic) {
+      this.runtime.showInformationMessage('No ripr repair gap diagnostic contains the active selection.');
+      return;
+    }
+
+    let actions: Array<vscode.CodeAction | vscode.Command> | undefined;
+    try {
+      actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+        'vscode.executeCodeActionProvider',
+        editor.document.uri,
+        diagnostic.range
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyRepairPacketAtCursor failed to collect code actions: ${message}`);
+      this.warnWithOutput('ripr could not collect the repair packet action at the cursor.');
+      return;
+    }
+
+    const packetCommand = (actions ?? [])
+      .map(commandForAction)
+      .find((command) =>
+        command?.command === 'ripr.copyContext' &&
+        (firstArgumentLabelIs(command, 'first_repair_packet') || firstArgumentLabelIs(command, 'gap_repair_packet'))
+      );
+    if (!packetCommand) {
+      this.runtime.showInformationMessage('No validated ripr repair packet is available for the diagnostic at the cursor.');
+      return;
+    }
+    await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
   }
 
   async copyFirstPrVerifyCommand(): Promise<void> {
@@ -4192,6 +4242,13 @@ function nearestGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | un
       left.lineDistance - right.lineDistance ||
       left.characterDistance - right.characterDistance
     )[0]?.diagnostic;
+}
+
+function containingGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | undefined {
+  const position = editor.selection.active;
+  return vscode.languages
+    .getDiagnostics(editor.document.uri)
+    .find((diagnostic) => isRiprGapDiagnostic(diagnostic) && diagnostic.range.contains(position));
 }
 
 function isRiprGapDiagnostic(diagnostic: vscode.Diagnostic): boolean {

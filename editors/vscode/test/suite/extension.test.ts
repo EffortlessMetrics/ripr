@@ -42,6 +42,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.openFirstPrPacket'));
     assert.ok(commands.includes('ripr.copyFirstPrSummary'));
     assert.ok(commands.includes('ripr.copyFirstPrRepairPacket'));
+    assert.ok(commands.includes('ripr.copyRepairPacketAtCursor'));
     assert.ok(commands.includes('ripr.copyFirstPrVerifyCommand'));
     assert.ok(commands.includes('ripr.copyFirstPrReceiptCommand'));
     assert.ok(commands.includes('ripr.copyFirstPrRegenerationGuidance'));
@@ -858,6 +859,71 @@ suite('Extension Smoke', () => {
       const copied = await waitForClipboardText((text) => text === 'nearest repair packet');
       assert.notStrictEqual(copied, 'start-current-repair-sentinel');
       assert.strictEqual(copied, 'nearest repair packet');
+    } finally {
+      provider?.dispose();
+      collection.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
+  test('copyRepairPacketAtCursor uses only the packet action for the containing diagnostic', async () => {
+    const relativePath = 'src/copy-repair-packet-at-cursor.rs';
+    const uri = workspaceFileUri(relativePath);
+    const collection = vscode.languages.createDiagnosticCollection('ripr-copy-repair-packet-at-cursor');
+    let provider: vscode.Disposable | undefined;
+    try {
+      await writeWorkspaceFile(relativePath, [
+        'pub fn far() {}',
+        '',
+        'pub fn outside() {}',
+        '',
+        'pub fn near() {}',
+        ''
+      ].join('\n'));
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+      editor.selection = new vscode.Selection(new vscode.Position(4, 2), new vscode.Position(4, 2));
+
+      const far = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 12)),
+        'far ripr gap',
+        vscode.DiagnosticSeverity.Warning
+      );
+      far.source = 'ripr';
+      far.code = 'ripr-gap-MissingBoundaryAssertion';
+      const near = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(4, 0), new vscode.Position(4, 13)),
+        'near ripr gap',
+        vscode.DiagnosticSeverity.Warning
+      );
+      near.source = 'ripr';
+      near.code = 'ripr-gap-MissingBoundaryAssertion';
+      collection.set(uri, [far, near]);
+
+      provider = vscode.languages.registerCodeActionsProvider(
+        { language: 'rust', scheme: 'file' },
+        {
+          provideCodeActions(_document, range) {
+            const packet = range.start.line === 4 ? 'near repair packet' : 'far repair packet';
+            const action = new vscode.CodeAction('Copy repair packet', vscode.CodeActionKind.QuickFix);
+            action.command = {
+              title: 'Copy repair packet',
+              command: 'ripr.copyContext',
+              arguments: [{ label: 'gap_repair_packet', packet }]
+            };
+            return [action];
+          }
+        }
+      );
+
+      await vscode.commands.executeCommand('ripr.copyRepairPacketAtCursor');
+      assert.strictEqual(await waitForClipboardText((text) => text === 'near repair packet'), 'near repair packet');
+
+      editor.selection = new vscode.Selection(new vscode.Position(2, 2), new vscode.Position(2, 2));
+      await writeClipboardText('outside-diagnostic-sentinel');
+      await vscode.commands.executeCommand('ripr.copyRepairPacketAtCursor');
+      assert.strictEqual(await currentClipboardText(), 'outside-diagnostic-sentinel');
     } finally {
       provider?.dispose();
       collection.dispose();

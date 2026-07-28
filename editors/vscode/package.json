@@ -52,6 +52,7 @@
     "onCommand:ripr.openFirstPrPacket",
     "onCommand:ripr.copyFirstPrSummary",
     "onCommand:ripr.copyFirstPrRepairPacket",
+    "onCommand:ripr.copyRepairPacketAtCursor",
     "onCommand:ripr.copyFirstPrVerifyCommand",
     "onCommand:ripr.copyFirstPrReceiptCommand",
     "onCommand:ripr.copyFirstPrRegenerationGuidance",
@@ -238,6 +239,10 @@
         "title": "ripr: First PR - Copy Repair Packet"
       },
       {
+        "command": "ripr.copyRepairPacketAtCursor",
+        "title": "ripr: Copy Repair Packet at Cursor"
+      },
+      {
         "command": "ripr.copyFirstPrVerifyCommand",
         "title": "ripr: First PR - Copy Verify Command"
       },
@@ -329,43 +334,54 @@
     "menus": {
       "editor/context": [
         {
-          "command": "ripr.copyTopRepairPacket",
+          "command": "ripr.copyRepairPacketAtCursor",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@1"
         },
         {
-          "command": "ripr.copyTopVerifyCommand",
+          "command": "ripr.copyTopRepairPacket",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@2"
         },
         {
-          "command": "ripr.copyTopReceiptCommand",
+          "command": "ripr.copyTopVerifyCommand",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@3"
         },
         {
-          "command": "ripr.showTopLimitation",
+          "command": "ripr.copyTopReceiptCommand",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@4"
         },
         {
-          "command": "ripr.showStatus",
+          "command": "ripr.showTopLimitation",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@5"
         },
         {
-          "command": "ripr.showReceiptStatus",
+          "command": "ripr.showStatus",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@6"
         },
         {
-          "command": "ripr.showRouteQuality",
+          "command": "ripr.showReceiptStatus",
           "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
           "group": "ripr@7"
+        },
+        {
+          "command": "ripr.showRouteQuality",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@8"
         }
       ]
     },
     "keybindings": [
+      {
+        "command": "ripr.copyRepairPacketAtCursor",
+        "key": "ctrl+alt+shift+p",
+        "mac": "cmd+alt+shift+p",
+        "when": "editorTextFocus"
+      },
       {
         "command": "ripr.showStatus",
         "key": "ctrl+alt+r",

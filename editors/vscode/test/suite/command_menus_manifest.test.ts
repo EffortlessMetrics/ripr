@@ -50,13 +50,14 @@ const RIPR_MENU_WHEN =
   'editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/';
 
 const EXPECTED_EDITOR_CONTEXT: Array<{ command: string; group: string }> = [
-  { command: 'ripr.copyTopRepairPacket', group: 'ripr@1' },
-  { command: 'ripr.copyTopVerifyCommand', group: 'ripr@2' },
-  { command: 'ripr.copyTopReceiptCommand', group: 'ripr@3' },
-  { command: 'ripr.showTopLimitation', group: 'ripr@4' },
-  { command: 'ripr.showStatus', group: 'ripr@5' },
-  { command: 'ripr.showReceiptStatus', group: 'ripr@6' },
-  { command: 'ripr.showRouteQuality', group: 'ripr@7' }
+  { command: 'ripr.copyRepairPacketAtCursor', group: 'ripr@1' },
+  { command: 'ripr.copyTopRepairPacket', group: 'ripr@2' },
+  { command: 'ripr.copyTopVerifyCommand', group: 'ripr@3' },
+  { command: 'ripr.copyTopReceiptCommand', group: 'ripr@4' },
+  { command: 'ripr.showTopLimitation', group: 'ripr@5' },
+  { command: 'ripr.showStatus', group: 'ripr@6' },
+  { command: 'ripr.showReceiptStatus', group: 'ripr@7' },
+  { command: 'ripr.showRouteQuality', group: 'ripr@8' }
 ];
 
 // Payload-bound commands that must stay code-action-only: the targeted-test
@@ -74,6 +75,7 @@ const CODE_ACTION_ONLY_COMMANDS = [
 ];
 
 const EXPECTED_KEYBINDINGS: Array<{ command: string; key: string; mac: string }> = [
+  { command: 'ripr.copyRepairPacketAtCursor', key: 'ctrl+alt+shift+p', mac: 'cmd+alt+shift+p' },
   { command: 'ripr.showStatus', key: 'ctrl+alt+r', mac: 'cmd+alt+r' },
   { command: 'ripr.copyTopRepairPacket', key: 'ctrl+alt+p', mac: 'cmd+alt+p' }
 ];
