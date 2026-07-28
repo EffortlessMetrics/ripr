@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, ready_for_review, reopened, labeled, unlabeled]
 
 concurrency:
-  group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
