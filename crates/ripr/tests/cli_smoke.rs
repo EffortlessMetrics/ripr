@@ -2891,6 +2891,21 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
 }
 
 #[test]
+fn doctor_json_reports_current_schema() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root, "--json"]);
+    assert_success(&output);
+
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|err| format!("doctor JSON did not parse: {err}"))?;
+    assert_eq!(report["schema_version"], "0.2");
+    assert_eq!(report["tool"], "ripr");
+    std::fs::remove_dir_all(workspace).map_err(|err| format!("remove workspace: {err}"))?;
+    Ok(())
+}
+
+#[test]
 fn doctor_reports_loaded_config_path() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     std::fs::write(
