@@ -588,6 +588,10 @@ fn diagnostic_is_actionable(diagnostic: &tower_lsp_server::ls_types::Diagnostic)
     data.get("preview_actionability")
         .and_then(|value| value.get("repair_packet_ready"))
         .and_then(|value| value.as_bool())
+        .or_else(|| {
+            data.get("delivery_eligible")
+                .and_then(|value| value.as_bool())
+        })
         .unwrap_or(false)
 }
 
@@ -776,6 +780,41 @@ mod tests {
         {
             return Err(format!(
                 "legacy diagnostic identity was not deterministic: {items:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_bridge_reads_ordinary_eligibility_after_family_authority() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let ordinary = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:ordinary",
+                "delivery_eligible": true,
+            })),
+            ..Default::default()
+        };
+        let family_override = tower_lsp_server::ls_types::Diagnostic {
+            data: Some(serde_json::json!({
+                "diagnostic_id": "finding:family-override",
+                "headline_eligible": false,
+                "delivery_eligible": true,
+            })),
+            ..Default::default()
+        };
+        let diagnostics =
+            std::collections::BTreeMap::from([(uri, vec![ordinary, family_override])]);
+
+        let items = build_budget_items_from_diagnostics(&diagnostics)
+            .map_err(|err| format!("build budget items: {err}"))?;
+        if items[0].eligibility != DiagnosticBudgetEligibility::Actionable
+            || items[1].eligibility != DiagnosticBudgetEligibility::ProfileFiltered
+        {
+            return Err(format!(
+                "ordinary eligibility or family precedence regressed: {items:?}"
             ));
         }
         Ok(())

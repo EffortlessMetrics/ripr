@@ -342,6 +342,21 @@ pub(super) fn finding_diagnostics_by_uri_with_profile(
             causal_projection,
             position_encoding,
         );
+        // Producer authority: reaching this point means the finding passed
+        // `finding_is_visible_in_profile`. The delivery budget consumes this
+        // explicit ordinary-finding signal after the more specific
+        // gap/seam/preview authorities; it must not infer eligibility from
+        // diagnostic shape or identity.
+        if let Some(data) = diagnostic
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            data.insert(
+                "delivery_eligible".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
         if primary.canonical_gap.is_some() {
             add_canonical_group_data(root, &mut diagnostic, &primary, &raw_findings);
             if canonical_group_has_mixed_classes(&raw_findings) {
@@ -3040,6 +3055,48 @@ mod diagnostic_policy_tests {
         )?;
         if grouped.values().flatten().count() != 1 {
             return Err("actionable profile dropped a concrete producer-backed route".to_string());
+        }
+        let items = crate::lsp::diagnostic_budget::build_budget_items_from_diagnostics(&grouped)
+            .map_err(|err| format!("build ordinary finding budget item: {err}"))?;
+        if items.len() != 1
+            || items[0].eligibility
+                != crate::lsp::diagnostic_budget::DiagnosticBudgetEligibility::Actionable
+        {
+            return Err(format!(
+                "profile-admitted ordinary finding was not eligible for delivery: {items:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn profile_admitted_findings_stamp_delivery_eligibility() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.class = ExposureClass::Exposed;
+        let grouped = finding_diagnostics_by_uri_with_profile(
+            Path::new("/workspace"),
+            &[finding],
+            &SeverityConfig::default(),
+            true,
+            LspDiagnosticProfile::Full,
+            None,
+            &PositionEncodingKind::UTF16,
+        )?;
+        let diagnostic = grouped
+            .values()
+            .flatten()
+            .next()
+            .ok_or_else(|| "full profile dropped an ordinary finding".to_string())?;
+        if diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("delivery_eligible"))
+            != Some(&serde_json::Value::Bool(true))
+        {
+            return Err(format!(
+                "profile-admitted finding did not carry delivery eligibility: {:?}",
+                diagnostic.data
+            ));
         }
         Ok(())
     }

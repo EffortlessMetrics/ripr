@@ -12,6 +12,13 @@ actionability, causal attribution, and evidence readiness have been established.
 It does not create, merge, split, strengthen, weaken, renumber, or delete
 canonical evidence. It does not change gate authority.
 
+The diagnostic producer must make profile admission explicit. An ordinary
+finding emitted after `finding_is_visible_in_profile` passes carries
+`data.delivery_eligible: true`. The delivery bridge reads that signal only
+after the existing gap-ledger, classified-seam, and preview-family authorities;
+those more specific producer decisions retain precedence. Missing or false
+signals remain fail-closed.
+
 The selector receives:
 
 - a stable canonical identity;
@@ -102,6 +109,10 @@ them.
 - Adding a lower-ranked item does not reshuffle existing selected identities.
 - Every canonical input is present in exactly one selected or omitted result.
 - Profile-filtered items never consume an item or byte budget.
+- A profile-admitted ordinary finding is eligible only through the explicit
+  producer-owned `delivery_eligible` signal.
+- Existing gap-ledger, classified-seam, and preview eligibility signals take
+  precedence over the ordinary-finding signal.
 - Overflow is machine-readable and cannot be presented as a complete inventory.
 - Complete evidence identity is independent of the passive budget.
 - Transport, pull/push, status, client, and gate policy are out of scope for PR A.
