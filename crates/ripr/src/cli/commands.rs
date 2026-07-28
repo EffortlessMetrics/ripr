@@ -3021,7 +3021,9 @@ fn parse_diff_format(value: &str) -> Result<DiffReportFormat, String> {
     match value {
         "human" | "text" | "md" | "markdown" => Ok(DiffReportFormat::Human),
         "json" => Ok(DiffReportFormat::Json),
-        _ => Err(format!("unknown diff format {value:?}")),
+        _ => Err(format!(
+            "unknown diff format {value:?}; expected `human`, `text`, `md`, `markdown`, or `json`"
+        )),
     }
 }
 

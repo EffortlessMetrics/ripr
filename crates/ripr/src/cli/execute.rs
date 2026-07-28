@@ -77,7 +77,10 @@ mod tests {
     fn execute_dispatches_subcommand_args_without_reparsing_argv() {
         assert_eq!(
             execute(CliCommand::Check(args(&["--format", "xml"]))),
-            Err("unknown format \"xml\"; expected `human` or `json`".to_string())
+            Err(
+                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                    .to_string()
+            )
         );
         assert_eq!(
             execute(CliCommand::Doctor(args(&["--root"]))),
@@ -182,7 +185,7 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Diff(args(&["--format", "xml"]))),
-            Err("unknown diff format \"xml\"".to_string())
+            Err("unknown diff format \"xml\"; expected `human`, `text`, `md`, `markdown`, or `json`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Cache(Vec::new())),

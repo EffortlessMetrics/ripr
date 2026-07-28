@@ -96,9 +96,8 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
             "plus requires either --repo-exposure-summary <path> or --gap-ledger <path>; \
              the binary-first `ripr plus` composes a receipt from a pre-computed artifact and \
              does not run an in-process full-repo scan. \
-             Run `ripr check --root . --format repo-exposure-summary-json` first, \
-             then `ripr plus --repo-exposure-summary {}`.",
-            RIPR_PLUS_JSON
+             Run `ripr check --root . --format repo-exposure-summary-json > summary.json` first, \
+             then `ripr plus --repo-exposure-summary summary.json`."
         ));
     }
     Ok(options)
