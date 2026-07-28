@@ -11,6 +11,7 @@ import {
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
 import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
+import { setupFilePath, stringValues, hasUnsafeShellMetacharacter, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
 
 const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'rust', scheme: 'file' },
@@ -3957,10 +3958,6 @@ function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFil
   };
 }
 
-function setupFilePath(workspaceRoot: string, relativePath: string): string {
-  return path.join(workspaceRoot, ...relativePath.split('/'));
-}
-
 export async function readActionableGapQueueStatus(
   workspaceRoot: string,
   readFile: RiprClientRuntime['readFile']
@@ -4499,15 +4496,6 @@ const FIRST_PR_PACKET_SELECTED_STATES = new Set([
   ...FIRST_PR_PACKET_NO_ACTION_STATES
 ]);
 
-function stringValues(value: Record<string, unknown> | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  return Object.values(value).filter((child): child is string =>
-    typeof child === 'string' && child.trim() !== ''
-  );
-}
-
 function firstPrCommandIsSafe(command: string): boolean {
   const normalized = command.trim().replace(/\s+/g, ' ');
   return normalized !== ''
@@ -4984,10 +4972,6 @@ function boundedPayloadString(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
 }
 
-function hasUnsafeShellMetacharacter(command: string): boolean {
-  return /[\r\n\0`;&|\\]/.test(command);
-}
-
 function nearestGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | undefined {
   const position = editor.selection.active;
   return vscode.languages
@@ -5139,20 +5123,6 @@ function shellArgToken(value: unknown): string {
     : `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
-  if (!root || root === '.') {
-    return true;
-  }
-  const resolvedRoot = path.isAbsolute(root)
-    ? path.resolve(root)
-    : path.resolve(workspaceRoot, root);
-  return sameWorkspaceRoot(resolvedRoot, workspaceRoot);
-}
-
-function sameWorkspaceRoot(left: string, right: string): boolean {
-  return normalizePath(path.resolve(left)) === normalizePath(path.resolve(right));
-}
-
 function activeDocumentRelativePath(workspaceRoot: string | undefined): string | undefined {
   const document = vscode.window.activeTextEditor?.document;
   if (!workspaceRoot || !document || !isRiprFileDocument(document) || document.uri.scheme !== 'file') {
@@ -5170,23 +5140,6 @@ function relativeWorkspacePath(workspaceRoot: string, filePath: string): string 
   return relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
     ? relativePath.replace(/\\/g, '/')
     : filePath;
-}
-
-function normalizePath(value: string): string {
-  const normalized = path.normalize(value).replace(/\\/g, '/');
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
-}
-
-function objectField(value: Record<string, unknown>, field: string): Record<string, unknown> | undefined {
-  const child = value[field];
-  return child && typeof child === 'object' && !Array.isArray(child)
-    ? child as Record<string, unknown>
-    : undefined;
-}
-
-function stringField(value: Record<string, unknown>, field: string): string | undefined {
-  const child = value[field];
-  return typeof child === 'string' && child.trim() !== '' ? child : undefined;
 }
 
 function formatRouteQualitySummary(value: unknown): string | undefined {
@@ -5236,25 +5189,6 @@ function stringArrayField(value: Record<string, unknown>, field: string): string
   return Array.isArray(child)
     ? child.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
     : [];
-}
-
-function boundedStringField(
-  value: Record<string, unknown>,
-  field: string,
-  allowed: Set<string>
-): string | undefined {
-  const child = stringField(value, field);
-  return child && allowed.has(child) ? child : undefined;
-}
-
-function numberFieldValue(value: Record<string, unknown>, field: string): number | undefined {
-  const child = value[field];
-  return typeof child === 'number' && Number.isFinite(child) ? child : undefined;
-}
-
-function arrayLength(value: Record<string, unknown>, field: string): number {
-  const child = value[field];
-  return Array.isArray(child) ? child.length : 0;
 }
 
 function selectedLocation(selected: Record<string, unknown> | undefined): string | undefined {
