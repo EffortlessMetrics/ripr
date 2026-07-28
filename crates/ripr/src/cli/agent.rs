@@ -681,7 +681,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );
