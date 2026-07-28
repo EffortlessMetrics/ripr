@@ -9,6 +9,7 @@ use crate::app::receipt::{
     validate_current_head, write_receipt,
 };
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::PathBuf;
 
@@ -154,7 +155,7 @@ pub(in crate::cli) fn parse_receipt_write_options(
                 i += 1;
                 root = Some(PathBuf::from(expect_value(args, i, "--root")?));
             }
-            other => return Err(format!("unknown receipt write argument {other:?}")),
+            other => return Err(unknown_argument("receipt write", other)),
         }
         i += 1;
     }
@@ -226,7 +227,7 @@ pub(in crate::cli) fn parse_receipt_check_options(
                 }
                 path = Some(PathBuf::from(other));
             }
-            other => return Err(format!("unknown receipt check argument {other:?}")),
+            other => return Err(unknown_argument("receipt check", other)),
         }
         i += 1;
     }

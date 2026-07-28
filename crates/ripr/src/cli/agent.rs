@@ -1,5 +1,6 @@
 use crate::app::agent_brief::{AGENT_BRIEF_HARD_MAX_SEAMS, DEFAULT_AGENT_BRIEF_MAX_SEAMS};
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -235,7 +236,7 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
                     }
                 });
             }
-            other => return Err(format!("unknown agent repair argument {other:?}")),
+            other => return Err(unknown_argument("agent repair", other)),
         }
         i += 1;
     }
@@ -276,7 +277,7 @@ pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOpt
                 }
                 out_dir = PathBuf::from(value);
             }
-            other => return Err(format!("unknown agent start argument {other:?}")),
+            other => return Err(unknown_argument("agent start", other)),
         }
         i += 1;
     }
@@ -336,7 +337,7 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
                 i += 1;
                 max_seams = parse_max_seams(expect_value(args, i, "--max-seams")?)?;
             }
-            other => return Err(format!("unknown agent brief argument {other:?}")),
+            other => return Err(unknown_argument("agent brief", other)),
         }
         i += 1;
     }
@@ -400,7 +401,7 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
                 gap_id = Some(value.to_string());
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent packet argument {other:?}")),
+            other => return Err(unknown_argument("agent packet", other)),
         }
         i += 1;
     }
@@ -464,7 +465,7 @@ pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyO
                 after = Some(PathBuf::from(expect_value(args, i, "--after")?));
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent verify argument {other:?}")),
+            other => return Err(unknown_argument("agent verify", other)),
         }
         i += 1;
     }
@@ -524,7 +525,7 @@ pub(super) fn parse_agent_verify_execute_options(
                 cancel_after_ms = Some(parsed);
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent verify-execute argument {other:?}")),
+            other => return Err(unknown_argument("agent verify-execute", other)),
         }
         i += 1;
     }
@@ -599,7 +600,7 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
                 i += 1;
                 out = Some(PathBuf::from(expect_value(args, i, "--out")?));
             }
-            other => return Err(format!("unknown agent receipt argument {other:?}")),
+            other => return Err(unknown_argument("agent receipt", other)),
         }
         i += 1;
     }
@@ -636,7 +637,7 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
                 root = PathBuf::from(expect_value(args, i, "--root")?);
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent status argument {other:?}")),
+            other => return Err(unknown_argument("agent status", other)),
         }
         i += 1;
     }
@@ -658,7 +659,7 @@ pub(super) fn parse_agent_review_summary_options(
                 root = PathBuf::from(expect_value(args, i, "--root")?);
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent review-summary argument {other:?}")),
+            other => return Err(unknown_argument("agent review-summary", other)),
         }
         i += 1;
     }
@@ -897,7 +898,10 @@ mod tests {
         );
         assert_eq!(
             parse_agent_start_options(&args(&["--seam-id", "abc", "--xml"])),
-            Err("unknown agent start argument \"--xml\"".to_string())
+            Err(
+                "unknown agent start argument \"--xml\". Run `ripr agent start --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1089,7 +1093,10 @@ mod tests {
     fn agent_brief_rejects_unknown_arguments() {
         assert_eq!(
             parse_agent_brief_options(&args(&["--diff", "change.diff", "--xml"])),
-            Err("unknown agent brief argument \"--xml\"".to_string())
+            Err(
+                "unknown agent brief argument \"--xml\". Run `ripr agent brief --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1141,7 +1148,10 @@ mod tests {
                 "--json",
                 "--xml",
             ])),
-            Err("unknown agent packet argument \"--xml\"".to_string())
+            Err(
+                "unknown agent packet argument \"--xml\". Run `ripr agent packet --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1267,7 +1277,10 @@ mod tests {
                 "--format",
                 "md",
             ])),
-            Err("unknown agent verify argument \"--format\"".to_string())
+            Err(
+                "unknown agent verify argument \"--format\". Run `ripr agent verify --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1352,7 +1365,10 @@ mod tests {
                 "--format",
                 "md",
             ])),
-            Err("unknown agent receipt argument \"--format\"".to_string())
+            Err(
+                "unknown agent receipt argument \"--format\". Run `ripr agent receipt --help`."
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_receipt_options(&args(&[
@@ -1413,7 +1429,10 @@ mod tests {
         );
         assert_eq!(
             parse_agent_status_options(&args(&["--json", "--xml"])),
-            Err("unknown agent status argument \"--xml\"".to_string())
+            Err(
+                "unknown agent status argument \"--xml\". Run `ripr agent status --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1450,7 +1469,7 @@ mod tests {
         );
         assert_eq!(
             parse_agent_review_summary_options(&args(&["--xml"])),
-            Err("unknown agent review-summary argument \"--xml\"".to_string())
+            Err("unknown agent review-summary argument \"--xml\". Run `ripr agent review-summary --help`.".to_string())
         );
     }
 }

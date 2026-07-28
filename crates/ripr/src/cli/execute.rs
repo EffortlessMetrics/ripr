@@ -205,7 +205,7 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Lsp(args(&["--bad"]))),
-            Err("unknown lsp argument \"--bad\"".to_string())
+            Err("unknown lsp argument \"--bad\". Run `ripr lsp --help`.".to_string())
         );
     }
 }

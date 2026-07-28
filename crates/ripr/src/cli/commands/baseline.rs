@@ -9,6 +9,7 @@ use crate::cli::commands_options::{
     BaselineCreateOptions, BaselineDiffOptions, BaselineUpdateOptions,
 };
 use crate::cli::help;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::PathBuf;
 
@@ -197,7 +198,7 @@ impl BaselineCreateParseState {
                 self.force = true;
                 Ok(())
             }
-            other => Err(format!("unknown baseline create argument {other:?}")),
+            other => Err(unknown_argument("baseline create", other)),
         }
     }
 
@@ -250,7 +251,7 @@ fn parse_baseline_diff_options(args: &[String]) -> Result<BaselineDiffOptions, S
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "baseline diff")?;
             }
-            other => return Err(format!("unknown baseline diff argument {other:?}")),
+            other => return Err(unknown_argument("baseline diff", other)),
         }
         i += 1;
     }
@@ -290,7 +291,7 @@ fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOption
                 out = Some(non_empty_path_arg(args, i, "--out", "baseline update")?);
             }
             "--remove-resolved" => remove_resolved = true,
-            other => return Err(format!("unknown baseline update argument {other:?}")),
+            other => return Err(unknown_argument("baseline update", other)),
         }
         i += 1;
     }
@@ -363,7 +364,10 @@ mod tests {
         );
         assert_eq!(
             parse_baseline_create_options(&args(&["--bad"])),
-            Err("unknown baseline create argument \"--bad\"".to_string())
+            Err(
+                "unknown baseline create argument \"--bad\". Run `ripr baseline create --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -405,7 +409,10 @@ mod tests {
         );
         assert_eq!(
             parse_baseline_diff_options(&args(&["--bad"])),
-            Err("unknown baseline diff argument \"--bad\"".to_string())
+            Err(
+                "unknown baseline diff argument \"--bad\". Run `ripr baseline diff --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -460,11 +467,14 @@ mod tests {
         );
         assert_eq!(
             parse_baseline_update_options(&args(&["--bad"])),
-            Err("unknown baseline update argument \"--bad\"".to_string())
+            Err(
+                "unknown baseline update argument \"--bad\". Run `ripr baseline update --help`."
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_baseline_update_options(&args(&["--adopt-new"])),
-            Err("unknown baseline update argument \"--adopt-new\"".to_string())
+            Err("unknown baseline update argument \"--adopt-new\". Run `ripr baseline update --help`.".to_string())
         );
         assert_eq!(
             baseline(&args(&[

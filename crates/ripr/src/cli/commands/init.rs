@@ -2,6 +2,7 @@ use crate::agent::loop_commands;
 use crate::cli::commands_options::{InitCi, InitOptions};
 use crate::cli::help;
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, generated_init_config};
 use std::path::{Path, PathBuf};
 
@@ -266,7 +267,7 @@ pub(super) fn parse_init_options(args: &[String]) -> Result<InitOptions, String>
             }
             "--dry-run" => options.dry_run = true,
             "--force" => options.force = true,
-            other => return Err(format!("unknown init argument {other:?}")),
+            other => return Err(unknown_argument("init", other)),
         }
         i += 1;
     }

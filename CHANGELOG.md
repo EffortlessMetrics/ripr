@@ -30,6 +30,17 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Unrecognized CLI flags now suggest the nearest documented flag and point at
+  the command's own help, matching what unknown *commands* already did. A
+  mistyped flag is the more common slip, but it produced a bare
+  `unknown check argument "--forma"` with no suggestion and nowhere to go.
+  It now reads
+  ``unknown check argument "--forma". Did you mean `--format`? Run `ripr check --help`.``
+  Candidate flags are read out of each command's help text, so a suggestion can
+  never name a flag that `--help` does not document, and adding a flag to help
+  makes it suggestible with no second edit. Applied across 48 argument-parsing
+  sites covering 46 command paths (#2578).
+
 - `ripr init --dry-run` now previews the run it is actually a preview of.
   It previously returned before every precondition check and printed file
   bodies unconditionally, so it reported success for two runs that fail: an

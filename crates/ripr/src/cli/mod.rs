@@ -10,6 +10,7 @@ mod execute;
 mod help;
 mod parse;
 mod rerun;
+mod suggest;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
     execute::execute(parse::parse_args(args)?)
@@ -76,7 +77,7 @@ mod tests {
         );
         assert_eq!(
             run(args(&["ripr", "lsp", "--bad"])),
-            Err("unknown lsp argument \"--bad\"".to_string())
+            Err("unknown lsp argument \"--bad\". Run `ripr lsp --help`.".to_string())
         );
         assert_eq!(
             run(args(&["ripr", "agent", "brief", "--diff", "change.diff"])),

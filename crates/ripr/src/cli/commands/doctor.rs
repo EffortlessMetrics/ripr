@@ -8,6 +8,7 @@
 use crate::analysis;
 use crate::app::Mode;
 use crate::cli::help;
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, load_for_root};
 use crate::domain::{LanguageId, LanguageStatus};
 use crate::output;
@@ -30,7 +31,7 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
         [] => PathBuf::from("."),
         ["--root"] => return Err("missing value for --root".to_string()),
         ["--root", value] => PathBuf::from(value),
-        [other, ..] => return Err(format!("unknown doctor argument {other:?}")),
+        [other, ..] => return Err(unknown_argument("doctor", other)),
     };
 
     if json_output {
@@ -1170,7 +1171,7 @@ mod tests {
     fn doctor_rejects_unknown_arguments() {
         assert_eq!(
             doctor(&args(&["--verbose"])),
-            Err("unknown doctor argument \"--verbose\"".to_string())
+            Err("unknown doctor argument \"--verbose\". Run `ripr doctor --help`.".to_string())
         );
     }
 

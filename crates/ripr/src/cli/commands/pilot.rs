@@ -4,6 +4,7 @@ use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
 use crate::cli::commands_options::PilotOptions;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -261,7 +262,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
                 options.timeout_ms =
                     parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
             }
-            other => return Err(format!("unknown pilot argument {other:?}")),
+            other => return Err(unknown_argument("pilot", other)),
         }
         i += 1;
     }
@@ -353,7 +354,7 @@ mod tests {
     fn pilot_rejects_unknown_arguments() {
         assert_eq!(
             pilot(&args(&["--wat"])),
-            Err("unknown pilot argument \"--wat\"".to_string())
+            Err("unknown pilot argument \"--wat\". Run `ripr pilot --help`.".to_string())
         );
     }
 

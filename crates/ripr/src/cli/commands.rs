@@ -6,6 +6,7 @@ use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::suggest::unknown_argument;
 #[cfg(test)]
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
@@ -39,6 +40,9 @@ mod swarm_command;
 
 pub(super) use agent::agent;
 pub(super) use context::context;
+// The receipt help bodies live beside the receipt parser but are also the
+// flag source for `ripr receipt write|check` suggestions, so `cli::help` needs
+// a path to them.
 #[cfg(test)]
 use policy_commands::{
     parse_policy_history_options, parse_policy_operations_options,
@@ -50,6 +54,7 @@ use policy_commands::{
     policy_history, policy_operations, policy_preview_promotion, policy_promotion,
     policy_readiness, policy_suppression_health, policy_waiver_aging,
 };
+pub(super) use receipt_command::{RECEIPT_CHECK_HELP, RECEIPT_WRITE_HELP};
 
 pub(super) fn receipt(args: &[String]) -> Result<(), String> {
     receipt_command::run_receipt(args)
@@ -1343,9 +1348,7 @@ fn parse_calibrate_cargo_mutants_options(args: &[String]) -> Result<CalibrateOpt
                 out = Some(PathBuf::from(expect_value(args, i, "--out")?));
             }
             other => {
-                return Err(format!(
-                    "unknown calibrate cargo-mutants argument {other:?}"
-                ));
+                return Err(unknown_argument("calibrate cargo-mutants", other));
             }
         }
         i += 1;
@@ -1440,7 +1443,7 @@ fn parse_outcome_options(args: &[String]) -> Result<OutcomeOptions, String> {
                 i += 1;
                 out = Some(PathBuf::from(expect_value(args, i, "--out")?));
             }
-            other => return Err(format!("unknown outcome argument {other:?}")),
+            other => return Err(unknown_argument("outcome", other)),
         }
         i += 1;
     }
@@ -1484,7 +1487,7 @@ fn parse_evidence_health_options(args: &[String]) -> Result<EvidenceHealthOption
                     "--mutation-calibration",
                 )?));
             }
-            other => return Err(format!("unknown evidence-health argument {other:?}")),
+            other => return Err(unknown_argument("evidence-health", other)),
         }
         i += 1;
     }
@@ -1551,7 +1554,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 timeout_ms =
                     parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
             }
-            other => return Err(format!("unknown review-comments argument {other:?}")),
+            other => return Err(unknown_argument("review-comments", other)),
         }
         i += 1;
     }
@@ -1616,7 +1619,7 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "zero status")?;
             }
-            other => return Err(format!("unknown zero status argument {other:?}")),
+            other => return Err(unknown_argument("zero status", other)),
         }
         i += 1;
     }
@@ -1763,7 +1766,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "pr-ledger record")?;
             }
-            other => return Err(format!("unknown pr-ledger record argument {other:?}")),
+            other => return Err(unknown_argument("pr-ledger record", other)),
         }
         i += 1;
     }
@@ -1903,7 +1906,7 @@ fn parse_pr_comments_plan_options(args: &[String]) -> Result<PrCommentsPlanOptio
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "pr-comments plan")?;
             }
-            other => return Err(format!("unknown pr-comments plan argument {other:?}")),
+            other => return Err(unknown_argument("pr-comments plan", other)),
         }
         i += 1;
     }
@@ -2072,7 +2075,7 @@ fn parse_pr_review_front_panel_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "pr-review front-panel")?;
             }
-            other => return Err(format!("unknown pr-review front-panel argument {other:?}")),
+            other => return Err(unknown_argument("pr-review front-panel", other)),
         }
         i += 1;
     }
@@ -2169,7 +2172,7 @@ fn parse_report_packet_index_options(args: &[String]) -> Result<ReportPacketInde
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "reports index")?;
             }
-            other => return Err(format!("unknown reports index argument {other:?}")),
+            other => return Err(unknown_argument("reports index", other)),
         }
         i += 1;
     }
@@ -2238,7 +2241,7 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "reports gap-ledger")?;
             }
-            other => return Err(format!("unknown reports gap-ledger argument {other:?}")),
+            other => return Err(unknown_argument("reports gap-ledger", other)),
         }
         i += 1;
     }
@@ -2311,7 +2314,7 @@ fn parse_typescript_limitations_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "reports ts-limitations")?;
             }
-            other => return Err(format!("unknown reports ts-limitations argument {other:?}")),
+            other => return Err(unknown_argument("reports ts-limitations", other)),
         }
         i += 1;
     }
@@ -2364,9 +2367,7 @@ fn parse_typescript_false_actionable_options(
                 out_md = non_empty_path_arg(args, i, "--out-md", "reports ts-false-actionable")?;
             }
             other => {
-                return Err(format!(
-                    "unknown reports ts-false-actionable argument {other:?}"
-                ));
+                return Err(unknown_argument("reports ts-false-actionable", other));
             }
         }
         i += 1;
@@ -2442,7 +2443,7 @@ fn parse_coverage_grip_frontier_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "coverage-grip frontier")?;
             }
-            other => return Err(format!("unknown coverage-grip frontier argument {other:?}")),
+            other => return Err(unknown_argument("coverage-grip frontier", other)),
         }
         i += 1;
     }
@@ -2569,7 +2570,7 @@ fn parse_assistant_loop_proof_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "assistant-loop proof")?;
             }
-            other => return Err(format!("unknown assistant-loop proof argument {other:?}")),
+            other => return Err(unknown_argument("assistant-loop proof", other)),
         }
         i += 1;
     }
@@ -2634,7 +2635,7 @@ fn parse_assistant_loop_health_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "assistant-loop health")?;
             }
-            other => return Err(format!("unknown assistant-loop health argument {other:?}")),
+            other => return Err(unknown_argument("assistant-loop health", other)),
         }
         i += 1;
     }
@@ -2746,7 +2747,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "first-action")?;
             }
-            other => return Err(format!("unknown first-action argument {other:?}")),
+            other => return Err(unknown_argument("first-action", other)),
         }
         i += 1;
     }
@@ -3002,7 +3003,7 @@ fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
                 options.include_unchanged_tests = false;
                 options.explicit.include_unchanged_tests = true;
             }
-            other => return Err(format!("unknown diff argument {other:?}")),
+            other => return Err(unknown_argument("diff", other)),
         }
         i += 1;
     }
@@ -3189,7 +3190,7 @@ pub(super) fn lsp(args: &[String]) -> Result<(), String> {
                 help::print_lsp_help();
                 return Ok(());
             }
-            other => return Err(format!("unknown lsp argument {other:?}")),
+            other => return Err(unknown_argument("lsp", other)),
         }
     }
     crate::lsp::serve()
@@ -4094,7 +4095,10 @@ mod tests {
     fn evidence_health_rejects_unknown_arguments() {
         assert_eq!(
             parse_evidence_health_options(&args(&["--bad"])),
-            Err("unknown evidence-health argument \"--bad\"".to_string())
+            Err(
+                "unknown evidence-health argument \"--bad\". Run `ripr evidence-health --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -4187,7 +4191,10 @@ mod tests {
         );
         assert_eq!(
             parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
-            Err("unknown review-comments argument \"--bad\"".to_string())
+            Err(
+                "unknown review-comments argument \"--bad\". Run `ripr review-comments --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -4271,7 +4278,10 @@ mod tests {
         );
         assert_eq!(
             parse_ripr_zero_status_options(&args(&["--bad"])),
-            Err("unknown zero status argument \"--bad\"".to_string())
+            Err(
+                "unknown zero status argument \"--bad\". Run `ripr zero status --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -4401,7 +4411,10 @@ mod tests {
         );
         assert_eq!(
             parse_policy_readiness_options(&args(&["--bad"])),
-            Err("unknown policy readiness argument \"--bad\"".to_string())
+            Err(
+                "unknown policy readiness argument \"--bad\". Run `ripr policy readiness --help`."
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_policy_operations_options(&args(&[])),
@@ -4413,7 +4426,7 @@ mod tests {
         );
         assert_eq!(
             parse_policy_operations_options(&args(&["--bad"])),
-            Err("unknown policy operations argument \"--bad\"".to_string())
+            Err("unknown policy operations argument \"--bad\". Run `ripr policy operations --help`.".to_string())
         );
         assert_eq!(
             parse_policy_promotion_options(&args(&[])),
@@ -4436,7 +4449,10 @@ mod tests {
         );
         assert_eq!(
             parse_policy_promotion_options(&args(&["--bad"])),
-            Err("unknown policy promote argument \"--bad\"".to_string())
+            Err(
+                "unknown policy promote argument \"--bad\". Run `ripr policy promote --help`."
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_policy_preview_promotion_options(&args(&[])),
@@ -4464,7 +4480,7 @@ mod tests {
         );
         assert_eq!(
             parse_policy_preview_promotion_options(&args(&["--bad"])),
-            Err("unknown policy preview-promote argument \"--bad\"".to_string())
+            Err("unknown policy preview-promote argument \"--bad\". Run `ripr policy preview-promote --help`.".to_string())
         );
     }
 
@@ -4507,7 +4523,10 @@ mod tests {
         );
         assert_eq!(
             parse_policy_history_options(&args(&["--current", "ops.json", "--bad"])),
-            Err("unknown policy history argument \"--bad\"".to_string())
+            Err(
+                "unknown policy history argument \"--bad\". Run `ripr policy history --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -4642,7 +4661,7 @@ mod tests {
         );
         assert_eq!(
             parse_policy_waiver_aging_options(&args(&["--bad"])),
-            Err("unknown policy waiver-aging argument \"--bad\"".to_string())
+            Err("unknown policy waiver-aging argument \"--bad\". Run `ripr policy waiver-aging --help`.".to_string())
         );
     }
 
@@ -4676,7 +4695,7 @@ mod tests {
         );
         assert_eq!(
             parse_policy_suppression_health_options(&args(&["--bad"])),
-            Err("unknown policy suppression-health argument \"--bad\"".to_string())
+            Err("unknown policy suppression-health argument \"--bad\". Run `ripr policy suppression-health --help`.".to_string())
         );
     }
 
@@ -5305,7 +5324,10 @@ language = "rust"
         );
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&["--bad"])),
-            Err("unknown pr-ledger record argument \"--bad\"".to_string())
+            Err(
+                "unknown pr-ledger record argument \"--bad\". Run `ripr pr-ledger record --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -5415,7 +5437,10 @@ language = "rust"
         );
         assert_eq!(
             parse_pr_comments_plan_options(&args(&["--bad"])),
-            Err("unknown pr-comments plan argument \"--bad\"".to_string())
+            Err(
+                "unknown pr-comments plan argument \"--bad\". Run `ripr pr-comments plan --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -5522,7 +5547,10 @@ language = "rust"
         );
         assert_eq!(
             parse_first_action_options(&args(&["--bad"])),
-            Err("unknown first-action argument \"--bad\"".to_string())
+            Err(
+                "unknown first-action argument \"--bad\". Run `ripr first-action --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -5744,7 +5772,7 @@ language = "rust"
         );
         assert_eq!(
             parse_coverage_grip_frontier_options(&args(&["--bad"])),
-            Err("unknown coverage-grip frontier argument \"--bad\"".to_string())
+            Err("unknown coverage-grip frontier argument \"--bad\". Run `ripr coverage-grip frontier --help`.".to_string())
         );
     }
 
@@ -6287,7 +6315,7 @@ language = "rust"
     fn init_rejects_unknown_arguments() {
         assert_eq!(
             init(&args(&["--wat"])),
-            Err("unknown init argument \"--wat\"".to_string())
+            Err("unknown init argument \"--wat\". Run `ripr init --help`.".to_string())
         );
         assert_eq!(
             init(&args(&["--ci", "gitlab"])),
@@ -7806,7 +7834,7 @@ language = "rust"
     fn lsp_rejects_unknown_arguments() {
         assert_eq!(
             lsp(&args(&["--bad"])),
-            Err("unknown lsp argument \"--bad\"".to_string())
+            Err("unknown lsp argument \"--bad\". Run `ripr lsp --help`.".to_string())
         );
     }
 

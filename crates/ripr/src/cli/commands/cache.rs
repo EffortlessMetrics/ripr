@@ -1,6 +1,7 @@
 use crate::analysis::seam_cache::{
     CACHE_DIR_ENV, CacheStatus, cache_base_dir_from_env, inspect_cache_dir,
 };
+use crate::cli::suggest::unknown_argument;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -11,7 +12,7 @@ fn parse_status_args(args: &[String]) -> Result<bool, String> {
     for arg in args {
         match arg.as_str() {
             "--json" => is_json = true,
-            other => return Err(format!("unknown cache status argument {other:?}")),
+            other => return Err(unknown_argument("cache status", other)),
         }
     }
     Ok(is_json)

@@ -16,6 +16,131 @@ use reports::*;
 use rerun::*;
 use swarm::*;
 
+use crate::cli::commands::{RECEIPT_CHECK_HELP, RECEIPT_WRITE_HELP};
+
+/// The command paths that resolve to a flag-documenting help body.
+///
+/// A path here is the space-separated command as the user types it, which is
+/// also the string the CLI names in its own unknown-argument errors. Keeping
+/// the list next to [`help_text_for`] lets a test assert that every path a user
+/// can mistype still lands on real help.
+///
+/// Only the flag-parity test reads it, so it is test-only; production lookups
+/// go through [`help_text_for`].
+#[cfg(test)]
+const REGISTERED_COMMAND_PATHS: &[&str] = &[
+    "agent brief",
+    "agent packet",
+    "agent repair",
+    "agent receipt",
+    "agent review-summary",
+    "agent start",
+    "agent status",
+    "agent verify",
+    "agent verify-execute",
+    "assistant-loop health",
+    "assistant-loop proof",
+    "baseline create",
+    "baseline diff",
+    "baseline update",
+    "calibrate cargo-mutants",
+    "check",
+    "coverage-grip frontier",
+    "diff",
+    "doctor",
+    "evidence-health",
+    "first-action",
+    "gate",
+    "init",
+    "lsp",
+    "outcome",
+    "pilot",
+    "policy history",
+    "policy operations",
+    "policy preview-promote",
+    "policy promote",
+    "policy readiness",
+    "policy suppression-health",
+    "policy waiver-aging",
+    "pr-comments plan",
+    "pr-ledger record",
+    "pr-review front-panel",
+    "receipt check",
+    "receipt write",
+    "reports gap-ledger",
+    "reports index",
+    "reports ts-false-actionable",
+    "reports ts-limitations",
+    "rerun",
+    "review-comments",
+    "swarm ingest",
+    "swarm queue",
+    "zero status",
+];
+
+/// Resolve a command path to the help body that documents its flags.
+///
+/// Several subcommand groups (`policy`, `baseline`, `reports`, ...) document
+/// every subcommand's flags in one shared body, so those paths all map to the
+/// same constant. `None` means the path has no help body to mine for flag
+/// suggestions; callers fall back to naming `ripr <path> --help`.
+pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
+    let help_text = match command {
+        "agent brief" => AGENT_BRIEF_HELP,
+        "agent packet" => AGENT_PACKET_HELP,
+        "agent repair" => AGENT_REPAIR_HELP,
+        "agent receipt" => AGENT_RECEIPT_HELP,
+        "agent review-summary" => AGENT_REVIEW_SUMMARY_HELP,
+        "agent start" => AGENT_START_HELP,
+        "agent status" => AGENT_STATUS_HELP,
+        "agent verify" => AGENT_VERIFY_HELP,
+        "agent verify-execute" => AGENT_VERIFY_EXECUTE_HELP,
+        "assistant-loop health" | "assistant-loop proof" => ASSISTANT_LOOP_HELP,
+        "baseline create" | "baseline diff" | "baseline update" => BASELINE_HELP,
+        "calibrate cargo-mutants" => CALIBRATE_HELP,
+        "check" => CHECK_HELP,
+        "coverage-grip frontier" => COVERAGE_GRIP_HELP,
+        "diff" => DIFF_HELP,
+        "doctor" => DOCTOR_HELP,
+        "evidence-health" => EVIDENCE_HEALTH_HELP,
+        "first-action" => FIRST_ACTION_HELP,
+        "gate" => GATE_HELP,
+        "init" => INIT_HELP,
+        "lsp" => LSP_HELP,
+        "outcome" => OUTCOME_HELP,
+        "pilot" => PILOT_HELP,
+        "policy history"
+        | "policy operations"
+        | "policy preview-promote"
+        | "policy promote"
+        | "policy readiness"
+        | "policy suppression-health"
+        | "policy waiver-aging" => POLICY_HELP,
+        "pr-comments plan" => PR_COMMENTS_HELP,
+        "pr-ledger record" => PR_LEDGER_HELP,
+        "pr-review front-panel" => PR_REVIEW_HELP,
+        "receipt check" => RECEIPT_CHECK_HELP,
+        "receipt write" => RECEIPT_WRITE_HELP,
+        "reports gap-ledger"
+        | "reports index"
+        | "reports ts-false-actionable"
+        | "reports ts-limitations" => REPORTS_HELP,
+        "rerun" => RERUN_HELP,
+        "review-comments" => REVIEW_COMMENTS_HELP,
+        "swarm ingest" => SWARM_INGEST_HELP,
+        "swarm queue" => SWARM_QUEUE_HELP,
+        "zero status" => ZERO_HELP,
+        _ => return None,
+    };
+    Some(help_text)
+}
+
+/// The command paths [`help_text_for`] can resolve.
+#[cfg(test)]
+pub(super) fn registered_command_paths() -> &'static [&'static str] {
+    REGISTERED_COMMAND_PATHS
+}
+
 pub(super) fn print_help() {
     println!("{HELP}");
 }

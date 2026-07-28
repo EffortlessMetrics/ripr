@@ -9,6 +9,7 @@ use crate::analysis;
 use crate::app::{self, CheckInput, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -112,7 +113,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 help::print_check_help();
                 return Ok(());
             }
-            other => return Err(format!("unknown check argument {other:?}")),
+            other => return Err(unknown_argument("check", other)),
         }
         i += 1;
     }
@@ -477,7 +478,7 @@ mod tests {
     fn check_rejects_unknown_argument() {
         assert_eq!(
             check(&args(&["--wat"])),
-            Err("unknown check argument \"--wat\"".to_string())
+            Err("unknown check argument \"--wat\". Run `ripr check --help`.".to_string())
         );
     }
 

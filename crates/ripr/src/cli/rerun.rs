@@ -11,6 +11,7 @@ use crate::app::repair_route_readiness;
 use crate::cli::commands_context::{ensure_command_root, load_root_input_and_config};
 use crate::cli::help;
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::output::gap_decision_ledger::{GapRecord, parse_gap_record_source_json};
 use crate::output::outcome::{TargetedRerunStaticSeam, targeted_rerun_movement_from_json};
 #[cfg(feature = "lang-typescript")]
@@ -357,7 +358,7 @@ fn parse_options(args: &[String]) -> Result<RerunOptions, String> {
                 before = Some(PathBuf::from(expect_value(args, index, "--before")?));
             }
             "--check-parity" => check_parity = true,
-            other => return Err(format!("unknown rerun argument {other:?}")),
+            other => return Err(unknown_argument("rerun", other)),
         }
         index += 1;
     }

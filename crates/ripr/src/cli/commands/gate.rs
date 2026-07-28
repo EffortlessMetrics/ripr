@@ -7,6 +7,7 @@
 use crate::cli::commands_options::GateOptions;
 use crate::cli::help;
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::PathBuf;
 
@@ -153,7 +154,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
                 i += 1;
                 out_md = Some(non_empty_path_arg(args, i, "--out-md", "gate")?);
             }
-            other => return Err(format!("unknown gate argument {other:?}")),
+            other => return Err(unknown_argument("gate", other)),
         }
         i += 1;
     }
@@ -295,7 +296,7 @@ mod tests {
         );
         assert_eq!(
             parse_gate_options(&args(&["--bad"])),
-            Err("unknown gate argument \"--bad\"".to_string())
+            Err("unknown gate argument \"--bad\". Run `ripr gate --help`.".to_string())
         );
         assert_eq!(
             parse_gate_options(&args(&[])),
