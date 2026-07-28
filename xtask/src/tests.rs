@@ -21641,6 +21641,61 @@ fn local_context_findings_are_sorted_deterministically() {
 }
 
 #[test]
+fn traceability_symbol_suffix_is_advisory_without_blocking() -> Result<(), String> {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs");
+    let references = vec![format!("{}::tests::example", source.display())];
+    let mut violations = Vec::new();
+    let mut advisories = Vec::new();
+
+    super::validate_trace_paths(
+        "RIPR-SPEC-9999",
+        "tests",
+        &references,
+        &mut violations,
+        &mut advisories,
+    );
+
+    if !violations.is_empty() {
+        return Err(format!(
+            "existing-file symbol suffix should not block: {violations:?}"
+        ));
+    }
+    if advisories.len() != 1 || !advisories[0].contains("symbol suffix") {
+        return Err(format!(
+            "expected one visible symbol advisory, got {advisories:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn traceability_missing_path_remains_blocking() -> Result<(), String> {
+    let references = vec!["xtask/path-that-does-not-exist.rs::tests::example".to_string()];
+    let mut violations = Vec::new();
+    let mut advisories = Vec::new();
+
+    super::validate_trace_paths(
+        "RIPR-SPEC-9999",
+        "tests",
+        &references,
+        &mut violations,
+        &mut advisories,
+    );
+
+    if violations.len() != 1 || !violations[0].contains("path does not exist") {
+        return Err(format!(
+            "missing path should remain blocking, got {violations:?}"
+        ));
+    }
+    if !advisories.is_empty() {
+        return Err(format!(
+            "missing path should not also emit an advisory: {advisories:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn local_context_allow_entries_track_path_pattern_and_max_count() {
     let entry = LocalContextAllow {
         path: "crates/ripr/src/analysis/classifier.rs".to_string(),
