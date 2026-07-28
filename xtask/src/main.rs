@@ -593,9 +593,9 @@ fn changed_files_vs_origin_main() -> Result<Vec<String>, String> {
         .output()
         .map_err(|err| format!("git diff --name-only failed: {err}"))?;
     if !output.status.success() {
-        return Err(format!(
-            "git diff --name-only origin/main...HEAD failed; if origin/main is not available, run `git fetch origin main` first"
-        ));
+        return Err(
+            "git diff --name-only origin/main...HEAD failed; if origin/main is not available, run `git fetch origin main` first".to_string(),
+        );
     }
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(text.lines().map(String::from).collect())

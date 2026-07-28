@@ -20,6 +20,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Result of a single fixture run: violation lines + optional run output.
+type FixtureResult = Result<(Vec<String>, Option<FixtureRun>), String>;
+
 pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
     // Build once per invocation (#2110): every scenario then invokes the
     // fresh worktree binary directly instead of paying `cargo run` + link
@@ -33,7 +36,7 @@ pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
     // Parallelize fixture execution via rayon (#2415). Each fixture is
     // independent (disjoint input/expected dirs), so parallel runs produce
     // identical output.
-    let results: Vec<Result<(Vec<String>, Option<FixtureRun>), String>> = selected
+    let results: Vec<FixtureResult> = selected
         .par_iter()
         .map(|path| {
             if !path.exists() {
@@ -187,7 +190,7 @@ fn collect_golden_runs() -> Result<GoldenRunSet, String> {
     // Parallelize fixture execution via rayon (#2415). Each fixture is independent
     // (disjoint input/expected dirs), so parallel runs produce identical output.
     // The sequential results are collected in input order for deterministic reports.
-    let results: Vec<Result<(Vec<String>, Option<FixtureRun>), String>> = fixture_dirs
+    let results: Vec<FixtureResult> = fixture_dirs
         .par_iter()
         .map(|fixture| {
             let contract_violations = fixture_contract_violations(fixture)?;
