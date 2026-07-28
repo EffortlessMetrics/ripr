@@ -61,10 +61,10 @@ Raw findings cannot directly become independent user actions by default.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-doc-index
-rtk cargo xtask check-traceability
-rtk cargo xtask check-pr
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask check-traceability
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -93,11 +93,11 @@ layers and keeps preview languages advisory.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
+cargo xtask check-doc-roles
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -128,10 +128,10 @@ not infer projectability from raw findings alone.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-doc-index
-rtk cargo xtask check-traceability
-rtk cargo xtask check-pr
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask check-traceability
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -161,9 +161,9 @@ xtask tests validate the corpus contract.
 Proof commands:
 
 ```bash
-rtk cargo test -p xtask gap_decision_ledger
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-pr
+cargo test -p xtask gap_decision_ledger
+cargo xtask check-fixture-contracts
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -191,9 +191,9 @@ unsafe projection states, and keeps authority boundaries advisory.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr gap_decision_ledger --lib
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-pr
+cargo test -p ripr gap_decision_ledger --lib
+cargo xtask check-output-contracts
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -224,10 +224,10 @@ the evidence supports that route.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr reports_gap_ledger --lib
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
+cargo test -p ripr reports_gap_ledger --lib
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -261,13 +261,13 @@ boundaries.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr gap_decision_ledger --lib
-rtk cargo test -p ripr gate --lib
-rtk cargo test -p ripr review_comments --lib
-rtk cargo test -p ripr lsp --lib
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-pr
+cargo test -p ripr gap_decision_ledger --lib
+cargo test -p ripr gate --lib
+cargo test -p ripr review_comments --lib
+cargo test -p ripr lsp --lib
+cargo xtask check-output-contracts
+cargo xtask check-capabilities
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -297,11 +297,11 @@ focused proof, verification, and receipt.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-pr
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
 ```
 
 Rollback:
@@ -329,12 +329,12 @@ validation commands, known limits, and future-lane boundaries.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:

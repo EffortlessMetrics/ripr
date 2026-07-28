@@ -4333,20 +4333,20 @@ Work items:
 Commands:
 
 ```bash
-rtk git fetch origin --prune
-rtk git status --short --branch
-rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-rtk gh pr list --repo EffortlessMetrics/ripr --state open
-rtk cargo xtask pr-triage-report
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-workflows
-rtk cargo xtask check-pr
-rtk git diff --check
+git fetch origin --prune
+git status --short --branch
+gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+gh pr list --repo EffortlessMetrics/ripr --state open
+cargo xtask pr-triage-report
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-workflows
+cargo xtask check-pr
+git diff --check
 ```
 
 Closeout:
@@ -4434,14 +4434,14 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4512,17 +4512,17 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo test -p ripr seam_cache -- --test-threads=1
-rtk cargo test -p ripr seam_inventory -- --test-threads=1
-rtk cargo test -p xtask cache -- --test-threads=1
-rtk cargo xtask cache report
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr seam_cache -- --test-threads=1
+cargo test -p ripr seam_inventory -- --test-threads=1
+cargo test -p xtask cache -- --test-threads=1
+cargo xtask cache report
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4599,20 +4599,20 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo test -p ripr suggested_test -- --test-threads=1
-rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
-rtk cargo test -p ripr lsp --lib
-rtk cargo xtask ripr-swarm readiness
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr suggested_test -- --test-threads=1
+cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+cargo test -p ripr lsp --lib
+cargo xtask ripr-swarm readiness
+cargo xtask evidence-quality-scorecard
+cargo xtask check-output-contracts
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4705,27 +4705,27 @@ Focused correction campaign ID:
 Commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-spec-numbering
-rtk cargo xtask check-traceability
-rtk cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
-rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
-rtk cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1
-rtk cargo test -p xtask bun_ub_calibration -- --test-threads=1
-rtk cargo xtask bun-ub-calibration
-rtk cargo xtask dogfood
-rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
-rtk cargo xtask ripr-swarm readiness
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-spec-format
+cargo xtask check-spec-numbering
+cargo xtask check-traceability
+cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
+cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
+cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1
+cargo test -p xtask bun_ub_calibration -- --test-threads=1
+cargo xtask bun-ub-calibration
+cargo xtask dogfood
+cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+cargo xtask ripr-swarm readiness
+cargo xtask evidence-quality-scorecard
+cargo xtask check-output-contracts
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4950,14 +4950,14 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -5037,15 +5037,15 @@ contract.
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-spec-numbering
-rtk cargo xtask check-doc-artifacts
-rtk cargo xtask check-support-tiers
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask check-spec-format
+cargo xtask check-spec-numbering
+cargo xtask check-doc-artifacts
+cargo xtask check-support-tiers
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+git diff --check
 ```
 
 Blocking conditions:

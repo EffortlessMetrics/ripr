@@ -142,12 +142,12 @@ output contracts, policy, fixtures, code, or schemas.
 Docs-only Lane 4 scaffolding should run:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Future behavior or generated-CI changes should add the relevant fixture,
