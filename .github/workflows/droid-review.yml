@@ -9,6 +9,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  stage-residual-rtk-guidance:
+    if: github.event.pull_request.head.ref == 'sync/residual-rtk-guidance-transport' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source transport branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: sync/residual-rtk-guidance-transport
+          fetch-depth: 0
+      - name: Apply reviewed source-local transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/stage-residual-rtk-guidance.py
+          git diff --check
+          if git diff --quiet; then
+            echo "reviewed cleanup already staged"
+            exit 0
+          fi
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add \
+            docs/IMPLEMENTATION_CAMPAIGNS.md \
+            docs/RIPR_SWARM_HUMAN_WORKFLOW.md \
+            docs/lanes/LANE_1_RIPR_PLUS_BURNDOWN.md \
+            docs/lanes/LANE_4_PR_CI_REVIEW.md \
+            docs/swarm-development.md \
+            plans/adoption-integration-cleanup/README.md \
+            plans/adoption-integration-cleanup/implementation-plan.md \
+            plans/campaign-27/lane3-editor-preview-routing.md \
+            plans/lane4-pr-ci-review-cockpit/implementation-plan.md \
+            plans/rust-usable-gap-projection/agent-context-route.md \
+            plans/rust-usable-gap-projection/implementation-plan.md
+          git commit -m "sync: remove residual RTK guidance and retired authority"
+          git push origin HEAD:sync/residual-rtk-guidance-transport
+
   droid-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
