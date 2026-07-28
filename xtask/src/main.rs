@@ -14826,6 +14826,7 @@ fn proof_pack_command_is_known(command: &str) -> bool {
 }
 
 fn check_dependencies() -> Result<(), String> {
+    policy::check_dependency_suppression_expiry(Path::new("deny.toml"))?;
     let allowlist = read_glob_allowlist("policy/dependency_allowlist.txt")?;
     let mut violations = Vec::new();
 

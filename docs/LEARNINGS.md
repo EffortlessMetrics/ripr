@@ -1831,9 +1831,9 @@ The lesson: a cargo-deny failure on an unrelated PR is often a newly
 published advisory, not the PR's diff. Reproduce on clean main first; the
 fix is usually `cargo update -p <crate>` within the existing semver
 requirement. Related verification: cargo-deny 0.18.9 does not deserialize
-`until` fields on advisory ignores, so expiry enforcement for long-lived
-suppressions must live in repo tooling (an xtask check reading dated
-comments), not in deny.toml syntax (#1949).
+`until` fields on advisory ignores (verified at 0.19.0), so expiry enforcement
+for long-lived suppressions must live in repo tooling (an xtask check reading
+dated comments), not in deny.toml syntax (#1949).
 
 ## 2026-07-22: Canonical-input validation must compare bytes, not parsed values
 
