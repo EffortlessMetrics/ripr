@@ -1279,19 +1279,26 @@ fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String
     }
 
     // Step 3: explicit refresh is the demand path that commits the first
-    // snapshot (RIPR-SPEC-0105); its result is null. This request triggers
-    // a full workspace analysis and may exceed the standard RESPONSE_TIMEOUT
-    // on Windows, so it uses ANALYSIS_TIMEOUT (#2495).
+    // snapshot (RIPR-SPEC-0105); its result is null. ANALYSIS_TIMEOUT is only
+    // an outer safety margin; the compatibility contract still requires the
+    // refresh to complete within RESPONSE_TIMEOUT (#2495).
+    let refresh_started = Instant::now();
     let refresh = session.request_with_timeout(
         "workspace/executeCommand",
         serde_json::json!({"command": "ripr.refresh", "arguments": []}),
         ANALYSIS_TIMEOUT,
     )?;
+    let refresh_elapsed = refresh_started.elapsed();
     protocol_sequence.push("workspace/executeCommand ripr.refresh".to_string());
     let refresh_result = expect_result(&refresh, "ripr.refresh")?;
     if !refresh_result.is_null() {
         return Err(format!(
             "ripr.refresh must return a null result, got: {refresh}"
+        ));
+    }
+    if refresh_elapsed >= RESPONSE_TIMEOUT {
+        return Err(format!(
+            "ripr.refresh exceeded the ordinary {RESPONSE_TIMEOUT:?} compatibility budget: {refresh_elapsed:?}"
         ));
     }
 
@@ -1300,6 +1307,43 @@ fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String
     let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
     protocol_sequence.push("workspace/executeCommand ripr.collectWorkspaceStatus".to_string());
     check_workspace_status_envelope(&status, "post-refresh")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!(
+            "post-refresh: explicit refresh must publish a trustworthy full snapshot: {status}"
+        ));
+    }
+    let input_authority = status
+        .pointer("/analysis_status/input_authority/current")
+        .ok_or_else(|| format!("post-refresh: missing current input authority: {status}"))?;
+    if input_authority
+        .get("requested_base")
+        .and_then(serde_json::Value::as_str)
+        != Some("HEAD~1")
+        || input_authority
+            .get("resolved_base")
+            .and_then(serde_json::Value::as_str)
+            .is_none()
+    {
+        return Err(format!(
+            "post-refresh: expected resolved HEAD~1 input identity: {status}"
+        ));
+    }
+    let components = status
+        .pointer("/analysis_status/components")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("post-refresh: missing component outcomes: {status}"))?;
+    if components.iter().any(|component| {
+        component
+            .get("findings_trustworthy")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+            || component.get("kind").and_then(serde_json::Value::as_str)
+                == Some("git_invocation_timeout")
+    }) {
+        return Err(format!(
+            "post-refresh: component outcomes must remain trustworthy and timeout-free: {status}"
+        ));
+    }
     let diagnostics = status
         .get("diagnostics")
         .and_then(serde_json::Value::as_object)

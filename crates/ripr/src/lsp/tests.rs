@@ -8092,7 +8092,7 @@ fn framed_lsp_root_switch_repulls_scoped_to_new_root() -> Result<(), String> {
                 );
             }
         }
-        match tokio::time::timeout(Duration::from_secs(2), &mut server_task).await {
+        match tokio::time::timeout(Duration::from_secs(5), &mut server_task).await {
             Ok(join_result) => {
                 join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
             }

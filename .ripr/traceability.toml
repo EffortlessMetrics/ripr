@@ -7339,6 +7339,8 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::framed_lsp_configuration_pull_applies_and_discloses_pull_state",
   "crates/ripr/src/lsp/tests.rs::framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_release",
   "crates/ripr/src/git.rs::tests::deadline_kills_and_reaps_a_hung_invocation",
+  "crates/ripr/src/git.rs::tests::deadline_kills_pipe_inheriting_descendants_without_blocking_the_reader",
+  "crates/ripr/src/git.rs::tests::drain_pipe_reader_reports_bounded_edge_states",
   "crates/ripr/src/git.rs::tests::zero_deadline_errors_before_spawning",
   "crates/ripr/src/git.rs::tests::cancellation_wins_over_a_long_deadline",
   "crates/ripr/src/git.rs::tests::output_larger_than_the_pipe_buffer_does_not_deadlock",
@@ -7372,6 +7374,7 @@ code = [
   "crates/ripr/src/lsp/config.rs",
   "crates/ripr/src/lsp/state.rs",
   "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/git.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0136-lsp-configuration-pull.md",
