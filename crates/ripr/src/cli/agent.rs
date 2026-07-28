@@ -9,6 +9,7 @@ pub(super) enum AgentCommand {
     BriefHelp,
     PacketHelp,
     VerifyHelp,
+    VerifyExecuteHelp,
     ReceiptHelp,
     StatusHelp,
     ReviewSummaryHelp,
@@ -17,6 +18,7 @@ pub(super) enum AgentCommand {
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
+    VerifyExecute(AgentVerifyExecuteOptions),
     Receipt(AgentReceiptOptions),
     Status(AgentStatusOptions),
     ReviewSummary(AgentReviewSummaryOptions),
@@ -52,6 +54,16 @@ pub(super) struct AgentVerifyOptions {
     pub(super) root: PathBuf,
     pub(super) before: PathBuf,
     pub(super) after: PathBuf,
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentVerifyExecuteOptions {
+    pub(super) root: PathBuf,
+    pub(super) packet: PathBuf,
+    pub(super) result_json: PathBuf,
+    pub(super) authorize: bool,
+    pub(super) cancel_after_ms: Option<u64>,
     pub(super) json: bool,
 }
 
@@ -125,12 +137,13 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
+        Some("verify-execute") => parse_agent_verify_execute_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some("status") => parse_agent_status_command(&args[1..]),
         Some("review-summary") => parse_agent_review_summary_command(&args[1..]),
         Some("repair") => parse_agent_repair_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, `review-summary`, or `repair`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
         )),
     }
 }
@@ -161,6 +174,13 @@ fn parse_agent_verify_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::VerifyHelp);
     }
     parse_agent_verify_options(args).map(AgentCommand::Verify)
+}
+
+fn parse_agent_verify_execute_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::VerifyExecuteHelp);
+    }
+    parse_agent_verify_execute_options(args).map(AgentCommand::VerifyExecute)
 }
 
 fn parse_agent_receipt_command(args: &[String]) -> Result<AgentCommand, String> {
@@ -465,6 +485,71 @@ pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyO
     })
 }
 
+pub(super) fn parse_agent_verify_execute_options(
+    args: &[String],
+) -> Result<AgentVerifyExecuteOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut packet: Option<PathBuf> = None;
+    let mut result_json: Option<PathBuf> = None;
+    let mut authorize = false;
+    let mut cancel_after_ms = None;
+    let mut json = false;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--packet" => {
+                i += 1;
+                packet = Some(PathBuf::from(expect_value(args, i, "--packet")?));
+            }
+            "--result-json" => {
+                i += 1;
+                result_json = Some(PathBuf::from(expect_value(args, i, "--result-json")?));
+            }
+            "--authorize" => authorize = true,
+            "--cancel-after-ms" => {
+                i += 1;
+                let value = expect_value(args, i, "--cancel-after-ms")?;
+                let parsed = value.parse::<u64>().map_err(|error| {
+                    format!("invalid --cancel-after-ms: expected a positive integer: {error}")
+                })?;
+                if parsed == 0 {
+                    return Err(
+                        "invalid --cancel-after-ms: expected a positive integer".to_string()
+                    );
+                }
+                cancel_after_ms = Some(parsed);
+            }
+            "--json" => json = true,
+            other => return Err(format!("unknown agent verify-execute argument {other:?}")),
+        }
+        i += 1;
+    }
+    if !json {
+        return Err(
+            "agent verify-execute requires --json (the supported output for this subcommand)"
+                .to_string(),
+        );
+    }
+    // Missing authorization is deliberately not a usage error: it is a policy
+    // refusal, and the app layer renders it as the typed
+    // `verification_rejected_policy` disposition so every terminal state of
+    // this surface is machine-readable on stdout.
+    Ok(AgentVerifyExecuteOptions {
+        root,
+        packet: packet
+            .ok_or_else(|| "agent verify-execute requires --packet <path>".to_string())?,
+        result_json: result_json
+            .ok_or_else(|| "agent verify-execute requires --result-json <path>".to_string())?,
+        authorize,
+        cancel_after_ms,
+        json,
+    })
+}
+
 pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceiptOptions, String> {
     let mut root = PathBuf::from(".");
     let mut verify_json: Option<PathBuf> = None;
@@ -630,6 +715,71 @@ mod tests {
     }
 
     #[test]
+    fn agent_verify_execute_parses_bounded_options() -> Result<(), String> {
+        let parsed = parse_agent_verify_execute_options(&args(&[
+            "--root",
+            "repo",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--cancel-after-ms",
+            "250",
+            "--json",
+        ]))?;
+        assert_eq!(parsed.root, PathBuf::from("repo"));
+        assert_eq!(parsed.packet, PathBuf::from("packet.json"));
+        assert_eq!(parsed.result_json, PathBuf::from("result.json"));
+        assert!(parsed.authorize);
+        assert_eq!(parsed.cancel_after_ms, Some(250));
+        assert!(parsed.json);
+        Ok(())
+    }
+
+    /// Authorization is a policy refusal rendered by the app layer, so the
+    /// parser must accept its absence and record it rather than erroring. Only
+    /// genuine usage problems fail here.
+    #[test]
+    fn agent_verify_execute_defers_authorization_to_the_policy_layer() -> Result<(), String> {
+        let parsed = parse_agent_verify_execute_options(&args(&[
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--json",
+        ]))?;
+        assert!(!parsed.authorize);
+
+        for (argv, needle) in [
+            (
+                vec!["--packet", "packet.json", "--result-json", "result.json"],
+                "--json",
+            ),
+            (vec!["--result-json", "result.json", "--json"], "--packet"),
+            (vec!["--packet", "packet.json", "--json"], "--result-json"),
+            (
+                vec![
+                    "--packet",
+                    "packet.json",
+                    "--result-json",
+                    "result.json",
+                    "--cancel-after-ms",
+                    "0",
+                    "--json",
+                ],
+                "--cancel-after-ms",
+            ),
+        ] {
+            let error = parse_agent_verify_execute_options(&args(&argv))
+                .err()
+                .ok_or_else(|| format!("expected {argv:?} to fail"))?;
+            assert!(error.contains(needle), "{argv:?} reported {error}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn agent_args_parse_help_and_brief_help() {
         assert_eq!(parse_agent_args(&args(&[])), Ok(AgentCommand::Help));
         assert_eq!(parse_agent_args(&args(&["--help"])), Ok(AgentCommand::Help));
@@ -681,7 +831,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, `review-summary`, or `repair`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );

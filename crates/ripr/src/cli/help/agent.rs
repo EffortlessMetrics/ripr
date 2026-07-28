@@ -7,13 +7,16 @@ Subcommands:
   brief      Rank a working-set brief for the agent-active router.
   packet     Expand one visible seam into the existing agent seam packet JSON.
   verify     Compare before/after repo-exposure JSON for agent verification.
+  verify-execute
+             Execute one validated producer-owned direct verify route.
   receipt    Summarize one seam from agent verify JSON for review handoff.
   status     Report existing agent-loop artifacts and the next missing command.
   review-summary
              Join agent-loop artifacts into a compact review packet.
 
 Run `ripr agent start --help` for the workflow manifest, `ripr agent brief
---help`, `ripr agent packet --help`, or `ripr agent verify --help` for
+--help`, `ripr agent packet --help`, `ripr agent verify --help`, or
+`ripr agent verify-execute --help` for
 JSON-only agent surfaces. Run `ripr agent receipt --help` for the verification
 receipt surface, `ripr agent status --help` for the artifact status lens, and
 `ripr agent review-summary --help` for the PR-review packet.
@@ -90,6 +93,38 @@ an agent-focused before/after summary. Snapshot paths must resolve under
 `--root`. The command remains advisory and static; it does not run analysis,
 mutation testing, generate tests, edit files, change cache behavior, or touch
 LSP/MCP surfaces.
+"#;
+pub(super) const AGENT_VERIFY_EXECUTE_HELP: &str = r#"Execute one validated producer-owned verification route.
+
+Usage: ripr agent verify-execute [--root PATH] --packet PATH --result-json PATH --authorize --json [--cancel-after-ms N]
+
+Options:
+  --root PATH          Workspace root. Defaults to current directory.
+  --packet PATH        One producer-emitted agent packet JSON under --root.
+  --result-json PATH   New result path under --root; existing files are refused.
+  --authorize          Required explicit authorization for process execution.
+  --cancel-after-ms N  Optional bounded cancellation request.
+  --json               Required machine-readable output.
+
+Only the exact direct, no-network, no-write `ripr agent verify` route is
+executable. Authority is layered: the packet's typed `command_specs.verify` must
+be reproducible from its own `verification_commands`, so the route you read is
+the route that runs; and both `--before` and `--after` must pass repo-exposure
+provenance validation, after which the canonical route is recomputed from those
+validated artifacts and must match the packet. The packet chooses which
+producer artifacts to compare; it never authors the command.
+
+The command uses the current ripr binary, a bounded timeout, output caps, and
+repository currentness checks. The child environment is reduced to a disclosed
+platform floor (PATH plus platform essentials); ambient credentials are dropped,
+though HOME is passed through so host Git configuration still applies. Only the
+owned child is terminated.
+
+Every parsed attempt, including refusals, emits typed JSON on stdout; usage
+errors stay on stderr. Exit status is 0 when a bounded observation was committed
+-- including an observed command failure -- and nonzero when none was. It
+records process evidence only; it does not issue receipts, run mutation testing,
+prove adequacy, or grant gate or merge authority.
 "#;
 pub(super) const AGENT_RECEIPT_HELP: &str = r#"Write a provenance receipt with bounded next-action guidance for one change.
 

@@ -14,7 +14,7 @@ use crate::app::agent_brief::{
 use crate::cli::agent::{
     AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions, AgentRepairOptions,
     AgentRepairPhase, AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions,
-    AgentVerifyOptions, parse_agent_args,
+    AgentVerifyExecuteOptions, AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::commands_agent_support::{
     build_agent_receipt_provenance, read_agent_verify_snapshot, resolve_agent_brief_working_set,
@@ -40,6 +40,7 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), String> {
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
         AgentCommand::Verify(options) => run_agent_verify(options),
+        AgentCommand::VerifyExecute(options) => run_agent_verify_execute(options),
         AgentCommand::Receipt(options) => run_agent_receipt(options),
         AgentCommand::Status(options) => run_agent_status(options),
         AgentCommand::ReviewSummary(options) => run_agent_review_summary(options),
@@ -49,6 +50,7 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), String> {
         | AgentCommand::BriefHelp
         | AgentCommand::PacketHelp
         | AgentCommand::VerifyHelp
+        | AgentCommand::VerifyExecuteHelp
         | AgentCommand::ReceiptHelp
         | AgentCommand::StatusHelp
         | AgentCommand::ReviewSummaryHelp
@@ -218,6 +220,25 @@ fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
         Some(artifact_currentness),
     )?;
     print!("{rendered}");
+    Ok(())
+}
+
+fn run_agent_verify_execute(options: AgentVerifyExecuteOptions) -> Result<(), String> {
+    ensure_command_root(&options.root, "agent verify-execute")?;
+    let outcome = app::verification_execution::execute_verify_packet(
+        &options.root,
+        &options.packet,
+        &options.result_json,
+        options.authorize,
+        options.cancel_after_ms,
+    );
+    // The typed disposition is the contract, so it reaches stdout on every
+    // terminal state — including refusals. The exit status only distinguishes
+    // "RIPR committed a bounded observation" from "it could not".
+    print!("{}", outcome.rendered);
+    if outcome.failed {
+        return Err(outcome.disposition.to_string());
+    }
     Ok(())
 }
 
@@ -426,7 +447,7 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, `review-summary`, or `repair`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );

@@ -56,6 +56,20 @@ pub struct VerificationExecutionResultV1 {
     pub stdout_sha256: String,
     pub stderr_sha256: String,
     pub currentness: VerificationCurrentnessV1,
+    #[serde(default)]
+    pub duration_ms: u64,
+    #[serde(default)]
+    pub exit_signal: Option<i32>,
+    #[serde(default)]
+    pub stdout_bytes: u64,
+    #[serde(default)]
+    pub stderr_bytes: u64,
+    #[serde(default)]
+    pub stdout_truncated: bool,
+    #[serde(default)]
+    pub stderr_truncated: bool,
+    #[serde(default)]
+    pub cancellation_requested: bool,
 }
 
 /// Validation failures for a transported execution result.
@@ -403,6 +417,13 @@ mod tests {
             stdout_sha256: ZERO_DIGEST.to_string(),
             stderr_sha256: ZERO_DIGEST.to_string(),
             currentness: VerificationCurrentnessV1::Current,
+            duration_ms: 0,
+            exit_signal: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            cancellation_requested: false,
         })
     }
 

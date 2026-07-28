@@ -6283,6 +6283,112 @@ Field contract:
 - `new_gaps[]` / `resolved_gaps[]` - seam identity and static class for seam IDs
   present in only one snapshot.
 
+## Agent Verify Execute
+
+`ripr agent verify-execute --root <workspace> --packet <packet-json>
+--result-json <result-json> --authorize --json` is the only explicit process
+execution surface in the agent loop. It accepts one schema `0.3` producer
+envelope containing exactly one packet, and executes only the direct,
+no-network, no-write `ripr agent verify` route. The current ripr executable is
+used; shell text is never interpreted.
+
+The packet's typed `command_specs.verify` is an **array**, and it must equal
+exactly what RIPR derives from that packet's own `verification_commands`. The
+headline `verify_command` must resolve to the same route. Exactly one of the
+reproduced routes must be executable; zero and more-than-one are both refused
+rather than guessed.
+
+### How route authority is established
+
+Authority is layered, because packet self-consistency alone is not provenance —
+every field of a packet is caller-supplied.
+
+1. **Consistency.** The typed specs must be reproducible from the packet's own
+   display commands, and the headline must resolve to the same route. This buys
+   one property: the command a reviewer reads is the command that runs. On its
+   own it proves nothing about origin — a caller who coherently rewrites every
+   copy of the route would pass this layer.
+2. **Provenance.** The route's `--before` and `--after` inputs must each pass the
+   repo-exposure provenance contract: canonical shape, `ripr` producer identity,
+   the exact `ripr check --format repo-exposure-json` producer command, a
+   repository root equal to the selected root, a full-SHA HEAD, and a
+   **recomputed content commitment**. Their base revisions must agree. RIPR then
+   **recomputes** the canonical verify route over those validated artifacts and
+   requires the packet's route to equal it.
+
+The packet therefore chooses *which validated producer artifacts to compare*; it
+never authors the command. A coherently rewritten packet naming anything that is
+not a provenance-valid producer artifact is refused with
+`verification_rejected_policy` and no process starts.
+
+The operation requires `--authorize`, bounds process lifetime and stdout/stderr
+separately, refuses to overwrite an existing result, and checks repository HEAD
+and worktree state before and after execution. `--before` and `--after` inputs
+must resolve under `--root`, and their content digests are committed alongside
+the result.
+
+Every successfully parsed execution attempt — including authorization and
+execution refusals — emits one typed JSON terminal result on stdout with a
+`disposition` field. Usage errors (a missing `--packet`, `--result-json`, or
+`--json`, or a malformed `--cancel-after-ms`) remain plain usage errors on
+stderr and produce no disposition. The exit status distinguishes only whether
+RIPR
+committed a bounded observation: `0` when it did (including
+`verification_executed_fail`, which is a successful observation of a failing
+command), nonzero when it could not. Dispositions are
+`verification_executed_pass`, `verification_executed_fail`,
+`verification_command_not_found`, `verification_rejected_policy`,
+`verification_wrong_root`, `verification_timed_out`,
+`verification_cancelled`, `verification_output_limited`,
+`verification_repository_changed`, and `verification_result_write_failed`.
+
+```text
+ripr agent verify-execute --root . --packet target/ripr/workflow/packet.json --result-json target/ripr/workflow/verification-execution.json --authorize --json
+```
+
+### Environment posture
+
+`EnvironmentPolicy::Clean` means no ambient application or credential variables
+reach the child — not an empty environment block. The verify route invokes
+`git`, so a literally empty environment strips `PATH` and makes a passing
+observation unreachable on every real repository. Only a fixed platform floor
+crosses the boundary (`PATH`, Windows `SystemRoot`/`SystemDrive`/`windir`/
+`COMSPEC`/`PATHEXT`/`TEMP`/`TMP`, and `HOME`/`TMPDIR`/`LANG`/`LC_ALL`). The
+floor is disclosed by name in the response `preflight.environment_floor`;
+values are never emitted. Tokens and cloud credentials are dropped.
+
+Because `HOME` is in the floor, host global Git configuration can influence the
+child's Git behavior. "Clean" here means no ambient credential or application
+variables — not behavioural independence from host Git configuration. Disabling
+global and system Git configuration for the child is a possible future
+tightening, not a current guarantee.
+
+### Declared limitations
+
+- **Descendant containment.** Only the owned child is terminated. The workspace
+  forbids `unsafe_code` and the dependency policy admits neither `libc` nor
+  `windows-sys`, so no process-group or job-object substrate is available. The
+  authority boundary compensates structurally: the only executable route is one
+  leaf `ripr agent verify` invocation, which spawns no long-lived descendants.
+  The posture is disclosed as `descendant_containment` in the response.
+- **`verification_executed_fail`**, **`verification_timed_out`**, and
+  **`verification_command_not_found`** are mapped and unit-tested but are not
+  reachable end-to-end today. The only executable route is `ripr agent verify`
+  over two provenance-valid artifacts, and that command always exits 0 well
+  inside its 120s timeout. Reaching these states needs a fallible typed route
+  (for example a `cargo test` route) in the command catalog, which this surface
+  deliberately does not add. `--cancel-after-ms` is the deterministic
+  bounded-termination path that *is* reachable.
+- **`verification_command_not_found`** covers failure to start the resolved ripr
+  executable, not a `PATH` lookup, because the route is executed via the current
+  executable rather than by program name.
+
+This is process evidence only. It does not compare static before/after
+movement, issue a repair receipt, prove mutation adequacy or correctness, or
+grant gate or merge authority. Packet rejection, wrong-root paths, policy
+rejection, and result-write failures are fail-closed and do not produce a
+receipt.
+
 ## Agent Receipt
 
 `ripr agent receipt --root <workspace> --verify-json <agent-verify-json>

@@ -93,9 +93,13 @@ The static result is not a test execution result and must not be rendered as
 - cost class; and
 - bounded human display text.
 
-Only a later explicitly governed execution slice may turn
+Only the explicit `ripr agent verify-execute` operation may turn
 `verification_command_available` into an execution state. No packet, receipt
-request, JSON field, or editor action automatically runs a command.
+request, JSON field, or editor action automatically runs a command. The
+operation requires `--authorize` and accepts only one exact producer-owned
+direct `ripr agent verify` route from a schema-validated packet. Shell-required,
+manual, inherited-environment, network-enabled, and write-producing routes are
+rejected by policy.
 
 `VerificationExecutionResultV1` records the declared command identity, root and
 revision before/after the run, process disposition, exit status, bounded
@@ -106,11 +110,52 @@ carry an exit status; every other disposition must omit it. `current` and
 `dirty_worktree` require the before and after HEADs to be equal.
 `verification_executed_pass` means only that the declared command completed
 with the producer-defined passing disposition. It does not mean that the
-static gap closed or that the repository is correct. A future runner must
-reject a result whose command-spec digest, root, or revision does not match the
-declared execution context. The typed domain validator introduced by the
-verification-result slice performs those checks; it does not execute a
-command.
+static gap closed or that the repository is correct. A runner must reject a
+result whose command-spec digest, root, or revision does not match the declared
+execution context. The typed domain validator performs those checks, while
+the explicit `agent verify-execute` runner performs bounded direct execution,
+reduces the child environment to a disclosed platform floor, captures stdout and
+stderr separately with limits, and rechecks HEAD and worktree currentness. The
+runner emits process evidence only; it does not compare static movement or issue
+a receipt.
+
+A clean environment means no ambient application or credential variable reaches
+the child. It does not mean an empty environment block: the verify route invokes
+`git`, so stripping `PATH` would make a passing observation unreachable on every
+real repository and would report a false negative instead. The floor is fixed in
+code and disclosed by name — never by value — in the emitted preflight.
+
+The typed `command_specs.verify` array must equal exactly what the same
+derivation applied to the packet's own `verification_commands` yields, and the
+headline `verify_command` must resolve to that route. Exactly one reproduced
+route must be executable; zero or several are refused rather than resolved by
+preference.
+
+That check establishes display/typed agreement only — the command a reviewer
+reads is the command that runs. It is not provenance, because every compared
+field is caller-supplied and a coherent rewrite of all of them would pass it.
+
+Producer ownership is established by a second, independent layer. Both `--before`
+and `--after` must pass the landed repo-exposure provenance contract: canonical
+shape, `ripr` producer identity, the exact producer command, a repository root
+equal to the selected root, a full-SHA HEAD, and a recomputed content
+commitment; their base revisions must agree. The canonical verify route is then
+**recomputed** over those validated artifacts, and the packet's route must equal
+the recomputation. The packet selects which validated producer artifacts to
+compare; it never authors the command. A coherent whole-packet rewrite naming
+non-producer files is refused before any process starts.
+
+The child also inherits `HOME`, so host global Git configuration can influence
+the child's Git behavior. A clean environment here means no ambient credential
+or application variables — not behavioural independence from host Git
+configuration. That is a declared limitation, not a claim.
+
+Descendant containment is a declared limitation, not a claim. The workspace
+forbids `unsafe_code` and the dependency policy admits no process-group or
+job-object substrate, so only the owned child is terminated. The authority
+boundary is what makes this sufficient: the sole executable route is one leaf
+`ripr agent verify` invocation. Widening the executable route set without first
+adding a containment substrate would break this reasoning.
 
 ### Receipt issuance
 
@@ -194,7 +239,7 @@ disclosed as unavailable. It cannot become a passing current receipt.
 
 ## Non-Goals
 
-- executing a command;
+- executing arbitrary, shell-mediated, or caller-replaced commands;
 - changing the current `agent verify` or `agent receipt` producer;
 - adding signatures, remote attestation, or a policy gate;
 - claiming test adequacy, correctness, merge approval, or runtime mutation;
@@ -203,8 +248,9 @@ disclosed as unavailable. It cannot become a passing current receipt.
 
 ## Claim boundary
 
-This slice makes assurance vocabulary and the typed verification-result
-validation boundary durable. It does not make command execution, receipt
+The assurance vocabulary and typed verification-result validation boundary are
+durable. The explicit `agent verify-execute` route makes one bounded,
+producer-owned process observation available. It does not make receipt
 provenance, gate blocking, runtime mutation confirmation, or proof authority
 available.
 
@@ -230,16 +276,20 @@ available.
   rejects malformed or role-mismatched route payloads before editor use.
 - `crates/ripr/src/domain/verification_result.rs` owns
   `VerificationExecutionResultV1`, command-spec digest binding, and exact
-  root/HEAD/currentness validation. It is a consumer validation seam, not a
-  process runner.
+  root/HEAD/currentness validation.
+- `crates/ripr/src/app/verification_execution.rs` owns the explicit direct
+  process boundary, packet/spec equality check, bounded output capture,
+  currentness recheck, and atomic result write. It never issues a receipt.
+- `crates/ripr/src/cli/agent.rs` and `crates/ripr/src/cli/commands/agent.rs`
+  expose `agent verify-execute` as an explicit opt-in adapter.
 - `.allow/spec-system/slices/command-spec-route-population.v1.toml` records the
   PR-local claim boundary and return conditions for #1755.
 - `.allow/spec-system/slices/typed-command-spec.v1.toml` records the PR-local
   claim boundary and return conditions for #1754.
 - `docs/OUTPUT_SCHEMA.md` owns compatibility wording for current static
   `agent verify` and `agent receipt` surfaces.
-- A future command runner and receipt issuer under #1979/#1941 must implement
-  these states; this slice intentionally adds no production handler.
+- `.allow/spec-system/slices/verification-command-execution.v1.toml` records
+  the PR-local claim boundary and return conditions for #2332.
 
 ## Metrics
 
@@ -257,6 +307,9 @@ cargo xtask check-doc-artifacts
 cargo xtask check-fixture-contracts
 cargo xtask check-output-contracts
 cargo test -p ripr domain::verification_result --lib
+cargo test -p ripr verification_execution -- --test-threads=1
 cargo xtask check-command-catalog
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 git diff --check
 ```

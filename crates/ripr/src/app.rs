@@ -17,6 +17,7 @@ pub(crate) mod receipt;
 pub(crate) mod ripr_plus;
 mod selector;
 pub(crate) mod temp_diff;
+pub(crate) mod verification_execution;
 
 pub use crate::output::format::OutputFormat;
 pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};

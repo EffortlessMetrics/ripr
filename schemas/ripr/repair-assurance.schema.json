@@ -297,7 +297,14 @@
         "stderr_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "currentness": {
           "enum": ["current", "dirty_worktree", "historical_noncurrent", "unavailable"]
-        }
+        },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "exit_signal": { "type": ["integer", "null"] },
+        "stdout_bytes": { "type": "integer", "minimum": 0 },
+        "stderr_bytes": { "type": "integer", "minimum": 0 },
+        "stdout_truncated": { "type": "boolean" },
+        "stderr_truncated": { "type": "boolean" },
+        "cancellation_requested": { "type": "boolean" }
       }
     }
   }

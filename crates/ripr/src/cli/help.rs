@@ -116,6 +116,10 @@ pub(super) fn print_agent_verify_help() {
     println!("{AGENT_VERIFY_HELP}");
 }
 
+pub(super) fn print_agent_verify_execute_help() {
+    println!("{AGENT_VERIFY_EXECUTE_HELP}");
+}
+
 pub(super) fn print_agent_receipt_help() {
     println!("{AGENT_RECEIPT_HELP}");
 }

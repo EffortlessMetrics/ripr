@@ -24,6 +24,7 @@ Editor & Agent:
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr agent packet --root . --seam-id ID --json
   ripr agent verify --root . --before before.json --after after.json --json
+  ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json
   ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json
   ripr agent status --root . [--json]
   ripr agent review-summary --root . [--json]

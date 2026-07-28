@@ -26,11 +26,38 @@ fn run_command(
     current_dir: Option<&Path>,
     args: &[&str],
 ) -> Result<Output, std::io::Error> {
+    spawn_command(program, current_dir, args, &[])
+}
+
+/// The single process spawn point for this harness. Both `run_command` and
+/// `run_command_with_env` route through here so the suite keeps one tracked
+/// spawn site rather than one per calling convention.
+fn spawn_command(
+    program: &str,
+    current_dir: Option<&Path>,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> Result<Output, std::io::Error> {
     let mut command = Command::new(program);
     if let Some(current_dir) = current_dir {
         command.current_dir(current_dir);
     }
+    for (name, value) in env {
+        command.env(name, value);
+    }
     command.args(args).output()
+}
+
+/// Run a command with extra environment variables set, so tests can plant an
+/// ambient-secret canary in the parent and assert it does not cross a process
+/// boundary.
+fn run_command_with_env(
+    program: &str,
+    current_dir: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> Result<Output, std::io::Error> {
+    spawn_command(program, Some(current_dir), args, env)
 }
 
 fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
@@ -7504,6 +7531,476 @@ fn plus_help_exits_cleanly() {
         stdout.contains("--gap-ledger"),
         "help must mention --gap-ledger:\n{stdout}"
     );
+}
+
+/// Build a real producer packet for a verify route and return (root, packet).
+///
+/// The packet comes from `ripr agent packet --gap-ledger`, the canonical
+/// producer, so this exercises the shape RIPR actually emits rather than a
+/// hand-built approximation of it.
+fn producer_verify_packet(
+    label: &str,
+) -> Result<(PathBuf, serde_json::Value), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let root_arg = root.to_string_lossy().into_owned();
+
+    let snapshot = run_ripr(&[
+        "check",
+        "--root",
+        &root_arg,
+        "--format",
+        "repo-exposure-json",
+    ]);
+    assert_success(&snapshot);
+    std::fs::write(root.join("before.json"), &snapshot.stdout)?;
+    std::fs::write(root.join("after.json"), &snapshot.stdout)?;
+
+    let verify = "ripr agent verify --root . --before before.json --after after.json --json";
+    let ledger = serde_json::json!({
+        "kind": "gap_decision_ledger",
+        "root": ".",
+        "records": [{
+            "gap_id": "gap-verify-execute",
+            "canonical_gap_id": "gap-verify-execute",
+            "kind": "MissingBoundaryAssertion",
+            "language": "rust",
+            "language_status": "actionable",
+            "scope": "pr_local",
+            "evidence_class": "predicate_boundary",
+            "gap_state": "actionable",
+            "policy_state": "new",
+            "repairability": "repairable",
+            "projection_eligibility": {"agent_packet": {"eligible": true, "reason": ""}},
+            "anchor": {"file": "marker.txt", "line": 1, "owner": "marker"},
+            "repair_route": {
+                "route_kind": "StrengthenExistingTest",
+                "target_file": "tests/marker.rs",
+                "related_test": "marker_boundary",
+                "missing_discriminator": "x == y",
+                "assertion_shape": "assert_eq!(x, y)",
+                "changed_behavior": "if x >= y"
+            },
+            "verification_commands": [verify],
+            "receipt_command": "ripr agent receipt --root . --verify-json verify.json --seam-id gap-verify-execute --json",
+            "evidence_ids": ["probe:marker"]
+        }]
+    });
+    let ledger_path = root.join("gap-ledger.json");
+    std::fs::write(&ledger_path, serde_json::to_vec_pretty(&ledger)?)?;
+    let ledger_arg = ledger_path.to_string_lossy().into_owned();
+
+    let packet = run_ripr(&[
+        "agent",
+        "packet",
+        "--root",
+        &root_arg,
+        "--gap-ledger",
+        &ledger_arg,
+        "--gap-id",
+        "gap-verify-execute",
+        "--json",
+    ]);
+    assert_success(&packet);
+    let parsed: serde_json::Value = serde_json::from_slice(&packet.stdout)?;
+    // Guard the producer contract this command depends on: the typed verify
+    // specs are an array, not a single object.
+    assert!(
+        parsed["packets"][0]["command_specs"]["verify"].is_array(),
+        "producer must emit command_specs.verify as an array:\n{parsed}"
+    );
+    std::fs::write(root.join("packet.json"), &packet.stdout)?;
+    Ok((root, parsed))
+}
+
+fn verify_execute_disposition(
+    root: &Path,
+    argv: &[&str],
+) -> Result<(serde_json::Value, bool), Box<dyn std::error::Error>> {
+    let output = run_command(env!("CARGO_BIN_EXE_ripr"), Some(root), argv)?;
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|err| {
+        format!(
+            "verify-execute must always emit typed JSON on stdout: {err}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })?;
+    Ok((parsed, output.status.success()))
+}
+
+/// The end-to-end contract: a producer-generated packet executes through the
+/// public CLI, commits a schema-shaped result, and never carries an ambient
+/// secret into its output.
+#[test]
+fn agent_verify_execute_runs_a_producer_owned_route_and_commits_a_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, _) = producer_verify_packet("verify-execute-pass")?;
+    let canary = "ripr-canary-c0ffee-must-not-appear";
+    let output = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        &root,
+        &[
+            "agent",
+            "verify-execute",
+            "--root",
+            ".",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--json",
+        ],
+        &[("RIPR_TEST_SECRET_CANARY", canary)],
+    )?;
+    assert_success(&output);
+    let stdout = String::from_utf8(output.stdout.clone())?;
+    let parsed: serde_json::Value = serde_json::from_str(&stdout)?;
+    assert_eq!(
+        parsed["disposition"], "verification_executed_pass",
+        "expected a pass from the real route:\n{stdout}"
+    );
+    assert_eq!(parsed["executed"], true);
+    assert_eq!(parsed["result_committed"], true);
+    assert_eq!(parsed["result"]["process_disposition"], "completed");
+    assert_eq!(parsed["result"]["exit_status"], 0);
+    assert_eq!(parsed["result"]["currentness"], "current");
+    assert_eq!(
+        parsed["result"]["head_before"], parsed["result"]["head_after"],
+        "an unchanged repository must report identical heads"
+    );
+    for digest in ["command_spec_sha256", "stdout_sha256", "stderr_sha256"] {
+        let value = parsed["result"][digest]
+            .as_str()
+            .ok_or_else(|| format!("{digest} must be a string"))?;
+        assert!(value.starts_with("sha256:"), "{digest} = {value}");
+    }
+    // Input identities are committed, not merely path-checked.
+    assert_eq!(parsed["inputs"].as_array().map(Vec::len), Some(2));
+
+    // The committed artifact must exist and match what stdout reported.
+    let committed = std::fs::read_to_string(root.join("result.json"))?;
+    let committed: serde_json::Value = serde_json::from_str(&committed)?;
+    assert_eq!(committed["result"], parsed["result"]);
+
+    // No ambient secret reaches stdout, stderr, or the committed artifact.
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    for surface in [&stdout, &stderr, &committed.to_string()] {
+        assert!(
+            !surface.contains(canary),
+            "ambient secret leaked into an emitted surface"
+        );
+    }
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// Every refusal is a typed disposition on stdout, not a bare stderr string,
+/// and no refusal commits a result.
+#[test]
+fn agent_verify_execute_refusals_are_typed_dispositions() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (root, packet) = producer_verify_packet("verify-execute-refusals")?;
+
+    // A caller-edited typed spec cannot borrow producer authority.
+    let mut forged = packet.clone();
+    forged["packets"][0]["command_specs"]["verify"][0]["args"][1] =
+        serde_json::Value::String("receipt".to_string());
+    std::fs::write(
+        root.join("forged.json"),
+        serde_json::to_vec_pretty(&forged)?,
+    )?;
+
+    // An input outside the root is refused even when the display text agrees.
+    let escaped = "ripr agent verify --root . --before ../escape.json --after after.json --json";
+    let mut outside = packet.clone();
+    outside["packets"][0]["verify_command"] = serde_json::Value::String(escaped.to_string());
+    outside["packets"][0]["verification_commands"] = serde_json::json!([escaped]);
+    outside["packets"][0]["command_specs"]["verify"][0]["args"][5] =
+        serde_json::Value::String("../escape.json".to_string());
+    outside["packets"][0]["command_specs"]["verify"][0]["human_display"] =
+        serde_json::Value::String(escaped.to_string());
+    std::fs::write(
+        root.join("outside.json"),
+        serde_json::to_vec_pretty(&outside)?,
+    )?;
+
+    let cases: Vec<(&str, Vec<&str>, &str)> = vec![
+        (
+            "missing authorization",
+            vec![
+                "agent",
+                "verify-execute",
+                "--root",
+                ".",
+                "--packet",
+                "packet.json",
+                "--result-json",
+                "unauthorized.json",
+                "--json",
+            ],
+            "verification_rejected_policy",
+        ),
+        (
+            "caller-authored typed spec",
+            vec![
+                "agent",
+                "verify-execute",
+                "--root",
+                ".",
+                "--packet",
+                "forged.json",
+                "--result-json",
+                "forged-result.json",
+                "--authorize",
+                "--json",
+            ],
+            "verification_rejected_policy",
+        ),
+        (
+            "input outside the root",
+            vec![
+                "agent",
+                "verify-execute",
+                "--root",
+                ".",
+                "--packet",
+                "outside.json",
+                "--result-json",
+                "outside-result.json",
+                "--authorize",
+                "--json",
+            ],
+            "verification_wrong_root",
+        ),
+        (
+            "result destination outside the root",
+            vec![
+                "agent",
+                "verify-execute",
+                "--root",
+                ".",
+                "--packet",
+                "packet.json",
+                "--result-json",
+                "../outside-result.json",
+                "--authorize",
+                "--json",
+            ],
+            "verification_wrong_root",
+        ),
+    ];
+    for (label, argv, expected) in cases {
+        let (parsed, succeeded) = verify_execute_disposition(&root, &argv)?;
+        assert_eq!(parsed["disposition"], expected, "{label}: {parsed}");
+        assert_eq!(parsed["executed"], false, "{label} must not execute");
+        assert_eq!(parsed["result_committed"], false, "{label}");
+        assert!(!succeeded, "{label} must exit nonzero");
+    }
+    // No refusal left a result behind.
+    for name in [
+        "unauthorized.json",
+        "forged-result.json",
+        "outside-result.json",
+    ] {
+        assert!(
+            !root.join(name).exists(),
+            "{name} must not exist after a refusal"
+        );
+    }
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// A destination that cannot be written still reports a typed disposition and
+/// leaves the existing artifact untouched.
+#[test]
+fn agent_verify_execute_reports_result_write_failure() -> Result<(), Box<dyn std::error::Error>> {
+    let (root, _) = producer_verify_packet("verify-execute-write-failed")?;
+    std::fs::write(root.join("result.json"), "existing-artifact")?;
+    let (parsed, succeeded) = verify_execute_disposition(
+        &root,
+        &[
+            "agent",
+            "verify-execute",
+            "--root",
+            ".",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--json",
+        ],
+    )?;
+    assert_eq!(parsed["disposition"], "verification_result_write_failed");
+    // The observation happened; only the commit failed. Both facts are reported.
+    assert_eq!(parsed["executed"], true);
+    assert_eq!(parsed["result_committed"], false);
+    assert!(!succeeded, "an uncommitted result must exit nonzero");
+    assert_eq!(
+        std::fs::read_to_string(root.join("result.json"))?,
+        "existing-artifact",
+        "the pre-existing artifact must be preserved"
+    );
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// A tampered input is refused by provenance *before* any process starts.
+///
+/// This is the end-to-end half of the producer-binding contract: the route in
+/// the packet is unchanged and internally consistent, but one of the artifacts
+/// it names is no longer a valid `ripr` repo-exposure artifact, so no route can
+/// be recomputed and nothing is executed.
+///
+/// It also records a real limitation. The only executable route is
+/// `ripr agent verify` over two provenance-valid artifacts, and that command
+/// always exits 0 — so `verification_executed_fail` is mapped and unit-tested
+/// but not reachable end-to-end today. Reaching it needs a fallible typed route
+/// (for example a `cargo test` route) in the command catalog, which this change
+/// deliberately does not add.
+#[test]
+fn agent_verify_execute_refuses_a_tampered_input_before_executing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, _) = producer_verify_packet("verify-execute-tampered")?;
+    std::fs::write(root.join("after.json"), "not-a-repo-exposure-artifact")?;
+    let output = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(&root),
+        &[
+            "agent",
+            "verify-execute",
+            "--root",
+            ".",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--json",
+        ],
+    )?;
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        parsed["disposition"], "verification_rejected_policy",
+        "a tampered artifact must be refused, not executed: {parsed}"
+    );
+    let reason = parsed["reason"].as_str().unwrap_or_default();
+    assert!(
+        reason.contains("provenance validation"),
+        "refusal must name provenance: {reason}"
+    );
+    assert_eq!(
+        parsed["executed"], false,
+        "no process may start once provenance fails"
+    );
+    assert_eq!(parsed["result_committed"], false);
+    assert!(!output.status.success());
+    assert!(
+        !root.join("result.json").exists(),
+        "a refusal must not leave a result behind"
+    );
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// A coherently rewritten packet cannot buy execution.
+///
+/// Every route representation is rewritten consistently to name files that are
+/// not producer artifacts. Consistency checks pass; provenance refuses. This is
+/// the end-to-end counterpart of the unit-level forgery test.
+#[test]
+fn agent_verify_execute_refuses_a_coherent_whole_packet_forgery()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, packet) = producer_verify_packet("verify-execute-forgery")?;
+    std::fs::write(root.join("alt-before.json"), "{}")?;
+    std::fs::write(root.join("alt-after.json"), "{}")?;
+    let forged_route =
+        "ripr agent verify --root . --before alt-before.json --after alt-after.json --json";
+    let mut forged = packet.clone();
+    forged["packets"][0]["verify_command"] = serde_json::Value::String(forged_route.to_string());
+    forged["packets"][0]["verification_commands"] = serde_json::json!([forged_route]);
+    let spec = &mut forged["packets"][0]["command_specs"]["verify"][0];
+    spec["args"][5] = serde_json::Value::String("alt-before.json".to_string());
+    spec["args"][7] = serde_json::Value::String("alt-after.json".to_string());
+    spec["human_display"] = serde_json::Value::String(forged_route.to_string());
+    std::fs::write(
+        root.join("forged.json"),
+        serde_json::to_vec_pretty(&forged)?,
+    )?;
+
+    let (parsed, succeeded) = verify_execute_disposition(
+        &root,
+        &[
+            "agent",
+            "verify-execute",
+            "--root",
+            ".",
+            "--packet",
+            "forged.json",
+            "--result-json",
+            "forged-result.json",
+            "--authorize",
+            "--json",
+        ],
+    )?;
+    assert_eq!(
+        parsed["disposition"], "verification_rejected_policy",
+        "a coherent forgery must be refused: {parsed}"
+    );
+    assert_eq!(parsed["executed"], false);
+    assert!(!succeeded);
+    assert!(!root.join("forged-result.json").exists());
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
+/// Cancellation yields exactly one terminal disposition and no exit status.
+#[test]
+fn agent_verify_execute_cancellation_is_a_single_terminal_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, _) = producer_verify_packet("verify-execute-cancel")?;
+    let (parsed, _) = verify_execute_disposition(
+        &root,
+        &[
+            "agent",
+            "verify-execute",
+            "--root",
+            ".",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--cancel-after-ms",
+            "1",
+            "--json",
+        ],
+    )?;
+    // The child may win the race and complete; either way exactly one terminal
+    // disposition is reported and the invariants for it hold.
+    let disposition = parsed["disposition"]
+        .as_str()
+        .ok_or("disposition must be a string")?;
+    match disposition {
+        "verification_cancelled" => {
+            assert_eq!(parsed["result"]["process_disposition"], "cancelled");
+            assert_eq!(parsed["result"]["cancellation_requested"], true);
+            assert!(
+                parsed["result"]["exit_status"].is_null(),
+                "a cancelled run must not carry an exit status"
+            );
+        }
+        "verification_executed_pass" | "verification_executed_fail" => {
+            assert_eq!(parsed["result"]["process_disposition"], "completed");
+            assert!(parsed["result"]["exit_status"].is_i64());
+        }
+        other => return Err(format!("unexpected cancellation disposition {other}").into()),
+    }
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
 }
 
 #[test]
