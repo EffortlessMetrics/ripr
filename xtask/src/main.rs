@@ -5313,17 +5313,46 @@ fn validate_behavior_spec_path(
 
 fn validate_trace_paths(id: &str, field: &str, values: &[String], violations: &mut Vec<String>) {
     for value in values {
-        let path_text = trace_path_part(value);
+        let (path_text, suffix) = split_trace_reference(value);
         if path_text.trim().is_empty() {
             violations.push(format!("{id} has an empty `{field}` path"));
             continue;
         }
         if !Path::new(path_text).exists() {
             violations.push(format!("{id} `{field}` path does not exist: {path_text}"));
+            continue;
+        }
+        // #2345 Phase 1: if the reference carries a `::symbol` suffix, emit an
+        // advisory that the suffix is not structurally verified. This replaces
+        // the previous silent truncation (the suffix was discarded without
+        // any signal). The advisory does NOT fail the gate — it surfaces the
+        // unverified symbol so a human or agent knows the reference is
+        // file-existence-verified only, not symbol-resolved.
+        if let Some(suffix) = suffix
+            && !suffix.trim().is_empty()
+        {
+            violations.push(format!(
+                "{id} `{field}` symbol suffix `{suffix}` is not verified by the structural checker \
+                 (file `{path_text}` exists; symbol resolution is a planned cargo-proof provider, see #2345)"
+            ));
         }
     }
 }
 
+/// Split a trace reference into (path, optional_symbol_suffix).
+/// `crates/ripr/src/lib.rs::tests::some_fn` → (`crates/ripr/src/lib.rs`, `tests::some_fn`)
+/// `crates/ripr/src/lib.rs` → (`crates/ripr/src/lib.rs`, None)
+fn split_trace_reference(value: &str) -> (&str, Option<&str>) {
+    match value.split_once("::") {
+        Some((path, suffix)) => (path, Some(suffix)),
+        None => (value, None),
+    }
+}
+
+#[allow(
+    dead_code,
+    reason = "retained for compatibility with callers that only need the path part"
+)]
 fn trace_path_part(value: &str) -> &str {
     match value.split_once("::") {
         Some((path, _)) => path,
