@@ -197,11 +197,11 @@ mod tests {
     fn execute_dispatches_remaining_command_handlers() {
         assert_eq!(
             execute(CliCommand::Explain(Vec::new())),
-            Err("missing finding selector".to_string())
+            Err("missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             execute(CliCommand::Context(Vec::new())),
-            Err("missing --at or --finding selector".to_string())
+            Err("missing --at or --finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             execute(CliCommand::Lsp(args(&["--bad"]))),

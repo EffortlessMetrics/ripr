@@ -1531,13 +1531,25 @@ pub(crate) use self::goldens_impl as goldens;
 
 /// Route `fixtures` subcommands: `new <name>` scaffolds, everything else runs (#2445).
 pub(crate) fn fixtures_with_args(args: &[String]) -> Result<(), String> {
-    if let Some(sub) = args.first().map(String::as_str)
-        && sub == "new"
-    {
-        let name = args
-            .get(1)
-            .ok_or_else(|| "fixtures new requires a <name> argument".to_string())?;
-        return fixtures_new(name);
+    if let Some(sub) = args.first().map(String::as_str) {
+        if sub == "--help" || sub == "-h" {
+            println!(
+                "Usage: cargo xtask fixtures [name] — run fixture validation for one fixture or all"
+            );
+            println!(
+                "       cargo xtask fixtures new <name> — scaffold a new fixture directory with a seeded golden (#2445)"
+            );
+            println!();
+            println!("Without a name, runs all fixtures. With a name, runs only that fixture.");
+            println!("Use `new <name>` to scaffold a new fixture directory.");
+            return Ok(());
+        }
+        if sub == "new" {
+            let name = args
+                .get(1)
+                .ok_or_else(|| "fixtures new requires a <name> argument".to_string())?;
+            return fixtures_new(name);
+        }
     }
     // Fall through to the existing runner (pass the first arg as the optional fixture name).
     fixtures_impl(args.first())

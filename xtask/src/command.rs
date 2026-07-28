@@ -326,6 +326,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "precommit",
         "check-pr",
         "fixtures [name]",
+        "fixtures new <name>",
         "goldens check",
         "goldens bless <name> --reason <reason>",
         "golden-drift",

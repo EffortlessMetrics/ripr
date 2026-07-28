@@ -32,7 +32,9 @@ pub fn explain_finding_with_config(
     let output = check_workspace_with_config(input, config)?;
     match select_finding(&output.findings, selector) {
         Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
-        None => Err(format!("no finding matched {selector:?}")),
+        None => Err(format!(
+            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
+        )),
     }
 }
 
@@ -58,10 +60,11 @@ pub(crate) fn explain_finding_from_artifact(
     )?;
     match select_finding(&findings, selector) {
         Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
-        None => Err(format!("no finding matched {selector:?}")),
+        None => Err(format!(
+            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
+        )),
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
