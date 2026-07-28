@@ -5171,9 +5171,10 @@ fn root_relative_path(root: &Path, path: &Path) -> String {
 fn check_traceability() -> Result<(), String> {
     let manifest = Path::new(".ripr/traceability.toml");
     let mut violations = Vec::new();
+    let mut advisories = Vec::new();
     if !manifest.exists() {
         violations.push(".ripr/traceability.toml is missing".to_string());
-        return finish_traceability_report(&violations);
+        return finish_traceability_report(&violations, &advisories);
     }
 
     let (behaviors, parse_violations) = parse_traceability_manifest(manifest)?;
@@ -5185,7 +5186,12 @@ fn check_traceability() -> Result<(), String> {
     let specs = collect_spec_statuses()?;
     let mut behavior_ids = BTreeSet::new();
     for behavior in &behaviors {
-        validate_trace_behavior(behavior, &mut behavior_ids, &mut violations)?;
+        validate_trace_behavior(
+            behavior,
+            &mut behavior_ids,
+            &mut violations,
+            &mut advisories,
+        )?;
     }
 
     for spec_id in specs.keys() {
@@ -5197,33 +5203,91 @@ fn check_traceability() -> Result<(), String> {
     }
 
     validate_fixture_spec_references(&specs, &mut violations)?;
-    finish_traceability_report(&violations)
+    finish_traceability_report(&violations, &advisories)
 }
 
-fn finish_traceability_report(violations: &[String]) -> Result<(), String> {
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "traceability.md",
-            check: "check-traceability",
-            why_it_matters: "Traceability keeps behavior specs, tests, fixtures, code, outputs, and metrics discoverable for long-context human and agent work.",
-            fix_kind: FixKind::AuthorDecisionRequired,
-            recommended_fixes: &[
-                "Add or update the matching [[behavior]] entry in .ripr/traceability.toml.",
-                "Keep every docs/specs/RIPR-SPEC-*.md file represented in the manifest.",
-                "Use valid RIPR-SPEC-NNNN IDs in specs, fixtures, and manifest entries.",
-                "List only paths that exist, or leave planned fields empty until the artifact exists.",
-            ],
-            rerun_command: "cargo xtask check-traceability",
-            exception_template: None,
-        },
-        violations,
-    )
+fn finish_traceability_report(violations: &[String], advisories: &[String]) -> Result<(), String> {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# check-traceability\n\nStatus: {status}\n\n");
+    body.push_str("## Why This Matters\n\n");
+    body.push_str(
+        "Traceability keeps behavior specs, tests, fixtures, code, outputs, and metrics \
+         discoverable for long-context human and agent work.",
+    );
+    body.push_str("\n\n");
+
+    if violations.is_empty() {
+        body.push_str("## Violations\n\nNone detected.\n\n");
+    } else {
+        body.push_str("## Violations\n\n");
+        for violation in violations {
+            body.push_str("```text\n");
+            body.push_str(violation);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    if !violations.is_empty() {
+        body.push_str("## Fix Kind\n\n```text\n");
+        body.push_str(fix_kind_name(&FixKind::AuthorDecisionRequired));
+        body.push_str("\n```\n\n");
+
+        body.push_str("## Recommended Fixes\n\n");
+        body.push_str(
+            "1. Add or update the matching [[behavior]] entry in .ripr/traceability.toml.\n",
+        );
+        body.push_str(
+            "2. Keep every docs/specs/RIPR-SPEC-*.md file represented in the manifest.\n",
+        );
+        body.push_str(
+            "3. Use valid RIPR-SPEC-NNNN IDs in specs, fixtures, and manifest entries.\n",
+        );
+        body.push_str(
+            "4. List only paths that exist, or leave planned fields empty until the artifact exists.\n",
+        );
+        body.push('\n');
+    }
+
+    // Render advisory diagnostics (non-blocking) so they stay visible in the
+    // report without failing the gate (#2549). These are symbol-suffix
+    // references that point to existing files but cannot be structurally
+    // verified until a cargo-proof symbol resolver lands (#2345).
+    if !advisories.is_empty() {
+        body.push_str("## Advisories (non-blocking)\n\n");
+        body.push_str(
+            "These references point to existing files but carry a `::symbol` suffix that the \
+             structural checker cannot verify yet. They do not fail the gate.\n\n",
+        );
+        for advisory in advisories {
+            body.push_str("```text\n");
+            body.push_str(advisory);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    body.push_str("## Rerun\n\n```bash\ncargo xtask check-traceability\n```\n");
+
+    write_report("traceability.md", &body)?;
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "check-traceability failed; see target/ripr/reports/traceability.md\n{}",
+            violations.join("\n")
+        ))
+    }
 }
 
 fn validate_trace_behavior(
     behavior: &TraceBehavior,
     behavior_ids: &mut BTreeSet<String>,
     violations: &mut Vec<String>,
+    advisories: &mut Vec<String>,
 ) -> Result<(), String> {
     let Some(id) = behavior.id.as_ref() else {
         violations.push(format!(
@@ -5257,10 +5321,10 @@ fn validate_trace_behavior(
         }
     };
 
-    validate_trace_paths(id, "tests", &behavior.tests, violations);
-    validate_trace_paths(id, "fixtures", &behavior.fixtures, violations);
-    validate_trace_paths(id, "code", &behavior.code, violations);
-    validate_trace_paths(id, "outputs", &behavior.outputs, violations);
+    validate_trace_paths(id, "tests", &behavior.tests, violations, advisories);
+    validate_trace_paths(id, "fixtures", &behavior.fixtures, violations, advisories);
+    validate_trace_paths(id, "code", &behavior.code, violations, advisories);
+    validate_trace_paths(id, "outputs", &behavior.outputs, violations, advisories);
 
     if behavior.metrics.is_empty() {
         violations.push(format!("{id} has no metrics"));
@@ -5311,7 +5375,13 @@ fn validate_behavior_spec_path(
     }
 }
 
-fn validate_trace_paths(id: &str, field: &str, values: &[String], violations: &mut Vec<String>) {
+fn validate_trace_paths(
+    id: &str,
+    field: &str,
+    values: &[String],
+    violations: &mut Vec<String>,
+    advisories: &mut Vec<String>,
+) {
     for value in values {
         let (path_text, suffix) = split_trace_reference(value);
         if path_text.trim().is_empty() {
@@ -5327,11 +5397,11 @@ fn validate_trace_paths(id: &str, field: &str, values: &[String], violations: &m
         // the previous silent truncation (the suffix was discarded without
         // any signal). The advisory does NOT fail the gate — it surfaces the
         // unverified symbol so a human or agent knows the reference is
-        // file-existence-verified only, not symbol-resolved.
+        // file-existence-verified only, not symbol-resolved (#2549).
         if let Some(suffix) = suffix
             && !suffix.trim().is_empty()
         {
-            violations.push(format!(
+            advisories.push(format!(
                 "{id} `{field}` symbol suffix `{suffix}` is not verified by the structural checker \
                  (file `{path_text}` exists; symbol resolution is a planned cargo-proof provider, see #2345)"
             ));
