@@ -23,6 +23,15 @@ use std::time::{Duration, Instant};
 /// the probed tools.
 pub(crate) const DOCTOR_TOOLS: [&str; 3] = ["git", "cargo", "rustc"];
 
+/// Keep this synchronized with `workspace.package.rust-version` in the root
+/// `Cargo.toml`. Doctor uses it to turn an otherwise successful `rustc
+/// --version` probe into an actionable failure when the compiler is too old.
+const RIPR_MSRV: RustcVersion = RustcVersion {
+    major: 1,
+    minor: 95,
+    patch: 0,
+};
+
 /// How long a tool probe may run before it is terminated (#2183 review): a
 /// broken or malicious shim must not hang `ripr doctor` forever.
 ///
@@ -242,7 +251,7 @@ pub(crate) fn evaluate_doctor_core_with_config(root: &Path) -> DoctorCoreEvaluat
         ),
     }
     for tool in DOCTOR_TOOLS {
-        let (status, evidence) = doctor_tool_check(tool);
+        let (status, evidence) = doctor_tool_check_in_root(tool, root);
         report.add_check(&format!("tool_{tool}"), status, Some(evidence));
     }
     // Typed language surface for generated CI (#2072): mirror exactly the
@@ -271,10 +280,11 @@ pub(crate) fn doctor_tool_check_isolated(tool: &str) -> (DoctorStatus, String) {
         .current_dir(std::env::temp_dir())
         .env("YARN_IGNORE_PATH", "1");
     match run_doctor_tool(command, DOCTOR_TOOL_TIMEOUT) {
-        Ok(output) if output.status.success() => (
-            DoctorStatus::Pass,
+        Ok(output) if output.status.success() => doctor_tool_success(
+            tool,
             String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        ),
+        )
+        .into_public(),
         Err(DoctorToolRunError::TimedOut) => (
             DoctorStatus::Fail,
             format!("{tool} timed out after {}s", DOCTOR_TOOL_TIMEOUT.as_secs()),
@@ -292,23 +302,108 @@ pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout(tool, DOCTOR_TOOL_TIMEOUT)
 }
 
+fn doctor_tool_check_in_root(tool: &str, root: &Path) -> (DoctorStatus, String) {
+    doctor_tool_check_with_timeout_result_in_root(tool, DOCTOR_TOOL_TIMEOUT, root).into_public()
+}
+
 fn doctor_tool_check_with_timeout(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout_result(tool, timeout).into_public()
 }
 
 fn doctor_tool_check_with_timeout_result(tool: &str, timeout: Duration) -> DoctorToolCheckResult {
+    doctor_tool_check_with_timeout_result_in_dir(tool, timeout, None)
+}
+
+fn doctor_tool_check_with_timeout_result_in_root(
+    tool: &str,
+    timeout: Duration,
+    root: &Path,
+) -> DoctorToolCheckResult {
+    doctor_tool_check_with_timeout_result_in_dir(tool, timeout, Some(root))
+}
+
+fn doctor_tool_check_with_timeout_result_in_dir(
+    tool: &str,
+    timeout: Duration,
+    root: Option<&Path>,
+) -> DoctorToolCheckResult {
     let mut command = doctor_tool_command(tool);
     command.arg("--version");
+    if let Some(root) = root {
+        command.current_dir(root);
+    }
     match run_doctor_tool(command, timeout) {
-        Ok(output) if output.status.success() => {
-            DoctorToolCheckResult::pass(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        }
+        Ok(output) if output.status.success() => doctor_tool_success(
+            tool,
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        ),
         Err(DoctorToolRunError::TimedOut) => {
             DoctorToolCheckResult::failure(doctor_timeout_evidence(tool, timeout))
         }
         Err(DoctorToolRunError::Spawn(kind)) => doctor_spawn_failure(tool, kind),
         _ => DoctorToolCheckResult::failure(format!("{tool} not available")),
     }
+}
+
+fn doctor_tool_success(tool: &str, evidence: String) -> DoctorToolCheckResult {
+    if tool == "rustc" {
+        return doctor_rustc_version_check(&evidence);
+    }
+    DoctorToolCheckResult::pass(evidence)
+}
+
+fn doctor_rustc_version_check(evidence: &str) -> DoctorToolCheckResult {
+    let Some(version) = parse_rustc_version(evidence) else {
+        return DoctorToolCheckResult::failure(format!(
+            "rustc version could not be parsed from `{evidence}`; install Rust {} or newer",
+            RIPR_MSRV.display()
+        ));
+    };
+    if version < RIPR_MSRV {
+        return DoctorToolCheckResult::failure(format!(
+            "rustc {} is below ripr's minimum supported Rust version {}; run `rustup update stable` or install Rust {}+",
+            version.display(),
+            RIPR_MSRV.display(),
+            RIPR_MSRV.display()
+        ));
+    }
+    DoctorToolCheckResult::pass(evidence.to_string())
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct RustcVersion {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl RustcVersion {
+    fn display(self) -> String {
+        format!("{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+fn parse_rustc_version(output: &str) -> Option<RustcVersion> {
+    let mut words = output.split_whitespace();
+    if words.next()? != "rustc" {
+        return None;
+    }
+    let version = words.next()?;
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts
+        .next()?
+        .split(|character: char| !character.is_ascii_digit())
+        .next()
+        .filter(|part| !part.is_empty())?
+        .parse()
+        .ok()?;
+    Some(RustcVersion {
+        major,
+        minor,
+        patch,
+    })
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -465,6 +560,102 @@ mod tests {
             Some("no Cargo.toml".to_string()),
         );
         assert_eq!(report.status, DoctorStatus::Fail);
+    }
+
+    #[test]
+    fn rustc_version_check_fails_below_msrv_and_passes_supported_versions() -> Result<(), String> {
+        let cases = [
+            (
+                "rustc 1.80.0 (abc 2024-01-01)",
+                DoctorStatus::Fail,
+                "below ripr's minimum supported Rust version",
+            ),
+            ("rustc 1.95.0 (abc 2026-04-14)", DoctorStatus::Pass, ""),
+            (
+                "rustc 1.96.1-nightly (abc 2026-05-01)",
+                DoctorStatus::Pass,
+                "",
+            ),
+        ];
+        for (evidence, expected_status, expected_fragment) in cases {
+            let result = doctor_tool_success("rustc", evidence.to_string());
+            if result.status != expected_status {
+                return Err(format!(
+                    "unexpected status for {evidence:?}: {:?}",
+                    result.status
+                ));
+            }
+            if !result.evidence.contains(expected_fragment) {
+                return Err(format!(
+                    "missing expected evidence for {evidence:?}: {:?}",
+                    result.evidence
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rustc_version_check_fails_closed_for_malformed_output() -> Result<(), String> {
+        let result = doctor_rustc_version_check("rustc unavailable");
+        if result.status != DoctorStatus::Fail {
+            return Err(format!(
+                "malformed rustc output unexpectedly passed: {result:?}"
+            ));
+        }
+        if !result.evidence.contains("could not be parsed") {
+            return Err(format!(
+                "unexpected malformed-output evidence: {:?}",
+                result.evidence
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rustc_version_parser_covers_invalid_prefix_and_components() {
+        for output in [
+            "",
+            "cargo 1.95.0",
+            "rustc",
+            "rustc ",
+            "rustc x.95.0",
+            "rustc 1.x.0",
+            "rustc 1.95",
+            "rustc 1.95.x",
+            "rustc 1.95.-nightly",
+        ] {
+            assert!(
+                parse_rustc_version(output).is_none(),
+                "malformed rustc output unexpectedly parsed: {output:?}"
+            );
+        }
+        assert!(parse_rustc_version("rustc 1.95.0-nightly").is_some());
+        assert_eq!(
+            doctor_tool_success("cargo", "cargo 1.95.0".to_string()).status,
+            DoctorStatus::Pass
+        );
+    }
+
+    #[test]
+    fn rustc_doctor_probes_apply_the_version_gate() {
+        let (status, evidence) = doctor_tool_check("rustc");
+        assert_eq!(status, DoctorStatus::Pass, "{evidence}");
+        assert!(evidence.starts_with("rustc "), "{evidence}");
+
+        let (isolated_status, isolated_evidence) = doctor_tool_check_isolated("rustc");
+        assert_eq!(isolated_status, DoctorStatus::Pass, "{isolated_evidence}");
+        assert!(
+            isolated_evidence.starts_with("rustc "),
+            "{isolated_evidence}"
+        );
+    }
+
+    #[test]
+    fn rustc_doctor_probe_from_selected_root_applies_the_version_gate() {
+        let (status, evidence) = doctor_tool_check_in_root("rustc", &std::env::temp_dir());
+        assert_eq!(status, DoctorStatus::Pass, "{evidence}");
+        assert!(evidence.starts_with("rustc "), "{evidence}");
     }
 
     #[test]
