@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python error path can alter raised exception/control behavior: `raise KeyError("empty")`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_parseint.py:python_preview:0f645328
+  ripr context --at probe:src_parseint.py:python_preview:0f645328
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -18,6 +18,10 @@ Start here:
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 6 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:return_value:1b722e32
+  ripr context --at probe:src_lib.rs:return_value:1b722e32
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

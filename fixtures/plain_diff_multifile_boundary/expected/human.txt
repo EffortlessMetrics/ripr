@@ -17,6 +17,10 @@ Start here:
     - infection unknown: No tests were found, so activation/infection cannot be estimated
     - 8 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_a.rs:predicate:668eac8e
+  ripr context --at probe:src_a.rs:predicate:668eac8e
+
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

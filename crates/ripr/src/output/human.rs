@@ -403,6 +403,17 @@ pub fn render_finding(finding: &Finding) -> String {
     render_finding_with_config(finding, &RiprConfig::default())
 }
 
+/// Render one finding with the bounded context follow-up for the selected
+/// finding.
+pub(crate) fn render_finding_with_context_command(
+    finding: &Finding,
+    config: &RiprConfig,
+) -> String {
+    let mut out = render_finding_with_config(finding, config);
+    out.push_str(&format!("\nNext: ripr context --at {}\n", finding.id));
+    out
+}
+
 mod evidence_lines;
 mod sections;
 mod triage;
@@ -458,6 +469,39 @@ mod tests {
             "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
+        assert!(!rendered.contains("Next:"));
+    }
+
+    #[test]
+    fn bounded_human_output_suggests_explain_and_context_for_top_finding() {
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("Next: drill into the top finding:"));
+        assert!(rendered.contains(&format!("  ripr explain {finding_id}\n")));
+        assert!(rendered.contains(&format!("  ripr context --at {finding_id}\n")));
     }
 
     /// #2567: nothing was omitted, so the render must not advertise a hidden
@@ -1138,6 +1182,7 @@ mod tests {
         assert!(rendered.contains("State: no_actionable_gap"));
         assert!(rendered.contains("all findings are suppressed by policy"));
         assert!(!rendered.contains("inspect the named static limitation"));
+        assert!(!rendered.contains("Next: drill into the top finding:"));
     }
 
     #[test]

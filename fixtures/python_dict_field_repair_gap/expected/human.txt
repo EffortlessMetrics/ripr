@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `return {"status": "paid", "id": invoice_id}`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_invoice.py:python_preview:5718c46e
+  ripr context --at probe:src_invoice.py:python_preview:5718c46e
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

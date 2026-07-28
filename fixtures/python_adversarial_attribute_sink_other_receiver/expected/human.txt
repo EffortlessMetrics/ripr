@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "active"`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_session.py:python_preview:a8af27c6
+  ripr context --at probe:src_session.py:python_preview:a8af27c6
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

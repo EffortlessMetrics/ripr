@@ -17,6 +17,10 @@ Start here:
     - infection unknown: No reachable tests were found, so infection cannot be established
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:return_value:93054610
+  ripr context --at probe:src_lib.rs:return_value:93054610
+
 Hidden:
   5 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

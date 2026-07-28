@@ -18,6 +18,10 @@ Start here:
     - infection weak: Tests have literals [50], but no detected value matches changed boundary [0]
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:predicate:a39d316d
+  ripr context --at probe:src_lib.rs:predicate:a39d316d
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

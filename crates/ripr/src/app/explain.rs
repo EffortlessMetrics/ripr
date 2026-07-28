@@ -31,7 +31,9 @@ pub fn explain_finding_with_config(
 ) -> Result<String, String> {
     let output = check_workspace_with_config(input, config)?;
     match select_finding(&output.findings, selector) {
-        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
+        Some(finding) => Ok(output::human::render_finding_with_context_command(
+            finding, config,
+        )),
         None => Err(format!(
             "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
         )),
@@ -59,7 +61,9 @@ pub(crate) fn explain_finding_from_artifact(
         asserted_base,
     )?;
     match select_finding(&findings, selector) {
-        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
+        Some(finding) => Ok(output::human::render_finding_with_context_command(
+            finding, config,
+        )),
         None => Err(format!(
             "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
         )),
@@ -139,6 +143,9 @@ mod tests {
         assert!(rendered.contains("Static exposure"));
         assert!(rendered.contains("no_static_path"));
         assert!(rendered.contains("InvoiceError::InvalidCurrency"));
+        assert!(rendered.contains(
+            "Next: ripr context --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683"
+        ));
         Ok(())
     }
 

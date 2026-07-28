@@ -19,6 +19,10 @@ Start here:
     - infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_pricing.py:python_preview:7f816e83
+  ripr context --at probe:src_pricing.py:python_preview:7f816e83
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

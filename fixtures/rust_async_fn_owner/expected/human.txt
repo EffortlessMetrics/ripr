@@ -18,6 +18,10 @@ Start here:
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 7 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:predicate:736b22b0
+  ripr context --at probe:src_lib.rs:predicate:736b22b0
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

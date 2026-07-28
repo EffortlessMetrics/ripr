@@ -19,6 +19,10 @@ Start here:
     - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_retry_total.py:python_preview:b1af3427
+  ripr context --at probe:src_retry_total.py:python_preview:b1af3427
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

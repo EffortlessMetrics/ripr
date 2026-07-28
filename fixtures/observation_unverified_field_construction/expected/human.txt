@@ -18,6 +18,10 @@ Start here:
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 6 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:field_construction:66b24106
+  ripr context --at probe:src_lib.rs:field_construction:66b24106
+
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

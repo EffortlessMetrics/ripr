@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_callbacks.py:python_preview:d5d2a2c6
+  ripr context --at probe:src_callbacks.py:python_preview:d5d2a2c6
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_pricing.py:python_preview:b6c16437
+  ripr context --at probe:src_pricing.py:python_preview:b6c16437
+
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

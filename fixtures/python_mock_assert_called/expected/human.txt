@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python call or output effect can alter observable side effects: `callback("receipt.sent", order_id)`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_notify.py:python_preview:5f03d3bc
+  ripr context --at probe:src_notify.py:python_preview:5f03d3bc
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

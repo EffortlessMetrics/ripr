@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python predicate can alter branch selection: `if days >= minimum_days:`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_promotions.py:python_preview:32b0094f
+  ripr context --at probe:src_promotions.py:python_preview:32b0094f
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

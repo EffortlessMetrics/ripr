@@ -20,6 +20,10 @@ Start here:
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_ambiguous.ts:typescript_preview:ba5968cd
+  ripr context --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
+
 Hidden:
   9 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

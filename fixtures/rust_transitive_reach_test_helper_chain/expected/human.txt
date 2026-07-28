@@ -17,6 +17,10 @@ Start here:
     - infection unknown: No statically reachable test path was found, so activation/infection cannot be estimated
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_eval.rs:predicate:f66d616d
+  ripr context --at probe:src_eval.rs:predicate:f66d616d
+
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

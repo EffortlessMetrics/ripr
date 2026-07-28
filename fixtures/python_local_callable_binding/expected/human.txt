@@ -24,6 +24,10 @@ Start here:
     - infection yes: Changed Python return expression can alter the owner return value: `return attempt_number >= self.max_attempt_number`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_stop.py:python_preview:87705a2c
+  ripr context --at probe:src_stop.py:python_preview:87705a2c
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

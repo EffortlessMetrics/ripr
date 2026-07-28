@@ -19,6 +19,10 @@ Start here:
     - infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_pricing.py:python_preview:ca00849b
+  ripr context --at probe:src_pricing.py:python_preview:ca00849b
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

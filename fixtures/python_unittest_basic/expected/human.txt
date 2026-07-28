@@ -24,6 +24,10 @@ Start here:
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_risk.py:python_preview:6835190f
+  ripr context --at probe:src_risk.py:python_preview:6835190f
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

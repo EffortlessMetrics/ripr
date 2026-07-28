@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python return expression can alter the owner return value: `return payload.strip() == "ok"`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_handler.py:python_preview:c48883f0
+  ripr context --at probe:src_handler.py:python_preview:c48883f0
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

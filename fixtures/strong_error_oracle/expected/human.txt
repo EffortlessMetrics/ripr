@@ -16,6 +16,10 @@ Start here:
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 7 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:error_path:99b06ce7
+  ripr context --at probe:src_lib.rs:error_path:99b06ce7
+
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

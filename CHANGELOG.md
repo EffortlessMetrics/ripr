@@ -63,6 +63,11 @@ are scoped or reviewed.
   `Full evidence:` / `Machine data:` pointer lines render identically in both
   states, so consumers scraping them are unaffected (#2567).
 
+- Default `ripr check` human output now suggests `ripr explain <finding-id>`
+  and `ripr context --at <finding-id>` for the selected finding. `ripr explain`
+  now points to the matching context packet, while empty and fully suppressed
+  results remain free of misleading follow-up commands (#2598).
+
 - Windows LSP refreshes now isolate shared Git subprocesses from the JSON-RPC
   server stdin and terminate timed-out process trees with bounded pipe draining.
   Explicit refreshes therefore return trustworthy results within the ordinary

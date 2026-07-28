@@ -19,6 +19,10 @@ Start here:
     - infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s)
     - 6 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
+  ripr context --at probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `response.status_code = 422`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:app_checkout.py:python_preview:b4e7eda0
+  ripr context --at probe:app_checkout.py:python_preview:b4e7eda0
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

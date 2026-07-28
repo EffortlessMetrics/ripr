@@ -147,6 +147,9 @@ pub(crate) fn render_human_triage(
     }
     if let Some(finding) = triage.selected {
         out.push_str(&render_finding_digest_with_config(finding, config));
+        out.push_str("\nNext: drill into the top finding:\n");
+        out.push_str(&format!("  ripr explain {}\n", finding.id));
+        out.push_str(&format!("  ripr context --at {}\n", finding.id));
     }
     // #2567: the default human render is the release-facing surface, so it must
     // not claim a hidden remainder that does not exist. `Hidden:` plus a literal

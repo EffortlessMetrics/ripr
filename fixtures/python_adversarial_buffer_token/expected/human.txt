@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_pack.py:python_preview:cfc61771
+  ripr context --at probe:src_pack.py:python_preview:cfc61771
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

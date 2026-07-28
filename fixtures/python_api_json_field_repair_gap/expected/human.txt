@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `return {"detail": "coupon expired"}`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:app_checkout.py:python_preview:c1a8e812
+  ripr context --at probe:app_checkout.py:python_preview:c1a8e812
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

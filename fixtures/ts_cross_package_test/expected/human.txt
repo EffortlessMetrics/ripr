@@ -19,6 +19,10 @@ Start here:
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 7 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_inventory.ts:typescript_preview:72e603c8
+  ripr context --at probe:src_inventory.ts:typescript_preview:72e603c8
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

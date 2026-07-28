@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python predicate can alter branch selection: `if subtotal >= loyalty_threshold:`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_shop_service_pricing.py:python_preview:627099f2
+  ripr context --at probe:src_shop_service_pricing.py:python_preview:627099f2
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

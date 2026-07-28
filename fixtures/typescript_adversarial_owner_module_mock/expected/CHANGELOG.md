@@ -38,3 +38,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
+
+Command:
+`cargo xtask goldens bless typescript_adversarial_owner_module_mock --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

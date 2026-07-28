@@ -18,6 +18,10 @@ Start here:
     - infection unknown: Changed syntax is not mapped to a high-confidence probe family
     - 7 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:static_unknown:35a08f71
+  ripr context --at probe:src_lib.rs:static_unknown:35a08f71
+
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full

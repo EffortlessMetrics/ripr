@@ -19,6 +19,10 @@ Start here:
     - infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_service.py:python_preview:94fc2856
+  ripr context --at probe:src_service.py:python_preview:94fc2856
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

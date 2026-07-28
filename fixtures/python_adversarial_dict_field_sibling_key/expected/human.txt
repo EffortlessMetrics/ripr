@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python field or attribute construction can alter object state: `return {"host": "localhost", "port": 9090}`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_conf.py:python_preview:932c667d
+  ripr context --at probe:src_conf.py:python_preview:932c667d
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

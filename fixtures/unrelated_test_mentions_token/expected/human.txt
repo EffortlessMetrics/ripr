@@ -17,6 +17,10 @@ Start here:
     - infection unknown: No tests were found, so activation/infection cannot be estimated
     - 4 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_lib.rs:predicate:c80557eb
+  ripr context --at probe:src_lib.rs:predicate:c80557eb
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

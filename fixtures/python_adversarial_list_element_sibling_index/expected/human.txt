@@ -25,6 +25,10 @@ Start here:
     - infection yes: Changed Python return expression can alter the owner return value: `return ["index", "browse", "detail"]`
     - 5 more evidence line(s) hidden
 
+Next: drill into the top finding:
+  ripr explain probe:src_routes.py:python_preview:fa537c61
+  ripr context --at probe:src_routes.py:python_preview:fa537c61
+
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -95,3 +95,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
+
+Command:
+`cargo xtask goldens bless ts_already_observed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
