@@ -293,15 +293,21 @@ where
         > + Send
         + 'static,
 {
+    let cancellation_token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+    let worker_token = cancellation_token.clone();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let result = runner();
+        let result = crate::analysis::cancellation::with_token(&worker_token, runner);
         let _ignored = tx.send(result);
     });
 
     match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
         Ok(result) => result.map(PilotAnalysisResult::Complete),
-        Err(mpsc::RecvTimeoutError::Timeout) => Ok(PilotAnalysisResult::TimedOut),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            cancellation_token
+                .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Ok(PilotAnalysisResult::TimedOut)
+        }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             Err("pilot analysis stopped before producing a result".to_string())
         }
@@ -406,13 +412,19 @@ mod tests {
     }
 
     #[test]
-    fn pilot_analysis_timeout_returns_partial_result() {
-        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+    fn pilot_analysis_timeout_cancels_worker() {
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
         let result = run_pilot_analysis_with_timeout(1, move || {
-            let _ignored = hold_rx.recv();
-            Ok((Vec::new(), None))
+            loop {
+                if crate::analysis::cancellation::checkpoint().is_err() {
+                    let _ignored = cancelled_tx.send(());
+                    return Err("analysis cancelled".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
         });
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+        assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
     }
 }
