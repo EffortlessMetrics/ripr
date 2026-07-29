@@ -5502,3 +5502,26 @@ literal warning to a notice.
 Non-goals: LSP severity redesign (#2718), runtime mutation, adequacy or
 coverage claims, release/publish changes, default blocking, and broad output
 refactoring.
+
+## Campaign 36: Preview Projection Honesty
+
+Campaign ID: `preview-projection-honesty`
+
+Status: active
+
+Tracker: issues #2716 and #2744; existing documentation PR #2743.
+
+This campaign keeps preview output faithful when the producer has more than
+one configured TypeScript/Bun bridge profile. It also closes the JSON-order
+documentation drift without adding a dependency or making JSON byte order a
+consumer contract.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `output/json-order-contract` | in review | #2743 documents semantic JSON object ordering and explicitly excludes exact-byte canonical artifacts. |
+| `output/multi-bun-profile-projection` | ready | #2744 will retain every emitted Bun bridge profile across human, JSON, SARIF, and GitHub projections, with Blob plus `copy_to_unshared` regression coverage. |
+| `campaign/preview-projection-closeout` | pending | Record merge proof, issue disposition, preview-only claim boundaries, and follow-ups. |
+
+Non-goals: new Bun taxonomy or discovery, runtime Bun execution, mutation,
+coverage or adequacy claims, public repair-packet promotion, default blocking,
+release/publish changes, `serde_json` `preserve_order`, and broad refactoring.
