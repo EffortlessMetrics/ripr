@@ -184,10 +184,15 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         // Cooperative cancellation (#1972): a superseded or
         // deadline-expired refresh stops before the cache load path.
         cancellation::checkpoint()?;
-        match cache.load_classified_seams(&key) {
-            CacheLoad::Hit((cached, cached_limit_info)) => {
+        match cache.load_classified_seams_with_fallback(&key) {
+            CacheLoad::Hit((cached, cached_limit_info, lexical_fallback_files)) => {
                 trace_latency_phase("cache_load", "hit", cache_started.elapsed());
                 trace_latency_phase("total", "cache_hit", total_started.elapsed());
+                if let Some(disclosure) =
+                    rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                {
+                    eprintln!("{disclosure}");
+                }
                 // Preserve the run_status from the original run: a capped run
                 // stored its SeamLimitInfo in the envelope; a complete run
                 // stored None.
@@ -231,10 +236,15 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     // Cooperative cancellation (#1972): a superseded or deadline-expired
     // refresh stops before the post-collect cache load.
     cancellation::checkpoint()?;
-    match cache.load_classified_seams(&key) {
-        CacheLoad::Hit((cached, cached_limit_info)) => {
+    match cache.load_classified_seams_with_fallback(&key) {
+        CacheLoad::Hit((cached, cached_limit_info, lexical_fallback_files)) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "cache_hit", total_started.elapsed());
+            if let Some(disclosure) =
+                rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+            {
+                eprintln!("{disclosure}");
+            }
             // Preserve the run_status from the original run: a capped run stored
             // its SeamLimitInfo in the envelope; a complete run stored None.
             return Ok((cached, cached_limit_info.map(SeamLimitInfo::from)));
@@ -251,7 +261,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     }
     let compute_started = Instant::now();
     trace_latency_phase("cold_compute", "start", Duration::ZERO);
-    let (classified, limit_info) =
+    let (classified, limit_info, lexical_fallback_files) =
         match inventory_classified_seams_from_state_with_config(&state, config) {
             Ok(pair) => {
                 trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
@@ -277,10 +287,11 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         ),
         Duration::ZERO,
     );
-    let store_status = match cache.store_classified_seams_with_limit(
+    let store_status = match cache.store_classified_seams_with_limit_and_fallback(
         &key,
         &classified,
         cached_limit_info.as_ref(),
+        &lexical_fallback_files,
         store_limit,
     ) {
         Ok(status) => status.label,
@@ -441,10 +452,15 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     // key from the corpus fingerprint store when the signature is unchanged.
     if let Some(key) = fingerprint_cached_workspace_key(root, &inputs, fingerprint.as_deref()) {
         let cache_started = Instant::now();
-        match cache.load_classified_seams(&key) {
-            CacheLoad::Hit((cached, _limit_info)) => {
+        match cache.load_classified_seams_with_fallback(&key) {
+            CacheLoad::Hit((cached, _limit_info, lexical_fallback_files)) => {
                 trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
                 trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
+                if let Some(disclosure) =
+                    rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                {
+                    eprintln!("{disclosure}");
+                }
                 return Ok(cached);
             }
             CacheLoad::Miss => {
@@ -465,10 +481,15 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
     let key = state.cache_key();
     store_corpus_fingerprint_mapping(&state, fingerprint, &key);
     let cache_started = Instant::now();
-    match cache.load_classified_seams(&key) {
-        CacheLoad::Hit((cached, _limit_info)) => {
+    match cache.load_classified_seams_with_fallback(&key) {
+        CacheLoad::Hit((cached, _limit_info, lexical_fallback_files)) => {
             trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
+            if let Some(disclosure) =
+                rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+            {
+                eprintln!("{disclosure}");
+            }
             return Ok(cached);
         }
         CacheLoad::Miss => {
@@ -484,7 +505,8 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
         }
     }
 
-    let classified = inventory_compact_classified_seams_from_state_with_config(&state, config)?;
+    let (classified, lexical_fallback_files) =
+        inventory_compact_classified_seams_from_state_with_config(&state, config)?;
     let store_started = Instant::now();
     trace_latency_phase(
         "compact_cache_store",
@@ -495,14 +517,18 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
         ),
         Duration::ZERO,
     );
-    let store_status =
-        match cache.store_compact_classified_seams_with_limit(&key, &classified, store_limit) {
-            Ok(status) => status.label,
-            Err(reason) => {
-                eprintln!("ripr: compact repo seam cache store ignored ({reason})");
-                cache_store_status_label(&reason)
-            }
-        };
+    let store_status = match cache.store_compact_classified_seams_with_limit_and_fallback(
+        &key,
+        &classified,
+        &lexical_fallback_files,
+        store_limit,
+    ) {
+        Ok(status) => status.label,
+        Err(reason) => {
+            eprintln!("ripr: compact repo seam cache store ignored ({reason})");
+            cache_store_status_label(&reason)
+        }
+    };
     trace_latency_phase(
         "compact_cache_store",
         &store_status,
@@ -540,7 +566,7 @@ fn inventory_seam_grip_class_counts_uncached_with_config(
 fn inventory_compact_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
-) -> Result<Vec<ClassifiedSeam>, String> {
+) -> Result<(Vec<ClassifiedSeam>, Vec<PathBuf>), String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
     trace_latency_phase(
@@ -561,6 +587,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
         build_started.elapsed(),
     );
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let lexical_fallback_files = rust_index::lexical_fallback_files(&cached.index);
     let seams = inventory_seams_from_index(&production_files, &cached.index);
     let context = test_grip_evidence::CompactGripContext::new(&cached.index);
     let mut classified = Vec::with_capacity(seams.len());
@@ -574,13 +601,15 @@ fn inventory_compact_classified_seams_from_state_with_config(
             class,
         });
     }
-    Ok(classified)
+    Ok((classified, lexical_fallback_files))
 }
+
+type ClassifiedSeamInventory = (Vec<ClassifiedSeam>, Option<SeamLimitInfo>, Vec<PathBuf>);
 
 fn inventory_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
-) -> Result<(Vec<ClassifiedSeam>, Option<SeamLimitInfo>), String> {
+) -> Result<ClassifiedSeamInventory, String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
     trace_latency_phase(
@@ -601,6 +630,7 @@ fn inventory_classified_seams_from_state_with_config(
     );
     let policy_started = Instant::now();
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let lexical_fallback_files = rust_index::lexical_fallback_files(&cached.index);
     trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
     let seams_started = Instant::now();
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
@@ -620,7 +650,7 @@ fn inventory_classified_seams_from_state_with_config(
     let classified = seam_classification::classify_seams_owned(seams, evidence);
     cancellation::checkpoint()?;
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
-    Ok((classified, limit_info))
+    Ok((classified, limit_info, lexical_fallback_files))
 }
 
 #[derive(Clone, Debug)]
@@ -1201,6 +1231,9 @@ pub(crate) fn inventory_seams_from_index(
     production_files: &[PathBuf],
     index: &RustIndex,
 ) -> Vec<RepoSeam> {
+    if let Some(disclosure) = rust_index::lexical_fallback_disclosure(index) {
+        eprintln!("{disclosure}");
+    }
     let mut seams: Vec<RepoSeam> = Vec::new();
 
     // Iterate `production_files` in caller-given order, but the final

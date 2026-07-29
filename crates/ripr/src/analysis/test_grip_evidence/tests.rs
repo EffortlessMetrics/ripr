@@ -1908,6 +1908,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             returns: Vec::new(),
             literals: Vec::new(),
             probe_shapes: Vec::new(),
+            used_lexical_fallback: false,
             source: "fn discounted_total_helper() {}".to_string(),
         },
     );

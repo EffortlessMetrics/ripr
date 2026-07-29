@@ -116,6 +116,7 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         returns: file_returns,
         literals: file_literals,
         probe_shapes: Vec::new(),
+        used_lexical_fallback: false,
         source,
     }
 }

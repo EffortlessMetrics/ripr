@@ -77,14 +77,14 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `0.4` → `0.5`: error-variant discriminators changed from surrounding
 /// expressions to producer-owned exact identities; old classified seams must
 /// not be reused by full or compact consumers.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.5";
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.6";
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
 /// under a separate directory because the evidence payload is intentionally
 /// compact and must never satisfy full repo-exposure consumers.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.2";
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.3";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -96,7 +96,7 @@ const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// Per-file fact cache schema. This is intentionally separate from the
 /// workspace-level classified seam cache so warm compute can reuse parser facts
 /// even when a full classified seam entry has not been written yet.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -708,10 +708,26 @@ impl RepoSeamFactCache {
     /// `SeamLimitInfo` so the caller can surface correct `run_status` on
     /// a cache hit. `Miss` is returned for both "no file" and "different
     /// key"; `CorruptIgnored` carries a reason for logs.
+    #[cfg(test)]
     pub(crate) fn load_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
     ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
+        match self.load_classified_seams_with_fallback(key) {
+            CacheLoad::Hit((seams, limit_info, _)) => CacheLoad::Hit((seams, limit_info)),
+            CacheLoad::Miss => CacheLoad::Miss,
+            CacheLoad::CorruptIgnored { reason } => CacheLoad::CorruptIgnored { reason },
+        }
+    }
+
+    pub(crate) fn load_classified_seams_with_fallback(
+        &self,
+        key: &RepoSeamCacheKey,
+    ) -> CacheLoad<(
+        Vec<ClassifiedSeam>,
+        Option<CachedSeamLimitInfo>,
+        Vec<PathBuf>,
+    )> {
         match self.load_single_classified_seams(key) {
             CacheLoad::Miss => self.load_sharded_classified_seams(key),
             other => other,
@@ -721,7 +737,11 @@ impl RepoSeamFactCache {
     fn load_single_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
-    ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
+    ) -> CacheLoad<(
+        Vec<ClassifiedSeam>,
+        Option<CachedSeamLimitInfo>,
+        Vec<PathBuf>,
+    )> {
         let path = self.entry_path(key);
         let bytes = match std::fs::read(&path) {
             Ok(b) => b,
@@ -735,7 +755,11 @@ impl RepoSeamFactCache {
         match codec::decode(&bytes) {
             Ok(envelope) => {
                 if envelope.matches_key(key) {
-                    CacheLoad::Hit((envelope.classified_seams, envelope.seam_limit_info))
+                    CacheLoad::Hit((
+                        envelope.classified_seams,
+                        envelope.seam_limit_info,
+                        envelope.lexical_fallback_files,
+                    ))
                 } else {
                     // Key collision is unlikely (16-char FNV file
                     // names + 12 fields hashed in), but possible. Treat
@@ -747,13 +771,30 @@ impl RepoSeamFactCache {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn store_compact_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
-        self.store_classified_seams_with_limit(key, seams, None, store_limit)
+        self.store_compact_classified_seams_with_limit_and_fallback(key, seams, &[], store_limit)
+    }
+
+    pub(crate) fn store_compact_classified_seams_with_limit_and_fallback(
+        &self,
+        key: &RepoSeamCacheKey,
+        seams: &[ClassifiedSeam],
+        lexical_fallback_files: &[PathBuf],
+        store_limit: usize,
+    ) -> Result<CacheStoreStatus, String> {
+        self.store_classified_seams_with_limit_and_fallback(
+            key,
+            seams,
+            None,
+            lexical_fallback_files,
+            store_limit,
+        )
     }
 
     /// Store classified seams with the given cache-store limit.
@@ -761,11 +802,29 @@ impl RepoSeamFactCache {
     /// `limit_info` is `Some(...)` when this is a truncated run (seam limit
     /// was applied); `None` for a complete run. The value is persisted in the
     /// cache envelope so a warm-path load can return the correct `run_status`.
+    #[cfg(test)]
     pub(crate) fn store_classified_seams_with_limit(
         &self,
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
         limit_info: Option<&CachedSeamLimitInfo>,
+        store_limit: usize,
+    ) -> Result<CacheStoreStatus, String> {
+        self.store_classified_seams_with_limit_and_fallback(
+            key,
+            seams,
+            limit_info,
+            &[],
+            store_limit,
+        )
+    }
+
+    pub(crate) fn store_classified_seams_with_limit_and_fallback(
+        &self,
+        key: &RepoSeamCacheKey,
+        seams: &[ClassifiedSeam],
+        limit_info: Option<&CachedSeamLimitInfo>,
+        lexical_fallback_files: &[PathBuf],
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
         if store_limit == 0 {
@@ -776,12 +835,18 @@ impl RepoSeamFactCache {
                 key,
                 seams,
                 limit_info,
+                lexical_fallback_files,
                 store_limit,
             );
         }
         std::fs::create_dir_all(&self.dir)
             .map_err(|err| format!("create cache dir failed: {err}"))?;
-        let envelope = CacheEnvelope::new(key.clone(), seams.to_vec(), limit_info.cloned());
+        let envelope = CacheEnvelope::new_with_fallback(
+            key.clone(),
+            seams.to_vec(),
+            limit_info.cloned(),
+            lexical_fallback_files.to_vec(),
+        );
         let bytes = codec::encode(&envelope)?;
         let path = self.entry_path(key);
         std::fs::write(&path, &bytes).map_err(|err| format!("write cache failed: {err}"))?;
@@ -797,7 +862,11 @@ impl RepoSeamFactCache {
     fn load_sharded_classified_seams(
         &self,
         key: &RepoSeamCacheKey,
-    ) -> CacheLoad<(Vec<ClassifiedSeam>, Option<CachedSeamLimitInfo>)> {
+    ) -> CacheLoad<(
+        Vec<ClassifiedSeam>,
+        Option<CachedSeamLimitInfo>,
+        Vec<PathBuf>,
+    )> {
         let manifest_path = self.sharded_manifest_path(key);
         let bytes = match std::fs::read(&manifest_path) {
             Ok(bytes) => bytes,
@@ -892,7 +961,11 @@ impl RepoSeamFactCache {
                 ),
             };
         }
-        CacheLoad::Hit((seams, manifest.seam_limit_info))
+        CacheLoad::Hit((
+            seams,
+            manifest.seam_limit_info,
+            manifest.lexical_fallback_files,
+        ))
     }
 
     fn store_sharded_classified_seams_with_limit(
@@ -900,6 +973,7 @@ impl RepoSeamFactCache {
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
         limit_info: Option<&CachedSeamLimitInfo>,
+        lexical_fallback_files: &[PathBuf],
         store_limit: usize,
     ) -> Result<CacheStoreStatus, String> {
         std::fs::create_dir_all(self.sharded_entry_dir(key))
@@ -926,6 +1000,7 @@ impl RepoSeamFactCache {
             shard_count,
             shard_refs,
             limit_info.cloned(),
+            lexical_fallback_files.to_vec(),
         );
         let bytes = codec::encode_sharded_manifest(&manifest)?;
         let manifest_path = self.sharded_manifest_path(key);
@@ -1140,6 +1215,8 @@ struct CacheEnvelope {
     /// deserialize as `None` (correct: pre-Slice-B caches were full runs).
     #[serde(default)]
     seam_limit_info: Option<CachedSeamLimitInfo>,
+    #[serde(default)]
+    lexical_fallback_files: Vec<PathBuf>,
 }
 
 #[cfg(test)]
@@ -1225,10 +1302,20 @@ impl CountCacheEnvelope {
 }
 
 impl CacheEnvelope {
+    #[cfg(test)]
     fn new(
         key: RepoSeamCacheKey,
         classified_seams: Vec<ClassifiedSeam>,
         seam_limit_info: Option<CachedSeamLimitInfo>,
+    ) -> Self {
+        Self::new_with_fallback(key, classified_seams, seam_limit_info, Vec::new())
+    }
+
+    fn new_with_fallback(
+        key: RepoSeamCacheKey,
+        classified_seams: Vec<ClassifiedSeam>,
+        seam_limit_info: Option<CachedSeamLimitInfo>,
+        lexical_fallback_files: Vec<PathBuf>,
     ) -> Self {
         Self {
             schema_version: key.schema_version,
@@ -1244,6 +1331,7 @@ impl CacheEnvelope {
             toolchain_hash: key.toolchain_hash,
             classified_seams,
             seam_limit_info,
+            lexical_fallback_files,
         }
     }
 
@@ -1283,6 +1371,8 @@ struct ShardedCacheManifest {
     /// backward-compat with pre-Slice-B manifests.
     #[serde(default)]
     seam_limit_info: Option<CachedSeamLimitInfo>,
+    #[serde(default)]
+    lexical_fallback_files: Vec<PathBuf>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -1318,6 +1408,7 @@ impl ShardedCacheManifest {
         shard_count: usize,
         shards: Vec<ShardedCacheShardRef>,
         seam_limit_info: Option<CachedSeamLimitInfo>,
+        lexical_fallback_files: Vec<PathBuf>,
     ) -> Self {
         Self {
             sharded_cache_schema_version: SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION.to_string(),
@@ -1336,6 +1427,7 @@ impl ShardedCacheManifest {
             shard_count,
             shards,
             seam_limit_info,
+            lexical_fallback_files,
         }
     }
 
@@ -1836,6 +1928,42 @@ mod tests {
                 }
             }
             other => Err(format!("expected Hit on warm cache, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn given_fallback_cache_entry_when_warm_load_runs_then_provenance_is_replayed()
+    -> Result<(), String> {
+        let dir = isolated_dir("fallback-provenance");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let fallback_files = vec![PathBuf::from("src/z.rs"), PathBuf::from("src/a.rs")];
+        cache
+            .store_classified_seams_with_limit_and_fallback(
+                &key,
+                &[sample_classified()],
+                None,
+                &fallback_files,
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )
+            .map_err(|err| format!("store fallback provenance: {err}"))?;
+
+        let result = match cache.load_classified_seams_with_fallback(&key) {
+            CacheLoad::Hit((_, None, loaded_files)) => {
+                if loaded_files != fallback_files {
+                    Err(format!(
+                        "warm cache must replay fallback files, got {loaded_files:?}"
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            other => Err(format!(
+                "expected fallback provenance cache hit, got {other:?}"
+            )),
         };
         let _ = std::fs::remove_dir_all(&dir);
         result

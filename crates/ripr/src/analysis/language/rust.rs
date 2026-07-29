@@ -1268,6 +1268,9 @@ impl LanguageAdapter for RustAdapter {
             &loaded_rust_files,
         )?;
         let mut index = cached.index;
+        if let Some(disclosure) = rust_index::lexical_fallback_disclosure(&index) {
+            eprintln!("{disclosure}");
+        }
         rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
         let mut findings = Vec::new();

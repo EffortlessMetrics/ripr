@@ -194,9 +194,14 @@ fn summarize_file_with_adapters(
     adapter: &dyn RustSyntaxAdapter,
     fallback: &dyn RustSyntaxAdapter,
 ) -> Result<super::FileFacts, String> {
-    adapter
-        .summarize_file(file, text)
-        .or_else(|_| fallback.summarize_file(file, text))
+    match adapter.summarize_file(file, text) {
+        Ok(facts) => Ok(facts),
+        Err(_) => {
+            let mut facts = fallback.summarize_file(file, text)?;
+            facts.used_lexical_fallback = true;
+            Ok(facts)
+        }
+    }
 }
 
 fn insert_file_summary(index: &mut RustIndex, file: PathBuf, summary: super::FileFacts) {
@@ -389,6 +394,12 @@ pub fn check(x: i32) -> bool {
                 .get(&PathBuf::from("src/lib.rs"))
                 .map_or("", |facts| facts.source.as_str()),
             "pub fn fallback() {}\n"
+        );
+        assert!(
+            index
+                .files
+                .get(&PathBuf::from("src/lib.rs"))
+                .is_some_and(|facts| facts.used_lexical_fallback)
         );
         assert!(
             FailingSyntaxAdapter
