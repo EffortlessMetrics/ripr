@@ -13,8 +13,8 @@ use input::baseline_index_from_value;
 use model::*;
 pub(crate) use model::{GateEvaluateInput, GateMode};
 pub(crate) use presentation::{
-    gate_decision_should_fail, gate_decision_status, markdown_path_for, render_gate_decision_json,
-    render_gate_decision_markdown,
+    gate_decision_inline_detail, gate_decision_should_fail, gate_decision_status,
+    markdown_path_for, render_gate_decision_json, render_gate_decision_markdown,
 };
 use repair_route::{
     GateRouteSource, build_gate_repair_route, gate_repair_route_is_complete, normalize_route_source,

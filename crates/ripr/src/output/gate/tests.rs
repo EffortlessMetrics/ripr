@@ -820,6 +820,11 @@ fn gate_exception_policy_expired_entry_blocks() -> Result<(), String> {
         "violations: {}",
         value["exception_policy"]["violations"]
     );
+    let inline = gate_decision_inline_detail(&report);
+    assert!(
+        inline.contains("quality_exception_expired"),
+        "inline detail missing expired violation: {inline}"
+    );
     let markdown = render_gate_decision_markdown(&report);
     assert!(
         markdown.contains("quality\\_exception\\_expired")

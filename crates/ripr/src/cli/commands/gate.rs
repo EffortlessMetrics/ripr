@@ -49,9 +49,11 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
     if output::gate::gate_decision_should_fail(&report) {
+        let detail = output::gate::gate_decision_inline_detail(&report);
         Err(format!(
-            "ripr gate decision is {}; see {}",
+            "ripr gate decision is {}{}; see {} for the full report",
             output::gate::gate_decision_status(&report),
+            detail,
             options.out.display()
         ))
     } else {

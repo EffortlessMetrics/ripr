@@ -991,6 +991,11 @@ fn gate_evaluate_exception_policy_expired_ledger_blocks_with_nonzero_exit() -> R
         &out.display().to_string(),
     ]);
     assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("quality_exception_expired"),
+        "stderr should include the blocking exception-policy detail: {stderr}"
+    );
 
     let decision = std::fs::read_to_string(&out).map_err(|err| format!("read out: {err}"))?;
     let value: serde_json::Value = serde_json::from_str(&decision)
