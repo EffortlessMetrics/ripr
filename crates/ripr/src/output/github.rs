@@ -7,6 +7,7 @@ use crate::output::perl_preview_card::perl_preview_card;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
 use crate::output::typescript_preview_card::typescript_preview_card;
+use std::path::Path;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
@@ -134,7 +135,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
-            display_path(&finding.probe.location.file),
+            annotation_path(&output.root, &finding.probe.location.file),
             finding.probe.location.line,
             escape_cmd(&title),
             escape_cmd(&message)
@@ -144,6 +145,19 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str("::notice title=ripr::No static exposure findings found\n");
     }
     out
+}
+
+fn annotation_path(root: &Path, file: &Path) -> String {
+    let relative = if root.is_absolute() {
+        file.strip_prefix(root).unwrap_or(file)
+    } else {
+        file
+    };
+    let mut displayed = display_path(relative);
+    while let Some(stripped) = displayed.strip_prefix("./") {
+        displayed = stripped.to_string();
+    }
+    displayed
 }
 
 fn python_no_action_annotation(finding: &Finding) -> Option<String> {
@@ -285,6 +299,29 @@ mod tests {
         assert!(rendered.contains("::notice file=src/lib.rs,line=13,title=ripr static_unknown::"));
         assert!(rendered.contains("Add%3A case%2C with 100%25 coverage%0Athen verify%0Doutcome"));
         assert!(rendered.contains("Stop reason%3A static_probe_unknown"));
+    }
+
+    #[test]
+    fn render_github_paths_are_repo_relative_without_dot_prefix() {
+        let mut output = output_with_unknown_finding();
+        output.root = PathBuf::from("/workspace/repo");
+        output.findings[0].probe.location.file =
+            PathBuf::from("/workspace/repo/./crates/ripr/src/lib.rs");
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("file=crates/ripr/src/lib.rs,line=13"));
+        assert!(!rendered.contains("file=./"));
+        assert!(!rendered.contains("file=/workspace/repo"));
+
+        let mut nested = output_with_unknown_finding();
+        nested.root = PathBuf::from("fixtures/boundary_gap/input");
+        nested.findings[0].probe.location.file =
+            PathBuf::from("fixtures/boundary_gap/input/src/lib.rs");
+
+        let nested_rendered = render(&nested);
+
+        assert!(nested_rendered.contains("file=fixtures/boundary_gap/input/src/lib.rs,line=13"));
     }
 
     #[test]
