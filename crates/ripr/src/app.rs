@@ -86,9 +86,10 @@ pub struct CheckInput {
     /// When `None`, check output is unchanged.
     pub suppression_policy: Option<PathBuf>,
     /// Cooperative per-invocation git deadline for the diff-load path
-    /// (#2303). `None` (the default) keeps git invocations unbounded — the
-    /// CLI behavior. Only the LSP refresh path populates this, from the
-    /// `gitTimeoutMs` session option.
+    /// (#2303). When `None`, git invocations are unbounded. The CLI check
+    /// adapter populates this from the `--git-timeout` flag or
+    /// `RIPR_GIT_TIMEOUT` env var (default: 5 minutes); the LSP refresh path
+    /// populates it from the `gitTimeoutMs` session option.
     pub git_timeout: Option<std::time::Duration>,
 }
 
@@ -106,6 +107,17 @@ impl Default for CheckInput {
             git_timeout: None,
         }
     }
+}
+
+/// Default cooperative git deadline for the CLI path (#2613).
+///
+/// 5 minutes — long enough for large repos, short enough to surface a hang
+/// that would otherwise block indefinitely. Override with `--git-timeout`
+/// or `RIPR_GIT_TIMEOUT` (seconds; `0` disables the deadline).
+pub(crate) const DEFAULT_CLI_GIT_TIMEOUT_SECS: u64 = 300;
+
+pub(crate) fn default_cli_git_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(DEFAULT_CLI_GIT_TIMEOUT_SECS)
 }
 
 /// Public analysis effort profile used by both CLI flags and library

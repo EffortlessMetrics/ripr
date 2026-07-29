@@ -732,6 +732,32 @@ fn repeated_write_replaces_artifact_atomically() -> Result<(), String> {
 }
 
 #[test]
+fn artifact_re_resolution_honors_git_timeout() -> Result<(), String> {
+    let dir = unique_temp_dir("git-timeout")?;
+    let result = (|| {
+        let repo = init_worktree_fixture_repo(&dir)?;
+        let mut input = worktree_input(&repo);
+        let config = RiprConfig::default();
+        let path = dir.join("artifact.json");
+
+        write_check_artifact(&path, &input, &config, &[], true)?;
+        input.git_timeout = Some(std::time::Duration::ZERO);
+
+        let error = load_findings_for_reuse(&path, &input, &config, None)
+            .err()
+            .ok_or("artifact re-resolution must honor a zero Git deadline")?;
+        if !error.contains(crate::git::GIT_INVOCATION_TIMEOUT_PREFIX) {
+            return Err(format!(
+                "expected named git timeout from artifact re-resolution, got: {error}"
+            ));
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+#[test]
 fn concurrent_writers_never_leave_a_torn_artifact() -> Result<(), String> {
     let dir = unique_temp_dir("concurrent")?;
     let result = (|| {

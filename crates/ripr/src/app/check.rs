@@ -517,21 +517,15 @@ mod tests {
     }
 
     #[test]
-    fn cli_check_input_carries_no_git_deadline() -> Result<(), String> {
-        // #2303 no-drift contract: the CLI never sets a git deadline, so the
-        // diff-load path stays unbounded and byte-identical to the pre-#2303
-        // behavior. Only the LSP refresh path populates the deadline (via
-        // `LspAnalysisConfig::check_input`).
+    fn library_check_input_default_keeps_git_deadline_unbounded() {
+        // #2613: the five-minute deadline is a CLI policy. Public library
+        // callers retain the unbounded default and can opt into a deadline
+        // through CheckInput::git_timeout explicitly.
         let input = sample_diff_input();
-        if input.git_timeout.is_some() {
-            return Err("CLI check input must not set a git deadline".to_string());
-        }
+        assert_eq!(input.git_timeout, None);
         let options =
             options_builder::analysis_options_from_input_and_config(&input, &RiprConfig::default());
-        if options.git_timeout.is_some() {
-            return Err("CLI analysis options must not set a git deadline".to_string());
-        }
-        Ok(())
+        assert_eq!(options.git_timeout, None);
     }
 
     #[test]

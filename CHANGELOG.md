@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- CLI git operations now have a bounded default timeout (5 minutes) instead
+  of running unbounded. A stuck git invocation surfaces as a named
+  `git_invocation_timeout` error instead of blocking indefinitely. Override
+  with `--git-timeout <seconds>` or `RIPR_GIT_TIMEOUT` env var; set to 0 to
+  disable the deadline ([#2613](https://github.com/EffortlessMetrics/ripr-swarm/issues/2613)).
+
 - AGENTS.md example commands used a stale probe ID (`error_path:8ee9f771`)
   that no longer matches the sample fixture. Updated to the current
   `error_path:c1a03250` so the examples work when copy-pasted.

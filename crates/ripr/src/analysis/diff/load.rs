@@ -890,6 +890,26 @@ mod tests {
     }
 
     #[test]
+    fn zero_deadline_default_base_diff_load_fails_closed() -> std::io::Result<()> {
+        // #2613: the CLI's default-base path must pass its deadline through
+        // candidate resolution instead of silently falling back to an
+        // unbounded Git probe or fabricating a base.
+        let dir = unique_fixture_root("load-diff-default-base-zero-deadline")?;
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let result = load_diff(&dir, None, None, Some(Duration::ZERO));
+        let err = result.expect_err("a zero deadline must fail default-base resolution");
+        assert!(
+            err.contains("could not resolve a default base"),
+            "expected fail-closed default-base error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
     fn zero_deadline_base_probes_fail_closed_instead_of_hanging() -> std::io::Result<()> {
         // #2303: probe-path timeouts degrade to the same fail-closed states
         // as an unresolvable ref — never to a fabricated base or commit.
