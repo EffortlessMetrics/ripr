@@ -51,6 +51,7 @@ pub(crate) struct GateOptions {
     pub(crate) input: output::gate::GateEvaluateInput,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) mode_explicit: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct BaselineCreateOptions {

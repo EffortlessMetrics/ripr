@@ -77,7 +77,10 @@ generated workflow defaults.
 
 Output discipline: JSON and Markdown are written to `--out` and `--out-md`
 (with the documented defaults); stdout contains human `Wrote ...` status lines,
-not the JSON report. Capture the report files for machine consumers.
+not the JSON report. Capture the report files for machine consumers. When
+`--mode` is omitted and stderr is non-interactive, ripr prints a warning that
+the visible-only default records evidence without blocking. An explicit
+`--mode visible-only` is quiet; blocking modes remain opt-in.
 "#;
 pub(super) const BASELINE_HELP: &str = r#"Create, diff, and shrink a reviewed baseline of acknowledged test gaps.
 

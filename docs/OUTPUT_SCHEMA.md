@@ -7669,6 +7669,11 @@ waiver, baseline, calibration, blocking reason, debt movement counts, and
 artifact paths before appending the full Markdown decision report.
 `visible-only` remains advisory; blocking modes are opt-in.
 
+The CLI also prints a stderr warning when `ripr gate evaluate` omits `--mode`
+and stderr is non-interactive: the default is `visible-only`, which records
+advisory evidence and never blocks. This warning is not part of the JSON or
+Markdown report contract; an explicit `--mode visible-only` suppresses it.
+
 See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating
 model, rollout path, waiver behavior, and static/runtime vocabulary boundary.
 

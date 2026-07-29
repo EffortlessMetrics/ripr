@@ -9,6 +9,7 @@ use crate::cli::help;
 use crate::cli::parse::expect_value;
 use crate::cli::suggest::unknown_argument;
 use crate::output;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use super::{non_empty_path_arg, non_empty_string_arg, write_text_file};
@@ -31,6 +32,11 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
     }
 
     let options = parse_gate_options(rest)?;
+    if let Some(warning) =
+        default_visible_only_warning(options.mode_explicit, !std::io::stderr().is_terminal())
+    {
+        eprintln!("{warning}");
+    }
     // Surface the missing-input requirement directly instead of burying it
     // inside the gate-decision.json config_errors array (#2589 review).
     if options.input.pr_guidance.is_none()
@@ -76,6 +82,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
     let mut baseline = None;
     let mut exception_policy = None;
     let mut mode = output::gate::GateMode::VisibleOnly;
+    let mut mode_explicit = false;
     let mut acknowledgement_labels = Vec::new();
     let mut out = PathBuf::from(output::gate::DEFAULT_GATE_OUT);
     let mut out_md = None;
@@ -147,6 +154,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
             }
             "--mode" => {
                 i += 1;
+                mode_explicit = true;
                 mode = output::gate::GateMode::parse(expect_value(args, i, "--mode")?)?;
             }
             "--acknowledgement-label" => {
@@ -192,7 +200,21 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
         },
         out,
         out_md,
+        mode_explicit,
     })
+}
+
+const DEFAULT_VISIBLE_ONLY_WARNING: &str = "ripr: gate evaluate is using default mode visible-only; it records advisory evidence and never blocks. Pass --mode acknowledgeable, --mode baseline-check, or --mode calibrated-gate to opt into blocking policy.";
+
+fn default_visible_only_warning(
+    mode_explicit: bool,
+    non_interactive: bool,
+) -> Option<&'static str> {
+    if non_interactive && !mode_explicit {
+        Some(DEFAULT_VISIBLE_ONLY_WARNING)
+    } else {
+        None
+    }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -265,6 +287,7 @@ mod tests {
                 },
                 out: PathBuf::from("target/ripr/reports/gate-decision.json"),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
+                mode_explicit: true,
             })
         );
     }
@@ -332,7 +355,27 @@ mod tests {
                 },
                 out: PathBuf::from(output::gate::DEFAULT_GATE_OUT),
                 out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
+                mode_explicit: false,
             })
+        );
+    }
+
+    #[test]
+    fn default_visible_only_warning_requires_omitted_mode_and_non_interactive_use() {
+        assert_eq!(
+            default_visible_only_warning(false, true),
+            Some(DEFAULT_VISIBLE_ONLY_WARNING)
+        );
+        assert_eq!(default_visible_only_warning(false, false), None);
+        assert_eq!(default_visible_only_warning(true, true), None);
+        assert_eq!(
+            parse_gate_options(&args(&["--label", "--mode"])).map(|options| options.mode_explicit),
+            Ok(false)
+        );
+        assert_eq!(
+            parse_gate_options(&args(&["--pr-guidance", "--mode"]))
+                .map(|options| options.mode_explicit),
+            Ok(false)
         );
     }
 
