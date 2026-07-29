@@ -21809,6 +21809,43 @@ fn traceability_missing_path_remains_blocking() -> Result<(), String> {
 }
 
 #[test]
+fn deprecated_traceability_entry_may_omit_runtime_metrics() -> Result<(), String> {
+    with_temp_cwd("traceability-deprecated-without-metrics", |root| {
+        let spec = root.join("docs/specs/RIPR-SPEC-9998-deprecated.md");
+        write(
+            &spec,
+            "# RIPR-SPEC-9998: Deprecated\n\nStatus: deprecated\n",
+        );
+
+        let behavior = super::TraceBehavior {
+            line: 1,
+            id: Some("RIPR-SPEC-9998".to_string()),
+            name: Some("deprecated documentation contract".to_string()),
+            spec: Some(spec.to_string_lossy().replace('\\', "/")),
+            outputs: vec![spec.to_string_lossy().replace('\\', "/")],
+            ..Default::default()
+        };
+        let mut behavior_ids = BTreeSet::new();
+        let mut violations = Vec::new();
+        let mut advisories = Vec::new();
+
+        super::validate_trace_behavior(
+            &behavior,
+            &mut behavior_ids,
+            &mut violations,
+            &mut advisories,
+        )?;
+
+        if !violations.is_empty() {
+            return Err(format!(
+                "deprecated documentation entry should not require a runtime metric: {violations:?}"
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn local_context_allow_entries_track_path_pattern_and_max_count() {
     let entry = LocalContextAllow {
         path: "crates/ripr/src/analysis/classifier.rs".to_string(),

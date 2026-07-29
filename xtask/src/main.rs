@@ -5402,7 +5402,7 @@ fn validate_trace_behavior(
     validate_trace_paths(id, "code", &behavior.code, violations, advisories);
     validate_trace_paths(id, "outputs", &behavior.outputs, violations, advisories);
 
-    if behavior.metrics.is_empty() {
+    if behavior.metrics.is_empty() && spec_status.as_deref() != Some("deprecated") {
         violations.push(format!("{id} has no metrics"));
     }
     for metric in &behavior.metrics {

@@ -7131,6 +7131,19 @@ metrics = [
   "lsp_diagnostic_catalog_unresolved_gap_kinds",
 ]
 
+[[behavior]]
+id = "RIPR-SPEC-0128"
+name = "retired active-goal authority audit identifier"
+spec = "docs/specs/RIPR-SPEC-0128-retired-active-goal-authority-audit.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0128-retired-active-goal-authority-audit.md",
+  "docs/specs/README.md",
+]
+metrics = []
+
 
 [[behavior]]
 id = "RIPR-SPEC-0129"
