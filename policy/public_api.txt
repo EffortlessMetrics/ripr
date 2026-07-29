@@ -12,7 +12,7 @@ pub use analysis::LanguageRunStatus;
 pub use analysis::PartialDiffScope;
 pub use analysis::PartialDiffStopReason;
 pub use analysis::PreviewLanguageAdvisory;
-pub use app::{CheckInput, CheckOutput, check_workspace, collect_context, explain_finding};
+pub use app::{
 pub use app::{Mode, OutputFormat};
 pub use domain::{LanguageFileCount, Summary};
 pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
