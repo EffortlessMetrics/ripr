@@ -1,0 +1,33 @@
+# Copy the exact-id entry into .ripr/suppressions.toml after replacing the
+# example identity, owner, reason, and dates. The path-glob entry is an example
+# for an explicit `--suppression-policy` findings run; implicit badge exposure
+# suppression currently matches exact finding_id entries only.
+schema_version = 1
+
+# Prefer an exact finding id when one known finding is the accepted exception.
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/pricing.rs:88:predicate"
+owner = "billing"
+reason = "The integration test exercises this path, but ripr cannot statically inspect that test yet."
+expires = "2026-12-31"
+scope = "seam:pricing::threshold"
+created_at = "2026-07-29"
+last_seen = "2026-07-29"
+review_by = "2026-10-31"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+
+# Use a path glob only for an intentionally bounded family of findings.
+[[suppressions]]
+kind = "exposure_gap"
+path = "src/generated/**"
+static_class = "no_static_path"
+owner = "code-generation"
+reason = "Generated sources are checked by the generator contract rather than source-level test discovery."
+expires = "2026-12-31"
+scope = "generated-sources"
+created_at = "2026-07-29"
+last_seen = "2026-07-29"
+review_by = "2026-10-31"
+expected_visibility = "suppressed_visible"

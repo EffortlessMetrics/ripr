@@ -58,6 +58,7 @@ Current how-to docs:
 - [Repository settings](REPO_SETTINGS.md)
 - [Swarm development](swarm-development.md)
 - [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
+- [Triage a finding](how-to/triage-a-finding.md)
 - [Run Codex Goals](how-to/run-codex-goals.md)
 - [PR automation](PR_AUTOMATION.md)
 - [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md)

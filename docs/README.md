@@ -13,6 +13,7 @@
 | **Editor integration** | [LSP repair workflow](LSP_AGENT_REPAIR_WORKFLOW.md) |
 | **Preview languages** | [Language adapter preview](LANGUAGE_ADAPTER_PREVIEW.md) |
 | **Verification & badges** | [Verification contract](VERIFICATION.md) |
+| **Triage a finding** | [Finding triage guide](how-to/triage-a-finding.md) |
 | **Support tiers** | [Support tiers](status/SUPPORT_TIERS.md) |
 
 ## Reference
