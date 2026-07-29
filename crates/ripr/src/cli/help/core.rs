@@ -93,6 +93,8 @@ Options:
   --root PATH              Workspace root. Defaults to current directory.
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
+                           Use --diff - to read from stdin (e.g.
+                           `git diff origin/main | ripr check --diff -`).
   --worktree               Diff the base revision against the live working tree
                            instead of HEAD, including staged and unstaged
                            tracked edits. Cannot be combined with --diff.

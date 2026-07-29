@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -9,6 +10,13 @@ pub fn load_diff(
     git_timeout: Option<Duration>,
 ) -> Result<String, String> {
     if let Some(diff_file) = diff_file {
+        if diff_file == std::path::Path::new("-") {
+            let mut buffer = String::new();
+            std::io::stdin()
+                .read_to_string(&mut buffer)
+                .map_err(|err| format!("failed to read diff from stdin: {err}"))?;
+            return Ok(buffer);
+        }
         return std::fs::read_to_string(diff_file)
             .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()));
     }

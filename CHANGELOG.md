@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check --diff -` now reads the diff from stdin, enabling pipe
+  workflows like `git diff origin/main | ripr check --diff -`
+  ([#2655](https://github.com/EffortlessMetrics/ripr-swarm/issues/2655)).
+
 - CLI git operations now have a bounded default timeout (5 minutes) instead
   of running unbounded. A stuck git invocation surfaces as a named
   `git_invocation_timeout` error instead of blocking indefinitely. Override
