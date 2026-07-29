@@ -114,14 +114,11 @@ struct AnnotationOutput {
     comments_missing: bool,
 }
 
-/// Map a ripr oracle-strength token to a GitHub workflow-command annotation
-/// level (#2632). `strong`/`medium` findings are actionable and render as
-/// `warning`; weaker/uncertain findings render as the quieter `notice`.
-fn annotation_level_for_severity(severity: &str) -> &'static str {
-    match severity {
-        "strong" | "medium" => "warning",
-        _ => "notice",
-    }
+/// Keep every eligible PR-guidance annotation at GitHub's warning level
+/// (#2632). Severity remains visible in the title; the annotation policy
+/// deliberately does not downgrade weaker or configured values to `notice`.
+fn annotation_level_for_severity(_severity: &str) -> &'static str {
+    "warning"
 }
 
 fn annotation_from_comment(item: &Value) -> Result<String, String> {
@@ -311,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn weak_severity_renders_as_notice_not_warning() -> Result<(), String> {
+    fn weak_severity_remains_warning_level() -> Result<(), String> {
         let repo = temp_repo("ripr-annotations-weak")?;
         write_json(
             &repo,
@@ -336,8 +333,74 @@ mod tests {
         assert!(
             generated
                 .text
-                .contains("::notice file=src/lib.rs,line=10,title=ripr weak focused_test::"),
-            "expected ::notice for weak severity, got: {}",
+                .contains("::warning file=src/lib.rs,line=10,title=ripr weak focused_test::"),
+            "expected ::warning for weak severity, got: {}",
+            generated.text
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn warning_severity_preserves_warning_annotation_level() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-warning")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-warning",
+                    "kind": "focused_test",
+                    "severity": "warning",
+                    "reason": "A configured warning must remain visible.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 11,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::warning file=src/lib.rs,line=11,title=ripr warning focused_test::"),
+            "expected ::warning for literal warning severity, got: {}",
+            generated.text
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn info_severity_remains_warning_level() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-info")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-info",
+                    "kind": "focused_test",
+                    "severity": "info",
+                    "reason": "Configured info remains a warning annotation by policy.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 12,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::warning file=src/lib.rs,line=12,title=ripr info focused_test::"),
+            "expected ::warning for info severity, got: {}",
             generated.text
         );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
