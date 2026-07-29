@@ -12,7 +12,7 @@ Start here:
   File: src/tax.py:2
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/tax.py:apply_tax:return_value:return_value:amount+2
   Changed behavior: return amount + 2
   Discriminator (observed, advisory): Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

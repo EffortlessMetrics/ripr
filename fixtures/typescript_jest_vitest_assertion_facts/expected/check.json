@@ -9,7 +9,7 @@
     {
       "id": "probe:src_signals.ts:typescript_preview:7878a956",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_signals.ts:typescript_preview:7878a956",
@@ -688,7 +688,7 @@
     {
       "id": "probe:src_signals.ts:typescript_preview:a68ad559",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_signals.ts:typescript_preview:a68ad559",

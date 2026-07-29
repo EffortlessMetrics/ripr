@@ -4,7 +4,7 @@ root: fixtures/unwrap_err_variant_positive/input
 
 Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+WARNING fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
 
 Changed
   before: return Err(CalcError::TooLarge);
@@ -16,7 +16,7 @@ Probe
   owner:  src/lib.rs::compute
 
 Static exposure
-  exposed (info, confidence 1.00)
+  exposed (warning, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
@@ -29,7 +29,7 @@ Evidence
   - observed function argument value x = -1 at line 5
   - observed enum variant value CalcError::Negative at line 6
 
-INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+WARNING fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
 
 Changed
   before: return Err(CalcError::TooLarge);
@@ -41,7 +41,7 @@ Probe
   owner:  src/lib.rs::compute
 
 Static exposure
-  exposed (info, confidence 1.00)
+  exposed (warning, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error

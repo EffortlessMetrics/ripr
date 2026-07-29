@@ -9,7 +9,7 @@
     {
       "id": "probe:src_lib.rs:predicate:c80557eb",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:predicate:c80557eb",

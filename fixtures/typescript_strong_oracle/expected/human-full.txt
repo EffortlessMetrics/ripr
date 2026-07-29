@@ -6,7 +6,7 @@ Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
 Changed file(s) by language: rust: 0, typescript: 1.
 
-INFO src/discount.ts:2
+WARNING src/discount.ts:2
 
 Changed
   after:      if (amount >= threshold) {
@@ -32,7 +32,7 @@ Preview actionability
   raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
 
 Static exposure
-  exposed (info, confidence 0.60)
+  exposed (warning, confidence 0.60)
 
 Evidence
   - reach yes: 2 related test(s) found for owner `applyDiscount`

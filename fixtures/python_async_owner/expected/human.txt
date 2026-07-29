@@ -12,7 +12,7 @@ Start here:
   File: src/loading.py:2
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/loading.py:load_total:return_value:return_value:await_client.total+2
   Changed behavior: return await client.total() + 2
   Discriminator (observed, advisory): Related Python test reaches `load_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

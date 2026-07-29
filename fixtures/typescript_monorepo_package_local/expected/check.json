@@ -9,7 +9,7 @@
     {
       "id": "probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a",

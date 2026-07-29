@@ -12,7 +12,7 @@ Start here:
   File: src/cache.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Changed behavior: handlers[key]();
   Discriminator (observed, advisory): Related test reaches `dispatchAction` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminat…
   Related test: tests/cache.test.ts:3 dispatchAction calls the named handler

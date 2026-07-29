@@ -120,7 +120,7 @@
     {
       "id": "probe:src_observed.ts:typescript_preview:d09a8abb",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_observed.ts:typescript_preview:d09a8abb",

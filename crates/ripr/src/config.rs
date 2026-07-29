@@ -39,7 +39,7 @@ broad_error_strength = "weak"
 
 [severity.findings]
 # Valid severities: info, warning, note.
-exposed = "info"
+exposed = "warning"
 weakly_exposed = "warning"
 reachable_unrevealed = "warning"
 no_static_path = "warning"

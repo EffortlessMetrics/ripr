@@ -21,7 +21,7 @@
 
       },
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_risk.py:python_preview:6835190f",

@@ -9,6 +9,17 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Changed
+
+- The default diagnostic severity for `exposed` findings has been raised from
+  `info` to `warning`. Previously, the strongest classification (`exposed`)
+  rendered as a quieter blue info squiggle while weaker classes
+  (`weakly_exposed`, `reachable_unrevealed`) rendered as yellow warnings — an
+  inversion of the importance hierarchy. Now `exposed` matches `weakly_exposed`
+  at `warning`, so the Problems panel and GitHub annotations surface the most
+  actionable signal at equal or higher prominence than uncertain ones
+  ([#2592](https://github.com/EffortlessMetrics/ripr-swarm/issues/2592)).
+
 ### Added
 
 - `[profile.dev]` now uses `debug = "line-tables-only"` instead of the cargo

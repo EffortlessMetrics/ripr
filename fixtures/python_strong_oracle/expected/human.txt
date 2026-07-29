@@ -12,7 +12,7 @@ Start here:
   File: src/discount.py:2
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/discount.py:apply_discount:predicate_boundary:predicate:amount>=threshold
   Changed behavior: if amount >= threshold:
   Discriminator (observed, advisory): Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

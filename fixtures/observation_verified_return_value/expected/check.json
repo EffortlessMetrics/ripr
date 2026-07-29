@@ -9,7 +9,7 @@
     {
       "id": "probe:src_lib.rs:return_value:bc806f88",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:return_value:bc806f88",

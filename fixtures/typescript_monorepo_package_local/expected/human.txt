@@ -12,7 +12,7 @@ Start here:
   File: packages/pkg-a/src/discount.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Changed behavior: if (discountPct >= 100) {
   Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminato…
   Related test: packages/pkg-a/tests/discount.test.ts:4 applies discount within pkg-a

@@ -8,7 +8,7 @@ Start here:
   State: no_actionable_gap
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/observation_verified_side_effect/input/src/lib.rs:17
-  Static exposure: exposed (info, confidence 1.00)
+  Static exposure: exposed (warning, confidence 1.00)
   Changed behavior: notifier.send(order_id)
   Related test: tests/process_tests.rs:4 process_order_sends_exact_order_id
   Evidence:

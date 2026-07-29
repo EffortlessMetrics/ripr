@@ -9,7 +9,7 @@
     {
       "id": "probe:src_lib.rs:call_deletion:934aa430",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:call_deletion:934aa430",
@@ -89,7 +89,7 @@
     {
       "id": "probe:src_lib.rs:side_effect:95da2a37",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:side_effect:95da2a37",

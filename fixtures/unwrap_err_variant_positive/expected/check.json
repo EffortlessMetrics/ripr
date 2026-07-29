@@ -9,7 +9,7 @@
     {
       "id": "probe:src_lib.rs:error_path:6b37a3bc",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:error_path:6b37a3bc",
@@ -89,7 +89,7 @@
     {
       "id": "probe:src_lib.rs:return_value:832c68b7",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:return_value:832c68b7",

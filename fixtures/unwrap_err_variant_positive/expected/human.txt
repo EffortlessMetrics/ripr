@@ -8,7 +8,7 @@ Start here:
   State: no_actionable_gap
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
-  Static exposure: exposed (info, confidence 1.00)
+  Static exposure: exposed (warning, confidence 1.00)
   Changed behavior: return Err(CalcError::Negative);
   Related test: tests/errors.rs:4 negative_input_rejects_with_negative_error
   Evidence:

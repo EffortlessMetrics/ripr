@@ -8,7 +8,7 @@ Start here:
   State: no_actionable_gap
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/match_arm_observer/input/src/lib.rs:7
-  Static exposure: exposed (info, confidence 1.00)
+  Static exposure: exposed (warning, confidence 1.00)
   Changed behavior: Status::Idle => 0,
   Related test: tests/classify.rs:4 idle_arm_returns_zero
   Evidence:

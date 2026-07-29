@@ -413,7 +413,7 @@ pub struct FindingSeverityConfig {
 impl Default for FindingSeverityConfig {
     fn default() -> Self {
         Self {
-            exposed: ConfigSeverity::Info,
+            exposed: ConfigSeverity::Warning,
             weakly_exposed: ConfigSeverity::Warning,
             reachable_unrevealed: ConfigSeverity::Warning,
             no_static_path: ConfigSeverity::Warning,

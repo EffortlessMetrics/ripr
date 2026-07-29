@@ -12,7 +12,7 @@ Start here:
   File: src/risk.py:2
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/risk.py:risk_score:predicate_boundary:predicate:amount>=100
   Changed behavior: if amount >= 100:
   Discriminator (observed, advisory): Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

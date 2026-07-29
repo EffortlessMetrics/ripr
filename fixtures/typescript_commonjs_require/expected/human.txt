@@ -12,7 +12,7 @@ Start here:
   File: src/format.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Changed behavior: if (decimals <= 0) {
   Discriminator (observed, advisory): Related test reaches `formatAmount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator…
   Related test: tests/format.test.js:4 formats amount with two decimals

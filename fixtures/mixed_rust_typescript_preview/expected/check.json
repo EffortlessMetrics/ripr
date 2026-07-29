@@ -149,7 +149,7 @@
     {
       "id": "probe:web_discount.ts:typescript_preview:55f72c10",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:web_discount.ts:typescript_preview:55f72c10",

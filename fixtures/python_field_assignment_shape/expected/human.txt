@@ -12,7 +12,7 @@ Start here:
   File: src/invoice.py:6
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
   Changed behavior: self.status = "paid"
   Discriminator (observed, advisory): Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

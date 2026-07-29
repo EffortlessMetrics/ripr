@@ -12,7 +12,7 @@ Start here:
   File: src/formatter.py:4
   Language: python
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Canonical gap: gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key
   Changed behavior: if any(c < " " for c in key):
   Discriminator (observed, advisory): Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.

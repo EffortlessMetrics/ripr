@@ -385,7 +385,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("::notice file=src/lib.rs,line=21,title=ripr exposed::"));
+        assert!(rendered.contains("::warning file=src/lib.rs,line=21,title=ripr exposed::"));
         assert!(rendered.contains("Static RIPR exposure finding"));
         assert!(!rendered.contains("Stop reason"));
     }

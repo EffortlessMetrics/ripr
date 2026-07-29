@@ -147,7 +147,7 @@
     {
       "id": "probe:src_profile.ts:typescript_preview:1733d672",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_profile.ts:typescript_preview:1733d672",

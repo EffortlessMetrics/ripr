@@ -8,7 +8,7 @@ Start here:
   State: no_actionable_gap
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/weak_error_oracle_assert_matches/input/src/lib.rs:7
-  Static exposure: exposed (info, confidence 1.00)
+  Static exposure: exposed (warning, confidence 1.00)
   Changed behavior: return Err(AuthError::RevokedToken);
   Related test: tests/errors.rs:10 empty_token_rejects_with_revoked_token
   Evidence:

@@ -9,7 +9,7 @@
     {
       "id": "probe:src_util.ts:typescript_preview:5a933676",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_util.ts:typescript_preview:5a933676",

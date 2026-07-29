@@ -12,7 +12,7 @@ Start here:
   File: src/math.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: exposed (info, confidence 0.60)
+  Static exposure: exposed (warning, confidence 0.60)
   Changed behavior: return a + b + 0;
   Discriminator (observed, advisory): Related test reaches `add` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   Related test: tests/math.test.ts:4 add returns sum
