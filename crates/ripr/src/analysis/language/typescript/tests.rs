@@ -718,8 +718,8 @@ fn classify_change_projects_trusted_related_bun_array_buffer_facts_as_advisory_e
         r#"
 test("Blob copies ArrayBuffer-backed bytes", async () => {
   const shared = new SharedArrayBuffer(4);
-  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
-  const view = new Uint8Array(growable);
+  const fixed = new ArrayBuffer(4);
+  const view = new Uint8Array(fixed);
   const blob = new Blob([view, new Uint8Array(shared)]);
   hydrateBlob(blob);
   const copied = new Uint8Array(await blob.arrayBuffer());
@@ -757,10 +757,6 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
     );
     assert_evidence_contains(
         &finding,
-        "typescript_bun_ub_advisory_fact: resizable_array_buffer",
-    );
-    assert_evidence_contains(
-        &finding,
         "typescript_bun_ub_advisory_fact: view_backed_blob_input",
     );
     assert_evidence_contains(
@@ -772,9 +768,10 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         "typescript_bun_ub_bridge_hint: confidence=configured_hint",
     );
     assert_evidence_contains(&finding, "rust_owner=Blob::from_js_without_defer_gc");
+    assert_evidence_contains(&finding, "rust_owner=copy_to_unshared");
     assert_evidence_contains(
         &finding,
-        "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
+        "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation",
     );
     assert_evidence_contains(
         &finding,
@@ -787,6 +784,20 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
             .all(|entry| !entry.contains("max_byte_length_mention_only")),
         "maxByteLength mention-only must not be emitted for a Blob stable-byte observer: {:?}",
         finding.evidence
+    );
+    let placement_evidence: Vec<_> = finding
+        .evidence
+        .iter()
+        .filter(|entry| entry.starts_with("typescript_bun_ub_test_placement:"))
+        .collect();
+    assert_eq!(
+        placement_evidence.len(),
+        1,
+        "expected Blob-only placement evidence"
+    );
+    assert!(
+        placement_evidence[0].contains("missing discriminator is resizable ArrayBuffer"),
+        "expected the sole placement record to belong to the Blob profile: {placement_evidence:?}"
     );
     Ok(())
 }

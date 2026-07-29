@@ -1136,15 +1136,18 @@ mod tests {
         }
         assert_eq!(
             card.bun_cross_language_grips[1].rust_owner,
-            "ArrayBuffer::copy_to_unshared"
+            "copy_to_unshared"
         );
         assert_eq!(
-            card.bun_cross_language_grips[1]
+            card.bun_cross_language_grips[0]
                 .placement
                 .as_ref()
                 .map(|placement| placement.reason.as_str()),
-            Some("existing Blob + ArrayBuffer integration tests cover copy_to_unshared")
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+            )
         );
+        assert!(card.bun_cross_language_grips[1].placement.is_none());
         let json = typescript_preview_card_json_value(&card);
         assert_eq!(
             json["bun_cross_language_grip"]["profiles"]
@@ -1154,12 +1157,13 @@ mod tests {
         );
         assert_eq!(
             json["bun_cross_language_grip"]["profiles"][1]["rust_seam"]["owner"],
-            "ArrayBuffer::copy_to_unshared"
+            "copy_to_unshared"
         );
         assert_eq!(
-            json["bun_cross_language_grip"]["profiles"][1]["placement"]["reason"],
-            "existing Blob + ArrayBuffer integration tests cover copy_to_unshared"
+            json["bun_cross_language_grip"]["profiles"][0]["placement"]["reason"],
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
         );
+        assert!(json["bun_cross_language_grip"]["profiles"][1]["placement"].is_null());
         Ok(())
     }
 
@@ -1626,10 +1630,9 @@ mod tests {
     fn sample_bun_multiple_profile_finding() -> Finding {
         let mut finding = sample_bun_missing_resizable_finding();
         finding.evidence.extend([
-            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=ArrayBuffer::copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
             "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
-            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests cover copy_to_unshared\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
         ]);
         finding
     }

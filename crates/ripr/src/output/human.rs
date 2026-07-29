@@ -1474,10 +1474,9 @@ mod tests {
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
-            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=ArrayBuffer::copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
             "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
-            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests cover copy_to_unshared\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
         ];
 
         let rendered = render_finding(&finding);
@@ -1485,9 +1484,7 @@ mod tests {
         assert!(rendered.contains("  Bun cross-language grip 1/2:\n"));
         assert!(rendered.contains("    state: rust_ungripped_ts_missing_discriminator\n"));
         assert!(rendered.contains("  Bun cross-language grip 2/2:\n"));
-        assert!(rendered.contains(
-            "    Rust seam: src/jsc/array_buffer.rs owner=ArrayBuffer::copy_to_unshared"
-        ));
+        assert!(rendered.contains("    Rust seam: src/jsc/array_buffer.rs owner=copy_to_unshared"));
         assert!(rendered.contains(
             "    Rust seam: src/jsc/Blob.rs owner=Blob::from_js_without_defer_gc boundary=array_buffer.shared || array_buffer.resizable\n"
         ));
@@ -1516,9 +1513,22 @@ mod tests {
         assert!(rendered.contains(
             "    placement reason: existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\n"
         ));
-        assert!(rendered.contains(
-            "    placement reason: existing Blob + ArrayBuffer integration tests cover copy_to_unshared\n"
-        ));
+        assert_eq!(
+            rendered
+                .matches("    placement: rank 1 test/js/web/fetch/blob.test.ts\n")
+                .count(),
+            1,
+            "only the Blob profile may receive placement evidence"
+        );
+        let copy_profile = rendered
+            .split("  Bun cross-language grip 2/2:\n")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(!copy_profile.is_empty(), "expected copy profile rendering");
+        assert!(
+            !copy_profile.contains("    placement:"),
+            "copy_to_unshared must not receive placement evidence"
+        );
         assert!(rendered.contains("    proof mode: observable_red_green\n"));
         assert!(rendered.contains(
             "    proof mode reason: The missing TypeScript discriminator belongs in an existing bridged stable-byte observer route; future proof should be a system-Bun red/patched-green witness after the discriminator is added.\n"
