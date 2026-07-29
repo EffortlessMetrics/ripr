@@ -53,7 +53,7 @@ fn run_receipt_write(args: &[String]) -> Result<(), String> {
             .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
     }
 
-    std::fs::write(&path, &rendered).map_err(|err| {
+    crate::atomic_file::write(&path, rendered.as_bytes(), "receipt").map_err(|err| {
         format!(
             "write {} failed: {err}",
             output::outcome::display_path(&path)

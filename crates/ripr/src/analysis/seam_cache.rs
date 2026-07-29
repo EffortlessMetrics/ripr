@@ -641,11 +641,7 @@ impl RepoCorpusFingerprintCache {
         };
         let bytes = codec::encode_corpus_fingerprint(&envelope)?;
         let path = self.entry_path(fingerprint);
-        let tmp_path = path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, &bytes)
-            .map_err(|err| format!("write corpus fingerprint cache failed: {err}"))?;
-        std::fs::rename(&tmp_path, &path)
-            .map_err(|err| format!("rename corpus fingerprint cache failed: {err}"))?;
+        crate::atomic_file::write_cache(&path, &bytes, "corpus fingerprint cache")?;
         Ok(())
     }
 
@@ -849,7 +845,7 @@ impl RepoSeamFactCache {
         );
         let bytes = codec::encode(&envelope)?;
         let path = self.entry_path(key);
-        std::fs::write(&path, &bytes).map_err(|err| format!("write cache failed: {err}"))?;
+        crate::atomic_file::write_cache(&path, &bytes, "cache")?;
         Ok(CacheStoreStatus {
             label: "ok".to_string(),
         })
@@ -986,8 +982,7 @@ impl RepoSeamFactCache {
                 ShardedCacheEnvelope::new(key.clone(), index, shard_count, chunk.to_vec());
             let bytes = codec::encode_shard(&envelope)?;
             let path = self.sharded_entry_dir(key).join(&file);
-            std::fs::write(&path, &bytes)
-                .map_err(|err| format!("write sharded cache file failed: {err}"))?;
+            crate::atomic_file::write_cache(&path, &bytes, "sharded cache file")?;
             shard_refs.push(ShardedCacheShardRef {
                 index,
                 file,
@@ -1004,8 +999,7 @@ impl RepoSeamFactCache {
         );
         let bytes = codec::encode_sharded_manifest(&manifest)?;
         let manifest_path = self.sharded_manifest_path(key);
-        std::fs::write(&manifest_path, bytes)
-            .map_err(|err| format!("write sharded cache manifest failed: {err}"))?;
+        crate::atomic_file::write_cache(&manifest_path, &bytes, "sharded cache manifest")?;
         Ok(CacheStoreStatus {
             label: format!(
                 "sharded_ok_seams_{}_shards_{}_limit_{}",
@@ -1122,8 +1116,7 @@ impl RepoFileFactCache {
             .map_err(|err| format!("create file fact cache dir failed: {err}"))?;
         let envelope = FileFactCacheEnvelope::new(key.clone(), facts.clone());
         let bytes = codec::encode_file_facts(&envelope)?;
-        std::fs::write(self.entry_path(key), bytes)
-            .map_err(|err| format!("write file fact cache failed: {err}"))?;
+        crate::atomic_file::write_cache(&self.entry_path(key), &bytes, "file fact cache")?;
         Ok(())
     }
 
@@ -1183,7 +1176,7 @@ impl RepoSeamCountCache {
         let envelope = CountCacheEnvelope::new(key.clone(), counts.clone());
         let bytes = codec::encode_counts(&envelope)?;
         let path = self.entry_path(key);
-        std::fs::write(&path, &bytes).map_err(|err| format!("write count cache failed: {err}"))?;
+        crate::atomic_file::write_cache(&path, &bytes, "count cache")?;
         Ok(())
     }
 

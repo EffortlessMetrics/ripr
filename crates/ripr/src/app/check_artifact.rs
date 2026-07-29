@@ -25,12 +25,7 @@ use crate::config::{
 };
 use crate::domain::{Finding, LanguageId};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::{Path, PathBuf};
-
-/// Process-local sequence making concurrent temp-file names unique even on
-/// platforms with coarse system-clock resolution.
-static TEMP_FILE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Artifact envelope schema version. Bump on any envelope shape change; old
 /// artifacts fail closed at load instead of being misread.
@@ -133,7 +128,7 @@ pub(crate) fn write_check_artifact(
     };
     let json = serde_json::to_string_pretty(&artifact)
         .map_err(|err| format!("failed to serialize check artifact: {err}"))?;
-    atomic_write(path, json.as_bytes())
+    crate::atomic_file::write(path, json.as_bytes(), "check artifact")
 }
 
 /// Load an artifact and verify its identity against the current invocation,
@@ -485,70 +480,6 @@ fn canonical_root(root: &Path) -> Result<String, String> {
     std::fs::canonicalize(root)
         .map(|path| path.to_string_lossy().to_string())
         .map_err(|err| format!("failed to canonicalize root {}: {err}", root.display()))
-}
-
-/// Atomic write: a uniquely named temp file in the destination directory
-/// (same filesystem, so the rename is atomic), flushed and fsynced before
-/// the rename, and unlinked on any failure. A repeated `--write-artifact`
-/// to the same path replaces it via rename (last writer wins); concurrent
-/// writers use distinct temp names so one writer's failure cannot tear
-/// another's artifact.
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty());
-    let dir = parent.unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|err| {
-        format!(
-            "failed to create check artifact directory {}: {err}",
-            dir.display()
-        )
-    })?;
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .ok_or_else(|| format!("check artifact path {} has no file name", path.display()))?;
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp_path = dir.join(format!(
-        ".{file_name}.tmp-{}-{nanos}-{sequence}",
-        std::process::id()
-    ));
-    let result = (|| -> Result<(), String> {
-        let mut file = std::fs::File::create(&tmp_path).map_err(|err| {
-            format!(
-                "failed to create check artifact temp file {}: {err}",
-                tmp_path.display()
-            )
-        })?;
-        file.write_all(bytes).map_err(|err| {
-            format!(
-                "failed to write check artifact temp file {}: {err}",
-                tmp_path.display()
-            )
-        })?;
-        file.sync_all().map_err(|err| {
-            format!(
-                "failed to fsync check artifact temp file {}: {err}",
-                tmp_path.display()
-            )
-        })?;
-        drop(file);
-        std::fs::rename(&tmp_path, path).map_err(|err| {
-            format!(
-                "failed to finalize check artifact {}: {err}",
-                path.display()
-            )
-        })?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-    result
 }
 
 #[cfg(test)]

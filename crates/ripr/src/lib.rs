@@ -50,6 +50,8 @@
 //! ```
 //!
 
+mod atomic_file;
+
 #[cfg(not(feature = "lang-rust"))]
 compile_error!(
     "ripr requires the `lang-rust` Cargo feature; build rust-only binaries with `--no-default-features --features lang-rust`."
