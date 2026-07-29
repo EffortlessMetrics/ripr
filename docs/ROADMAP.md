@@ -63,11 +63,12 @@ The operator-signal slice is now closed: submodule changes, gate reasons, and
 GitHub annotation levels have explicit integrity proof, including the
 source-of-truth all-warning repair. See the [Campaign 35 closeout](handoffs/2026-07-29-operator-signal-integrity-closeout.md).
 
-The next selected slice is Preview Projection Honesty: #2743 closes the JSON
-ordering documentation drift, and #2744 carries every configured TypeScript/Bun
-bridge profile through human, JSON, SARIF, and GitHub projections without
-turning preview evidence into runtime or repair-packet authority. See the
-[Campaign 36 plan](../plans/preview-projection-honesty/implementation-plan.md).
+Preview Projection Honesty is now closed: #2743 documents JSON ordering, and
+#2753 carries every configured TypeScript/Bun bridge profile through human,
+JSON, SARIF, and GitHub projections while preserving the documented
+first-profile compatibility alias without turning preview evidence into
+runtime or repair-packet authority. Follow-up #2764 records the remaining
+producer-through-renderer placement regression. See the [Campaign 36 closeout](handoffs/2026-07-29-preview-projection-honesty-closeout.md).
 
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the

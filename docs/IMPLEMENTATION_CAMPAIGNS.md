@@ -5507,9 +5507,10 @@ refactoring.
 
 Campaign ID: `preview-projection-honesty`
 
-Status: active
+Status: complete
 
-Tracker: issues #2716 and #2744; existing documentation PR #2743.
+Tracker: issues #2716, #2744, and follow-up #2764; PRs #2743, #2746,
+#2753, and #2757.
 
 This campaign keeps preview output faithful when the producer has more than
 one configured TypeScript/Bun bridge profile. It also closes the JSON-order
@@ -5518,9 +5519,9 @@ consumer contract.
 
 | Work item | Status | Summary |
 | --- | --- | --- |
-| `output/json-order-contract` | in review | #2743 documents semantic JSON object ordering and explicitly excludes exact-byte canonical artifacts. |
-| `output/multi-bun-profile-projection` | ready | #2744 will retain every emitted Bun bridge profile across human, JSON, SARIF, and GitHub projections, with Blob plus `copy_to_unshared` regression coverage. |
-| `campaign/preview-projection-closeout` | pending | Record merge proof, issue disposition, preview-only claim boundaries, and follow-ups. |
+| `output/json-order-contract` | done | #2743 documents semantic JSON object ordering and explicitly excludes exact-byte canonical artifacts. |
+| `output/multi-bun-profile-projection` | done | #2753 retains every emitted Bun bridge profile across human, JSON, SARIF, and GitHub projections, with Blob plus `copy_to_unshared` regression coverage; the first producer profile remains the documented singular compatibility alias. |
+| `campaign/preview-projection-closeout` | done | #2757's [closeout handoff](handoffs/2026-07-29-preview-projection-honesty-closeout.md) records merged heads, proof, claim boundaries, and follow-up disposition. |
 
 Non-goals: new Bun taxonomy or discovery, runtime Bun execution, mutation,
 coverage or adequacy claims, public repair-packet promotion, default blocking,

@@ -47,3 +47,33 @@ The focused tests establish profile retention and cross-surface agreement.
 They do not establish runtime Bun behavior, mutation outcomes, or general
 cross-language correctness.
 
+## Completion receipt
+
+Campaign 36 is complete. The JSON-order documentation slice merged as #2743
+at `17560690002de21a4615a92ac13053d64b1346fe`; campaign source-truth setup
+merged as #2746 at `8783582935d7ff0b23a68710c90727bc0ac57ad2`; and the
+multi-profile implementation merged as #2753 at
+`fd3a44771e401e074abeec7833f04e12968926a1` from final head
+`06e097e6a6ed41c4a2a5e02e67ef3bb4208362f6`.
+
+The focused card and cross-renderer tests passed, as did formatting, the
+profile-specific multi-profile retention regression, hosted required Rust
+gates, hosted workspace tests, coverage, UB review, dependency review, and
+source-of-truth checks. The first producer profile remains the historical
+singular compatibility alias while `profiles[]` remains producer ordered.
+Issues #2716 and #2744 are closed. The result remains preview-only:
+it does not claim runtime Bun execution, mutation outcomes, coverage or test
+adequacy, public repair-packet authority, or default blocking.
+
+The local full `cargo xtask check-pr` attempt was not completed because
+unrelated Cargo jobs held shared build locks; hosted required gates provide
+the workspace-level merge proof. The local full-library attempt exposed
+`git::tests::deadline_kills_pipe_inheriting_descendants_without_blocking_the_reader`,
+`git::tests::output_larger_than_the_pipe_buffer_does_not_deadlock`,
+`lsp::tests::framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_release`,
+`lsp::tests::framed_lsp_direct_root_switch_repulls_on_reselection`, and
+`output::github::tests::render_github_paths_are_repo_relative_without_dot_prefix`.
+These were not reproduced against `origin/main`, so they remain unresolved
+verification gaps and are not claimed as inherited failures. Follow-up #2764
+tracks a producer-through-renderer regression for multi-profile placement
+evidence. Broader Bun discovery/runtime support remains outside scope.
