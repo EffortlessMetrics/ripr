@@ -1040,7 +1040,12 @@ JSON fields:
   `raw_evidence_refs[]`, `action`, `suggested_test_file`, optional
   `placement`, nested `proof_mode`, nested `advisory_packet`, `authority_boundary`, and
   `repair_packet_ready`. The nested `advisory_packet` is a preview task-shaping
-  packet, not public repair-packet authority. It carries
+  packet, not public repair-packet authority. When one finding has multiple
+  configured Bun bridge profiles, the first profile remains in
+  `bun_cross_language_grip` for compatibility and the same object also carries
+  `profiles[]`, containing every full grip in deterministic producer order.
+  Human, JSON, SARIF, and GitHub projections must retain every profile;
+  consumers must not treat the first profile as an exhaustive summary. It carries
   `packet_version = "bun_cross_language_advisory_packet.v1"`,
   `cross_language_state`, `rust_file`, `rust_owner`, `rust_boundary`,
   nullable `ts_test_file`, `missing_discriminators[]`, `suggested_shape`,

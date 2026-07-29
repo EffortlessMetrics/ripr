@@ -94,9 +94,22 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(", suggested shape `");
             message.push_str(&card.suggested_assertion_shape);
             message.push_str("` (advisory preview; no repair packet).");
-            if let Some(grip) = &card.bun_cross_language_grip {
-                message.push_str(" Bun cross-language grip: ");
+            for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
+                if card.bun_cross_language_grips.len() == 1 {
+                    message.push_str(" Bun cross-language grip: ");
+                } else {
+                    message.push_str(" Bun cross-language grip ");
+                    message.push_str(&(index + 1).to_string());
+                    message.push('/');
+                    message.push_str(&card.bun_cross_language_grips.len().to_string());
+                    message.push_str(": ");
+                }
                 message.push_str(&grip.state);
+                message.push_str("; Rust seam `");
+                message.push_str(&grip.rust_file);
+                message.push(':');
+                message.push_str(&grip.rust_owner);
+                message.push('`');
                 message.push_str("; action `");
                 message.push_str(&grip.action);
                 message.push_str("`; suggested test file `");
@@ -517,17 +530,28 @@ mod tests {
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=ArrayBuffer::copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests cover copy_to_unshared\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
         ];
 
         let rendered = render(&output);
 
         assert!(
-            rendered.contains("Bun cross-language grip%3A rust_ungripped_ts_missing_discriminator")
+            rendered
+                .contains("Bun cross-language grip 1/2%3A rust_ungripped_ts_missing_discriminator")
         );
+        assert!(
+            rendered
+                .contains("Bun cross-language grip 2/2%3A rust_ungripped_ts_missing_discriminator")
+        );
+        assert!(rendered.contains("copy_to_unshared"));
         assert!(rendered.contains("action `route_cross_language_oracle_visibility_limitation`"));
         assert!(rendered.contains("suggested test file `test/js/web/fetch/blob.test.ts`"));
         assert!(rendered.contains("TypeScript placement%3A rank 1"));
         assert!(rendered.contains("missing discriminator is resizable ArrayBuffer"));
+        assert!(rendered.contains("cover copy_to_unshared"));
         assert!(rendered.contains("(preview advisory)."));
     }
 

@@ -452,8 +452,16 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
         "  oracle: {} ({})\n",
         card.oracle_kind, card.oracle_strength
     ));
-    if let Some(grip) = &card.bun_cross_language_grip {
-        out.push_str("  Bun cross-language grip:\n");
+    for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
+        if card.bun_cross_language_grips.len() == 1 {
+            out.push_str("  Bun cross-language grip:\n");
+        } else {
+            out.push_str(&format!(
+                "  Bun cross-language grip {}/{}:\n",
+                index + 1,
+                card.bun_cross_language_grips.len()
+            ));
+        }
         out.push_str(&format!("    state: {}\n", grip.state));
         out.push_str(&format!(
             "    Rust seam: {} owner={} boundary={}\n",
