@@ -164,6 +164,13 @@
             "deep",
             "ready"
           ],
+          "enumDescriptions": [
+            "Instant: fastest, scopes to changed file only",
+            "Draft: default developer mode, scopes to changed package",
+            "Fast: currently equivalent to draft",
+            "Deep: scopes to the entire workspace",
+            "Ready: review-ready mode, deep scope with stricter evidence"
+          ],
           "default": "draft",
           "description": "Preferred ripr check mode for editor-triggered analysis."
         },
@@ -174,11 +181,13 @@
         },
         "ripr.gitTimeoutMs": {
           "type": "number",
+          "minimum": 1000,
           "default": 30000,
           "description": "Deadline in milliseconds for each git invocation in the ripr language server's refresh path. A git command that exceeds the deadline is terminated and the refresh commits a limited snapshot naming git_invocation_timeout; run the ripr.refreshDiagnostics command to retry."
         },
         "ripr.refreshDeadlineMs": {
           "type": "number",
+          "minimum": 1000,
           "default": 600000,
           "description": "Physical deadline in milliseconds for one whole refresh analysis attempt in the ripr language server. An attempt that exceeds the deadline is dropped fail-closed with the named deadline_exceeded outcome and an 'analysis deadline exceeded' progress end — no limited snapshot is committed; the next save or the ripr.refreshDiagnostics command starts a fresh attempt."
         },
@@ -189,8 +198,13 @@
             "messages",
             "verbose"
           ],
+          "enumDescriptions": [
+            "Off: no trace output",
+            "Messages: log request/response method names and byte counts",
+            "Verbose: log full message transport (not analysis reasoning)"
+          ],
           "default": "off",
-          "description": "Trace ripr language-server messages in the ripr output channel."
+          "description": "Trace ripr language-server message transport in the ripr output channel. This traces LSP JSON-RPC messages, not analysis-stage reasoning — use `ripr explain` or `ripr check --json` for analysis detail."
         }
       }
     },

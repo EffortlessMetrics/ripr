@@ -11,6 +11,22 @@ are scoped or reviewed.
 
 ### Fixed
 
+- AGENTS.md example commands used a stale probe ID (`error_path:8ee9f771`)
+  that no longer matches the sample fixture. Updated to the current
+  `error_path:c1a03250` so the examples work when copy-pasted.
+- `docs/CONFIGURATION.md` said the LSP reads "six keys" but the table below
+  and the code confirm seven governed keys. Corrected to "seven."
+- `crates/ripr/README.md` distribution row called GitHub Releases
+  "unpublished working drafts" but the crate is published on crates.io.
+  Reworded to accurately reflect the crates.io distribution channel.
+- VS Code settings `ripr.check.mode` and `ripr.trace.server` now carry
+  `enumDescriptions` so the Settings UI dropdown explains each option.
+  The `ripr.trace.server` description now clarifies it traces LSP transport,
+  not analysis reasoning.
+- VS Code settings `ripr.gitTimeoutMs` and `ripr.refreshDeadlineMs` now
+  declare `minimum: 1000` to prevent silent acceptance of 0 or negative
+  values.
+
 - Three test modules used fixed (non-unique) temporary directory names that
   could collide under parallel test execution, causing intermittent flakes.
   The paths now include the process ID so parallel test threads never share

@@ -315,7 +315,7 @@ LSP runtime behavior is not configured by CLI flags; clients pass options via
 
 When an LSP client starts `ripr lsp --stdio`, it can shape analysis by sending
 an `initializationOptions` object on the `initialize` request. The server
-reads six keys; everything else is ignored. The schema lives in
+reads seven keys; everything else is ignored. The schema lives in
 [`crates/ripr/src/lsp/config.rs`](../crates/ripr/src/lsp/config.rs).
 
 | Key | Type | Default | Effect |
