@@ -2015,3 +2015,17 @@ incomplete enforcement.
 
 Cross-references: #2346 (doctrine ask), #2463 (contract-parity meta-gate),
 #2466/#2479/#2484 (implementation PRs for individual instances).
+
+## 2026-07-29: A visible fallback must survive the warm path
+
+Fallback disclosure is only honest if the provenance survives caching. Emitting
+the lexical-fallback file list during cold computation is insufficient: a warm
+file-facts or classified-seam cache can otherwise replay the result without
+the limitation that explains its weaker evidence. Persist the fallback paths in
+each relevant cache envelope/manifest and replay one stable, sorted disclosure
+on every supported route. The same audit applies to policy candidate lists:
+include the actual editor languages and pin each extension with focused tests.
+
+The claim remains deliberately narrow. Disclosure explains where static
+evidence was weakened; it does not prove runtime behavior, test adequacy, or
+release readiness.

@@ -5454,3 +5454,25 @@ same finding. The production contract remains static and advisory.
 
 Non-goals: runtime mutation execution, adequacy or coverage claims, default CI
 blocking, release/publish changes, and repair-packet authority changes.
+
+## Campaign 34: Analyzer Honesty and Policy Visibility
+
+Campaign ID: `analyzer-honesty-and-policy-visibility`
+
+Status: complete
+
+Tracker: issues #2698 and #2699; PRs #2702 and #2703.
+
+This campaign makes two previously implicit limits visible without promoting
+static evidence into runtime or adequacy claims: policy scans cover the actual
+editor extension source languages, and repo/seam analysis discloses when the
+parser fell back to lexical facts, including on warm cache paths.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `policy/static-language-editor-surface` | done | #2703 scans `.ts`, `.js`, `.tsx`, and `.jsx` editor sources, with focused xtask coverage. |
+| `analysis/lexical-fallback-disclosure` | done | #2702 records producer fallback provenance, preserves it through file and classified-seam caches/schema, and emits stable sorted disclosure without claiming runtime mutation or adequacy. |
+| `campaign/analyzer-honesty-closeout` | done | The [closeout handoff](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md) records merged heads, hosted proof, local proof boundaries, and follow-up disposition. |
+
+Non-goals: runtime mutation execution, test adequacy or coverage claims,
+release/publish changes, default blocking, and broad parser replacement.

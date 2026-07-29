@@ -54,6 +54,11 @@ The CLI discoverability slice for that target is now closed: the default human
 while preserving the analyzed scope. See the
 [CLI finding navigation closeout](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md).
 
+The next analyzer-honesty slice is also closed: policy scans include the
+editor's actual source languages, and repo/seam analysis discloses parser
+fallback through warm caches. See the [analyzer honesty and policy visibility
+closeout](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from
