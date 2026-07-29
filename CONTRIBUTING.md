@@ -258,3 +258,8 @@ For behavior changes, update:
 For decisions, add or update an ADR.
 
 For repo knowledge, update [Learnings](docs/LEARNINGS.md).
+## Optional Linux LLD builds
+
+The normal workspace build uses the platform default linker and does not
+require LLVM. In a controlled Linux environment with `clang` and `ld.lld`
+installed, use `cargo build-lld --release` to opt into the faster linker path.
