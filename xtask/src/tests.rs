@@ -24512,6 +24512,13 @@ fn worktree_doctor_flags_dirty_main_and_behind_branch() {
 }
 
 #[test]
+fn worktree_doctor_rejects_detached_head() {
+    let findings = worktree_doctor_findings("HEAD", 0, &[], false, false, false);
+
+    assert!(doctor_has_error(&findings, "detached HEAD"));
+}
+
+#[test]
 fn worktree_doctor_rejects_badge_endpoint_outside_refresh_context() {
     let changes = vec![changed_path("badges/ripr.json", &["M"])];
     let findings = worktree_doctor_findings("badge/diff-policy", 0, &changes, false, false, false);

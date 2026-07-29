@@ -13063,6 +13063,12 @@ fn worktree_doctor_findings(
     let mut findings = Vec::new();
     let dirty = !status_changes.is_empty();
 
+    if branch == "HEAD" {
+        findings.push(worktree_error(
+            "worktree is on a detached HEAD; start PR work from a named branch based on origin/main",
+        ));
+    }
+
     if branch == "main" && dirty {
         findings.push(worktree_error(
             "main branch has uncommitted changes; start PR work in a fresh worktree from origin/main",
