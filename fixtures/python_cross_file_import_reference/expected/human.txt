@@ -24,8 +24,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_tax.py:python_preview:edfd1a02
-  ripr context --at probe:src_tax.py:python_preview:edfd1a02
+  ripr explain --root fixtures/python_cross_file_import_reference/input --diff fixtures/python_cross_file_import_reference/diff.patch --mode fast probe:src_tax.py:python_preview:edfd1a02
+  ripr context --root fixtures/python_cross_file_import_reference/input --diff fixtures/python_cross_file_import_reference/diff.patch --mode fast --at probe:src_tax.py:python_preview:edfd1a02
 
 More:
   Full evidence: rerun with --format human-full

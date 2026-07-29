@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:match_arm:bb59fbfe
-  ripr context --at probe:src_lib.rs:match_arm:bb59fbfe
+  ripr explain --root fixtures/match_arm_blind/input --diff fixtures/match_arm_blind/diff.patch --mode fast probe:src_lib.rs:match_arm:bb59fbfe
+  ripr context --root fixtures/match_arm_blind/input --diff fixtures/match_arm_blind/diff.patch --mode fast --at probe:src_lib.rs:match_arm:bb59fbfe
 
 More:
   Full evidence: rerun with --format human-full

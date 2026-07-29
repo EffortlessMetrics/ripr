@@ -23,8 +23,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.ts:typescript_preview:bd772dc8
-  ripr context --at probe:src_pricing.ts:typescript_preview:bd772dc8
+  ripr explain --root fixtures/typescript_related_test_name_proximity/input --diff fixtures/typescript_related_test_name_proximity/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:bd772dc8
+  ripr context --root fixtures/typescript_related_test_name_proximity/input --diff fixtures/typescript_related_test_name_proximity/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:bd772dc8
 
 More:
   Full evidence: rerun with --format human-full

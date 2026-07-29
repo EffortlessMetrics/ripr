@@ -24,8 +24,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_discount.py:python_preview:d1182145
-  ripr context --at probe:src_discount.py:python_preview:d1182145
+  ripr explain --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --mode fast probe:src_discount.py:python_preview:d1182145
+  ripr context --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --mode fast --at probe:src_discount.py:python_preview:d1182145
 
 More:
   Full evidence: rerun with --format human-full

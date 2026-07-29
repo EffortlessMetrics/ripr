@@ -22,8 +22,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.py:python_preview:ca00849b
-  ripr context --at probe:src_pricing.py:python_preview:ca00849b
+  ripr explain --root fixtures/python_property_based_limit/input --diff fixtures/python_property_based_limit/diff.patch --mode fast probe:src_pricing.py:python_preview:ca00849b
+  ripr context --root fixtures/python_property_based_limit/input --diff fixtures/python_property_based_limit/diff.patch --mode fast --at probe:src_pricing.py:python_preview:ca00849b
 
 More:
   Full evidence: rerun with --format human-full

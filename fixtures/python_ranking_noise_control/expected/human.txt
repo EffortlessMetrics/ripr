@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_c_discount.py:python_preview:91995184
-  ripr context --at probe:src_c_discount.py:python_preview:91995184
+  ripr explain --root fixtures/python_ranking_noise_control/input --diff fixtures/python_ranking_noise_control/diff.patch --mode fast probe:src_c_discount.py:python_preview:91995184
+  ripr context --root fixtures/python_ranking_noise_control/input --diff fixtures/python_ranking_noise_control/diff.patch --mode fast --at probe:src_c_discount.py:python_preview:91995184
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.

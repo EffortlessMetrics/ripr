@@ -22,8 +22,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_auth.ts:typescript_preview:1091eef0
-  ripr context --at probe:src_auth.ts:typescript_preview:1091eef0
+  ripr explain --root fixtures/typescript_adversarial_same_method_other_class/input --diff fixtures/typescript_adversarial_same_method_other_class/diff.patch --mode fast probe:src_auth.ts:typescript_preview:1091eef0
+  ripr context --root fixtures/typescript_adversarial_same_method_other_class/input --diff fixtures/typescript_adversarial_same_method_other_class/diff.patch --mode fast --at probe:src_auth.ts:typescript_preview:1091eef0
 
 More:
   Full evidence: rerun with --format human-full

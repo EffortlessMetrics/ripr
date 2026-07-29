@@ -199,17 +199,31 @@ fn artifact_wire_form_uses_documented_snake_case_vocabulary() -> Result<(), Stri
 }
 
 #[test]
-fn explain_from_artifact_is_byte_identical_to_fresh_explain() -> Result<(), String> {
+fn explain_from_artifact_preserves_detail_and_source_navigation() -> Result<(), String> {
     let dir = unique_temp_dir("explain-identical")?;
     let result = (|| {
         let (path, input, config, _) = write_sample_artifact(&dir)?;
         let fresh =
             crate::app::explain_finding_with_config(input.clone(), SAMPLE_SELECTOR, &config)?;
         let reused = explain_finding_from_artifact(input, SAMPLE_SELECTOR, &config, &path, None)?;
-        if fresh != reused {
+        let fresh_detail = fresh
+            .lines()
+            .filter(|line| !line.starts_with("Next: ripr context "))
+            .collect::<Vec<_>>();
+        let reused_detail = reused
+            .lines()
+            .filter(|line| !line.starts_with("Next: ripr context "))
+            .collect::<Vec<_>>();
+        if fresh_detail != reused_detail {
             return Err(format!(
-                "reused explain output differs from fresh output\nfresh:\n{fresh}\nreused:\n{reused}"
+                "reused explain detail differs from fresh output\nfresh:\n{fresh}\nreused:\n{reused}"
             ));
+        }
+        if !fresh.contains("Next: ripr context --root")
+            || !reused.contains("Next: ripr context --root")
+            || !reused.contains("--from")
+        {
+            return Err("explain navigation did not preserve its source identity".to_string());
         }
         if !reused.contains("Static exposure") {
             return Err("explain output is missing its exposure section".to_string());

@@ -17,8 +17,8 @@ Start here:
     - 10 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:error_path:e4b7f445
-  ripr context --at probe:src_lib.rs:error_path:e4b7f445
+  ripr explain --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast probe:src_lib.rs:error_path:e4b7f445
+  ripr context --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast --at probe:src_lib.rs:error_path:e4b7f445
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

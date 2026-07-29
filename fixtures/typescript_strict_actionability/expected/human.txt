@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.ts:typescript_preview:eaef2ad8
-  ripr context --at probe:src_pricing.ts:typescript_preview:eaef2ad8
+  ripr explain --root fixtures/typescript_strict_actionability/input --diff fixtures/typescript_strict_actionability/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:eaef2ad8
+  ripr context --root fixtures/typescript_strict_actionability/input --diff fixtures/typescript_strict_actionability/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:eaef2ad8
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.

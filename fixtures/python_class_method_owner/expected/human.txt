@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_factory.py:python_preview:ed4a25c1
-  ripr context --at probe:src_factory.py:python_preview:ed4a25c1
+  ripr explain --root fixtures/python_class_method_owner/input --diff fixtures/python_class_method_owner/diff.patch --mode fast probe:src_factory.py:python_preview:ed4a25c1
+  ripr context --root fixtures/python_class_method_owner/input --diff fixtures/python_class_method_owner/diff.patch --mode fast --at probe:src_factory.py:python_preview:ed4a25c1
 
 More:
   Full evidence: rerun with --format human-full

@@ -11,6 +11,7 @@ pub(crate) mod check_artifact;
 mod context;
 mod explain;
 pub(crate) mod impacted_evidence;
+mod navigation;
 pub(crate) mod pr_evidence;
 pub(crate) mod pr_summary;
 pub(crate) mod receipt;
@@ -37,9 +38,15 @@ pub use check::{
 pub(crate) use context::collect_context_from_artifact;
 pub use context::collect_context_with_config;
 pub use context::{collect_context, collect_context_with_input};
+#[cfg(test)]
 pub(crate) use explain::explain_finding_from_artifact;
 pub use explain::explain_finding_with_config;
 pub use explain::{explain_finding, explain_finding_with_input};
+pub(crate) use explain::{
+    explain_finding_from_artifact_with_navigation_mode,
+    explain_finding_with_config_and_navigation_mode,
+};
+pub(crate) use navigation::{FindingNavigation, finding_navigation};
 
 use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;
@@ -216,6 +223,15 @@ pub(crate) fn render_check_with_config(
     config: &RiprConfig,
 ) -> Result<String, String> {
     output::render::render_check_with_config(output, format, config)
+}
+
+pub(crate) fn render_check_with_config_and_navigation(
+    output: &CheckOutput,
+    format: &OutputFormat,
+    config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
+) -> Result<String, String> {
+    output::render::render_check_with_config_and_navigation(output, format, config, navigation)
 }
 
 #[cfg(test)]

@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:call_deletion:f297c803
-  ripr context --at probe:src_lib.rs:call_deletion:f297c803
+  ripr explain --root fixtures/propagate_swallowed_ok/input --diff fixtures/propagate_swallowed_ok/diff.patch --mode fast probe:src_lib.rs:call_deletion:f297c803
+  ripr context --root fixtures/propagate_swallowed_ok/input --diff fixtures/propagate_swallowed_ok/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:f297c803
 
 More:
   Full evidence: rerun with --format human-full

@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_parseint.py:python_preview:0f645328
-  ripr context --at probe:src_parseint.py:python_preview:0f645328
+  ripr explain --root fixtures/python_adversarial_error_path_untaken_branch/input --diff fixtures/python_adversarial_error_path_untaken_branch/diff.patch --mode fast probe:src_parseint.py:python_preview:0f645328
+  ripr context --root fixtures/python_adversarial_error_path_untaken_branch/input --diff fixtures/python_adversarial_error_path_untaken_branch/diff.patch --mode fast --at probe:src_parseint.py:python_preview:0f645328
 
 More:
   Full evidence: rerun with --format human-full

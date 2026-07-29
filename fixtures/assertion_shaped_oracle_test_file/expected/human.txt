@@ -19,8 +19,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_fragment_checks.rs:predicate:41d9e03a
-  ripr context --at probe:src_fragment_checks.rs:predicate:41d9e03a
+  ripr explain --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast probe:src_fragment_checks.rs:predicate:41d9e03a
+  ripr context --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast --at probe:src_fragment_checks.rs:predicate:41d9e03a
 
 More:
   Full evidence: rerun with --format human-full

@@ -3145,6 +3145,18 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
             }
+            "--perl-facts" => {
+                i += 1;
+                input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
+            }
+            "--suppression-policy" => {
+                i += 1;
+                input.suppression_policy = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--suppression-policy",
+                )?));
+            }
             "--help" | "-h" => {
                 help::print_explain_help();
                 return Ok(());
@@ -3165,14 +3177,20 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
         None
     };
     let rendered = match from_artifact.as_deref() {
-        Some(artifact_path) => app::explain_finding_from_artifact(
+        Some(artifact_path) => app::explain_finding_from_artifact_with_navigation_mode(
             input,
             &selector,
             &config,
             artifact_path,
             asserted_base.as_deref(),
+            explicit.mode,
         )?,
-        None => app::explain_finding_with_config(input, &selector, &config)?,
+        None => app::explain_finding_with_config_and_navigation_mode(
+            input,
+            &selector,
+            &config,
+            explicit.mode,
+        )?,
     };
     println!("{rendered}");
     Ok(())
@@ -7867,6 +7885,14 @@ language = "rust"
         assert_eq!(
             explain(&args(&["--diff"])),
             Err("missing value for --diff".to_string())
+        );
+        assert_eq!(
+            explain(&args(&["--perl-facts"])),
+            Err("missing value for --perl-facts".to_string())
+        );
+        assert_eq!(
+            explain(&args(&["--suppression-policy"])),
+            Err("missing value for --suppression-policy".to_string())
         );
     }
 

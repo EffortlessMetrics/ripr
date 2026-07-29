@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:static_unknown:401a7bb9
-  ripr context --at probe:src_lib.rs:static_unknown:401a7bb9
+  ripr explain --root fixtures/lsp_agent_protocol/input --diff fixtures/lsp_agent_protocol/diff.patch --mode fast probe:src_lib.rs:static_unknown:401a7bb9
+  ripr context --root fixtures/lsp_agent_protocol/input --diff fixtures/lsp_agent_protocol/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:401a7bb9
 
 More:
   Full evidence: rerun with --format human-full

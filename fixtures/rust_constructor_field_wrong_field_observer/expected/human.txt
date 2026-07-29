@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:return_value:f04ff7e2
-  ripr context --at probe:src_lib.rs:return_value:f04ff7e2
+  ripr explain --root fixtures/rust_constructor_field_wrong_field_observer/input --diff fixtures/rust_constructor_field_wrong_field_observer/diff.patch --mode fast probe:src_lib.rs:return_value:f04ff7e2
+  ripr context --root fixtures/rust_constructor_field_wrong_field_observer/input --diff fixtures/rust_constructor_field_wrong_field_observer/diff.patch --mode fast --at probe:src_lib.rs:return_value:f04ff7e2
 
 More:
   Full evidence: rerun with --format human-full

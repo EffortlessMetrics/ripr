@@ -27,8 +27,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_stop.py:python_preview:87705a2c
-  ripr context --at probe:src_stop.py:python_preview:87705a2c
+  ripr explain --root fixtures/python_local_callable_binding/input --diff fixtures/python_local_callable_binding/diff.patch --mode fast probe:src_stop.py:python_preview:87705a2c
+  ripr context --root fixtures/python_local_callable_binding/input --diff fixtures/python_local_callable_binding/diff.patch --mode fast --at probe:src_stop.py:python_preview:87705a2c
 
 More:
   Full evidence: rerun with --format human-full

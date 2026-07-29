@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_notifications.py:python_preview:5ec908f0
-  ripr context --at probe:src_notifications.py:python_preview:5ec908f0
+  ripr explain --root fixtures/python_pytest_oracle_shapes/input --diff fixtures/python_pytest_oracle_shapes/diff.patch --mode fast probe:src_notifications.py:python_preview:5ec908f0
+  ripr context --root fixtures/python_pytest_oracle_shapes/input --diff fixtures/python_pytest_oracle_shapes/diff.patch --mode fast --at probe:src_notifications.py:python_preview:5ec908f0
 
 More:
   Full evidence: rerun with --format human-full

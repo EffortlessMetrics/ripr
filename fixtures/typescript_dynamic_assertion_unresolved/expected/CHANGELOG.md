@@ -164,3 +164,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2659: finding navigation commands now preserve the analyzed root, diff or artifact scope and shell-safe identity.
+
+Command:
+`cargo xtask goldens bless typescript_dynamic_assertion_unresolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

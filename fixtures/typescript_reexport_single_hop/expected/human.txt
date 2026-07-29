@@ -23,8 +23,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_util.ts:typescript_preview:5a933676
-  ripr context --at probe:src_util.ts:typescript_preview:5a933676
+  ripr explain --root fixtures/typescript_reexport_single_hop/input --diff fixtures/typescript_reexport_single_hop/diff.patch --mode fast probe:src_util.ts:typescript_preview:5a933676
+  ripr context --root fixtures/typescript_reexport_single_hop/input --diff fixtures/typescript_reexport_single_hop/diff.patch --mode fast --at probe:src_util.ts:typescript_preview:5a933676
 
 More:
   Full evidence: rerun with --format human-full

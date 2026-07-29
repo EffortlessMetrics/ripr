@@ -19,8 +19,8 @@ Start here:
     - 12 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:c80557eb
-  ripr context --at probe:src_lib.rs:predicate:c80557eb
+  ripr explain --root fixtures/editor_lsp_workflow/input --diff fixtures/editor_lsp_workflow/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/editor_lsp_workflow/input --diff fixtures/editor_lsp_workflow/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 More:
   Full evidence: rerun with --format human-full

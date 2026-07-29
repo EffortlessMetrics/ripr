@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:return_value:d0b06139
-  ripr context --at probe:src_lib.rs:return_value:d0b06139
+  ripr explain --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast probe:src_lib.rs:return_value:d0b06139
+  ripr context --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast --at probe:src_lib.rs:return_value:d0b06139
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

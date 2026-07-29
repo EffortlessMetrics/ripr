@@ -17,8 +17,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:call_deletion:934aa430
-  ripr context --at probe:src_lib.rs:call_deletion:934aa430
+  ripr explain --root fixtures/observation_verified_side_effect/input --diff fixtures/observation_verified_side_effect/diff.patch --mode fast probe:src_lib.rs:call_deletion:934aa430
+  ripr context --root fixtures/observation_verified_side_effect/input --diff fixtures/observation_verified_side_effect/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:934aa430
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

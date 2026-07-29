@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_checkout.py:python_preview:c3679833
-  ripr context --at probe:src_checkout.py:python_preview:c3679833
+  ripr explain --root fixtures/python_same_line_duplicate_collapse/input --diff fixtures/python_same_line_duplicate_collapse/diff.patch --mode fast probe:src_checkout.py:python_preview:c3679833
+  ripr context --root fixtures/python_same_line_duplicate_collapse/input --diff fixtures/python_same_line_duplicate_collapse/diff.patch --mode fast --at probe:src_checkout.py:python_preview:c3679833
 
 More:
   Full evidence: rerun with --format human-full

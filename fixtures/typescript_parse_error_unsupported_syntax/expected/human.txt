@@ -22,8 +22,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
-  ripr context --at probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
+  ripr explain --root fixtures/typescript_parse_error_unsupported_syntax/input --diff fixtures/typescript_parse_error_unsupported_syntax/diff.patch --mode fast probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
+  ripr context --root fixtures/typescript_parse_error_unsupported_syntax/input --diff fixtures/typescript_parse_error_unsupported_syntax/diff.patch --mode fast --at probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0
 
 More:
   Full evidence: rerun with --format human-full

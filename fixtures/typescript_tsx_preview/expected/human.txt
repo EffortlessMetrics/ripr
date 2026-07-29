@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_card.tsx:typescript_preview:a9c4e691
-  ripr context --at probe:src_card.tsx:typescript_preview:a9c4e691
+  ripr explain --root fixtures/typescript_tsx_preview/input --diff fixtures/typescript_tsx_preview/diff.patch --mode fast probe:src_card.tsx:typescript_preview:a9c4e691
+  ripr context --root fixtures/typescript_tsx_preview/input --diff fixtures/typescript_tsx_preview/diff.patch --mode fast --at probe:src_card.tsx:typescript_preview:a9c4e691
 
 More:
   Full evidence: rerun with --format human-full

@@ -19,8 +19,8 @@ Start here:
     - 8 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:return_value:d146b764
-  ripr context --at probe:src_lib.rs:return_value:d146b764
+  ripr explain --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast probe:src_lib.rs:return_value:d146b764
+  ripr context --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast --at probe:src_lib.rs:return_value:d146b764
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

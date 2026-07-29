@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_quantity.py:python_preview:9c7db092
-  ripr context --at probe:src_quantity.py:python_preview:9c7db092
+  ripr explain --root fixtures/python_pytest_raises/input --diff fixtures/python_pytest_raises/diff.patch --mode fast probe:src_quantity.py:python_preview:9c7db092
+  ripr context --root fixtures/python_pytest_raises/input --diff fixtures/python_pytest_raises/diff.patch --mode fast --at probe:src_quantity.py:python_preview:9c7db092
 
 More:
   Full evidence: rerun with --format human-full

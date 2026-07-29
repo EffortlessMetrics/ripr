@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_clamp.ts:typescript_preview:bd179af5
-  ripr context --at probe:src_clamp.ts:typescript_preview:bd179af5
+  ripr explain --root fixtures/typescript_dynamic_assertion_unresolved/input --diff fixtures/typescript_dynamic_assertion_unresolved/diff.patch --mode fast probe:src_clamp.ts:typescript_preview:bd179af5
+  ripr context --root fixtures/typescript_dynamic_assertion_unresolved/input --diff fixtures/typescript_dynamic_assertion_unresolved/diff.patch --mode fast --at probe:src_clamp.ts:typescript_preview:bd179af5
 
 More:
   Full evidence: rerun with --format human-full

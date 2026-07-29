@@ -209,7 +209,7 @@ or turn the full-repo limitation into a success state.
 "#;
 pub(super) const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
 
-Usage: ripr explain [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] <finding-id|file:line>
+Usage: ripr explain [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] <finding-id|file:line>
 
 Options:
   --from PATH  Load findings from a check artifact written by
@@ -228,6 +228,10 @@ Options:
                Limit the index to changed Rust files. With --from, an
                artifact written with this flag is consumable only when the
                same setting resolves here (flag or ripr.toml).
+  --perl-facts PATH
+               Use the explicit Perl facts packet for replay.
+  --suppression-policy PATH
+               Apply the explicit suppression policy for replay.
 
 Performance:
   Use --from to skip re-analysis when you already ran
@@ -237,7 +241,7 @@ Performance:
 "#;
 pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
 
-Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] --at <finding-id|file:line> [--max-related-tests N] [--json]
+Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
 
 Options:
   --from PATH  Load findings from a check artifact written by
@@ -251,6 +255,10 @@ Options:
   --no-unchanged-tests
                Limit the index to changed Rust files. With --from, feeds
                the identity recomputation (see `ripr explain --help`).
+  --perl-facts PATH
+               Use the explicit Perl facts packet for replay.
+  --suppression-policy PATH
+               Apply the explicit suppression policy for replay.
 
 Performance:
   Use --from to skip re-analysis when you already ran

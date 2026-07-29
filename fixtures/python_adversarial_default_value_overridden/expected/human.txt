@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_render.py:python_preview:bc1138cb
-  ripr context --at probe:src_render.py:python_preview:bc1138cb
+  ripr explain --root fixtures/python_adversarial_default_value_overridden/input --diff fixtures/python_adversarial_default_value_overridden/diff.patch --mode fast probe:src_render.py:python_preview:bc1138cb
+  ripr context --root fixtures/python_adversarial_default_value_overridden/input --diff fixtures/python_adversarial_default_value_overridden/diff.patch --mode fast --at probe:src_render.py:python_preview:bc1138cb
 
 More:
   Full evidence: rerun with --format human-full

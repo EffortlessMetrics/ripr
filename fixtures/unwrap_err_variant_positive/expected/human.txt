@@ -17,8 +17,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:error_path:6b37a3bc
-  ripr context --at probe:src_lib.rs:error_path:6b37a3bc
+  ripr explain --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast probe:src_lib.rs:error_path:6b37a3bc
+  ripr context --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast --at probe:src_lib.rs:error_path:6b37a3bc
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

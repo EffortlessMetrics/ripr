@@ -1,4 +1,4 @@
-use crate::app::CheckOutput;
+use crate::app::{CheckOutput, FindingNavigation};
 use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding};
 use crate::output::preview_actionability::preview_actionability_for;
@@ -92,6 +92,7 @@ pub(crate) fn render_human_triage(
     triage: &HumanTriage<'_>,
     output: &CheckOutput,
     config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
 ) {
     out.push_str("Start here:\n");
     out.push_str(&format!("  State: {}\n", triage.state.as_str()));
@@ -147,9 +148,11 @@ pub(crate) fn render_human_triage(
     }
     if let Some(finding) = triage.selected {
         out.push_str(&render_finding_digest_with_config(finding, config));
-        out.push_str("\nNext: drill into the top finding:\n");
-        out.push_str(&format!("  ripr explain {}\n", finding.id));
-        out.push_str(&format!("  ripr context --at {}\n", finding.id));
+        if let Some(navigation) = navigation {
+            out.push_str("\nNext: drill into the top finding:\n");
+            out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
+            out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
+        }
     }
     // #2567: the default human render is the release-facing surface, so it must
     // not claim a hidden remainder that does not exist. `Hidden:` plus a literal

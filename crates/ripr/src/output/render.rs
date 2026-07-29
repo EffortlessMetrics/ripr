@@ -3,8 +3,8 @@ use super::{
     repo_seams, sarif, suppressions,
 };
 use crate::analysis;
-use crate::app::CheckOutput;
 use crate::app::causal_projection::CausalDeltaArtifact;
+use crate::app::{CheckOutput, FindingNavigation};
 use crate::config::RiprConfig;
 use crate::output::repo_exposure::TsFullRepoGuidance;
 use std::collections::BTreeMap;
@@ -134,6 +134,20 @@ pub(crate) fn render_check_with_config(
                 ),
             )
         }
+    }
+}
+
+pub(crate) fn render_check_with_config_and_navigation(
+    output: &CheckOutput,
+    format: &OutputFormat,
+    config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
+) -> Result<String, String> {
+    match format {
+        OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
+            output, config, navigation,
+        )),
+        _ => render_check_with_config(output, format, config),
     }
 }
 

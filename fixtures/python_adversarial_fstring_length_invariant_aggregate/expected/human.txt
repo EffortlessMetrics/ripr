@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_status.py:python_preview:f3e3e6b2
-  ripr context --at probe:src_status.py:python_preview:f3e3e6b2
+  ripr explain --root fixtures/python_adversarial_fstring_length_invariant_aggregate/input --diff fixtures/python_adversarial_fstring_length_invariant_aggregate/diff.patch --mode fast probe:src_status.py:python_preview:f3e3e6b2
+  ripr context --root fixtures/python_adversarial_fstring_length_invariant_aggregate/input --diff fixtures/python_adversarial_fstring_length_invariant_aggregate/diff.patch --mode fast --at probe:src_status.py:python_preview:f3e3e6b2
 
 More:
   Full evidence: rerun with --format human-full

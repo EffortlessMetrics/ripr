@@ -18,8 +18,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:error_path:c566a7f6
-  ripr context --at probe:src_lib.rs:error_path:c566a7f6
+  ripr explain --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast probe:src_lib.rs:error_path:c566a7f6
+  ripr context --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:error_path:c566a7f6
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

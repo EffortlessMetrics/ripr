@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_fetch.ts:typescript_preview:9c3e9e7e
-  ripr context --at probe:src_fetch.ts:typescript_preview:9c3e9e7e
+  ripr explain --root fixtures/ts_runner_detect_ava_script/input --diff fixtures/ts_runner_detect_ava_script/diff.patch --mode fast probe:src_fetch.ts:typescript_preview:9c3e9e7e
+  ripr context --root fixtures/ts_runner_detect_ava_script/input --diff fixtures/ts_runner_detect_ava_script/diff.patch --mode fast --at probe:src_fetch.ts:typescript_preview:9c3e9e7e
 
 More:
   Full evidence: rerun with --format human-full

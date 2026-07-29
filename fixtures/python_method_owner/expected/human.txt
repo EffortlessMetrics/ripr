@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_policy.py:python_preview:26786dfe
-  ripr context --at probe:src_policy.py:python_preview:26786dfe
+  ripr explain --root fixtures/python_method_owner/input --diff fixtures/python_method_owner/diff.patch --mode fast probe:src_policy.py:python_preview:26786dfe
+  ripr context --root fixtures/python_method_owner/input --diff fixtures/python_method_owner/diff.patch --mode fast --at probe:src_policy.py:python_preview:26786dfe
 
 More:
   Full evidence: rerun with --format human-full

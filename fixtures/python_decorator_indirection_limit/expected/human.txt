@@ -22,8 +22,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_retry_total.py:python_preview:b1af3427
-  ripr context --at probe:src_retry_total.py:python_preview:b1af3427
+  ripr explain --root fixtures/python_decorator_indirection_limit/input --diff fixtures/python_decorator_indirection_limit/diff.patch --mode fast probe:src_retry_total.py:python_preview:b1af3427
+  ripr context --root fixtures/python_decorator_indirection_limit/input --diff fixtures/python_decorator_indirection_limit/diff.patch --mode fast --at probe:src_retry_total.py:python_preview:b1af3427
 
 More:
   Full evidence: rerun with --format human-full

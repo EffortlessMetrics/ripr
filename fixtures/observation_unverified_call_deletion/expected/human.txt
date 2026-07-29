@@ -19,8 +19,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:call_deletion:c13d820a
-  ripr context --at probe:src_lib.rs:call_deletion:c13d820a
+  ripr explain --root fixtures/observation_unverified_call_deletion/input --diff fixtures/observation_unverified_call_deletion/diff.patch --mode fast probe:src_lib.rs:call_deletion:c13d820a
+  ripr context --root fixtures/observation_unverified_call_deletion/input --diff fixtures/observation_unverified_call_deletion/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:c13d820a
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

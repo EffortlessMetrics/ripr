@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_bridge.ts:typescript_preview:d73aaece
-  ripr context --at probe:src_bridge.ts:typescript_preview:d73aaece
+  ripr explain --root fixtures/ts_cross_language_bridge_limit/input --diff fixtures/ts_cross_language_bridge_limit/diff.patch --mode fast probe:src_bridge.ts:typescript_preview:d73aaece
+  ripr context --root fixtures/ts_cross_language_bridge_limit/input --diff fixtures/ts_cross_language_bridge_limit/diff.patch --mode fast --at probe:src_bridge.ts:typescript_preview:d73aaece
 
 More:
   Full evidence: rerun with --format human-full

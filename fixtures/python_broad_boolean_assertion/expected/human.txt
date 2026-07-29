@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_priority.py:python_preview:5c6fb782
-  ripr context --at probe:src_priority.py:python_preview:5c6fb782
+  ripr explain --root fixtures/python_broad_boolean_assertion/input --diff fixtures/python_broad_boolean_assertion/diff.patch --mode fast probe:src_priority.py:python_preview:5c6fb782
+  ripr context --root fixtures/python_broad_boolean_assertion/input --diff fixtures/python_broad_boolean_assertion/diff.patch --mode fast --at probe:src_priority.py:python_preview:5c6fb782
 
 More:
   Full evidence: rerun with --format human-full

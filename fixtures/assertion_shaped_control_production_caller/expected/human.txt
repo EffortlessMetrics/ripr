@@ -19,8 +19,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:a39d316d
-  ripr context --at probe:src_lib.rs:predicate:a39d316d
+  ripr explain --root fixtures/assertion_shaped_control_production_caller/input --diff fixtures/assertion_shaped_control_production_caller/diff.patch --mode fast probe:src_lib.rs:predicate:a39d316d
+  ripr context --root fixtures/assertion_shaped_control_production_caller/input --diff fixtures/assertion_shaped_control_production_caller/diff.patch --mode fast --at probe:src_lib.rs:predicate:a39d316d
 
 More:
   Full evidence: rerun with --format human-full

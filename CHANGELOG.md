@@ -68,6 +68,11 @@ are scoped or reviewed.
   now points to the matching context packet, while empty and fully suppressed
   results remain free of misleading follow-up commands (#2598).
 
+- Finding follow-up commands now preserve the analyzed `--root`, `--diff` or
+  `--base`, analysis mode, and artifact identity. Unreplayable worktree runs no
+  longer emit commands that silently analyze a different scope, and dynamic
+  arguments are shell-safe (#2659, follow-up to #2598).
+
 - Windows LSP refreshes now isolate shared Git subprocesses from the JSON-RPC
   server stdin and terminate timed-out process trees with bounded pipe draining.
   Explicit refreshes therefore return trustworthy results within the ordinary

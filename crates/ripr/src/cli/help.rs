@@ -651,9 +651,25 @@ mod tests {
             (
                 "explain",
                 EXPLAIN_HELP,
-                &["--from", "--mode", "--no-unchanged-tests"],
+                &[
+                    "--from",
+                    "--mode",
+                    "--no-unchanged-tests",
+                    "--perl-facts",
+                    "--suppression-policy",
+                ],
             ),
-            ("context", CONTEXT_HELP, &["--from", "--at", "--mode"]),
+            (
+                "context",
+                CONTEXT_HELP,
+                &[
+                    "--from",
+                    "--at",
+                    "--mode",
+                    "--perl-facts",
+                    "--suppression-policy",
+                ],
+            ),
             ("gate", GATE_HELP, &["--pr-guidance", "--mode"]),
             ("doctor", DOCTOR_HELP, &["--root", "--json"]),
             (

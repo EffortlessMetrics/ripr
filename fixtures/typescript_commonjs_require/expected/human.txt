@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_format.ts:typescript_preview:c6becef2
-  ripr context --at probe:src_format.ts:typescript_preview:c6becef2
+  ripr explain --root fixtures/typescript_commonjs_require/input --diff fixtures/typescript_commonjs_require/diff.patch --mode fast probe:src_format.ts:typescript_preview:c6becef2
+  ripr context --root fixtures/typescript_commonjs_require/input --diff fixtures/typescript_commonjs_require/diff.patch --mode fast --at probe:src_format.ts:typescript_preview:c6becef2
 
 More:
   Full evidence: rerun with --format human-full

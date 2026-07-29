@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_math.ts:typescript_preview:025f98d6
-  ripr context --at probe:src_math.ts:typescript_preview:025f98d6
+  ripr explain --root fixtures/ts_pkg_discovery_single_package/input --diff fixtures/ts_pkg_discovery_single_package/diff.patch --mode fast probe:src_math.ts:typescript_preview:025f98d6
+  ripr context --root fixtures/ts_pkg_discovery_single_package/input --diff fixtures/ts_pkg_discovery_single_package/diff.patch --mode fast --at probe:src_math.ts:typescript_preview:025f98d6
 
 More:
   Full evidence: rerun with --format human-full

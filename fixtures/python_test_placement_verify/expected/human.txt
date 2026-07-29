@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.py:python_preview:b6c16437
-  ripr context --at probe:src_pricing.py:python_preview:b6c16437
+  ripr explain --root fixtures/python_test_placement_verify/input --diff fixtures/python_test_placement_verify/diff.patch --mode fast probe:src_pricing.py:python_preview:b6c16437
+  ripr context --root fixtures/python_test_placement_verify/input --diff fixtures/python_test_placement_verify/diff.patch --mode fast --at probe:src_pricing.py:python_preview:b6c16437
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

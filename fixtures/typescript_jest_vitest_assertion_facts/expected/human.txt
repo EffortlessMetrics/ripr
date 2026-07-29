@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_signals.ts:typescript_preview:8ca5702a
-  ripr context --at probe:src_signals.ts:typescript_preview:8ca5702a
+  ripr explain --root fixtures/typescript_jest_vitest_assertion_facts/input --diff fixtures/typescript_jest_vitest_assertion_facts/diff.patch --mode fast probe:src_signals.ts:typescript_preview:8ca5702a
+  ripr context --root fixtures/typescript_jest_vitest_assertion_facts/input --diff fixtures/typescript_jest_vitest_assertion_facts/diff.patch --mode fast --at probe:src_signals.ts:typescript_preview:8ca5702a
 
 Hidden:
   5 lower-priority finding(s) omitted from default human output.

@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:packages_auth_src_token.ts:typescript_preview:224c05b0
-  ripr context --at probe:packages_auth_src_token.ts:typescript_preview:224c05b0
+  ripr explain --root fixtures/ts_pkg_discovery_monorepo/input --diff fixtures/ts_pkg_discovery_monorepo/diff.patch --mode fast probe:packages_auth_src_token.ts:typescript_preview:224c05b0
+  ripr context --root fixtures/ts_pkg_discovery_monorepo/input --diff fixtures/ts_pkg_discovery_monorepo/diff.patch --mode fast --at probe:packages_auth_src_token.ts:typescript_preview:224c05b0
 
 More:
   Full evidence: rerun with --format human-full

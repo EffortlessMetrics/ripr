@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:error_path:162493bf
-  ripr context --at probe:src_lib.rs:error_path:162493bf
+  ripr explain --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast probe:src_lib.rs:error_path:162493bf
+  ripr context --root fixtures/error_path_sibling_oracle_fake_clean/input --diff fixtures/error_path_sibling_oracle_fake_clean/diff.patch --mode fast --at probe:src_lib.rs:error_path:162493bf
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

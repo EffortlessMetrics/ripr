@@ -22,8 +22,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_account.py:python_preview:c7d70a2d
-  ripr context --at probe:src_account.py:python_preview:c7d70a2d
+  ripr explain --root fixtures/python_adversarial_changed_sink_non_delta_operand/input --diff fixtures/python_adversarial_changed_sink_non_delta_operand/diff.patch --mode fast probe:src_account.py:python_preview:c7d70a2d
+  ripr context --root fixtures/python_adversarial_changed_sink_non_delta_operand/input --diff fixtures/python_adversarial_changed_sink_non_delta_operand/diff.patch --mode fast --at probe:src_account.py:python_preview:c7d70a2d
 
 More:
   Full evidence: rerun with --format human-full

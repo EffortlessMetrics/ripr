@@ -19,8 +19,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:field_construction:66b24106
-  ripr context --at probe:src_lib.rs:field_construction:66b24106
+  ripr explain --root fixtures/observation_unverified_field_construction/input --diff fixtures/observation_unverified_field_construction/diff.patch --mode fast probe:src_lib.rs:field_construction:66b24106
+  ripr context --root fixtures/observation_unverified_field_construction/input --diff fixtures/observation_unverified_field_construction/diff.patch --mode fast --at probe:src_lib.rs:field_construction:66b24106
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

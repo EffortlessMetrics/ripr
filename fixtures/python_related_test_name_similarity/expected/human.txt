@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.py:python_preview:5511809e
-  ripr context --at probe:src_pricing.py:python_preview:5511809e
+  ripr explain --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --mode fast probe:src_pricing.py:python_preview:5511809e
+  ripr context --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --mode fast --at probe:src_pricing.py:python_preview:5511809e
 
 More:
   Full evidence: rerun with --format human-full

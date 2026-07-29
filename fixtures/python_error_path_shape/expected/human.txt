@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_validation.py:python_preview:82db397b
-  ripr context --at probe:src_validation.py:python_preview:82db397b
+  ripr explain --root fixtures/python_error_path_shape/input --diff fixtures/python_error_path_shape/diff.patch --mode fast probe:src_validation.py:python_preview:82db397b
+  ripr context --root fixtures/python_error_path_shape/input --diff fixtures/python_error_path_shape/diff.patch --mode fast --at probe:src_validation.py:python_preview:82db397b
 
 More:
   Full evidence: rerun with --format human-full

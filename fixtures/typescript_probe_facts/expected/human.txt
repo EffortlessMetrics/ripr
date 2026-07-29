@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_ambiguous.ts:typescript_preview:ba5968cd
-  ripr context --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
+  ripr explain --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast probe:src_ambiguous.ts:typescript_preview:ba5968cd
+  ripr context --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
 
 Hidden:
   9 lower-priority finding(s) omitted from default human output.

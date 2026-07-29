@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_score.ts:typescript_preview:af44236d
-  ripr context --at probe:src_score.ts:typescript_preview:af44236d
+  ripr explain --root fixtures/typescript_t_truthy_oracle/input --diff fixtures/typescript_t_truthy_oracle/diff.patch --mode fast probe:src_score.ts:typescript_preview:af44236d
+  ripr context --root fixtures/typescript_t_truthy_oracle/input --diff fixtures/typescript_t_truthy_oracle/diff.patch --mode fast --at probe:src_score.ts:typescript_preview:af44236d
 
 More:
   Full evidence: rerun with --format human-full

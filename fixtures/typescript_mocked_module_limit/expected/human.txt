@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_discount.ts:typescript_preview:2396aec1
-  ripr context --at probe:src_discount.ts:typescript_preview:2396aec1
+  ripr explain --root fixtures/typescript_mocked_module_limit/input --diff fixtures/typescript_mocked_module_limit/diff.patch --mode fast probe:src_discount.ts:typescript_preview:2396aec1
+  ripr context --root fixtures/typescript_mocked_module_limit/input --diff fixtures/typescript_mocked_module_limit/diff.patch --mode fast --at probe:src_discount.ts:typescript_preview:2396aec1
 
 More:
   Full evidence: rerun with --format human-full

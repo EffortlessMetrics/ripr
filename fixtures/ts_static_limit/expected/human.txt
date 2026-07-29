@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_cache.ts:typescript_preview:bac50022
-  ripr context --at probe:src_cache.ts:typescript_preview:bac50022
+  ripr explain --root fixtures/ts_static_limit/input --diff fixtures/ts_static_limit/diff.patch --mode fast probe:src_cache.ts:typescript_preview:bac50022
+  ripr context --root fixtures/ts_static_limit/input --diff fixtures/ts_static_limit/diff.patch --mode fast --at probe:src_cache.ts:typescript_preview:bac50022
 
 More:
   Full evidence: rerun with --format human-full

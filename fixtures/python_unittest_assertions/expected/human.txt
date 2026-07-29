@@ -24,8 +24,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_risk.py:python_preview:6835190f
-  ripr context --at probe:src_risk.py:python_preview:6835190f
+  ripr explain --root fixtures/python_unittest_assertions/input --diff fixtures/python_unittest_assertions/diff.patch --mode fast probe:src_risk.py:python_preview:6835190f
+  ripr context --root fixtures/python_unittest_assertions/input --diff fixtures/python_unittest_assertions/diff.patch --mode fast --at probe:src_risk.py:python_preview:6835190f
 
 More:
   Full evidence: rerun with --format human-full

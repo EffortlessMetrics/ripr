@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_pricing.ts:typescript_preview:0335115b
-  ripr context --at probe:src_pricing.ts:typescript_preview:0335115b
+  ripr explain --root fixtures/ts_dynamic_oracle/input --diff fixtures/ts_dynamic_oracle/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:0335115b
+  ripr context --root fixtures/ts_dynamic_oracle/input --diff fixtures/ts_dynamic_oracle/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:0335115b
 
 More:
   Full evidence: rerun with --format human-full

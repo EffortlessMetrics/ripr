@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_handler.py:python_preview:c48883f0
-  ripr context --at probe:src_handler.py:python_preview:c48883f0
+  ripr explain --root fixtures/python_adversarial_free_function_module_collision/input --diff fixtures/python_adversarial_free_function_module_collision/diff.patch --mode fast probe:src_handler.py:python_preview:c48883f0
+  ripr context --root fixtures/python_adversarial_free_function_module_collision/input --diff fixtures/python_adversarial_free_function_module_collision/diff.patch --mode fast --at probe:src_handler.py:python_preview:c48883f0
 
 More:
   Full evidence: rerun with --format human-full

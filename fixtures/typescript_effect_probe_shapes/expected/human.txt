@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_profile.ts:typescript_preview:7c5ce045
-  ripr context --at probe:src_profile.ts:typescript_preview:7c5ce045
+  ripr explain --root fixtures/typescript_effect_probe_shapes/input --diff fixtures/typescript_effect_probe_shapes/diff.patch --mode fast probe:src_profile.ts:typescript_preview:7c5ce045
+  ripr context --root fixtures/typescript_effect_probe_shapes/input --diff fixtures/typescript_effect_probe_shapes/diff.patch --mode fast --at probe:src_profile.ts:typescript_preview:7c5ce045
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

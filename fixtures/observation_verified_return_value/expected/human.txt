@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:static_unknown:35a08f71
-  ripr context --at probe:src_lib.rs:static_unknown:35a08f71
+  ripr explain --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast probe:src_lib.rs:static_unknown:35a08f71
+  ripr context --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:35a08f71
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

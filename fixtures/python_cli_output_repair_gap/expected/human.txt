@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_commands.py:python_preview:e40b24a9
-  ripr context --at probe:src_commands.py:python_preview:e40b24a9
+  ripr explain --root fixtures/python_cli_output_repair_gap/input --diff fixtures/python_cli_output_repair_gap/diff.patch --mode fast probe:src_commands.py:python_preview:e40b24a9
+  ripr context --root fixtures/python_cli_output_repair_gap/input --diff fixtures/python_cli_output_repair_gap/diff.patch --mode fast --at probe:src_commands.py:python_preview:e40b24a9
 
 More:
   Full evidence: rerun with --format human-full

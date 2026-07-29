@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:c80557eb
-  ripr context --at probe:src_lib.rs:predicate:c80557eb
+  ripr explain --root fixtures/unrelated_test_mentions_token/input --diff fixtures/unrelated_test_mentions_token/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/unrelated_test_mentions_token/input --diff fixtures/unrelated_test_mentions_token/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 More:
   Full evidence: rerun with --format human-full

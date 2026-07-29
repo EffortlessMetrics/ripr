@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:908b0e30
-  ripr context --at probe:src_lib.rs:predicate:908b0e30
+  ripr explain --root fixtures/rust_transitive_reach_negative/input --diff fixtures/rust_transitive_reach_negative/diff.patch --mode fast probe:src_lib.rs:predicate:908b0e30
+  ripr context --root fixtures/rust_transitive_reach_negative/input --diff fixtures/rust_transitive_reach_negative/diff.patch --mode fast --at probe:src_lib.rs:predicate:908b0e30
 
 More:
   Full evidence: rerun with --format human-full

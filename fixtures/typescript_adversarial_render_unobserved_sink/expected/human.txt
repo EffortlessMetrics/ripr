@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_badge.tsx:typescript_preview:6ebbadf9
-  ripr context --at probe:src_badge.tsx:typescript_preview:6ebbadf9
+  ripr explain --root fixtures/typescript_adversarial_render_unobserved_sink/input --diff fixtures/typescript_adversarial_render_unobserved_sink/diff.patch --mode fast probe:src_badge.tsx:typescript_preview:6ebbadf9
+  ripr context --root fixtures/typescript_adversarial_render_unobserved_sink/input --diff fixtures/typescript_adversarial_render_unobserved_sink/diff.patch --mode fast --at probe:src_badge.tsx:typescript_preview:6ebbadf9
 
 More:
   Full evidence: rerun with --format human-full

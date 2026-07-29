@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_eval.rs:predicate:f66d616d
-  ripr context --at probe:src_eval.rs:predicate:f66d616d
+  ripr explain --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast probe:src_eval.rs:predicate:f66d616d
+  ripr context --root fixtures/rust_transitive_reach_test_helper_chain/input --diff fixtures/rust_transitive_reach_test_helper_chain/diff.patch --mode fast --at probe:src_eval.rs:predicate:f66d616d
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

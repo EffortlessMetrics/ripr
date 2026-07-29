@@ -1,4 +1,4 @@
-use crate::app::CheckOutput;
+use crate::app::{CheckOutput, FindingNavigation};
 use crate::config::RiprConfig;
 use crate::domain::Finding;
 use std::collections::BTreeSet;
@@ -14,6 +14,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 }
 
 pub(crate) fn render_bounded_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    let navigation = FindingNavigation::legacy();
+    render_bounded_with_config_and_navigation(output, config, Some(&navigation))
+}
+
+pub(crate) fn render_bounded_with_config_and_navigation(
+    output: &CheckOutput,
+    config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
+) -> String {
     let mut out = render_header_summary(output);
     render_suppression_policy_block(&mut out, output);
     render_partial_scope_disclosure(&mut out, output);
@@ -22,7 +31,7 @@ pub(crate) fn render_bounded_with_config(output: &CheckOutput, config: &RiprConf
         out.push_str("No diff-derived static exposure probes found.\n");
         if output.no_scope_provided {
             let triage = triage::select_human_triage(output, config);
-            triage::render_human_triage(&mut out, &triage, output, config);
+            triage::render_human_triage(&mut out, &triage, output, config, navigation);
         }
         if output.no_scope_provided {
             out.push_str(
@@ -45,7 +54,7 @@ or analyze a committed branch with `ripr check --base origin/main`.\n",
     }
 
     let triage = triage::select_human_triage(output, config);
-    triage::render_human_triage(&mut out, &triage, output, config);
+    triage::render_human_triage(&mut out, &triage, output, config, navigation);
     render_all_no_path_disclosure(&mut out, output);
     if output.unanalyzed_working_tree {
         out.push_str(
@@ -408,9 +417,10 @@ pub fn render_finding(finding: &Finding) -> String {
 pub(crate) fn render_finding_with_context_command(
     finding: &Finding,
     config: &RiprConfig,
+    context_command: &str,
 ) -> String {
     let mut out = render_finding_with_config(finding, config);
-    out.push_str(&format!("\nNext: ripr context --at {}\n", finding.id));
+    out.push_str(&format!("\nNext: {context_command}\n"));
     out
 }
 

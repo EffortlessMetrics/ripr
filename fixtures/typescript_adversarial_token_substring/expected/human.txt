@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_stream.ts:typescript_preview:5430a07e
-  ripr context --at probe:src_stream.ts:typescript_preview:5430a07e
+  ripr explain --root fixtures/typescript_adversarial_token_substring/input --diff fixtures/typescript_adversarial_token_substring/diff.patch --mode fast probe:src_stream.ts:typescript_preview:5430a07e
+  ripr context --root fixtures/typescript_adversarial_token_substring/input --diff fixtures/typescript_adversarial_token_substring/diff.patch --mode fast --at probe:src_stream.ts:typescript_preview:5430a07e
 
 More:
   Full evidence: rerun with --format human-full

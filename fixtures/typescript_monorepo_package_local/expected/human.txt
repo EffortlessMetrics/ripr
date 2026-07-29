@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a
-  ripr context --at probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a
+  ripr explain --root fixtures/typescript_monorepo_package_local/input --diff fixtures/typescript_monorepo_package_local/diff.patch --mode fast probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a
+  ripr context --root fixtures/typescript_monorepo_package_local/input --diff fixtures/typescript_monorepo_package_local/diff.patch --mode fast --at probe:packages_pkg-a_src_discount.ts:typescript_preview:c4053b5a
 
 More:
   Full evidence: rerun with --format human-full

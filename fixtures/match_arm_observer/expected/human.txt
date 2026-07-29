@@ -17,8 +17,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:match_arm:43b1f2c8
-  ripr context --at probe:src_lib.rs:match_arm:43b1f2c8
+  ripr explain --root fixtures/match_arm_observer/input --diff fixtures/match_arm_observer/diff.patch --mode fast probe:src_lib.rs:match_arm:43b1f2c8
+  ripr context --root fixtures/match_arm_observer/input --diff fixtures/match_arm_observer/diff.patch --mode fast --at probe:src_lib.rs:match_arm:43b1f2c8
 
 More:
   Full evidence: rerun with --format human-full

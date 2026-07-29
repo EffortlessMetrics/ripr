@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:98a298f5
-  ripr context --at probe:src_lib.rs:predicate:98a298f5
+  ripr explain --root fixtures/assertion_shaped_oracle_cfg_test/input --diff fixtures/assertion_shaped_oracle_cfg_test/diff.patch --mode fast probe:src_lib.rs:predicate:98a298f5
+  ripr context --root fixtures/assertion_shaped_oracle_cfg_test/input --diff fixtures/assertion_shaped_oracle_cfg_test/diff.patch --mode fast --at probe:src_lib.rs:predicate:98a298f5
 
 More:
   Full evidence: rerun with --format human-full

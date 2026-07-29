@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_rounding.ts:typescript_preview:271f21f8
-  ripr context --at probe:src_rounding.ts:typescript_preview:271f21f8
+  ripr explain --root fixtures/typescript_return_value_shape/input --diff fixtures/typescript_return_value_shape/diff.patch --mode fast probe:src_rounding.ts:typescript_preview:271f21f8
+  ripr context --root fixtures/typescript_return_value_shape/input --diff fixtures/typescript_return_value_shape/diff.patch --mode fast --at probe:src_rounding.ts:typescript_preview:271f21f8
 
 More:
   Full evidence: rerun with --format human-full

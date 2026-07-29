@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_utils.ts:typescript_preview:a1ef3b36
-  ripr context --at probe:src_utils.ts:typescript_preview:a1ef3b36
+  ripr explain --root fixtures/ts_pkg_discovery_no_package/input --diff fixtures/ts_pkg_discovery_no_package/diff.patch --mode fast probe:src_utils.ts:typescript_preview:a1ef3b36
+  ripr context --root fixtures/ts_pkg_discovery_no_package/input --diff fixtures/ts_pkg_discovery_no_package/diff.patch --mode fast --at probe:src_utils.ts:typescript_preview:a1ef3b36
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

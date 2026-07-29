@@ -302,7 +302,21 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     {
         output.unanalyzed_working_tree = true;
     }
-    write_stdout_chunked(&app::render_check_with_config(&output, &format, &config)?)?;
+    let navigation = if worktree_explicitly_provided && write_artifact.is_none() {
+        None
+    } else {
+        Some(app::finding_navigation(
+            &limited_check_input,
+            write_artifact.as_deref(),
+            explicit.mode,
+        ))
+    };
+    write_stdout_chunked(&app::render_check_with_config_and_navigation(
+        &output,
+        &format,
+        &config,
+        navigation.as_ref(),
+    )?)?;
     Ok(())
 }
 

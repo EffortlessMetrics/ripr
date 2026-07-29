@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_price-label.jsx:typescript_preview:bf103b81
-  ripr context --at probe:src_price-label.jsx:typescript_preview:bf103b81
+  ripr explain --root fixtures/javascript_jsx_preview/input --diff fixtures/javascript_jsx_preview/diff.patch --mode fast probe:src_price-label.jsx:typescript_preview:bf103b81
+  ripr context --root fixtures/javascript_jsx_preview/input --diff fixtures/javascript_jsx_preview/diff.patch --mode fast --at probe:src_price-label.jsx:typescript_preview:bf103b81
 
 More:
   Full evidence: rerun with --format human-full

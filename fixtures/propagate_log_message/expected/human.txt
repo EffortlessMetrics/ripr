@@ -19,8 +19,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:call_deletion:fdcf38e9
-  ripr context --at probe:src_lib.rs:call_deletion:fdcf38e9
+  ripr explain --root fixtures/propagate_log_message/input --diff fixtures/propagate_log_message/diff.patch --mode fast probe:src_lib.rs:call_deletion:fdcf38e9
+  ripr context --root fixtures/propagate_log_message/input --diff fixtures/propagate_log_message/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:fdcf38e9
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

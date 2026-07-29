@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_dispatch.ts:typescript_preview:dd0f8848
-  ripr context --at probe:src_dispatch.ts:typescript_preview:dd0f8848
+  ripr explain --root fixtures/typescript_static_limit_taxonomy/input --diff fixtures/typescript_static_limit_taxonomy/diff.patch --mode fast probe:src_dispatch.ts:typescript_preview:dd0f8848
+  ripr context --root fixtures/typescript_static_limit_taxonomy/input --diff fixtures/typescript_static_limit_taxonomy/diff.patch --mode fast --at probe:src_dispatch.ts:typescript_preview:dd0f8848
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.

@@ -56,6 +56,18 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
             }
+            "--perl-facts" => {
+                i += 1;
+                input.perl_facts_path = Some(PathBuf::from(expect_value(args, i, "--perl-facts")?));
+            }
+            "--suppression-policy" => {
+                i += 1;
+                input.suppression_policy = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--suppression-policy",
+                )?));
+            }
             "--at" => {
                 i += 1;
                 selector = Some(expect_value(args, i, "--at")?.to_string());
@@ -155,6 +167,14 @@ mod tests {
         assert_eq!(
             context(&args(&["--root"])),
             Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            context(&args(&["--perl-facts"])),
+            Err("missing value for --perl-facts".to_string())
+        );
+        assert_eq!(
+            context(&args(&["--suppression-policy"])),
+            Err("missing value for --suppression-policy".to_string())
         );
     }
 }

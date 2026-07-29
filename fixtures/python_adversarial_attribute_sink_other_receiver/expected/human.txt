@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_session.py:python_preview:a8af27c6
-  ripr context --at probe:src_session.py:python_preview:a8af27c6
+  ripr explain --root fixtures/python_adversarial_attribute_sink_other_receiver/input --diff fixtures/python_adversarial_attribute_sink_other_receiver/diff.patch --mode fast probe:src_session.py:python_preview:a8af27c6
+  ripr context --root fixtures/python_adversarial_attribute_sink_other_receiver/input --diff fixtures/python_adversarial_attribute_sink_other_receiver/diff.patch --mode fast --at probe:src_session.py:python_preview:a8af27c6
 
 More:
   Full evidence: rerun with --format human-full

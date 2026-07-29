@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:return_value:93054610
-  ripr context --at probe:src_lib.rs:return_value:93054610
+  ripr explain --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast probe:src_lib.rs:return_value:93054610
+  ripr context --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast --at probe:src_lib.rs:return_value:93054610
 
 Hidden:
   5 lower-priority finding(s) omitted from default human output.

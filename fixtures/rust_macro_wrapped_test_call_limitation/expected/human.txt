@@ -18,8 +18,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_internal.rs:predicate:114f2322
-  ripr context --at probe:src_internal.rs:predicate:114f2322
+  ripr explain --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322
+  ripr context --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:114f2322
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

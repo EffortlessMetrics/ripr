@@ -19,8 +19,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:call_deletion:75eda2b6
-  ripr context --at probe:src_lib.rs:call_deletion:75eda2b6
+  ripr explain --root fixtures/propagate_stdout_macro/input --diff fixtures/propagate_stdout_macro/diff.patch --mode fast probe:src_lib.rs:call_deletion:75eda2b6
+  ripr context --root fixtures/propagate_stdout_macro/input --diff fixtures/propagate_stdout_macro/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:75eda2b6
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

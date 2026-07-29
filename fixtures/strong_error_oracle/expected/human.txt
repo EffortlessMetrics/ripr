@@ -17,8 +17,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:error_path:99b06ce7
-  ripr context --at probe:src_lib.rs:error_path:99b06ce7
+  ripr explain --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast probe:src_lib.rs:error_path:99b06ce7
+  ripr context --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast --at probe:src_lib.rs:error_path:99b06ce7
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

@@ -28,8 +28,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:app_checkout.py:python_preview:c1a8e812
-  ripr context --at probe:app_checkout.py:python_preview:c1a8e812
+  ripr explain --root fixtures/python_api_json_field_repair_gap/input --diff fixtures/python_api_json_field_repair_gap/diff.patch --mode fast probe:app_checkout.py:python_preview:c1a8e812
+  ripr context --root fixtures/python_api_json_field_repair_gap/input --diff fixtures/python_api_json_field_repair_gap/diff.patch --mode fast --at probe:app_checkout.py:python_preview:c1a8e812
 
 More:
   Full evidence: rerun with --format human-full

@@ -21,8 +21,8 @@ Start here:
     - 12 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:c80557eb
-  ripr context --at probe:src_lib.rs:predicate:c80557eb
+  ripr explain --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

@@ -23,8 +23,8 @@ Start here:
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_owners.ts:typescript_preview:bd728bcd
-  ripr context --at probe:src_owners.ts:typescript_preview:bd728bcd
+  ripr explain --root fixtures/typescript_owner_kinds/input --diff fixtures/typescript_owner_kinds/diff.patch --mode fast probe:src_owners.ts:typescript_preview:bd728bcd
+  ripr context --root fixtures/typescript_owner_kinds/input --diff fixtures/typescript_owner_kinds/diff.patch --mode fast --at probe:src_owners.ts:typescript_preview:bd728bcd
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.

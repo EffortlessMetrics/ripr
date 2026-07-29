@@ -19,8 +19,8 @@ Start here:
     - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:7f019e84
-  ripr context --at probe:src_lib.rs:predicate:7f019e84
+  ripr explain --root fixtures/snapshot_oracle/input --diff fixtures/snapshot_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:7f019e84
+  ripr context --root fixtures/snapshot_oracle/input --diff fixtures/snapshot_oracle/diff.patch --mode fast --at probe:src_lib.rs:predicate:7f019e84
 
 More:
   Full evidence: rerun with --format human-full

@@ -23,8 +23,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_formatter.ts:typescript_preview:bf26bc95
-  ripr context --at probe:src_formatter.ts:typescript_preview:bf26bc95
+  ripr explain --root fixtures/ts_heuristic_relation/input --diff fixtures/ts_heuristic_relation/diff.patch --mode fast probe:src_formatter.ts:typescript_preview:bf26bc95
+  ripr context --root fixtures/ts_heuristic_relation/input --diff fixtures/ts_heuristic_relation/diff.patch --mode fast --at probe:src_formatter.ts:typescript_preview:bf26bc95
 
 More:
   Full evidence: rerun with --format human-full

@@ -19,8 +19,8 @@ Start here:
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain probe:src_lib.rs:predicate:736b22b0
-  ripr context --at probe:src_lib.rs:predicate:736b22b0
+  ripr explain --root fixtures/rust_async_fn_owner/input --diff fixtures/rust_async_fn_owner/diff.patch --mode fast probe:src_lib.rs:predicate:736b22b0
+  ripr context --root fixtures/rust_async_fn_owner/input --diff fixtures/rust_async_fn_owner/diff.patch --mode fast --at probe:src_lib.rs:predicate:736b22b0
 
 More:
   Full evidence: rerun with --format human-full
