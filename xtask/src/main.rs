@@ -17946,7 +17946,9 @@ fn is_static_language_candidate(path: &str) -> bool {
     if path.contains("/expected/CHANGELOG.md") || path == "expected/CHANGELOG.md" {
         return false;
     }
-    let extensions = [".md", ".rs", ".txt", ".json", ".toml", ".yml", ".yaml"];
+    let extensions = [
+        ".md", ".rs", ".txt", ".json", ".toml", ".yml", ".yaml", ".ts", ".tsx", ".js", ".jsx",
+    ];
     extensions.iter().any(|extension| path.ends_with(extension))
 }
 
