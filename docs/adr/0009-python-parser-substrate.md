@@ -1,7 +1,7 @@
 # ADR 0009: Python Parser Substrate
 
-Status: proposed (superseding its own original decision recorded
-in commit `d70f1802`).
+Status: accepted (superseding its own original decision recorded in commit
+`d70f1802`).
 
 Date: 2026-05-12
 

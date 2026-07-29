@@ -108,6 +108,27 @@ Major durable discoveries in `docs/LEARNINGS.md`, newest first:
 
 | Date | One-line lesson | Section in LEARNINGS.md |
 |---|---|---|
+| 2026-07-29 | A visible fallback must survive the warm path | [Visible Fallback](LEARNINGS.md#2026-07-29-a-visible-fallback-must-survive-the-warm-path) |
+| 2026-07-29 | Preserve the source vocabulary at every operator boundary | [Source Vocabulary](LEARNINGS.md#2026-07-29-preserve-the-source-vocabulary-at-every-operator-boundary) |
+| 2026-07-25 | A green check is not evidence; inspect the gate, artifact, and denominator | [Green Checks](LEARNINGS.md#2026-07-25-a-green-check-is-not-evidence--five-ways-a-passing-signal-covered-a-broken-surface) |
+| 2026-07-25 | A false-confidence gate is a contract failure when enforcement is weaker than its claim | [False-Confidence Gates](LEARNINGS.md#2026-07-25-false-confidence-gates--the-enforcement-layer-cardinal-sin) |
+| 2026-07-23 | Merge-then-cleanup must be chained, and red-arm experiments must preserve evidence | [Merge Then Cleanup](LEARNINGS.md#2026-07-23-merge-then-cleanup-must-be--chained-and-red-arm-experiments-must-not-use-git-checkout--) |
+| 2026-07-23 | A PR-body verification claim must be an executed experiment | [PR-Body Experiments](LEARNINGS.md#2026-07-23-a-pr-body-verification-claim-must-be-an-executed-experiment) |
+| 2026-07-22 | Canonical-input validation compares bytes, not parsed values | [Canonical Input](LEARNINGS.md#2026-07-22-canonical-input-validation-must-compare-bytes-not-parsed-values) |
+| 2026-07-22 | The required CI lane must invoke the local gate table, not copy it | [Required CI Lane](LEARNINGS.md#2026-07-22-the-required-ci-lane-must-invoke-the-local-gate-table-not-enumerate-a-copy) |
+| 2026-07-19 | `Result<_, String>` is the highest-leverage refactor target | [Result String](LEARNINGS.md#2026-07-19-result-string-everywhere-is-the-single-highest-leverage-refactor-target) |
+| 2026-07-19 | A file-policy gate that fails on main breaks every subsequent PR | [File Policy](LEARNINGS.md#2026-07-19-a-file-policy-gate-that-fails-on-main-breaks-every-subsequent-pr) |
+| 2026-07-19 | Every save re-runs the full pipeline when the cache is not wired in | [Cache Wiring](LEARNINGS.md#2026-07-19-every-save-re-runs-the-full-pipeline--the-cache-exists-but-isnt-wired-in) |
+| 2026-07-19 | Static receipts are advisory; fabrication is trivial | [Static Receipts](LEARNINGS.md#2026-07-19-static-receipts-are-advisory--fabrication-is-trivial) |
+| 2026-07-19 | A gate does not gate when its blocking path is disconnected | [Gate Enforcement](LEARNINGS.md#2026-07-19-the-gate-does-not-gate--hardcoded-seamid-breaks-the-blocking-path) |
+| 2026-07-12 | A related test is not a repair route without producer facts | [Related Tests](LEARNINGS.md#2026-07-12-a-related-test-is-not-a-repair-route-without-producer-facts) |
+| 2026-06-26 | Perl owner-target identity is not changed-sink observation | [Perl Mapper Honesty](LEARNINGS.md#2026-06-26-perl-mapper-honesty--owner-target-is-not-sink-observation-the-producer-gate-is-the-wrong-harness) |
+| 2026-06-14 | Token coincidence is a false-`exposed` family, not one bug | [Token Coincidence](LEARNINGS.md#2026-06-14-token-coincidence-is-a-false-exposed-family-not-one-bug--and-no-siblings-was-premature) |
+| 2026-06-13 | Discrimination requires sink alignment, not merely coverage | [Discrimination vs. Coverage](LEARNINGS.md#2026-06-13-discrimination-vs-coverage--exposed-requires-sink-alignment) |
+| 2026-06-13 | Surface projection must reuse the shared renderer, not a parallel language renderer | [Surface Projection](LEARNINGS.md#2026-06-13-surface-projection-for-a-typescript-packet-goes-through-the-shared-renderer-not-a-parallel-ts-renderer) |
+| 2026-06-12 | Release state and crates.io query failures must remain separate facts | [Release-State Boundary](LEARNINGS.md#2026-06-12-release-state-boundary-and-cratesio-query-honesty) |
+| 2026-06-12 | Receipt, outcome, and route-quality claims require honesty-detection discipline | [Receipt to Route Quality](LEARNINGS.md#2026-06-12-closing-the-receipt--outcome--route-quality-loop--the-honesty-detection-discipline) |
+| 2026-06-12 | TypeScript repair-packet actionability reuses the Rust validator | [TypeScript Validator](LEARNINGS.md#2026-06-12-typescript-repair-packet-flip-reuses-the-rust-validator-never-a-parallel-path-ripr-spec-0087) |
 | 2026-06-11 | RIPR product/process isomorphism: delegability = bound + legible + fenced; honesty is the product; constraints produce autonomy | [Evidence-to-Repair Campaign](LEARNINGS.md#2026-06-11-the-evidence-to-repair-campaign--productprocess-isomorphism-and-delegability) |
 | 2026-06-11 | Policy-checker facade, stale builder diagnostics, static-language gate scope, cache-key honesty, path separator normalization, merge serialization | [Verification Discipline And Gate/Cache Gotchas](LEARNINGS.md#2026-06-11-verification-discipline-and-gatecache-gotchas) |
 | 2026-05-21 | Repair loop is the product-critical lane; source-of-truth is supporting infrastructure | [Repair Loop Is the Product-Critical Lane](LEARNINGS.md#2026-05-21-repair-loop-is-the-product-critical-lane) |

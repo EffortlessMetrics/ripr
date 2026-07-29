@@ -495,6 +495,25 @@ editor changes, no generated tests, no mutation execution, no default CI
 blocking, no automatic config or baseline mutation, and no preview evidence
 promotion.
 
+## Release Position
+
+The current source package is `ripr` 0.10.0 (`crates/ripr/Cargo.toml`). Its
+release notes are staged as unreleased in [CHANGELOG.md](../CHANGELOG.md); the
+swarm repository therefore uses 0.10.0 as the current release frame without
+claiming a published crates.io release. The 0.9.0 language-adapter frame below
+is historical, and the 0.11.0 replacement freeze is a staged next-release
+candidate, not current release authority.
+
+### `0.11.0` - Replacement freeze (staged)
+
+The [0.11.0 replacement freeze](release-candidates/0.11.0-replacement-freeze.json)
+and its [handoff](handoffs/2026-07-23-0.11.0-replacement-freeze.md) are the
+next-release planning frame. They preserve the separation between static
+movement and externally run verification, and explicitly defer convenience,
+observability, historical-document, and optional-presentation changes. Do not
+read this candidate as a publication or as permission to bypass current source
+or release metadata.
+
 ## Historical Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
 
 This section records the release-era bridge that preceded the current product
@@ -892,7 +911,16 @@ Success condition:
 ripr can compare static exposure classes with real mutation results when explicit mutation data is present.
 ```
 
-### `0.9.0` - Language Adapter Preview
+### `0.10.0` - Honest-by-construction evidence and downstream gate adoption
+
+The current 0.10.0 frame is staged and unreleased. It hardens seam identity
+and sink-observation honesty across Rust, TypeScript, and Python, adds the
+consumer-verifiable `new_unsuppressed` gate receipt, cross-checks receipt
+ledger identity, and carries the evidence-promotion meta-gate. See the
+[0.10.0 changelog entry](../CHANGELOG.md#0100---honest-by-construction-evidence-and-downstream-gate-adoption)
+for the complete change and non-claim boundary.
+
+### `0.9.0` - Language Adapter Preview (released 2026-06-10)
 
 The shipped 0.9.0 content is recorded in the
 [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md); the

@@ -1,6 +1,6 @@
 # ADR 0008: TypeScript Parser Substrate
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-11
 
