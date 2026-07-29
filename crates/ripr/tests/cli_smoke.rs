@@ -3421,17 +3421,12 @@ fn init_dry_run_fails_like_the_real_run_when_workflow_parent_is_a_file() -> Resu
 /// #2576 review: `create_new` refuses any occupied path, including a dangling
 /// symlink that `Path::exists()` reports as absent. Planning must ask the same
 /// question the write asks.
+#[cfg(unix)]
 #[test]
 fn init_dry_run_fails_like_the_real_run_for_a_dangling_symlink_target() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
-    #[cfg(unix)]
     std::os::unix::fs::symlink("/nonexistent-ripr-init-target", workspace.join("ripr.toml"))
         .map_err(|e| format!("create dangling symlink: {e}"))?;
-    #[cfg(not(unix))]
-    {
-        let _ = std::fs::remove_dir_all(&workspace);
-        return Ok(());
-    }
     let root = workspace.display().to_string();
 
     let dry = run_ripr(&["init", "--root", &root, "--dry-run"]);
