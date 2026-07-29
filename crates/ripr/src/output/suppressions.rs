@@ -611,11 +611,26 @@ pub struct SuppressionApplication {
     pub warnings: Vec<String>,
 }
 
-/// Applies exposure-gap suppressions against a slice of finding ids that
-/// the caller already considered "candidate exposure gaps" (i.e. the
-/// classes counted by `ripr_badge_summary`). Unmatched selectors and
-/// expired entries surface as warnings; expired entries are not applied
-/// so they cannot silently keep the badge green.
+/// Root-relative `/`-separated finding path for suppression matching.
+/// Finding locations may be emitted root-joined (for example, `./src/lib.rs`
+/// for `--root .`); policy globs are written root-relative (`src/**`).
+pub(crate) fn root_relative_finding_path(root: &Path, file: &Path) -> String {
+    let relative = file.strip_prefix(root).unwrap_or(file);
+    let display = relative.display().to_string();
+    display
+        .trim_start_matches("./")
+        .replace('\\', "/")
+        .to_string()
+}
+
+/// Applies exact-ID exposure-gap suppressions against a slice of finding ids
+/// that the caller already considered "candidate exposure gaps" (i.e. the
+/// classes counted by `ripr_badge_summary`). Path/static-class selectors use
+/// [`apply_check_suppressions`] so the badge and explicit check policy share
+/// one matcher. Unmatched selectors and expired entries surface as warnings;
+/// expired entries are not applied so they cannot silently keep the badge
+/// green.
+#[cfg(test)]
 pub fn apply_exposure_suppressions(
     candidate_finding_ids: &[String],
     suppressions: &[SuppressionEntry],

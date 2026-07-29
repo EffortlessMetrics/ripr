@@ -1,7 +1,7 @@
-# Copy the exact-id entry into .ripr/suppressions.toml after replacing the
-# example identity, owner, reason, and dates. The path-glob entry is an example
-# for an explicit `--suppression-policy` findings run; implicit badge exposure
-# suppression currently matches exact finding_id entries only.
+# Copy either entry into .ripr/suppressions.toml after replacing the example
+# identity, owner, reason, and dates. Path-glob exposure suppressions apply to
+# explicit `--suppression-policy` findings and implicit badge counts; use
+# static_class when the glob should cover only one exposure class.
 schema_version = 1
 
 # Prefer an exact finding id when one known finding is the accepted exception.

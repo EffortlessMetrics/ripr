@@ -176,7 +176,7 @@ fn apply_suppression_policy(output: &mut CheckOutput, policy: &Path) -> Result<(
         .iter()
         .map(|finding| sup::CheckSuppressionCandidate {
             finding_id: finding.id.clone(),
-            path: root_relative_finding_path(&output.root, &finding.probe.location.file),
+            path: sup::root_relative_finding_path(&output.root, &finding.probe.location.file),
             class: finding.class.as_str().to_string(),
         })
         .collect();
@@ -198,18 +198,6 @@ fn apply_suppression_policy(output: &mut CheckOutput, policy: &Path) -> Result<(
         warnings,
     });
     Ok(())
-}
-
-/// Root-relative `/`-separated finding path for suppression matching.
-/// Finding locations are emitted root-joined (e.g. `./src/lib.rs` for
-/// `--root .`); policy globs are written root-relative (`src/**`).
-fn root_relative_finding_path(root: &Path, file: &Path) -> String {
-    let relative = file.strip_prefix(root).unwrap_or(file);
-    let display = relative.display().to_string();
-    display
-        .trim_start_matches("./")
-        .replace('\\', "/")
-        .to_string()
 }
 
 /// Build the SPEC-0064-canonical argv for the Perl facts exporter's
@@ -672,18 +660,24 @@ mod tests {
     #[test]
     fn root_relative_finding_path_strips_root_and_dot_prefixes() {
         assert_eq!(
-            root_relative_finding_path(Path::new("."), Path::new("./src/lib.rs")),
+            crate::output::suppressions::root_relative_finding_path(
+                Path::new("."),
+                Path::new("./src/lib.rs"),
+            ),
             "src/lib.rs"
         );
         assert_eq!(
-            root_relative_finding_path(
+            crate::output::suppressions::root_relative_finding_path(
                 Path::new("fixtures/boundary_gap/input"),
                 Path::new("fixtures/boundary_gap/input/src/lib.rs")
             ),
             "src/lib.rs"
         );
         assert_eq!(
-            root_relative_finding_path(Path::new("/abs/root"), Path::new("/abs/root/src/lib.rs")),
+            crate::output::suppressions::root_relative_finding_path(
+                Path::new("/abs/root"),
+                Path::new("/abs/root/src/lib.rs"),
+            ),
             "src/lib.rs"
         );
     }

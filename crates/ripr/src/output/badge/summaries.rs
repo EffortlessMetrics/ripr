@@ -10,7 +10,10 @@ use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::ExposureClass;
 use crate::output::evidence_record::evidence_record_for;
 use crate::output::gap_decision_ledger;
-use crate::output::suppressions::{SuppressionEntry, apply_exposure_suppressions};
+use crate::output::suppressions::{
+    CheckSuppressionCandidate, SuppressionEntry, apply_check_suppressions,
+    root_relative_finding_path,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::model::{
@@ -49,17 +52,20 @@ fn preview_skip_status_color_message(
 }
 
 /// Builds the `ripr` badge summary from a `CheckOutput`, applying any
-/// `kind = "exposure_gap"` suppressions whose `finding_id` matches a
-/// currently-counted exposure gap. Expired and unmatched suppressions
-/// surface as `warnings` so silently-stale debt cannot keep the badge
-/// green. `today` is the ISO date used for expiry comparison.
+/// `kind = "exposure_gap"` suppression whose `finding_id` or root-relative
+/// `path`/`static_class` selector matches a currently-counted exposure gap.
+/// Implicit badge suppression uses the same matcher as explicit
+/// `--suppression-policy` findings, so path-glob policy applies consistently
+/// across both surfaces. Expired and unmatched suppressions surface as
+/// `warnings` so silently-stale debt cannot keep the badge green. `today` is
+/// the ISO date used for expiry comparison.
 pub fn ripr_badge_summary_with_suppressions(
     output: &CheckOutput,
     suppressions: &[SuppressionEntry],
     today: &str,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    let mut candidate_ids: Vec<String> = Vec::new();
+    let mut candidates: Vec<CheckSuppressionCandidate> = Vec::new();
     let mut unknowns = 0usize;
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
@@ -68,7 +74,11 @@ pub fn ripr_badge_summary_with_suppressions(
             ExposureClass::WeaklyExposed
             | ExposureClass::ReachableUnrevealed
             | ExposureClass::NoStaticPath => {
-                candidate_ids.push(finding.id.clone());
+                candidates.push(CheckSuppressionCandidate {
+                    finding_id: finding.id.clone(),
+                    path: root_relative_finding_path(&output.root, &finding.probe.location.file),
+                    class: finding.class.as_str().to_string(),
+                });
             }
             ExposureClass::InfectionUnknown
             | ExposureClass::PropagationUnknown
@@ -86,9 +96,10 @@ pub fn ripr_badge_summary_with_suppressions(
         }
     }
 
-    let suppression_app = apply_exposure_suppressions(&candidate_ids, suppressions, today);
-    let suppressed = suppression_app.suppressed_findings.len();
-    let unsuppressed_exposure_gaps = candidate_ids.len().saturating_sub(suppressed);
+    let (suppressed_findings, warnings) =
+        apply_check_suppressions(&candidates, suppressions, today);
+    let suppressed = suppressed_findings.len();
+    let unsuppressed_exposure_gaps = candidates.len().saturating_sub(suppressed);
 
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps,
@@ -148,7 +159,7 @@ pub fn ripr_badge_summary_with_suppressions(
         counts,
         reason_counts,
         policy,
-        warnings: suppression_app.warnings,
+        warnings,
         preview_skipped,
         projection: None,
     }

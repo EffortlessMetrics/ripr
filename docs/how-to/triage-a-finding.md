@@ -72,9 +72,11 @@ manifest parser rejects them. Preview-language entries also need
 `language_status = "preview"` until the repository policy promotes that
 language.
 
-The path-glob example in the example file is for an explicit
-`--suppression-policy` findings run. For implicit badge suppression, use exact
-`finding_id` entries; do not assume that a path glob changes badge counts.
+The path-glob example in the example file applies to both explicit
+`--suppression-policy` findings runs and implicit badge suppression. For badge
+counts, a path-only entry may optionally use `static_class` to narrow the
+matching exposure class. Exact `finding_id` entries remain supported and
+continue to identify one finding precisely.
 
 ## 5. Check suppression health
 

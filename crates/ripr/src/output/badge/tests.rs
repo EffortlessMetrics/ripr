@@ -948,6 +948,31 @@ fn exposure_suppression(finding_id: &str, expires: Option<&str>) -> SuppressionE
     }
 }
 
+fn path_exposure_suppression(
+    path: &str,
+    static_class: Option<&str>,
+    expires: Option<&str>,
+) -> SuppressionEntry {
+    SuppressionEntry {
+        kind: SuppressionKind::ExposureGap,
+        finding_id: None,
+        test: None,
+        path: Some(path.to_string()),
+        reason: "x".to_string(),
+        owner: "y".to_string(),
+        expires: expires.map(str::to_string),
+        scope: None,
+        created_at: None,
+        last_seen: None,
+        review_by: None,
+        expected_visibility: None,
+        static_class: static_class.map(str::to_string),
+        language: None,
+        language_status: None,
+        block_line: 11,
+    }
+}
+
 fn te_suppression(test: &str, path: Option<&str>, expires: Option<&str>) -> SuppressionEntry {
     SuppressionEntry {
         kind: SuppressionKind::TestEfficiency,
@@ -1010,6 +1035,67 @@ fn ripr_badge_with_expired_suppression_keeps_finding_in_headline_and_warns() {
     assert_eq!(summary.warnings.len(), 1);
     assert!(summary.warnings[0].contains("expired"));
     assert!(summary.warnings[0].contains("probe:a"));
+}
+
+#[test]
+fn ripr_badge_path_glob_suppression_matches_relative_path_and_static_class() {
+    let mut finding = finding_at_id("probe:generated", ExposureClass::NoStaticPath);
+    finding.probe.location.file = PathBuf::from("src/generated/a.rs");
+    let output = check_output(vec![finding]);
+    let suppressions = vec![path_exposure_suppression(
+        "src/generated/**",
+        Some("no_static_path"),
+        None,
+    )];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.counts.suppressed_exposure_gaps, 1);
+    assert!(summary.warnings.is_empty());
+}
+
+#[test]
+fn ripr_badge_path_glob_suppression_warns_for_class_mismatch_and_expiry() {
+    let mut finding = finding_at_id("probe:generated", ExposureClass::NoStaticPath);
+    finding.probe.location.file = PathBuf::from("src/generated/a.rs");
+    let output = check_output(vec![finding]);
+    let suppressions = vec![
+        path_exposure_suppression("src/generated/**", Some("weakly_exposed"), None),
+        path_exposure_suppression(
+            "src/generated/**",
+            Some("no_static_path"),
+            Some("2025-01-01"),
+        ),
+    ];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.suppressed_exposure_gaps, 0);
+    assert_eq!(summary.warnings.len(), 2);
+    assert!(
+        summary
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("did not match"))
+    );
+    assert!(
+        summary
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("expired"))
+    );
 }
 
 #[test]
