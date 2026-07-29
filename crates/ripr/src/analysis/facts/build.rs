@@ -198,6 +198,8 @@ fn summarize_file_with_adapters(
         Ok(facts) => Ok(facts),
         Err(_) => {
             let mut facts = fallback.summarize_file(file, text)?;
+            // Belt-and-suspenders: the lexical adapter already sets this flag
+            // internally (#2698), so this overwrite is redundant but harmless.
             facts.used_lexical_fallback = true;
             Ok(facts)
         }
