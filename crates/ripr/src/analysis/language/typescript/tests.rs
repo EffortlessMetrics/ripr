@@ -1182,6 +1182,32 @@ test("blob copies shared and resizable buffers through copy path", async () => {
 }
 
 #[test]
+fn related_copy_to_unshared_test_emits_configured_bridge_hint() -> Result<(), String> {
+    let source = r#"
+test("blob copies shared and resizable buffers through copy path", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+    let tests = extract_tests(Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE), source);
+    let facts = tests
+        .iter()
+        .flat_map(bun_array_buffer_facts_for_test)
+        .collect::<Vec<_>>();
+
+    let hints = collect_related_bun_bridge_hints(&facts);
+    assert!(hints.iter().any(|hint| {
+        hint.profile_kind == TypeScriptBunBridgeProfileKind::ArrayBufferCopyToUnshared
+            && hint.rust_owner == BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_OWNER
+            && hint.ts_test_file == Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE)
+    }));
+    Ok(())
+}
+
+#[test]
 fn changed_rust_copy_to_unshared_unknown_bridge_stays_limitation() -> Result<(), String> {
     let source = r#"
 test("blob copies shared and resizable buffers through copy path", async () => {
