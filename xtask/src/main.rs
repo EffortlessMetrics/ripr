@@ -3843,6 +3843,10 @@ pub(crate) fn finish_policy_report(
     write_report(spec.report_file, &body)?;
 
     if violations.is_empty() {
+        println!(
+            "{}: pass (target/ripr/reports/{})",
+            spec.check, spec.report_file
+        );
         Ok(())
     } else {
         Err(format!(
