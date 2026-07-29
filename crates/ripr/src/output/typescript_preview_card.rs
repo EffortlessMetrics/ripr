@@ -354,10 +354,14 @@ fn bun_cross_language_grip(
     finding: &Finding,
     actionability: &PreviewActionability,
 ) -> Option<TypeScriptBunCrossLanguageGrip> {
-    let hint = evidence_value(finding, "typescript_bun_ub_bridge_hint: ")?;
-    let verdict = evidence_value(finding, "typescript_bun_ub_bridge_verdict: ")?;
-    let grip = evidence_value(finding, "typescript_bun_ub_cross_language_grip: ");
-    let placement = evidence_value(finding, "typescript_bun_ub_test_placement: ");
+    let (hint_index, hint) = selected_bun_bridge_hint(finding)?;
+    let verdict = evidence_value_after(finding, hint_index, "typescript_bun_ub_bridge_verdict: ")?;
+    let grip = evidence_value_after(
+        finding,
+        hint_index,
+        "typescript_bun_ub_cross_language_grip: ",
+    );
+    let placement = evidence_value_after(finding, hint_index, "typescript_bun_ub_test_placement: ");
     let ts_verdict = verdict.split_whitespace().next()?.to_string();
     let missing = keyed_value(verdict, "missing_discriminators")
         .map(|value| {
@@ -401,6 +405,42 @@ fn bun_cross_language_grip(
             .and_then(|line| keyed_value(line, "repair_packet_ready"))
             .is_some_and(|value| value == "true"),
     })
+}
+
+fn selected_bun_bridge_hint(finding: &Finding) -> Option<(usize, &str)> {
+    // Prefer the first emitted copy profile when a producer supplies duplicate
+    // copy hints; evidence order is the producer-owned deterministic tie-break.
+    finding
+        .evidence
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            entry
+                .strip_prefix("typescript_bun_ub_bridge_hint: ")
+                .map(|hint| (index, hint))
+        })
+        .min_by_key(|(_, hint)| {
+            if hint.contains("rust_owner=copy_to_unshared") {
+                0
+            } else {
+                1
+            }
+        })
+}
+
+fn evidence_value_after<'a>(
+    finding: &'a Finding,
+    hint_index: usize,
+    prefix: &str,
+) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .skip(hint_index + 1)
+        .take_while(|entry| !entry.starts_with("typescript_bun_ub_bridge_hint: "))
+        .find_map(|entry| entry.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 pub(crate) fn bun_cross_language_advisory_packet(
@@ -924,6 +964,58 @@ mod tests {
         assert_eq!(projected["proof_mode"]["mutation_execution"], false);
         assert_eq!(projected["proof_mode"]["miri_execution"], false);
         assert_eq!(projected["proof_mode"]["proof_claim"], false);
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_selects_copy_bridge_group_when_multiple_profiles_exist()
+    -> Result<(), String> {
+        let mut finding = sample_bun_missing_resizable_finding();
+        finding.evidence.extend([
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"SharedArrayBuffer and resizable ArrayBuffer copy semantics\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_discriminated rust_grip=ungripped ts_verdict=ts_discriminated action=no_missing_bridge_discriminator authority=preview_advisory_only suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+        ]);
+
+        let card = typescript_preview_card(&finding)
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        let grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+
+        assert_eq!(grip.rust_file, "src/jsc/array_buffer.rs");
+        assert_eq!(grip.rust_owner, "copy_to_unshared");
+        assert_eq!(grip.ts_verdict, "ts_discriminated");
+
+        let json = typescript_preview_card_json_value(&card);
+        assert_eq!(
+            json["bun_cross_language_grip"]["rust_seam"]["file"],
+            "src/jsc/array_buffer.rs"
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["rust_seam"]["owner"],
+            "copy_to_unshared"
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["typescript_evidence"]["test_file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_keeps_blob_group_without_copy_profile() -> Result<(), String> {
+        let card = typescript_preview_card(&sample_bun_missing_resizable_finding())
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        let grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+
+        assert_eq!(grip.rust_file, "src/jsc/Blob.rs");
+        assert_eq!(grip.rust_owner, "Blob::from_js_without_defer_gc");
+        assert_eq!(grip.ts_verdict, "ts_missing_resizable");
         Ok(())
     }
 

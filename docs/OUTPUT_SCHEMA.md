@@ -1029,8 +1029,10 @@ JSON fields:
   `missing_discriminator`, `suggested_assertion_shape`, `static_limits`,
   nullable `verify.command`, `why_not_actionable`, `repair_route`,
   `repair_packet_ready`, and `limits`. The optional
-  `bun_cross_language_grip` object is limited to configured Bun Blob preview
-  evidence and carries `state`, `rust_seam.file`, `rust_seam.owner`,
+  `bun_cross_language_grip` object carries one coherent configured Bun bridge
+  profile selected from the related evidence (including Blob,
+  `copy_to_unshared`, and Markdown resizable profiles). It carries `state`,
+  `rust_seam.file`, `rust_seam.owner`,
   `rust_seam.boundary`, `typescript_evidence.test_file`,
   `typescript_evidence.verdict`, `typescript_evidence.bridge_confidence`,
   `typescript_evidence.missing_discriminators[]`, `limitation_category`,
