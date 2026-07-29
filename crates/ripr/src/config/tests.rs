@@ -672,6 +672,24 @@ fn generated_init_config_matches_checked_in_example() -> Result<(), String> {
 }
 
 #[test]
+fn unknown_language_error_includes_perl_fact_packet_guidance() -> Result<(), String> {
+    let Err(error) = parse_config(
+        r#"
+[languages]
+enabled = ["ruby"]
+"#,
+    ) else {
+        return Err("unknown language should fail configuration parsing".to_string());
+    };
+    if !error.contains("--perl-facts <path>") {
+        return Err(format!(
+            "unknown-language guidance should name the Perl fact packet option: {error}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn config_file_discovery_records_source_metadata() -> Result<(), String> {
     let root = temp_root("present")?;
     let config_path = root.join(CONFIG_FILE_NAME);

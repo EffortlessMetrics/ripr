@@ -771,7 +771,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). `perl` parses for forward compatibility but is intentionally omitted from the valid-values list: the Perl adapter is `#[cfg(test)] mod perl;`, `lang-perl` is not in the default Cargo features, the production path router ignores `.pm`/`.pl`/`.t`/`.psgi`, and the pipeline returns a fail-closed stub even with the feature on. Perl's support tier is `scaffold` (see [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379), not `preview` — so advertising it here would be misleading. |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`, `perl`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. Perl consumes externally-produced `ripr-perl-facts-v1` packets and does not parse Perl source directly. Supply one with `--perl-facts <path>`, or configure a managed exporter under `[perl]`; without a packet or available exporter, Perl analysis is unavailable. Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md); TypeScript, Python, and Perl remain preview adapters. See [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379. |
 
 `[languages]` controls runtime routing for the selected repository. The `ripr`
 binary must also be built with the corresponding adapter feature. The default
@@ -786,6 +786,26 @@ If repo config enables a language that is not available in the current binary,
 configuration fails closed with a message naming the missing Cargo feature,
 for example `lang-python`. The editor reports that configuration problem
 instead of publishing phantom preview diagnostics.
+
+### `[perl]`
+
+Perl is a fact-packet consumer. It does not parse `.pm`, `.pl`, `.t`, or `.psgi`
+source directly. Use either an explicit packet or a managed exporter:
+
+```bash
+ripr check --perl-facts target/ripr/reports/perl-facts.json
+```
+
+```toml
+[perl]
+producer = "perl-ripr-facts"
+# `perllsp` and `perl-lsp` are accepted compatibility wrappers.
+```
+
+Managed mode invokes the configured external exporter when it is available;
+otherwise the Perl language run is reported as unavailable while other enabled
+languages continue. The accepted managed producer values are
+`perl-ripr-facts`, `perllsp`, and `perl-lsp`.
 
 To evaluate preview languages, keep Rust enabled and add only the preview
 adapters the repo wants to inspect:
