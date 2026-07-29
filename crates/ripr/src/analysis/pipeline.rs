@@ -90,13 +90,24 @@ fn non_source_disclosure_message(changed_files: &[diff::ChangedFile]) -> Option<
     ))
 }
 
+fn deletion_disclosure_message(deleted_file_count: usize) -> Option<String> {
+    (deleted_file_count > 0).then(|| {
+        format!(
+            "ripr: diff deleted {deleted_file_count} file(s); deletion-only diffs produce no probes \
+             (deleted behavior has no new-side code to analyze)."
+        )
+    })
+}
+
 fn run_pipeline_for_diff_text(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
-    let changed_files = diff::parse_unified_diff_bounded(diff_text)?;
+    let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
+    let changed_files = parsed_diff.changed_files;
+    let deleted_file_count = parsed_diff.deleted_file_count;
 
     let mut findings: Vec<Finding> = Vec::new();
     // `changed_rust_files` counts Rust adapter files only (#2103); every
@@ -209,6 +220,16 @@ fn run_pipeline_for_diff_text(
         eprintln!("{message}");
     }
 
+    if findings.is_empty()
+        && rust_changed_files == 0
+        && changed_files_by_language
+            .iter()
+            .all(|(_, count)| *count == 0)
+        && let Some(message) = deletion_disclosure_message(deleted_file_count)
+    {
+        eprintln!("{message}");
+    }
+
     // Disclose when the diff parsed to zero changed files (#2425): the input
     // may be a non-diff file (a log, a source file, random text) or a
     // malformed diff with no parseable hunks. Without this disclosure, the
@@ -218,6 +239,7 @@ fn run_pipeline_for_diff_text(
     if findings.is_empty()
         && rust_changed_files == 0
         && changed_files.is_empty()
+        && deleted_file_count == 0
         && changed_files_by_language
             .iter()
             .all(|(_, count)| *count == 0)
@@ -670,6 +692,29 @@ mod tests {
             "non-diff text must parse to zero changed files, got {}",
             changed.len()
         );
+    }
+
+    #[test]
+    fn deletion_disclosure_names_deleted_files_and_non_claim() -> Result<(), String> {
+        let message = deletion_disclosure_message(2)
+            .ok_or_else(|| "deleted files must produce a disclosure".to_string())?;
+        if !message.contains("deleted 2 file(s)") {
+            return Err(format!(
+                "disclosure must name the deleted-file count: {message}"
+            ));
+        }
+        if !message.contains("deletion-only diffs produce no probes") {
+            return Err(format!(
+                "disclosure must name the no-probe limitation: {message}"
+            ));
+        }
+        if !message.contains("no new-side code to analyze") {
+            return Err(format!("disclosure must carry the non-claim: {message}"));
+        }
+        if deletion_disclosure_message(0).is_some() {
+            return Err("zero deleted files must not produce a disclosure".to_string());
+        }
+        Ok(())
     }
 
     #[test]

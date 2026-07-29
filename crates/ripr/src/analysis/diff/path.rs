@@ -10,6 +10,23 @@ pub(super) fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
     confine_to_relative_path(path)
 }
 
+pub(super) fn is_dev_null_new_path_marker(raw: &str) -> bool {
+    raw.strip_prefix("+++ ")
+        .and_then(parse_diff_path_token)
+        .is_some_and(|path| path == "/dev/null")
+}
+
+pub(super) fn parse_git_old_path(raw: &str) -> Option<PathBuf> {
+    let marker = raw.strip_prefix("diff --git ")?;
+    let old_token = marker
+        .starts_with('"')
+        .then_some(marker)
+        .or_else(|| marker.split_whitespace().next())?;
+    let path = parse_diff_path_token(old_token)?;
+    let path = path.strip_prefix("a/").unwrap_or(&path);
+    confine_to_relative_path(path)
+}
+
 /// Whether `raw` is syntactically a `+++ <path>` new-path marker, regardless
 /// of whether the path survives confinement. Boundary detection must treat a
 /// confinement-rejected (or `/dev/null`) marker as a file-section boundary:
@@ -193,6 +210,18 @@ mod tests {
     #[test]
     fn parse_new_path_marker_returns_none_for_dev_null() {
         assert_eq!(parse_new_path_marker("+++ /dev/null"), None);
+    }
+
+    #[test]
+    fn parse_git_old_path_confines_the_section_identity() {
+        assert_eq!(
+            parse_git_old_path("diff --git a/src/old.rs b/src/old.rs"),
+            Some(PathBuf::from("src/old.rs"))
+        );
+        assert_eq!(
+            parse_git_old_path("diff --git a/../../../etc/passwd b/../../../etc/passwd"),
+            None
+        );
     }
 
     #[test]

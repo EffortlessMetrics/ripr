@@ -12,4 +12,5 @@ pub use load::{
     reason = "ChangedLine is re-exported for use by probes.rs and other external modules; not used within diff module itself."
 )]
 pub use model::{ChangedFile, ChangedLine};
-pub use parse::{parse_unified_diff, parse_unified_diff_bounded};
+pub use parse::parse_unified_diff;
+pub(crate) use parse::parse_unified_diff_bounded_with_metadata;
