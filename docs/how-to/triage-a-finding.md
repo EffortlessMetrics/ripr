@@ -60,10 +60,11 @@ Every entry needs:
 
 - `kind = "exposure_gap"` with either an exact `finding_id` or a repository-
   relative `path` glob. A path glob may use `static_class` to narrow the
-  matching exposure class; policy health also expects this metadata on other
-  durable entries.
+  matching exposure class, and policy health requires it for exposure-gap
+  entries.
 - `kind = "test_efficiency"` with `test`; `path` is optional but useful when
-  test names repeat.
+  test names repeat. `static_class` is not applicable to this kind because it
+  has no exposure class.
 - non-blank `owner` and `reason`.
 
 Use `/` in repository-relative paths. Keep selectors narrow, add `expires`

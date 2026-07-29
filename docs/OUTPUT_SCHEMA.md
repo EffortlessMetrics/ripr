@@ -9451,6 +9451,9 @@ JSON shape:
 
 Field contract:
 
+- `static_class` is required for `exposure_gap` records because it identifies
+  the exposure class covered by the durable exception. It is not applicable to
+  `test_efficiency` records, which select a test and optional path instead.
 - `status` - `no_suppressions` when the manifest is missing or empty,
   `healthy` when all parsed records have complete policy metadata, `warning`
   when valid records need review, or `config_error` when the manifest is
