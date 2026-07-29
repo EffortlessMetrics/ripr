@@ -13,6 +13,8 @@ pub fn load_diff(
             .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()));
     }
 
+    warn_if_git_operation_in_progress(root, git_timeout);
+
     // RIPR-SPEC-0084: when the caller passes an explicit base, use it as-is
     // (if it does not exist, git diff will surface a clear error that names
     // the ref the user chose). When the caller passes None (bare `ripr check`,
@@ -44,6 +46,8 @@ pub fn load_worktree_diff(
     base: Option<&str>,
     git_timeout: Option<Duration>,
 ) -> Result<String, String> {
+    warn_if_git_operation_in_progress(root, git_timeout);
+
     let owned;
     let base: &str = if let Some(explicit) = base {
         explicit
@@ -274,6 +278,84 @@ fn working_tree_probe(root: &Path) -> WorkingTreeProbe {
         }
         Err(err) => WorkingTreeProbe::Error(format!("git could not be run: {err}")),
     }
+}
+
+/// Disclose repository operation state before a live git diff is analyzed.
+///
+/// During an interrupted rebase, merge, or cherry-pick, the worktree can
+/// contain conflict markers; a rebase may also leave `HEAD` at an ephemeral
+/// replay commit. The diff may still be loadable, but presenting its findings
+/// without this context would make the result look more authoritative than
+/// the input warrants. The probe is fail-closed: an unavailable git invocation
+/// does not fabricate an in-progress operation.
+fn warn_if_git_operation_in_progress(root: &Path, git_timeout: Option<Duration>) {
+    if let Some(operation) = git_operation_in_progress(root, git_timeout) {
+        eprintln!("{}", git_operation_warning(operation));
+    }
+}
+
+/// Return the first active Git operation marker, if one can be resolved.
+///
+/// `git rev-parse --git-path` is intentional instead of `root/.git/<marker>`:
+/// linked worktrees may use a `.git` file and Git can place operation state in
+/// a worktree-specific git directory.
+fn git_operation_in_progress(root: &Path, git_timeout: Option<Duration>) -> Option<GitOperation> {
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &[
+            "rev-parse",
+            "--git-path",
+            "rebase-merge",
+            "--git-path",
+            "rebase-apply",
+            "--git-path",
+            "MERGE_HEAD",
+            "--git-path",
+            "CHERRY_PICK_HEAD",
+        ],
+        git_timeout,
+    )
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let operations = [
+        GitOperation::RebaseMerge,
+        GitOperation::RebaseApply,
+        GitOperation::Merge,
+        GitOperation::CherryPick,
+    ];
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .zip(operations)
+        .find_map(|(path, operation)| {
+            let path = path.trim();
+            (!path.is_empty() && root.join(path).exists()).then_some(operation)
+        })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GitOperation {
+    RebaseMerge,
+    RebaseApply,
+    Merge,
+    CherryPick,
+}
+
+fn git_operation_warning(operation: GitOperation) -> String {
+    let (operation, context) = match operation {
+        GitOperation::RebaseMerge | GitOperation::RebaseApply => (
+            "rebase",
+            "HEAD may identify an ephemeral replay commit and the working tree may contain conflict markers",
+        ),
+        GitOperation::Merge => ("merge", "the working tree may contain conflict markers"),
+        GitOperation::CherryPick => (
+            "cherry-pick",
+            "the working tree may contain conflict markers",
+        ),
+    };
+    format!("ripr: git repository is mid-{operation}; {context}. Results may be distorted.")
 }
 
 fn run_git_diff(
@@ -626,6 +708,78 @@ mod tests {
         let exit_err =
             working_tree_probe_error_warning("git status exited with exit code: 128: fatal");
         assert!(exit_err.contains("git status exited with"));
+    }
+
+    #[test]
+    fn git_operation_probe_detects_rebase_merge_and_cherry_pick_markers() -> std::io::Result<()> {
+        let dir = unique_fixture_root("git-operation-markers")?;
+        let _ = fs::remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        for (marker, expected) in [
+            ("rebase-merge", GitOperation::RebaseMerge),
+            ("rebase-apply", GitOperation::RebaseApply),
+            ("MERGE_HEAD", GitOperation::Merge),
+            ("CHERRY_PICK_HEAD", GitOperation::CherryPick),
+        ] {
+            let marker_path = git_marker_path(&dir, marker)?;
+            if marker.ends_with("-merge") || marker.ends_with("-apply") {
+                fs::create_dir_all(&marker_path)?;
+            } else {
+                fs::write(&marker_path, "marker\n")?;
+            }
+
+            assert_eq!(
+                git_operation_in_progress(&dir, None),
+                Some(expected),
+                "expected Git marker {marker} to be detected at {}",
+                marker_path.display()
+            );
+
+            if marker_path.is_dir() {
+                fs::remove_dir_all(&marker_path)?;
+            } else {
+                fs::remove_file(&marker_path)?;
+            }
+            assert_eq!(git_operation_in_progress(&dir, None), None);
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn git_operation_warning_qualifies_head_and_conflict_markers() {
+        let rebase_warning = git_operation_warning(GitOperation::RebaseMerge);
+        assert!(rebase_warning.contains("mid-rebase"));
+        assert!(rebase_warning.contains("HEAD may identify an ephemeral replay commit"));
+        assert!(rebase_warning.contains("working tree may contain conflict markers"));
+        assert!(rebase_warning.contains("Results may be distorted"));
+
+        let merge_warning = git_operation_warning(GitOperation::Merge);
+        assert!(merge_warning.contains("mid-merge"));
+        assert!(!merge_warning.contains("ephemeral replay commit"));
+
+        let cherry_pick_warning = git_operation_warning(GitOperation::CherryPick);
+        assert!(cherry_pick_warning.contains("mid-cherry-pick"));
+        assert!(!cherry_pick_warning.contains("ephemeral replay commit"));
+    }
+
+    fn git_marker_path(dir: &Path, marker: &str) -> std::io::Result<PathBuf> {
+        let output = crate::git::run_git_output_with_deadline(
+            dir,
+            &["rev-parse", "--git-path", marker],
+            None,
+        )
+        .map_err(std::io::Error::other)?;
+        if !output.status.success() {
+            return Err(std::io::Error::other(format!(
+                "git rev-parse --git-path {marker} failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(dir.join(path))
     }
 
     #[test]
