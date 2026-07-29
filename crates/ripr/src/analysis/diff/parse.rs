@@ -552,6 +552,7 @@ mod parser_state {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_added_lines() {
@@ -1541,5 +1542,107 @@ deleted file mode 100644
             "error must name the file count: {err}"
         );
         Ok(())
+    }
+
+    // --- Property-based tests (#2751) ---
+    //
+    // These use `proptest` to generalize the hand-rolled LCG fuzz tests above.
+    // The hand-rolled tests stay as deterministic regression sets; these add
+    // automatic shrinking and broader input coverage.
+    //
+    // Convention: `Result<(), String>` bodies, no `unwrap`/`expect`, per the
+    // workspace lint posture.
+
+    proptest::proptest! {
+        /// The parser must be a total function: it never panics on arbitrary
+        /// input, including malformed UTF-8 lossy strings, random bytes, and
+        /// adversarial diff-like text.
+        #[test]
+        fn proptest_parser_never_panics_on_arbitrary_input(text in ".{0,500}") {
+            // The parser must complete without panicking on any string.
+            let _ = parse_unified_diff(&text);
+        }
+
+        /// The parser's structural invariants must hold for any generated
+        /// diff-like text assembled from valid diff prefixes.
+        #[test]
+        fn proptest_invariants_hold_for_generated_diffs(
+            lines in proptest::collection::vec(
+                proptest::sample::select(DIFF_LINE_PREFIXES),
+                0..100
+            )
+        ) {
+            let text = lines.join("\n");
+            let files = parse_unified_diff(&text);
+            for file in &files {
+                prop_assert!(
+                    !file.path.as_os_str().is_empty(),
+                    "path must not be empty for file in generated diff"
+                );
+                prop_assert!(
+                    file.added_lines.iter().all(|line| !line.text.contains('\n')),
+                    "added line text must not contain newlines"
+                );
+                prop_assert!(
+                    file.removed_lines.iter().all(|line| !line.text.contains('\n')),
+                    "removed line text must not contain newlines"
+                );
+            }
+        }
+
+        /// For generated diffs with hunk headers, every added line's
+        /// `new_side_line` must be >= 1 (valid 1-based line number).
+        /// Monotonicity is only guaranteed within a single hunk, not across
+        /// hunks, so we do not assert cross-hunk ordering.
+        #[test]
+        fn proptest_added_line_numbers_are_valid(
+            hunks in proptest::collection::vec(
+                generated_hunk(),
+                0..10
+            )
+        ) {
+            let mut diff = String::from("diff --git a/src/gen.rs b/src/gen.rs\n--- a/src/gen.rs\n+++ b/src/gen.rs\n");
+            for hunk in &hunks {
+                diff.push_str(hunk);
+            }
+            let files = parse_unified_diff(&diff);
+            for file in &files {
+                for line in &file.added_lines {
+                    prop_assert!(
+                        line.new_side_line >= 1,
+                        "new_side_line must be >= 1, got {}",
+                        line.new_side_line
+                    );
+                }
+            }
+        }
+    }
+
+    /// Line prefixes for generating structured diff-like text.
+    const DIFF_LINE_PREFIXES: &[&str] = &[
+        "diff --git a/src/lib.rs b/src/lib.rs",
+        "--- a/src/lib.rs",
+        "+++ b/src/lib.rs",
+        "@@ -1,3 +1,3 @@",
+        "@@ -10,5 +10,7 @@",
+        "+added line",
+        "-removed line",
+        " context line",
+        "",
+        "Binary files a/x and b/x differ",
+        "++ payload with spaces",
+        "--- token",
+    ];
+
+    /// Generate a well-formed hunk with bounded line counts.
+    fn generated_hunk() -> impl proptest::prelude::Strategy<Value = String> {
+        use proptest::prelude::*;
+        (1usize..20, 1usize..20).prop_map(|(old_start, new_start)| {
+            let mut hunk = format!("@@ -{old_start},3 +{new_start},3 @@\n");
+            hunk.push_str("-old\n");
+            hunk.push_str(" context\n");
+            hunk.push_str("+new\n");
+            hunk
+        })
     }
 }
