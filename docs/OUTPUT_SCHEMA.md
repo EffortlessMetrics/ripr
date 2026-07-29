@@ -53,6 +53,28 @@ map is:
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
 
+## JSON object key ordering
+
+JSON object key order is not part of the semantic contract for ordinary
+schema-bearing `ripr` output. The examples below use a stable, readable order,
+but consumers must parse JSON objects by key rather than match raw strings,
+prefixes, or byte offsets. This keeps declaration-order and map-backed
+renderers interoperable.
+
+This guidance does not relax byte-canonical artifact contracts. Inputs to
+`ripr agent verify` and artifacts carrying a `content_sha256` commitment are
+validated as exact canonical bytes; consumers must preserve those bytes rather
+than parse and re-render them before verification.
+
+Individual renderers may emit object keys in different deterministic orders,
+including declaration order or map order. The exact order is an implementation
+detail, not a schema distinction, and this document deliberately does not
+specify which order a renderer must choose. The repository may retain
+byte-oriented golden snapshots as renderer regression tests, but those
+snapshots do not authorize downstream consumers to depend on their key order.
+Changing a renderer's ordering would be a separate output migration and is not
+implied by any schema version.
+
 Schema changes that remove fields, rename fields, or change field meanings
 should bump `schema_version`.
 
