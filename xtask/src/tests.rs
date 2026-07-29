@@ -45768,6 +45768,17 @@ fn precommit_gate_commands_match_report() -> Result<(), String> {
             "precommit report gates {report_gates:?} must match PRECOMMIT_GATE_COMMANDS {expected:?}"
         ));
     }
+    for required in [
+        "check-dependencies",
+        "check-process-policy",
+        "check-network-policy",
+    ] {
+        if !expected.contains(&required) {
+            return Err(format!(
+                "precommit must include the policy gate `{required}`"
+            ));
+        }
+    }
     Ok(())
 }
 
