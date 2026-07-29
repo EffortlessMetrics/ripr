@@ -99,6 +99,21 @@ fn deletion_disclosure_message(deleted_file_count: usize) -> Option<String> {
     })
 }
 
+fn submodule_disclosure_message(submodule_file_count: usize) -> Option<String> {
+    (submodule_file_count > 0).then(|| {
+        format!(
+            "ripr: skipped {submodule_file_count} submodule pointer change(s); \
+             ripr does not analyze submodule contents."
+        )
+    })
+}
+
+fn emit_submodule_disclosure(submodule_file_count: usize, mut emit: impl FnMut(&str)) {
+    if let Some(message) = submodule_disclosure_message(submodule_file_count) {
+        emit(&message);
+    }
+}
+
 fn run_pipeline_for_diff_text(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
@@ -108,6 +123,7 @@ fn run_pipeline_for_diff_text(
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
     let changed_files = parsed_diff.changed_files;
     let deleted_file_count = parsed_diff.deleted_file_count;
+    let submodule_file_count = parsed_diff.submodule_file_count;
 
     let mut findings: Vec<Finding> = Vec::new();
     // `changed_rust_files` counts Rust adapter files only (#2103); every
@@ -210,6 +226,7 @@ fn run_pipeline_for_diff_text(
     // (#1888, #2304).
     if findings.is_empty()
         && rust_changed_files == 0
+        && submodule_file_count == 0
         && changed_files_by_language
             .iter()
             .all(|(_, count)| *count == 0)
@@ -219,6 +236,8 @@ fn run_pipeline_for_diff_text(
         // generated), but the user needs to know why the result is empty.
         eprintln!("{message}");
     }
+
+    emit_submodule_disclosure(submodule_file_count, |message| eprintln!("{message}"));
 
     if findings.is_empty()
         && rust_changed_files == 0
@@ -240,6 +259,7 @@ fn run_pipeline_for_diff_text(
         && rust_changed_files == 0
         && changed_files.is_empty()
         && deleted_file_count == 0
+        && submodule_file_count == 0
         && changed_files_by_language
             .iter()
             .all(|(_, count)| *count == 0)
@@ -714,6 +734,84 @@ mod tests {
         if deletion_disclosure_message(0).is_some() {
             return Err("zero deleted files must not produce a disclosure".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn submodule_disclosure_names_skipped_pointer_changes_and_non_claim() -> Result<(), String> {
+        let message = submodule_disclosure_message(2)
+            .ok_or_else(|| "submodule changes must produce a disclosure".to_string())?;
+        if !message.contains("skipped 2 submodule pointer change(s)") {
+            return Err(format!("disclosure must name the count: {message}"));
+        }
+        if !message.contains("does not analyze submodule contents") {
+            return Err(format!("disclosure must carry the non-claim: {message}"));
+        }
+        if submodule_disclosure_message(0).is_some() {
+            return Err("zero submodule changes must not produce a disclosure".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn submodule_pipeline_emits_exact_disclosure_message() {
+        let mut emitted = None;
+        emit_submodule_disclosure(1, |message| emitted = Some(message.to_string()));
+        assert_eq!(
+            emitted.as_deref(),
+            Some(
+                "ripr: skipped 1 submodule pointer change(s); ripr does not analyze submodule contents."
+            )
+        );
+    }
+
+    #[test]
+    fn diff_pipeline_discloses_submodule_only_scope() -> Result<(), String> {
+        let root = temp_root("submodule-only")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname = \"submodule-fixture\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        )?;
+        let diff_file = root.join("submodule.diff");
+        write(
+            &diff_file,
+            "diff --git a/vendor/lib b/vendor/lib\n\
+             index 1111111..2222222 160000\n\
+             --- a/vendor/lib\n\
+             +++ b/vendor/lib\n\
+             @@ -1 +1 @@\n\
+             -Subproject commit 1111111\n\
+             +Subproject commit 2222222\n\
+             diff --git a/vendor/new b/vendor/new\n\
+             new file mode 160000\n\
+             index 0000000..3333333\n\
+             --- /dev/null\n\
+             +++ b/vendor/new\n\
+             diff --git a/vendor/old b/vendor/old\n\
+             deleted file mode 160000\n\
+             index 4444444..0000000\n\
+             --- a/vendor/old\n\
+             +++ /dev/null\n",
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+        )?;
+
+        assert!(result.findings.is_empty());
+        assert_eq!(result.summary.changed_rust_files, 0);
+        let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 

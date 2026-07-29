@@ -29,7 +29,7 @@ pub fn load_diff(
     run_git_diff(
         root,
         &format!("{base}...HEAD"),
-        &["--no-ext-diff", "--unified=0"],
+        &["--no-ext-diff", "--submodule=short", "--unified=0"],
         git_timeout,
     )
 }
@@ -52,7 +52,7 @@ pub fn load_worktree_diff(
         &owned
     };
 
-    run_git_diff(root, base, &[], git_timeout)
+    run_git_diff(root, base, &["--submodule=short"], git_timeout)
 }
 
 /// Resolve the best available base ref for `ripr check` when none was
@@ -197,7 +197,7 @@ pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, St
     run_git_diff(
         root,
         &format!("{base}...{head}"),
-        &["--unified=0", "--no-ext-diff"],
+        &["--unified=0", "--no-ext-diff", "--submodule=short"],
         None,
     )
 }

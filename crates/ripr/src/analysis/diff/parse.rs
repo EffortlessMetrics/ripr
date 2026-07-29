@@ -88,6 +88,16 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
             continue;
         }
 
+        if state.handle_submodule_mode(raw) {
+            i += 1;
+            continue;
+        }
+
+        if state.handle_submodule_index(raw) {
+            i += 1;
+            continue;
+        }
+
         // RANK-2 fix: detect a plain-diff file-section boundary while in_hunk.
         // A genuine `--- payload` line inside a hunk starts with `-` (one dash)
         // and is consumed as a removed line.  A file-section separator starts
@@ -121,6 +131,7 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
     ParsedDiff {
         changed_files: files.into_values().collect(),
         deleted_file_count: state.deleted_file_count(),
+        submodule_file_count: state.submodule_file_count(),
     }
 }
 
@@ -128,6 +139,7 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
 pub(crate) struct ParsedDiff {
     pub(crate) changed_files: Vec<ChangedFile>,
     pub(crate) deleted_file_count: usize,
+    pub(crate) submodule_file_count: usize,
 }
 
 fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
@@ -167,6 +179,10 @@ mod parser_state {
         deletion_section: bool,
         deletion_counted: bool,
         deleted_file_count: usize,
+        submodule_section: bool,
+        submodule_counted: bool,
+        submodule_new_file: bool,
+        submodule_file_count: usize,
     }
 
     impl ParserState {
@@ -177,6 +193,37 @@ mod parser_state {
 
         pub(super) fn deleted_file_count(&self) -> usize {
             self.deleted_file_count
+        }
+
+        pub(super) fn submodule_file_count(&self) -> usize {
+            self.submodule_file_count
+        }
+
+        pub(super) fn handle_submodule_mode(&mut self, raw: &str) -> bool {
+            if self.in_hunk {
+                return false;
+            }
+            if matches!(raw, "new file mode 160000" | "deleted file mode 160000") {
+                self.submodule_section = true;
+                self.deletion_section = raw == "deleted file mode 160000";
+                return true;
+            }
+            false
+        }
+
+        pub(super) fn handle_submodule_index(&mut self, raw: &str) -> bool {
+            if self.in_hunk {
+                return false;
+            }
+            let mut fields = raw.split_whitespace();
+            let is_gitlink = fields.next() == Some("index")
+                && fields.next().is_some_and(|range| range.contains(".."))
+                && fields.next() == Some("160000")
+                && fields.next().is_none();
+            if is_gitlink {
+                self.submodule_section = true;
+            }
+            is_gitlink
         }
 
         fn record_deleted_file_if_ready(&mut self) {
@@ -219,7 +266,16 @@ mod parser_state {
             if parse_old_path_marker(raw) {
                 self.saw_old_path_marker = true;
                 self.section_old_path = parse_old_path_for_confinement(raw);
+                self.submodule_new_file = raw == "--- /dev/null";
                 self.record_deleted_file_if_ready();
+                if self.submodule_section
+                    && self.deletion_section
+                    && !self.submodule_counted
+                    && self.section_old_path.is_some()
+                {
+                    self.submodule_file_count = self.submodule_file_count.saturating_add(1);
+                    self.submodule_counted = true;
+                }
                 return true;
             }
 
@@ -240,6 +296,13 @@ mod parser_state {
                 }
                 return false;
             };
+            if self.submodule_section
+                && !self.submodule_counted
+                && (self.submodule_new_file || self.section_old_path.as_ref() == Some(&path))
+            {
+                self.submodule_file_count = self.submodule_file_count.saturating_add(1);
+                self.submodule_counted = true;
+            }
             if self.current_path.is_none() || self.saw_old_path_marker {
                 self.current_path = Some(path.clone());
                 files.entry(path.clone()).or_insert_with(|| ChangedFile {
@@ -274,6 +337,9 @@ mod parser_state {
             self.section_old_path = parse_git_old_path(raw);
             self.deletion_section = false;
             self.deletion_counted = false;
+            self.submodule_section = false;
+            self.submodule_counted = false;
+            self.submodule_new_file = false;
             true
         }
 
@@ -721,6 +787,43 @@ deleted file mode 100644
             parse_unified_diff_with_metadata(traversal).deleted_file_count,
             0
         );
+    }
+
+    #[test]
+    fn metadata_counts_confined_submodule_pointer_changes() {
+        let submodule = "diff --git a/vendor/lib b/vendor/lib\nindex 1111111..2222222 160000\n--- a/vendor/lib\n+++ b/vendor/lib\n@@ -1 +1 @@\n-Subproject commit 1111111\n+Subproject commit 2222222\n";
+        let parsed = parse_unified_diff_with_metadata(submodule);
+
+        assert_eq!(parsed.submodule_file_count, 1);
+        assert_eq!(parsed.changed_files.len(), 1);
+        assert_eq!(parsed.changed_files[0].path, PathBuf::from("vendor/lib"));
+    }
+
+    #[test]
+    fn metadata_counts_gitlink_additions_and_deletions() {
+        let addition = "diff --git a/vendor/new b/vendor/new\nnew file mode 160000\nindex 0000000..2222222\n--- /dev/null\n+++ b/vendor/new\n";
+        let parsed = parse_unified_diff_with_metadata(addition);
+        assert_eq!(parsed.submodule_file_count, 1);
+        assert_eq!(parsed.changed_files[0].path, PathBuf::from("vendor/new"));
+
+        let deletion = "diff --git a/vendor/old b/vendor/old\ndeleted file mode 160000\nindex 1111111..0000000\n--- a/vendor/old\n+++ /dev/null\n";
+        let parsed = parse_unified_diff_with_metadata(deletion);
+        assert_eq!(parsed.submodule_file_count, 1);
+        assert!(parsed.changed_files.is_empty());
+    }
+
+    #[test]
+    fn metadata_does_not_count_non_gitlink_or_unconfined_submodule_markers() {
+        let regular = "diff --git a/src/lib.rs b/src/lib.rs\nindex 1111111..2222222 100644\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-old\n+new\n";
+        assert_eq!(
+            parse_unified_diff_with_metadata(regular).submodule_file_count,
+            0
+        );
+
+        let traversal = "diff --git a/../escape b/../escape\nindex 1111111..2222222 160000\n--- a/../escape\n+++ b/../escape\n";
+        let parsed = parse_unified_diff_with_metadata(traversal);
+        assert_eq!(parsed.submodule_file_count, 0);
+        assert!(parsed.changed_files.is_empty());
     }
 
     #[test]
