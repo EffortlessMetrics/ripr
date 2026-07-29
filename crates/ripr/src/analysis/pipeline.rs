@@ -114,6 +114,36 @@ fn emit_submodule_disclosure(submodule_file_count: usize, mut emit: impl FnMut(&
     }
 }
 
+fn emit_rename_disclosure(
+    renamed_file_count: usize,
+    pure_rename_file_count: usize,
+    mut emit: impl FnMut(&str),
+) {
+    if let Some(message) = rename_disclosure_message(renamed_file_count, pure_rename_file_count) {
+        emit(&message);
+    }
+}
+
+fn rename_disclosure_message(
+    renamed_file_count: usize,
+    pure_rename_file_count: usize,
+) -> Option<String> {
+    (renamed_file_count > 0).then(|| {
+        let edited_count = renamed_file_count.saturating_sub(pure_rename_file_count);
+        match (pure_rename_file_count, edited_count) {
+            (pure, 0) => format!(
+                "ripr: detected {pure} pure rename(s) with no changed lines; rename-only changes produce no probes."
+            ),
+            (0, edited) => format!(
+                "ripr: detected {edited} rename(s); changed lines are analyzed under the new path, but old-path test associations are not carried forward."
+            ),
+            (pure, edited) => format!(
+                "ripr: detected {pure} pure rename(s) with no changed lines and {edited} rename(s) with edits; changed lines are analyzed under new paths, but old-path test associations are not carried forward."
+            ),
+        }
+    })
+}
+
 fn run_pipeline_for_diff_text(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
@@ -124,6 +154,14 @@ fn run_pipeline_for_diff_text(
     let changed_files = parsed_diff.changed_files;
     let deleted_file_count = parsed_diff.deleted_file_count;
     let submodule_file_count = parsed_diff.submodule_file_count;
+    let renamed_file_count = parsed_diff.renamed_file_count;
+    let pure_rename_file_count = parsed_diff.pure_rename_file_count;
+    let pure_rename_paths = parsed_diff.pure_rename_paths;
+    let analysis_changed_files = changed_files
+        .iter()
+        .filter(|file| !pure_rename_paths.contains(&file.path))
+        .cloned()
+        .collect::<Vec<_>>();
 
     let mut findings: Vec<Finding> = Vec::new();
     // `changed_rust_files` counts Rust adapter files only (#2103); every
@@ -145,7 +183,7 @@ fn run_pipeline_for_diff_text(
         let result = RustAdapter.analyze_diff_for_languages(
             options,
             oracle_policy,
-            &changed_files,
+            &analysis_changed_files,
             languages,
         )?;
         cancellation::checkpoint()?;
@@ -160,7 +198,7 @@ fn run_pipeline_for_diff_text(
     let restricted_changed_files;
     let preview_changed_files: &[diff::ChangedFile] = match &partial_scope {
         Some(scope) => {
-            restricted_changed_files = changed_files
+            restricted_changed_files = analysis_changed_files
                 .iter()
                 .filter(|file| scope.selects(&file.path))
                 .cloned()
@@ -217,7 +255,7 @@ fn run_pipeline_for_diff_text(
     // clean Rust-grade result for a TypeScript/JavaScript/Python change
     // (RIPR-SPEC-0082, #1111). Detection is pure path routing — it does not
     // require the adapter to be enabled.
-    let preview_paths: Vec<&diff::ChangedFile> = changed_files.iter().collect();
+    let preview_paths: Vec<&diff::ChangedFile> = analysis_changed_files.iter().collect();
     let preview_advisories = detect_preview_advisories(languages, preview_paths.into_iter());
 
     // Disclose when the diff contains only non-source files (docs/config-only
@@ -227,6 +265,7 @@ fn run_pipeline_for_diff_text(
     if findings.is_empty()
         && rust_changed_files == 0
         && submodule_file_count == 0
+        && renamed_file_count == 0
         && changed_files_by_language
             .iter()
             .all(|(_, count)| *count == 0)
@@ -238,6 +277,10 @@ fn run_pipeline_for_diff_text(
     }
 
     emit_submodule_disclosure(submodule_file_count, |message| eprintln!("{message}"));
+
+    emit_rename_disclosure(renamed_file_count, pure_rename_file_count, |message| {
+        eprintln!("{message}");
+    });
 
     if findings.is_empty()
         && rust_changed_files == 0
@@ -260,6 +303,7 @@ fn run_pipeline_for_diff_text(
         && changed_files.is_empty()
         && deleted_file_count == 0
         && submodule_file_count == 0
+        && renamed_file_count == 0
         && changed_files_by_language
             .iter()
             .all(|(_, count)| *count == 0)
@@ -734,6 +778,99 @@ mod tests {
         if deletion_disclosure_message(0).is_some() {
             return Err("zero deleted files must not produce a disclosure".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn rename_disclosure_names_pure_and_edited_renames_and_non_claim() -> Result<(), String> {
+        let pure = rename_disclosure_message(2, 2)
+            .ok_or_else(|| "pure renames must produce a disclosure".to_string())?;
+        if !pure.contains("detected 2 pure rename(s)") || !pure.contains("no changed lines") {
+            return Err(format!("pure rename disclosure is incomplete: {pure}"));
+        }
+        if !pure.contains("produce no probes") {
+            return Err(format!(
+                "pure rename disclosure must state the no-probe limit: {pure}"
+            ));
+        }
+
+        let edited = rename_disclosure_message(1, 0)
+            .ok_or_else(|| "edited renames must produce a disclosure".to_string())?;
+        if !edited.contains("analyzed under the new path") {
+            return Err(format!(
+                "edited rename disclosure must name the new path: {edited}"
+            ));
+        }
+        if !edited.contains("not carried forward") {
+            return Err(format!(
+                "edited rename disclosure must state the association limit: {edited}"
+            ));
+        }
+        let mixed = rename_disclosure_message(2, 1)
+            .ok_or_else(|| "mixed renames must produce a disclosure".to_string())?;
+        if !mixed.contains("not carried forward") {
+            return Err(format!(
+                "mixed rename disclosure must state the association limit: {mixed}"
+            ));
+        }
+        let mut emitted = None;
+        emit_rename_disclosure(1, 1, |message| emitted = Some(message.to_string()));
+        if emitted.as_deref()
+            != Some(
+                "ripr: detected 1 pure rename(s) with no changed lines; rename-only changes produce no probes.",
+            )
+        {
+            return Err(format!(
+                "pipeline emitted the wrong rename disclosure: {emitted:?}"
+            ));
+        }
+        if rename_disclosure_message(0, 0).is_some() {
+            return Err("zero renames must not produce a disclosure".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_pipeline_discloses_pure_rename_scope() -> Result<(), String> {
+        let root = temp_root("pure-rename")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname = \"rename-fixture\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        )?;
+        let diff_file = root.join("rename.diff");
+        write(
+            &diff_file,
+            "diff --git a/src/old.rs b/src/new.rs\n\
+             similarity index 100%\n\
+             rename from src/old.rs\n\
+             rename to src/new.rs\n",
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff_file),
+                mode: AnalysisMode::Draft,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+        )?;
+
+        assert!(result.findings.is_empty());
+        let mut disclosures = Vec::new();
+        emit_rename_disclosure(1, 1, |message| disclosures.push(message.to_string()));
+        assert_eq!(
+            disclosures,
+            vec![
+                "ripr: detected 1 pure rename(s) with no changed lines; rename-only changes produce no probes."
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 

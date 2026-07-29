@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use super::model::{ChangedFile, ChangedLine};
 use super::path::{
     is_dev_null_new_path_marker, is_new_path_marker, parse_git_old_path, parse_new_path_marker,
-    parse_old_path_for_confinement, parse_old_path_marker,
+    parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
+    parse_rename_to_path,
 };
 
 /// Default file-count limit for parsed diffs. Same default as the Rust adapter
@@ -98,6 +99,11 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
             continue;
         }
 
+        if state.handle_rename_metadata(raw, &mut files) {
+            i += 1;
+            continue;
+        }
+
         // RANK-2 fix: detect a plain-diff file-section boundary while in_hunk.
         // A genuine `--- payload` line inside a hunk starts with `-` (one dash)
         // and is consumed as a removed line.  A file-section separator starts
@@ -132,6 +138,9 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
         changed_files: files.into_values().collect(),
         deleted_file_count: state.deleted_file_count(),
         submodule_file_count: state.submodule_file_count(),
+        renamed_file_count: state.renamed_file_count(),
+        pure_rename_file_count: state.pure_rename_file_count(),
+        pure_rename_paths: state.pure_rename_paths(),
     }
 }
 
@@ -140,6 +149,9 @@ pub(crate) struct ParsedDiff {
     pub(crate) changed_files: Vec<ChangedFile>,
     pub(crate) deleted_file_count: usize,
     pub(crate) submodule_file_count: usize,
+    pub(crate) renamed_file_count: usize,
+    pub(crate) pure_rename_file_count: usize,
+    pub(crate) pure_rename_paths: Vec<PathBuf>,
 }
 
 fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
@@ -163,7 +175,8 @@ mod parser_state {
     use super::{
         ChangedFile, ChangedLine, is_dev_null_new_path_marker, is_new_path_marker,
         parse_git_old_path, parse_hunk_header, parse_new_path_marker,
-        parse_old_path_for_confinement, parse_old_path_marker,
+        parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
+        parse_rename_to_path,
     };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -183,6 +196,14 @@ mod parser_state {
         submodule_counted: bool,
         submodule_new_file: bool,
         submodule_file_count: usize,
+        rename_section: bool,
+        pure_rename_section: bool,
+        rename_from_path: Option<PathBuf>,
+        rename_counted: bool,
+        renamed_file_count: usize,
+        pure_rename_counted: bool,
+        pure_rename_file_count: usize,
+        pure_rename_paths: Vec<PathBuf>,
     }
 
     impl ParserState {
@@ -197,6 +218,66 @@ mod parser_state {
 
         pub(super) fn submodule_file_count(&self) -> usize {
             self.submodule_file_count
+        }
+
+        pub(super) fn renamed_file_count(&self) -> usize {
+            self.renamed_file_count
+        }
+
+        pub(super) fn pure_rename_file_count(&self) -> usize {
+            self.pure_rename_file_count
+        }
+
+        pub(super) fn pure_rename_paths(&self) -> Vec<PathBuf> {
+            self.pure_rename_paths.clone()
+        }
+
+        pub(super) fn handle_rename_metadata(
+            &mut self,
+            raw: &str,
+            files: &mut BTreeMap<PathBuf, ChangedFile>,
+        ) -> bool {
+            if self.in_hunk {
+                return false;
+            }
+            if let Some(percent) = raw.strip_prefix("similarity index ") {
+                let value = percent
+                    .trim()
+                    .strip_suffix('%')
+                    .and_then(|value| value.parse::<u8>().ok());
+                self.rename_section = value.is_some_and(|value| value <= 100);
+                self.pure_rename_section = value == Some(100);
+                return self.rename_section;
+            }
+            if raw.starts_with("rename from ") {
+                self.rename_from_path = parse_rename_from_path(raw);
+                return true;
+            }
+            if let Some(path) = parse_rename_to_path(raw) {
+                let valid_rename_pair = self.section_old_path.is_some()
+                    && self.rename_from_path.is_some()
+                    && self.section_old_path.as_ref() == self.rename_from_path.as_ref();
+                if self.rename_section && !self.rename_counted && valid_rename_pair {
+                    self.renamed_file_count = self.renamed_file_count.saturating_add(1);
+                    self.rename_counted = true;
+                    if self.pure_rename_section && !self.pure_rename_counted {
+                        self.pure_rename_file_count = self.pure_rename_file_count.saturating_add(1);
+                        self.pure_rename_paths.push(path.clone());
+                        self.pure_rename_counted = true;
+                    }
+                }
+                if self.pure_rename_section && !valid_rename_pair {
+                    self.current_path = None;
+                    return true;
+                }
+                self.current_path = Some(path.clone());
+                files.entry(path.clone()).or_insert_with(|| ChangedFile {
+                    path,
+                    ..ChangedFile::default()
+                });
+                return true;
+            }
+            false
         }
 
         pub(super) fn handle_submodule_mode(&mut self, raw: &str) -> bool {
@@ -340,6 +421,11 @@ mod parser_state {
             self.submodule_section = false;
             self.submodule_counted = false;
             self.submodule_new_file = false;
+            self.rename_section = false;
+            self.pure_rename_section = false;
+            self.rename_from_path = None;
+            self.rename_counted = false;
+            self.pure_rename_counted = false;
             true
         }
 
@@ -823,6 +909,55 @@ deleted file mode 100644
         let traversal = "diff --git a/../escape b/../escape\nindex 1111111..2222222 160000\n--- a/../escape\n+++ b/../escape\n";
         let parsed = parse_unified_diff_with_metadata(traversal);
         assert_eq!(parsed.submodule_file_count, 0);
+        assert!(parsed.changed_files.is_empty());
+    }
+
+    #[test]
+    fn metadata_registers_pure_rename_under_new_path() {
+        let pure = "diff --git a/src/old.rs b/src/new.rs\nsimilarity index 100%\nrename from src/old.rs\nrename to src/new.rs\n";
+        let parsed = parse_unified_diff_with_metadata(pure);
+
+        assert_eq!(parsed.renamed_file_count, 1);
+        assert_eq!(parsed.pure_rename_file_count, 1);
+        assert_eq!(parsed.changed_files.len(), 1);
+        assert_eq!(parsed.changed_files[0].path, PathBuf::from("src/new.rs"));
+        assert!(parsed.changed_files[0].added_lines.is_empty());
+        assert!(parsed.changed_files[0].removed_lines.is_empty());
+
+        let spaced = "diff --git a/src/old file.rs b/src/new file.rs\nsimilarity index 100%\nrename from src/old file.rs\nrename to src/new file.rs\n";
+        let parsed = parse_unified_diff_with_metadata(spaced);
+        assert_eq!(parsed.renamed_file_count, 1);
+        assert_eq!(parsed.pure_rename_file_count, 1);
+        assert_eq!(
+            parsed.changed_files[0].path,
+            PathBuf::from("src/new file.rs")
+        );
+    }
+
+    #[test]
+    fn metadata_registers_edited_rename_and_rejects_unconfined_paths() {
+        let edited = "diff --git a/src/old.rs b/src/new.rs\nsimilarity index 80%\nrename from src/old.rs\nrename to src/new.rs\n--- a/src/old.rs\n+++ b/src/new.rs\n@@ -1 +1 @@\n-old\n+new\n";
+        let parsed = parse_unified_diff_with_metadata(edited);
+        assert_eq!(parsed.renamed_file_count, 1);
+        assert_eq!(parsed.pure_rename_file_count, 0);
+        assert_eq!(parsed.changed_files.len(), 1);
+        assert_eq!(parsed.changed_files[0].path, PathBuf::from("src/new.rs"));
+        assert_eq!(parsed.changed_files[0].added_lines.len(), 1);
+
+        let spaced = "diff --git a/src/old file.rs b/src/new file.rs\nsimilarity index 80%\nrename from src/old file.rs\nrename to src/new file.rs\n--- \"a/src/old file.rs\"\n+++ \"b/src/new file.rs\"\n@@ -1 +1 @@\n-old\n+new\n";
+        let parsed = parse_unified_diff_with_metadata(spaced);
+        assert_eq!(parsed.renamed_file_count, 1);
+        assert_eq!(parsed.changed_files.len(), 1);
+        assert_eq!(
+            parsed.changed_files[0].path,
+            PathBuf::from("src/new file.rs")
+        );
+        assert_eq!(parsed.changed_files[0].added_lines.len(), 1);
+
+        let traversal = "diff --git a/../old.rs b/src/new.rs\nsimilarity index 100%\nrename from ../old.rs\nrename to src/new.rs\n";
+        let parsed = parse_unified_diff_with_metadata(traversal);
+        assert_eq!(parsed.renamed_file_count, 0);
+        assert_eq!(parsed.pure_rename_file_count, 0);
         assert!(parsed.changed_files.is_empty());
     }
 

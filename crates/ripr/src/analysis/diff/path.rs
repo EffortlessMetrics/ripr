@@ -18,13 +18,27 @@ pub(super) fn is_dev_null_new_path_marker(raw: &str) -> bool {
 
 pub(super) fn parse_git_old_path(raw: &str) -> Option<PathBuf> {
     let marker = raw.strip_prefix("diff --git ")?;
-    let old_token = marker
-        .starts_with('"')
-        .then_some(marker)
-        .or_else(|| marker.split_whitespace().next())?;
-    let path = parse_diff_path_token(old_token)?;
+    let path = if marker.starts_with('"') {
+        parse_diff_path_token(marker)?
+    } else {
+        let old_path = marker.strip_prefix("a/")?.split_once(" b/")?.0;
+        parse_diff_path_token(&format!("a/{old_path}"))?
+    };
     let path = path.strip_prefix("a/").unwrap_or(&path);
     confine_to_relative_path(path)
+}
+
+pub(super) fn parse_rename_from_path(raw: &str) -> Option<PathBuf> {
+    parse_rename_path_marker(raw, "rename from ")
+}
+
+pub(super) fn parse_rename_to_path(raw: &str) -> Option<PathBuf> {
+    parse_rename_path_marker(raw, "rename to ")
+}
+
+fn parse_rename_path_marker(raw: &str, prefix: &str) -> Option<PathBuf> {
+    let path = raw.strip_prefix(prefix).and_then(parse_diff_path_token)?;
+    confine_to_relative_path(&path)
 }
 
 /// Whether `raw` is syntactically a `+++ <path>` new-path marker, regardless
