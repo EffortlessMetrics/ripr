@@ -114,6 +114,16 @@ struct AnnotationOutput {
     comments_missing: bool,
 }
 
+/// Map a ripr oracle-strength token to a GitHub workflow-command annotation
+/// level (#2632). `strong`/`medium` findings are actionable and render as
+/// `warning`; weaker/uncertain findings render as the quieter `notice`.
+fn annotation_level_for_severity(severity: &str) -> &'static str {
+    match severity {
+        "strong" | "medium" => "warning",
+        _ => "notice",
+    }
+}
+
 fn annotation_from_comment(item: &Value) -> Result<String, String> {
     let placement = item
         .get("placement")
@@ -155,8 +165,9 @@ fn annotation_from_comment(item: &Value) -> Result<String, String> {
         message.push_str(intent);
     }
     let title = format!("ripr {severity} {kind}");
+    let level = annotation_level_for_severity(severity);
     Ok(format!(
-        "::warning file={},line={},title={}::{}",
+        "::{level} file={},line={},title={}::{}",
         escape_cmd(&path),
         line,
         escape_cmd(&title),
@@ -296,6 +307,39 @@ mod tests {
                 .contains("Suggested test%3A Assert boundary behavior")
         );
         assert!(!generated.text.contains("src/other.rs"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn weak_severity_renders_as_notice_not_warning() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-weak")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-weak",
+                    "kind": "focused_test",
+                    "severity": "weak",
+                    "reason": "Weak oracle reaches this seam.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 10,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::notice file=src/lib.rs,line=10,title=ripr weak focused_test::"),
+            "expected ::notice for weak severity, got: {}",
+            generated.text
+        );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 
