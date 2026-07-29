@@ -724,6 +724,16 @@ than grinding the backlog. The unwalked path that matters most next: the full
 agent loop end-to-end (status -> packet -> edit-in-cage -> verify -> receipt ->
 re-status).
 
+### Navigation guidance must be replayable, not merely printable
+
+The first `check -> explain/context` route looked correct when inspected as
+text, but a user replaying it could lose the analyzed scope or pass options the
+follow-up parser did not accept. The reliable contract is an executable
+round-trip: preserve the finding identity, analysis scope, artifact inputs,
+mode, and supported configuration flags, then run the copied command against a
+fresh binary. Golden output proves the guidance is present; CLI smoke tests
+prove that the guidance actually works.
+
 ### Constraints produced autonomy — the intuition inverts
 
 Conservative-language gates, the scoped-PR contract, traceability, and the

@@ -5431,3 +5431,26 @@ Hard boundaries: preview lanes remain preview; mutation execution stays explicit
 there is no automatic test or consumer-source editing, default gate hardening,
 release/publish work, or claim beyond conservative static evidence. Every work
 item is one reviewable PR, a source-truth update, or a durable blocked report.
+
+## Campaign 33: CLI Finding Navigation Discoverability
+
+Campaign ID: `cli-finding-navigation-discoverability`
+
+Status: complete
+
+Tracker: issues #2598, #2659, and #2679; PRs #2620 and #2681.
+
+This campaign makes the default human `ripr check` output useful as an
+operator entry point. A finding now carries executable `explain` and
+`context --at` follow-up commands, and the follow-up route preserves the
+analysis scope, artifact inputs, and supported options needed to inspect the
+same finding. The production contract remains static and advisory.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `cli/finding-follow-up-guidance` | done | #2620 added finding-specific human guidance for `explain` and `context --at`, with quiet empty and fully suppressed output. |
+| `cli/scope-preserving-navigation` | done | #2681 closed #2659 by preserving scope in replay commands, accepting supported configuration and mode options, and adding executable CLI smoke coverage. |
+| `campaign/cli-finding-navigation-closeout` | done | The [closeout handoff](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md) records the final merged head, hosted proof, claim boundary, and inherited Clippy follow-up. |
+
+Non-goals: runtime mutation execution, adequacy or coverage claims, default CI
+blocking, release/publish changes, and repair-packet authority changes.

@@ -49,6 +49,11 @@ proposal/spec/ADR/campaign/active goal/support tier/policy/evidence/closeout
 -> linked and checked PR by PR
 ```
 
+The CLI discoverability slice for that target is now closed: the default human
+`check` output routes findings to executable `explain` and `context` commands
+while preserving the analyzed scope. See the
+[CLI finding navigation closeout](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from
