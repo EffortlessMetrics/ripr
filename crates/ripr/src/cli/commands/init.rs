@@ -2104,7 +2104,7 @@ jobs:
               mutation_calibration="$(jq -r '.inputs.mutation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
               recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
               mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
-              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason]) as $reasons | if ($reasons | length) == 0 then "none" elif ($reasons | length) == 1 then $reasons[0] else "\($reasons[0]) (+\(($reasons | length) - 1) more, see gate-decision.md)" end' "$gate_json" 2>/dev/null || echo unknown)"
               gate_status="$(markdown_inline "$gate_status")"
               gate_mode="$(markdown_inline "$gate_mode")"
               blocking="$(markdown_inline "$blocking")"
@@ -2132,7 +2132,7 @@ jobs:
               echo "- Baseline artifact: \`$baseline_artifact\`"
               echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
               echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
-              echo "- Blocking reason: \`$blocking_reason\`"
+              echo "- Blocking reason (\`$blocking\`): \`$blocking_reason\`"
               echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
               echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
               echo

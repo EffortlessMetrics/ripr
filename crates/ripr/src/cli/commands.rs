@@ -6620,7 +6620,7 @@ language = "rust"
         assert!(workflow.contains(".history.trend // \"not_available\""));
         assert!(workflow.contains("Counts: new_policy_eligible=\\`$ledger_new_policy_eligible\\`"));
         assert!(workflow.contains("sed 's/`/\\\\`/g'"));
-        assert!(workflow.contains("Blocking reason: \\`$blocking_reason\\`"));
+        assert!(workflow.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
         assert!(workflow.contains("Boundary: $limits_note"));
         assert!(workflow.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
         assert!(workflow.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
@@ -7553,7 +7553,7 @@ language = "rust"
         assert!(summary.contains("Baseline artifact"));
         assert!(summary.contains("Recommendation calibration"));
         assert!(summary.contains("Mutation calibration"));
-        assert!(summary.contains("Blocking reason: \\`$blocking_reason\\`"));
+        assert!(summary.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
         assert!(summary.contains("target/ripr/reports/gate-decision.json"));
         assert!(summary.contains("target/ci/labels.json"));
         assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
