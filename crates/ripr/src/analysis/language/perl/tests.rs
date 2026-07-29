@@ -52,7 +52,7 @@ fn command_args(args: &[&str]) -> Vec<String> {
 fn packet_test_options() -> crate::analysis::AnalysisOptions {
     use crate::analysis::{AnalysisMode, AnalysisOptions};
     AnalysisOptions {
-        root: std::env::temp_dir().join("ripr-perl-packet-test"),
+        root: std::env::temp_dir().join(format!("ripr-perl-packet-test-{}", std::process::id())),
         base: None,
         diff_file: None,
         mode: AnalysisMode::Draft,

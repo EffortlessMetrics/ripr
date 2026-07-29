@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Fixed
+
+- Three test modules used fixed (non-unique) temporary directory names that
+  could collide under parallel test execution, causing intermittent flakes.
+  The paths now include the process ID so parallel test threads never share
+  a directory ([#2685](https://github.com/EffortlessMetrics/ripr-swarm/issues/2685)).
+
 ### Changed
 
 - The default diagnostic severity for `exposed` findings has been raised from

@@ -126,7 +126,8 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
 
 #[test]
 fn workspace_input_watch_requires_contained_cargo_manifest_or_lockfile() {
-    let root = std::env::temp_dir().join("ripr-workspace-input-watch");
+    let root =
+        std::env::temp_dir().join(format!("ripr-workspace-input-watch-{}", std::process::id()));
     let root = root.as_path();
     assert!(workspace_input_path_is_relevant(
         root,
@@ -151,7 +152,10 @@ fn workspace_input_watch_requires_contained_cargo_manifest_or_lockfile() {
 #[cfg(windows)]
 #[test]
 fn workspace_input_watch_uses_case_insensitive_windows_containment() {
-    let root = std::env::temp_dir().join("ripr-workspace-input-watch-case");
+    let root = std::env::temp_dir().join(format!(
+        "ripr-workspace-input-watch-case-{}",
+        std::process::id()
+    ));
     let differently_cased_root = PathBuf::from(root.to_string_lossy().to_ascii_uppercase());
     assert!(workspace_input_path_is_relevant(
         &root,
