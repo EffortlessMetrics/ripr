@@ -78,6 +78,11 @@ are scoped or reviewed.
   responsibility signal is documented as a smell, not a measurement; the
   advisory still always exits 0 and is never wired into CI gates.
 
+- Property-based tests (`proptest`) added for the diff parser, covering parser
+  totality (never panics on arbitrary input), structural invariants (no empty
+  paths, no newlines in line text), and line-number validity (`new_side_line >= 1`).
+  This is the first property-based testing infrastructure in the repo (#2751).
+
 ### Fixed
 
 - Unrecognized CLI flags now suggest the nearest documented flag and point at

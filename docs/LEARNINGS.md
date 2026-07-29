@@ -3,6 +3,24 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-07-29: Property tests and lexical fallback disclosure
+
+Added the first property-based tests (`proptest`) for the diff parser. The
+three highest-value properties: parser totality (never panics), structural
+invariants (no empty paths, no newlines in text), and line-number validity
+(`new_side_line >= 1`). The existing hand-rolled LCG fuzz tests stay as
+deterministic regression sets; proptest adds automatic shrinking.
+
+Also fixed the lexical adapter's `used_lexical_fallback` flag: it was hardcoded
+`false` inside the function that IS the lexical fallback. The dispatcher
+overwrote it at the call site, but direct calls (including unit tests) saw the
+wrong value. Now set to `true` inside the adapter so the flag is honest
+regardless of caller (#2698).
+
+Lesson: hand-rolled LCG fuzzing with fixed seeds finds specific regressions
+but cannot prove invariants hold across the input space. Property tests with
+shrinking are the right tool for parser totality and structural soundness.
+
 ## 2026-05-01: Product Contract
 
 `ripr` answers a narrow question:

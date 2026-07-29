@@ -73,6 +73,25 @@ The current test suite covers:
 - JSON escaping
 - simple end-to-end diff analysis
 - CLI smoke behavior
+- property-based parser invariants (diff parser)
+
+## Property-Based Tests
+
+The diff parser (`crates/ripr/src/analysis/diff/parse.rs`) has property-based
+tests using [`proptest`](https://crates.io/crates/proptest) (a dev-dependency).
+These generalize the hand-rolled LCG fuzz tests with automatic shrinking and
+broader input coverage.
+
+Properties checked:
+
+1. **Totality**: `parse_unified_diff` never panics on arbitrary string input.
+2. **Structural invariants**: no empty paths, no newlines in line text, for
+   generated diff-like text.
+3. **Line number validity**: every added line's `new_side_line` is >= 1.
+
+Convention: property tests use `Result<(), String>` bodies, no `unwrap`/`expect`,
+per the workspace lint posture. See `docs/TEST_TAXONOMY.md` for the Property
+and Fuzz test type definitions.
 
 ## Error-Handling Bar
 
