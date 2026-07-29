@@ -5476,3 +5476,29 @@ parser fell back to lexical facts, including on warm cache paths.
 
 Non-goals: runtime mutation execution, test adequacy or coverage claims,
 release/publish changes, default blocking, and broad parser replacement.
+
+## Campaign 35: Operator Signal Integrity
+
+Campaign ID: `operator-signal-integrity`
+
+Status: complete
+
+Tracker: issues #2675, #2599, and #2632; implementation PRs #2720, #2721,
+#2722; repair PR #2726.
+
+This campaign keeps operator-facing signals faithful to the underlying
+evidence. Submodule pointer changes are disclosed as skipped content, gate
+failures surface their first actionable reason inline while retaining the full
+artifact, and GitHub annotations map the actual severity without downgrading a
+literal warning to a notice.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `diff/submodule-pointer-disclosure` | done | #2720 detects confined gitlink additions, deletions, and changes; forces short submodule diff output; and discloses that contents are not analyzed. |
+| `gate/inline-first-reason` | done | #2721 surfaces the first config, blocking-gap, or exception-policy reason while preserving the full gate report. |
+| `annotations/severity-level-mapping` | done-with-repair | #2722 added severity mapping; #2726 aligns the output with the source-of-truth all-warning policy and adds weak, literal warning, and configured info regressions. |
+| `campaign/operator-signal-closeout` | done | The [closeout handoff](handoffs/2026-07-29-operator-signal-integrity-closeout.md) records final merge proof, issue disposition, claims, and the independent #2718 boundary. |
+
+Non-goals: LSP severity redesign (#2718), runtime mutation, adequacy or
+coverage claims, release/publish changes, default blocking, and broad output
+refactoring.

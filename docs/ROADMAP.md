@@ -59,6 +59,10 @@ editor's actual source languages, and repo/seam analysis discloses parser
 fallback through warm caches. See the [analyzer honesty and policy visibility
 closeout](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md).
 
+The operator-signal slice is now closed: submodule changes, gate reasons, and
+GitHub annotation levels have explicit integrity proof, including the
+source-of-truth all-warning repair. See the [Campaign 35 closeout](handoffs/2026-07-29-operator-signal-integrity-closeout.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from

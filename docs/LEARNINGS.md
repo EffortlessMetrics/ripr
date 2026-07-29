@@ -2029,3 +2029,14 @@ include the actual editor languages and pin each extension with focused tests.
 The claim remains deliberately narrow. Disclosure explains where static
 evidence was weakened; it does not prove runtime behavior, test adequacy, or
 release readiness.
+
+## 2026-07-29: Preserve the source vocabulary at every operator boundary
+
+When an output adapter maps an internal value to a platform vocabulary, test
+the values produced by the real upstream contract, not only nearby internal
+labels. The annotation path received literal `warning` values while its first
+repair tested `medium`; matching only oracle-strength names silently downgraded
+warnings to notices. Keep the mapping fail-closed for unknown values, but pin
+the exact warning and quiet paths. The same discipline applies to submodule and
+gate disclosures: preserve the non-claim and first actionable reason at the
+terminal boundary instead of requiring artifact archaeology.
