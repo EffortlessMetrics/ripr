@@ -787,6 +787,12 @@ configuration fails closed with a message naming the missing Cargo feature,
 for example `lang-python`. The editor reports that configuration problem
 instead of publishing phantom preview diagnostics.
 
+### `[typescript]`
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `resolve_tsconfig_paths` | boolean | `false` | Resolve TypeScript path aliases from `tsconfig.json` or `jsconfig.json` during owner-to-test discovery. |
+
 ### `[perl]`
 
 Perl is a fact-packet consumer. It does not parse `.pm`, `.pl`, `.t`, or `.psgi`
@@ -806,6 +812,13 @@ Managed mode invokes the configured external exporter when it is available;
 otherwise the Perl language run is reported as unavailable while other enabled
 languages continue. The accepted managed producer values are
 `perl-ripr-facts`, `perllsp`, and `perl-lsp`.
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `producer` | string | none | Selects managed producer mode. Accepted values are `perl-ripr-facts`, `perllsp`, and `perl-lsp`. |
+| `executable` | path | none | Overrides the Perl facts exporter executable path. |
+| `timeout_ms` | integer | `30000` | Maximum time in milliseconds for the managed producer invocation. |
+| `cache_dir` | path | none | Directory for generated Perl fact packets. |
 
 To evaluate preview languages, keep Rust enabled and add only the preview
 adapters the repo wants to inspect:
