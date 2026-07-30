@@ -839,8 +839,13 @@ swarm CI only ever runs `cargo publish -p ripr --dry-run` (validation, never a r
 
 So the rule for autonomous work: normal swarm development is fine (PRs, tests,
 dry-runs, docs, changelog drafts, release-candidate prep, source-sync prep), but
-do **not** bump `crates/ripr/Cargo.toml`'s version or trigger the release
-workflow without explicit approval — that lever auto-publishes. Publishing the
+do **not** bump the release version or trigger the release workflow without
+explicit approval — that lever auto-publishes. Since #2711 the version lives in
+the root `Cargo.toml` under `[workspace.package]`, and `crates/ripr/Cargo.toml`
+inherits it with `version.workspace = true`. The approval boundary is the
+*version value*, wherever it is declared: editing the root `[workspace.package]
+version`, or replacing the member's `version.workspace = true` with a literal,
+both cross it. Publishing the
 current work is an explicit next-release decision (choose 0.9.1 vs 0.10.0, audit
 what is on main since 0.9.0, draft changelog, source sync, then bump).
 

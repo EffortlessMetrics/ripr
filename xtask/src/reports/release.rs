@@ -97,7 +97,8 @@ fn release_readiness_usage() -> String {
 }
 
 fn build_release_readiness_report(version: &str) -> ReleaseReadinessReport {
-    let crate_version = read_crate_version(Path::new("crates/ripr/Cargo.toml"));
+    let crate_version =
+        read_crate_version(Path::new("crates/ripr/Cargo.toml"), Path::new("Cargo.toml"));
     let clean_tree = git_worktree_is_clean();
     let installed_binary = installed_ripr_binary();
     let checks = vec![
@@ -985,7 +986,8 @@ fn extension_version_check_from(
     ext_version: Option<&str>,
     crate_version: Option<&str>,
 ) -> ReleaseReadinessCheck {
-    let command = "compare editors/vscode/package.json version to crates/ripr/Cargo.toml version";
+    let command =
+        "compare editors/vscode/package.json version to the workspace package version (Cargo.toml)";
     match (ext_version, crate_version) {
         (Some(ext), Some(krate)) if ext == krate => readiness_check(
             "extension-version-match",
@@ -1023,7 +1025,10 @@ fn extension_version_check_from(
             command,
             "could not read the crate version",
             Vec::new(),
-            vec!["crates/ripr/Cargo.toml version unreadable".to_string()],
+            vec![
+                "workspace package version unreadable via crates/ripr/Cargo.toml -> Cargo.toml [workspace.package]"
+                    .to_string(),
+            ],
         ),
     }
 }
@@ -1253,22 +1258,136 @@ fn push_trimmed_detail(details: &mut Vec<String>, label: &str, text: &str) {
     details.push(format!("{label}: {first_line}"));
 }
 
-fn read_crate_version(path: &Path) -> Option<String> {
-    let text = crate::read_text_lossy(path).ok()?;
+/// How a manifest's `[package]` declares its version.
+#[derive(Debug, PartialEq, Eq)]
+enum PackageVersion {
+    /// `version = "0.10.0"` — the version is written in this manifest.
+    Literal(String),
+    /// `version.workspace = true` — the version comes from the workspace root.
+    Inherited,
+}
+
+/// Read the effective package version for `manifest`, resolving Cargo's
+/// `version.workspace = true` inheritance against `workspace_manifest`.
+///
+/// Inheritance has to be resolved rather than scanned past, because the two
+/// obvious shortcuts both produce a *wrong version* instead of an error, and
+/// every caller here reports a verdict on whatever it is handed:
+///
+/// - a bare `strip_prefix("version")` scan reads `version.workspace = true` as
+///   the literal version `true`;
+/// - skipping the inherited line and continuing reads the first `version = "…"`
+///   of the next `[dependencies]` entry as the crate's own version.
+///
+/// `extension-version-match` claims it compared the extension to the crate
+/// version, so this must return the real version or `None` — never a value it
+/// merely found nearby.
+fn read_crate_version(manifest: &Path, workspace_manifest: &Path) -> Option<String> {
+    let text = crate::read_text_lossy(manifest).ok()?;
+    match package_version(&text, "package")? {
+        PackageVersion::Literal(version) => Some(version),
+        PackageVersion::Inherited => {
+            let workspace_text = crate::read_text_lossy(workspace_manifest).ok()?;
+            match package_version(&workspace_text, "workspace.package")? {
+                PackageVersion::Literal(version) => Some(version),
+                // A workspace root that itself inherits has nowhere left to
+                // look; report unreadable rather than guess.
+                PackageVersion::Inherited => None,
+            }
+        }
+    }
+}
+
+/// Extract the `version` key from one top-level table of a manifest.
+///
+/// Scoped to `[{section}]` so a `version = "…"` belonging to a dependency table
+/// can never be mistaken for the package's own version.
+///
+/// This reads the `version` key of a Cargo manifest table, not arbitrary TOML:
+/// it handles the spellings Cargo actually accepts for that key — either quote
+/// style, both inheritance forms, and trailing comments on values and section
+/// headers — and returns `None` for anything else. That boundary matters
+/// because the guarantee callers rely on is "a real version or `None`", so an
+/// unrecognized spelling has to read as unreadable rather than as whatever text
+/// happened to follow the `=`.
+fn package_version(text: &str, section: &str) -> Option<PackageVersion> {
+    let header = format!("[{section}]");
+    let mut in_section = false;
     for line in text.lines() {
-        let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("version") else {
+        let trimmed = strip_toml_comment(line).trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('[') {
+            in_section = trimmed == header;
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
             continue;
         };
-        let Some((_, value)) = rest.split_once('=') else {
-            continue;
-        };
-        let value = value.trim().trim_matches('"');
-        if !value.is_empty() {
-            return Some(value.to_string());
+        let value = value.trim();
+        match key.trim() {
+            // `version = { workspace = true }` and `version.workspace = true`
+            // are the same declaration in two spellings; Cargo accepts both.
+            "version" if inline_table_inherits_workspace(value) => {
+                return Some(PackageVersion::Inherited);
+            }
+            "version" => {
+                let version = unquote_toml_string(value)?;
+                if !version.is_empty() {
+                    return Some(PackageVersion::Literal(version.to_string()));
+                }
+            }
+            "version.workspace" if value == "true" => return Some(PackageVersion::Inherited),
+            _ => {}
         }
     }
     None
+}
+
+/// Drop a trailing `#` comment that begins outside a quoted string.
+///
+/// Without this, `version = "0.10.0" # bump` reads as the version
+/// `0.10.0" # bump`, and a `[package] # note` header stops matching its table.
+fn strip_toml_comment(line: &str) -> &str {
+    let mut quote: Option<char> = None;
+    for (index, ch) in line.char_indices() {
+        match (quote, ch) {
+            (None, '"' | '\'') => quote = Some(ch),
+            (Some(open), _) if ch == open => quote = None,
+            (None, '#') => return &line[..index],
+            _ => {}
+        }
+    }
+    line
+}
+
+/// Return the contents of a quoted TOML string, or `None` when `value` is not
+/// one. An unquoted or malformed value is unreadable, not a bare version.
+fn unquote_toml_string(value: &str) -> Option<&str> {
+    for quote in ['"', '\''] {
+        if let Some(rest) = value.strip_prefix(quote) {
+            return rest.strip_suffix(quote);
+        }
+    }
+    None
+}
+
+/// Whether an inline table declares workspace inheritance
+/// (`{ workspace = true }`).
+fn inline_table_inherits_workspace(value: &str) -> bool {
+    let Some(inner) = value.strip_prefix('{').and_then(|v| v.strip_suffix('}')) else {
+        return false;
+    };
+    inner.split(',').any(|entry| {
+        let Some((key, entry_value)) = entry.split_once('=') else {
+            return false;
+        };
+        key.trim() == "workspace" && entry_value.trim() == "true"
+    })
 }
 
 fn git_worktree_is_clean() -> Result<bool, String> {
@@ -1323,9 +1442,10 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        ReleaseReadinessCheck, ReleaseReadinessReport, extension_version_check_from,
-        missing_required_needles, parse_release_readiness_args, readiness_check,
-        release_readiness_json, release_readiness_markdown, release_readiness_status,
+        PackageVersion, ReleaseReadinessCheck, ReleaseReadinessReport,
+        extension_version_check_from, missing_required_needles, package_version,
+        parse_release_readiness_args, read_crate_version, readiness_check, release_readiness_json,
+        release_readiness_markdown, release_readiness_status,
         vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
@@ -1353,6 +1473,273 @@ mod tests {
                     check.status, check.required
                 ));
             }
+        }
+        Ok(())
+    }
+
+    /// `version.workspace = true` must not be read as the literal version
+    /// `true`, and a dependency's `version` must not stand in for the package's
+    /// own. Both shortcuts hand `extension-version-match` a wrong version that
+    /// it would then report a verdict on (#2711).
+    #[test]
+    fn package_version_distinguishes_literal_inherited_and_dependency() -> Result<(), String> {
+        let literal = "[package]\nname = \"ripr\"\nversion = \"0.10.0\"\n";
+        if package_version(literal, "package")
+            != Some(PackageVersion::Literal("0.10.0".to_string()))
+        {
+            return Err("expected a literal package version".to_string());
+        }
+
+        let inherited = "[package]\nname = \"ripr\"\nversion.workspace = true\n\n[dependencies]\nserde = { version = \"1.0.9\" }\nzip = \"2\"\n";
+        if package_version(inherited, "package") != Some(PackageVersion::Inherited) {
+            return Err("expected an inherited package version".to_string());
+        }
+
+        // The dependency table must be invisible to a `[package]` lookup, so a
+        // manifest with no package version reads as unreadable, not as `1.0.9`.
+        let no_package_version =
+            "[package]\nname = \"ripr\"\n\n[dependencies]\nserde = \"1.0.9\"\n";
+        if package_version(no_package_version, "package").is_some() {
+            return Err("dependency version leaked into the package lookup".to_string());
+        }
+        Ok(())
+    }
+
+    /// The remaining ways a manifest can fail to declare a usable version. Each
+    /// must read as unreadable, because every caller reports a verdict on
+    /// whatever it receives — an empty or bogus version would be published as
+    /// confidently as a real one.
+    #[test]
+    fn package_version_rejects_malformed_and_non_inherited_declarations() -> Result<(), String> {
+        let cases: &[(&str, &str)] = &[
+            (
+                "[package]\nname = \"ripr\"\nversion = \"\"\n",
+                "an empty version string",
+            ),
+            (
+                "[package]\nname = \"ripr\"\nversion.workspace = false\n",
+                "an explicitly non-inherited version",
+            ),
+            (
+                "[package]\nname = \"ripr\"\nedition = \"2024\"\n",
+                "a package table with no version key",
+            ),
+            (
+                "[workspace.package]\nversion = \"0.10.0\"\n",
+                "a version declared only in another table",
+            ),
+        ];
+        for (manifest, label) in cases {
+            if let Some(found) = package_version(manifest, "package") {
+                return Err(format!("expected unreadable for {label}, got {found:?}"));
+            }
+        }
+
+        // The workspace lookup is the same scanner against a different table,
+        // so confirm it actually resolves the table it claims to.
+        let workspace = "[workspace]\nmembers = [\"crates/ripr\"]\n\n[workspace.package]\nversion = \"0.11.0\"\n";
+        if package_version(workspace, "workspace.package")
+            != Some(PackageVersion::Literal("0.11.0".to_string()))
+        {
+            return Err("expected the workspace table version".to_string());
+        }
+        Ok(())
+    }
+
+    /// The manifest spellings Cargo accepts that a naive line scan gets wrong.
+    /// Each of these is valid TOML, so reading them loosely would return a
+    /// corrupted version — `0.10.0" # bump` — while still satisfying the
+    /// "returns Some" happy path. Raised in review on #2711.
+    #[test]
+    fn package_version_handles_comments_and_quote_styles() -> Result<(), String> {
+        let cases: &[(&str, PackageVersion, &str)] = &[
+            (
+                "[package]\nversion = \"0.10.0\" # bump me at release\n",
+                PackageVersion::Literal("0.10.0".to_string()),
+                "a trailing comment after a double-quoted version",
+            ),
+            (
+                "[package]\nversion = '0.10.0'\n",
+                PackageVersion::Literal("0.10.0".to_string()),
+                "a single-quoted version",
+            ),
+            (
+                "[package] # the package table\nversion = \"0.10.0\"\n",
+                PackageVersion::Literal("0.10.0".to_string()),
+                "a trailing comment on the section header",
+            ),
+            (
+                "[package]\nversion = { workspace = true }\n",
+                PackageVersion::Inherited,
+                "the inline-table inheritance spelling",
+            ),
+            (
+                "[package]\nversion.workspace = true # inherited\n",
+                PackageVersion::Inherited,
+                "a trailing comment after inherited",
+            ),
+        ];
+        for (manifest, expected, label) in cases {
+            let found = package_version(manifest, "package");
+            if found.as_ref() != Some(expected) {
+                return Err(format!("expected {expected:?} for {label}, got {found:?}"));
+            }
+        }
+
+        // A `#` inside the quoted value is part of the version, not a comment.
+        let hashed = "[package]\nversion = \"0.10.0+build#7\"\n";
+        if package_version(hashed, "package")
+            != Some(PackageVersion::Literal("0.10.0+build#7".to_string()))
+        {
+            return Err("a quoted '#' must not be treated as a comment".to_string());
+        }
+
+        // An unquoted value is not a version; it must read as unreadable.
+        let unquoted = "[package]\nversion = 0.10.0\n";
+        if let Some(found) = package_version(unquoted, "package") {
+            return Err(format!(
+                "expected unreadable for an unquoted version, got {found:?}"
+            ));
+        }
+
+        // A commented-out version leaves the table with no version at all.
+        let commented_out = "[package]\n# version = \"0.9.0\"\nedition = \"2024\"\n";
+        if let Some(found) = package_version(commented_out, "package") {
+            return Err(format!(
+                "expected unreadable when the version is commented out, got {found:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// A workspace root that itself defers, and a member manifest that cannot be
+    /// read at all, both have nowhere left to look. Neither may fall back to a
+    /// guess: inheritance must terminate in a real version or in `None`.
+    #[test]
+    fn read_crate_version_terminates_instead_of_guessing() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-version-terminate-{stamp}"));
+        fs::create_dir_all(&dir).map_err(|err| format!("failed to create dir: {err}"))?;
+
+        let member = dir.join("member-Cargo.toml");
+        let deferring_workspace = dir.join("deferring-Cargo.toml");
+        let write = |path: &std::path::Path, text: &str| -> Result<(), String> {
+            fs::write(path, text)
+                .map_err(|err| format!("failed to write {}: {err}", path.display()))
+        };
+        write(
+            &member,
+            "[package]\nname = \"ripr\"\nversion.workspace = true\n",
+        )?;
+        // A workspace root that also says `version.workspace = true`.
+        write(
+            &deferring_workspace,
+            "[workspace.package]\nversion.workspace = true\n",
+        )?;
+
+        let deferred_forever = read_crate_version(&member, &deferring_workspace);
+        let absent_member =
+            read_crate_version(&dir.join("absent-Cargo.toml"), &deferring_workspace);
+        fs::remove_dir_all(&dir).map_err(|err| format!("failed to remove dir: {err}"))?;
+
+        if deferred_forever.is_some() {
+            return Err(format!(
+                "expected unreadable when the workspace also defers, got {deferred_forever:?}"
+            ));
+        }
+        if absent_member.is_some() {
+            return Err(format!(
+                "expected unreadable when the member manifest is absent, got {absent_member:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// The release gate's version claim has to survive the indirection it now
+    /// depends on: reading `crates/ripr/Cargo.toml` must resolve through the
+    /// workspace root, and must yield `None` rather than a guess when it cannot.
+    #[test]
+    fn read_crate_version_resolves_workspace_inheritance() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-version-inherit-{stamp}"));
+        fs::create_dir_all(&dir).map_err(|err| format!("failed to create dir: {err}"))?;
+
+        let member = dir.join("member-Cargo.toml");
+        let workspace = dir.join("workspace-Cargo.toml");
+        let workspace_without_version = dir.join("workspace-no-version-Cargo.toml");
+        let write = |path: &std::path::Path, text: &str| -> Result<(), String> {
+            fs::write(path, text)
+                .map_err(|err| format!("failed to write {}: {err}", path.display()))
+        };
+        write(
+            &member,
+            "[package]\nname = \"ripr\"\nversion.workspace = true\n\n[dependencies]\nserde = \"1.0.9\"\n",
+        )?;
+        write(
+            &workspace,
+            "[workspace]\nmembers = [\"crates/ripr\"]\n\n[workspace.package]\nversion = \"0.10.0\"\nedition = \"2024\"\n",
+        )?;
+        write(
+            &workspace_without_version,
+            "[workspace]\nmembers = [\"crates/ripr\"]\n\n[workspace.package]\nedition = \"2024\"\n",
+        )?;
+
+        let resolved = read_crate_version(&member, &workspace);
+        let unresolvable = read_crate_version(&member, &workspace_without_version);
+        let missing_workspace = read_crate_version(&member, &dir.join("absent-Cargo.toml"));
+        fs::remove_dir_all(&dir).map_err(|err| format!("failed to remove dir: {err}"))?;
+
+        if resolved.as_deref() != Some("0.10.0") {
+            return Err(format!(
+                "expected 0.10.0 through inheritance, got {resolved:?}"
+            ));
+        }
+        if unresolvable.is_some() {
+            return Err(format!(
+                "expected unreadable when the workspace declares no version, got {unresolvable:?}"
+            ));
+        }
+        if missing_workspace.is_some() {
+            return Err(format!(
+                "expected unreadable when the workspace manifest is absent, got {missing_workspace:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Binds the gate to this repository's real manifests: whatever the release
+    /// version is, the checked-in extension manifest must already agree with it.
+    /// This is the check that would have caught #1283 at PR time.
+    #[test]
+    fn repository_extension_version_matches_workspace_version() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no parent directory".to_string())?
+            .to_path_buf();
+        let crate_version = read_crate_version(
+            &root.join("crates/ripr/Cargo.toml"),
+            &root.join("Cargo.toml"),
+        )
+        .ok_or_else(|| "workspace package version unreadable".to_string())?;
+        let package_json = root.join("editors/vscode/package.json");
+        let text = fs::read_to_string(&package_json)
+            .map_err(|err| format!("failed to read {}: {err}", package_json.display()))?;
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|err| format!("failed to parse {}: {err}", package_json.display()))?;
+        let ext_version = value
+            .get("version")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "extension package.json has no version".to_string())?;
+        if ext_version != crate_version {
+            return Err(format!(
+                "editors/vscode/package.json version {ext_version} != workspace version {crate_version}"
+            ));
         }
         Ok(())
     }

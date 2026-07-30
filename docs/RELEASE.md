@@ -61,7 +61,12 @@ public vocabulary, asset verification) that the v0.5.0 release surfaced.
 ## Preconditions
 
 - The release branch has been reviewed and merged.
-- The version in `crates/ripr/Cargo.toml` is correct.
+- The version in the root `Cargo.toml` `[workspace.package]` is correct. This is
+  the single release-version source; `crates/ripr/Cargo.toml` inherits it with
+  `version.workspace = true` and declares no version of its own (#2711).
+- `editors/vscode/package.json` and its `package-lock.json` match that version.
+  `cargo xtask release-readiness` checks this as `extension-version-match`; a
+  mismatch fails the marketplace publish (#1283).
 - For the defaults-first public install line, the version is newer than
   `0.3.0`; `0.3.0` predates `ripr pilot` and `ripr outcome`.
 - The root workspace uses Rust edition `2024`.
