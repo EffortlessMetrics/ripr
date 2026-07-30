@@ -10615,6 +10615,7 @@ fn check_capabilities() -> Result<(), String> {
     let (capabilities, parse_violations) = parse_capabilities_manifest(manifest)?;
     violations.extend(parse_violations);
     validate_capabilities(&capabilities, &mut violations)?;
+    validate_capability_matrix(&capabilities, &mut violations)?;
     finish_capabilities_report(&violations)
 }
 
@@ -10627,6 +10628,7 @@ fn finish_capabilities_report(violations: &[String]) -> Result<(), String> {
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Update metrics/capabilities.toml with status, spec, next checkpoint, and metric fields.",
+                "Keep docs/CAPABILITY_MATRIX.md capability rows aligned with metrics/capabilities.toml.",
                 "Keep capability statuses to planned, alpha, usable alpha, stable, or calibrated.",
                 "Reference only specs that exist in docs/specs.",
                 "Use cargo xtask metrics to regenerate target/ripr/reports/metrics.md and metrics.json.",
@@ -10636,6 +10638,95 @@ fn finish_capabilities_report(violations: &[String]) -> Result<(), String> {
         },
         violations,
     )
+}
+
+fn validate_capability_matrix(
+    capabilities: &[Capability],
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let matrix_path = Path::new("docs/CAPABILITY_MATRIX.md");
+    if !matrix_path.exists() {
+        violations.push("docs/CAPABILITY_MATRIX.md is missing".to_string());
+        return Ok(());
+    }
+
+    let matrix = read_text_lossy(matrix_path)?;
+    let Some(header_index) = matrix.lines().position(|line| {
+        line.trim()
+            == "| Capability | Status | Spec | Current evidence | Next checkpoint | Metric |"
+    }) else {
+        violations
+            .push("docs/CAPABILITY_MATRIX.md is missing the capability table header".to_string());
+        return Ok(());
+    };
+
+    let mut matrix_names = Vec::new();
+    for line in matrix.lines().skip(header_index + 2) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            break;
+        }
+        let Some(name) = trimmed
+            .split('|')
+            .nth(1)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        else {
+            violations.push(
+                "docs/CAPABILITY_MATRIX.md contains a capability row without a name".to_string(),
+            );
+            continue;
+        };
+        matrix_names.push(name.to_string());
+    }
+
+    let manifest_names = capabilities
+        .iter()
+        .filter_map(|capability| capability.name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect::<Vec<_>>();
+    let manifest_set = manifest_names.iter().copied().collect::<BTreeSet<_>>();
+    let matrix_set = matrix_names
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    for name in manifest_set.difference(&matrix_set) {
+        violations.push(format!(
+            "docs/CAPABILITY_MATRIX.md is missing capability `{name}` from metrics/capabilities.toml"
+        ));
+    }
+    for name in matrix_set.difference(&manifest_set) {
+        violations.push(format!(
+            "docs/CAPABILITY_MATRIX.md contains capability `{name}` absent from metrics/capabilities.toml"
+        ));
+    }
+    for (name, count) in
+        matrix_names
+            .iter()
+            .fold(BTreeMap::<&str, usize>::new(), |mut counts, name| {
+                *counts.entry(name.as_str()).or_default() += 1;
+                counts
+            })
+    {
+        if count > 1 {
+            violations.push(format!(
+                "docs/CAPABILITY_MATRIX.md contains capability `{name}` {count} times"
+            ));
+        }
+    }
+    if matrix_names.len() != manifest_names.len() {
+        violations.push(format!(
+            "docs/CAPABILITY_MATRIX.md has {} capability rows but metrics/capabilities.toml has {} entries",
+            matrix_names.len(),
+            manifest_names.len()
+        ));
+    }
+    Ok(())
 }
 
 fn validate_capabilities(

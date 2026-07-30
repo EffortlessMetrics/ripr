@@ -1847,22 +1847,21 @@ next = "advisory-policy-feedback"
 metric = "SARIF result counts by rule/level, new configured-warning results, and advisory_ci_workflow_generated"
 
 [[capability]]
-id = "badge_seam_native_counts"
-name = "Seam-native badge counts"
-status = "alpha"
-spec = "RIPR-SPEC-0005"
+id = "public_actionable_badge_counts"
+name = "Public actionable badge counts"
+status = "usable alpha"
+spec = "RIPR-SPEC-0056"
 evidence = [
-  "docs/BADGE_POLICY.md seam-native repo counting contract and optional gap-decision-ledger target path",
-  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.4 with basis, analyzed_seams, and analyzed_gap_records",
-  "crates/ripr/src/output/badge/summaries.rs ripr_seam_badge_summary and gap-ledger badge target rendering",
-  "repo-badge native JSON uses basis seam_native by default and basis gap_decision_ledger when supplied",
-  "diff badge native JSON remains basis finding_exposure for legacy finding counts",
-  "repo badge CLI smoke tests pin seam-native scope, gap-ledger target counts, and no diff leakage",
-  "checked-in badges/ripr.json and badges/ripr-plus.json refreshed from repo-badge-artifacts"
+  "docs/BADGE_POLICY.md defines canonical_actionable_gap as the public badge basis",
+  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.5 documents basis values plus badge-basis audit fields",
+  "crates/ripr/src/output/badge/summaries.rs renders repo badge payloads from unresolved actionable canonical repair items while badge-basis preserves seam-native inventory as internal analyzer-health pressure",
+  "repo badge native JSON uses basis canonical_actionable_gap by default and basis gap_decision_ledger when supplied",
+  "diff badge native JSON remains basis finding_exposure",
+  "checked-in badges/ripr.json and badges/ripr-plus.json are refreshed from generated endpoint artifacts"
 ]
-fixtures = []
-next = "campaign/modularization-stack-audit"
-metric = "repo badge headline counts configured-visible headline-eligible seam classes or explicit gap targets; native JSON distinguishes analyzed_seams, analyzed_gap_records, and analyzed_findings"
+fixtures = ["fixtures/user-surface-projection-alignment"]
+next = "campaign/public-badge-projection-realignment"
+metric = "public badge headline counts unresolved actionable canonical repair items; seam-native inventory remains available through internal analyzer-health reports and is not the public ripr or ripr+ headline"
 
 [[capability]]
 id = "suppression_policy_health"
