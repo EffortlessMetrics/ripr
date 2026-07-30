@@ -288,10 +288,36 @@ fn path_install_check() -> ReleaseReadinessCheck {
     }
 }
 
+/// Commands the bounded first screen (`ripr --help`) must keep offering.
+///
+/// Only the first actions belong here. This is the screen a first-time reader
+/// sees, so the gate holds it to "can a new user start?" — not to the full
+/// catalog. `repository_first_screen_offers_the_first_run_commands` pins these
+/// against the shipped help text so a release cannot be cut on a first screen
+/// that dropped its own entry point.
+const FIRST_SCREEN_NEEDLES: &[&str] = &["ripr doctor", "ripr check", "ripr first-pr"];
+
+/// Release-loop commands the exhaustive reference (`ripr help --all`) must list.
+///
+/// These used to be grepped out of `--help`. #1613 moved the catalog behind
+/// `help --all`, which is now the surface that promises completeness — and
+/// `help_all_documents_every_public_command` binds that text to the parser's own
+/// command list, so this needle set is checking a claim something else keeps
+/// honest rather than checking prose in isolation.
+const RELEASE_LOOP_NEEDLES: &[&str] = &[
+    "ripr pilot",
+    "ripr outcome",
+    "ripr first-pr",
+    "ripr calibrate cargo-mutants",
+    "ripr agent verify",
+    "ripr agent receipt",
+];
+
 fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
     let binary_path = crate::normalize_path(binary);
-    let command =
-        format!("{binary_path} --version && {binary_path} --help && {binary_path} first-pr --help");
+    let command = format!(
+        "{binary_path} --version && {binary_path} --help && {binary_path} help --all && {binary_path} first-pr --help"
+    );
     if !binary.exists() {
         return readiness_check(
             "installed-command-surface",
@@ -378,17 +404,42 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
             );
         }
     };
-    let mut missing = missing_required_needles(
-        &help.stdout,
-        &[
-            "ripr pilot",
-            "ripr outcome",
-            "ripr first-pr",
-            "ripr calibrate cargo-mutants",
-            "ripr agent verify",
-            "ripr agent receipt",
-        ],
-    );
+    let help_all = match run_command_path(binary, &["help", "--all"]) {
+        Ok(result) if result.success => result,
+        Ok(result) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed binary help --all failed",
+                vec![crate::normalize_path(binary)],
+                command_details(&result),
+            );
+        }
+        Err(err) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed ripr help --all could not run",
+                vec![crate::normalize_path(binary)],
+                vec![err],
+            );
+        }
+    };
+    // Two surfaces, two claims. `--help` is the bounded first screen, so it is
+    // held only to the commands a first run needs; the full release-loop
+    // catalog moved behind `help --all` (#1613) and is checked there. Grepping
+    // `--help` for the whole catalog would fail the release on a deliberate
+    // presentation change, and grepping only `help --all` would let the first
+    // screen lose its first actions without any gate noticing.
+    let mut missing = missing_required_needles(&help.stdout, FIRST_SCREEN_NEEDLES);
+    missing.extend(missing_required_needles(
+        &help_all.stdout,
+        RELEASE_LOOP_NEEDLES,
+    ));
     missing.extend(missing_required_needles(
         &first_pr_help.stdout,
         &[
@@ -1442,14 +1493,15 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        PackageVersion, ReleaseReadinessCheck, ReleaseReadinessReport,
-        extension_version_check_from, missing_required_needles, package_version,
-        parse_release_readiness_args, read_crate_version, readiness_check, release_readiness_json,
-        release_readiness_markdown, release_readiness_status,
+        FIRST_SCREEN_NEEDLES, PackageVersion, RELEASE_LOOP_NEEDLES, ReleaseReadinessCheck,
+        ReleaseReadinessReport, extension_version_check_from, missing_required_needles,
+        package_version, parse_release_readiness_args, read_crate_version, readiness_check,
+        release_readiness_json, release_readiness_markdown, release_readiness_status,
         vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
     use std::fs;
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -1806,11 +1858,76 @@ mod tests {
                 "expected all first-run needles present: {missing:?}"
             ));
         }
+        // The two needle sets are checked against different surfaces, so a
+        // needle in the wrong set silently weakens the gate. `first-pr` is the
+        // deliberate overlap: it is both a first action and a release-loop step.
+        for needle in FIRST_SCREEN_NEEDLES {
+            if RELEASE_LOOP_NEEDLES.contains(needle) && *needle != "ripr first-pr" {
+                return Err(format!(
+                    "{needle} is in both needle sets; decide which surface owns it"
+                ));
+            }
+        }
         let missing_first_pr = missing_required_needles(help, &["ripr first-pr", "--receipts-dir"]);
         if missing_first_pr != ["--receipts-dir".to_string()] {
             return Err(format!("unexpected missing needles: {missing_first_pr:?}"));
         }
         Ok(())
+    }
+
+    /// Bind the needle sets to the help text this repository actually ships.
+    ///
+    /// `installed-command-surface` only runs in the on-demand release lane
+    /// (`policy/ci-lane-whitelist.toml`, `posture = "on_demand_release"`), so
+    /// nothing at PR time notices when a help change stops satisfying it. That is
+    /// exactly how #1613's help rework broke this gate: moving the catalog behind
+    /// `help --all` emptied five of six needles out of `--help`, and every PR
+    /// check stayed green. This test reads the shipped constants directly, so the
+    /// break surfaces in `cargo test` instead of mid-release.
+    #[test]
+    fn repository_help_surfaces_satisfy_command_surface_needles() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no parent directory".to_string())?
+            .to_path_buf();
+        let path = root.join("crates/ripr/src/cli/help/overview.rs");
+        let text = crate::read_text_lossy(&path)
+            .map_err(|err| format!("read {}: {err}", path.display()))?;
+
+        let first_screen = raw_string_const(&text, "HELP")
+            .ok_or_else(|| format!("could not locate HELP in {}", path.display()))?;
+        let full_reference = raw_string_const(&text, "HELP_ALL")
+            .ok_or_else(|| format!("could not locate HELP_ALL in {}", path.display()))?;
+
+        let missing_first = missing_required_needles(first_screen, FIRST_SCREEN_NEEDLES);
+        if !missing_first.is_empty() {
+            return Err(format!(
+                "the `ripr --help` first screen no longer offers {missing_first:?}; \
+                 either restore them or move them to RELEASE_LOOP_NEEDLES"
+            ));
+        }
+
+        let missing_all = missing_required_needles(full_reference, RELEASE_LOOP_NEEDLES);
+        if !missing_all.is_empty() {
+            return Err(format!(
+                "`ripr help --all` no longer documents {missing_all:?}; \
+                 the release gate would fail on this help text"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Extract the body of `const <name>: &str = r#"..."#;` from Rust source.
+    ///
+    /// Matches on `const <name>:` so `HELP` does not also match `HELP_ALL`.
+    fn raw_string_const<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+        let anchor = format!("const {name}:");
+        let after_name = text.find(&anchor)? + anchor.len();
+        let rest = text.get(after_name..)?;
+        let open = rest.find("r#\"")? + "r#\"".len();
+        let body = rest.get(open..)?;
+        let close = body.find("\"#")?;
+        body.get(..close)
     }
 
     #[test]

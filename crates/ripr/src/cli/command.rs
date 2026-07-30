@@ -1,6 +1,8 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum CliCommand {
     Help,
+    /// `ripr help --all`: the exhaustive command reference.
+    HelpAll,
     Version,
     Init(Vec<String>),
     Pilot(Vec<String>),
@@ -41,6 +43,11 @@ pub(super) enum CliCommand {
 impl CliCommand {
     pub(super) fn from_parts(arg: Option<&str>, command_args: Vec<String>) -> Result<Self, String> {
         match arg {
+            // `--all` after a help request selects the exhaustive reference
+            // rather than the one-screen overview (#1613). Accepted on both
+            // spellings so neither `ripr --help --all` nor `ripr help --all`
+            // is a surprising error.
+            Some("--help" | "-h") if wants_all(&command_args) => Ok(Self::HelpAll),
             None | Some("--help" | "-h") => Ok(Self::Help),
             // `ripr help` (no subcommand) prints the top-level help, identical
             // to `ripr --help`. `ripr help <command> [args...]` is the standard
@@ -51,6 +58,9 @@ impl CliCommand {
             // unknown command still returns the unknown-command error so a
             // typo is not silently swallowed.
             Some("help") => {
+                if wants_all(&command_args) {
+                    return Ok(Self::HelpAll);
+                }
                 let (target, rest) = match command_args.split_first() {
                     Some((target, rest)) => (target.clone(), rest.to_vec()),
                     None => return Ok(Self::Help),
@@ -100,7 +110,26 @@ impl CliCommand {
     }
 }
 
-const KNOWN_COMMANDS: &[&str] = &[
+/// Whether a help invocation asked for the exhaustive reference.
+///
+/// Scanned rather than positionally matched so `ripr help --all` and
+/// `ripr --help --all` behave the same.
+/// Whether a help request selects the exhaustive reference.
+///
+/// Deliberately only the **first** argument. Scanning all of them makes `--all`
+/// swallow the rest of the help grammar: `ripr help check --all` would print the
+/// global catalog instead of dispatching to `check --help`, and
+/// `ripr help <typo> --all` would exit 0 with the catalog instead of the
+/// unknown-command error the `from_parts` `help` arm promises. `--all` is a
+/// modifier on *bare* help, so it has to be in the position bare help occupies.
+fn wants_all(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg == "--all")
+}
+
+/// Every command the parser accepts. Also the source for typo suggestions and
+/// for the `ripr help --all` completeness test, so a command cannot be
+/// reachable-but-undocumented.
+pub(super) const KNOWN_COMMANDS: &[&str] = &[
     "init",
     "help",
     "pilot",
@@ -181,10 +210,86 @@ fn edit_distance(left: &str, right: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{CliCommand, KNOWN_COMMANDS, closest_command};
+    use super::{CliCommand, KNOWN_COMMANDS, closest_command, unknown_command_error};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    /// `--all` selects the exhaustive reference on both help spellings, and
+    /// nothing else changes: a bare help request still gets the short screen,
+    /// and `help <command>` still routes to that command's own help (#1613).
+    #[test]
+    fn help_all_is_reachable_from_both_help_spellings() {
+        for args in [
+            vec!["--all".to_string()],
+            vec!["--all".to_string(), "extra".to_string()],
+        ] {
+            assert_eq!(
+                CliCommand::from_parts(Some("help"), args.clone()),
+                Ok(CliCommand::HelpAll),
+                "`ripr help {args:?}` should select the full reference"
+            );
+            assert_eq!(
+                CliCommand::from_parts(Some("--help"), args.clone()),
+                Ok(CliCommand::HelpAll),
+                "`ripr --help {args:?}` should select the full reference"
+            );
+            assert_eq!(
+                CliCommand::from_parts(Some("-h"), args),
+                Ok(CliCommand::HelpAll)
+            );
+        }
+
+        // Unchanged behavior: bare help, and `help <command>`.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), Vec::new()),
+            Ok(CliCommand::Help)
+        );
+        assert_eq!(
+            CliCommand::from_parts(None, Vec::new()),
+            Ok(CliCommand::Help)
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check"])),
+            CliCommand::from_parts(Some("check"), args(&["--help"]))
+        );
+        // `--all` is a help selector, not a command: it must not fall through
+        // to the unknown-command error.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["--all"])),
+            Ok(CliCommand::HelpAll)
+        );
+    }
+
+    /// A trailing `--all` must not capture the help request away from the
+    /// command it was asked about, or away from the unknown-command error.
+    ///
+    /// The first version of `wants_all` scanned every argument, so both of these
+    /// silently became the global catalog — and `ripr help <typo> --all` exited
+    /// 0, contradicting the `help` arm's documented promise that a typo is not
+    /// swallowed. `help_all_is_reachable_from_both_help_spellings` did not catch
+    /// it because every case there puts `--all` first, which is the one position
+    /// where scanning and first-arg agree.
+    #[test]
+    fn trailing_all_does_not_capture_command_local_or_unknown_help() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--all"])),
+            CliCommand::from_parts(Some("check"), args(&["--help", "--all"])),
+            "`ripr help check --all` should still dispatch to check's own help"
+        );
+        assert_ne!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--all"])),
+            Ok(CliCommand::HelpAll),
+            "a command-local `--all` must not select the global catalog"
+        );
+
+        let typo = CliCommand::from_parts(Some("help"), args(&["chekc", "--all"]));
+        assert_eq!(
+            typo,
+            Err(unknown_command_error("chekc")),
+            "`ripr help <typo> --all` should still report the typo"
+        );
     }
 
     #[test]

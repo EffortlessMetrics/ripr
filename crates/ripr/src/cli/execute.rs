@@ -7,6 +7,10 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
             help::print_help();
             Ok(())
         }
+        CliCommand::HelpAll => {
+            help::print_help_all();
+            Ok(())
+        }
         CliCommand::Version => {
             println!("ripr {}", env!("CARGO_PKG_VERSION"));
             Ok(())

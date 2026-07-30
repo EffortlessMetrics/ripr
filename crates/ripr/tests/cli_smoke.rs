@@ -568,6 +568,63 @@ fn help_runs() {
     assert!(stdout.contains("Usage:"));
 }
 
+/// The default screen is a first screen, not the catalog. Substring checks alone
+/// would still pass if it grew back into the 91-line command dump it used to be,
+/// so this pins the four things a first-time reader must get without opting in:
+/// a bounded screen, one runnable first action, the advisory boundary, and the
+/// route to the rest (#1613).
+#[test]
+fn help_leads_with_a_bounded_first_screen_that_routes_onward() {
+    let output = run_ripr(&["--help"]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let lines = stdout.lines().count();
+    assert!(
+        lines <= 40,
+        "the default help screen should stay scannable, got {lines} lines:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("ripr doctor"),
+        "the first screen should name a runnable first action, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("does not run mutants"),
+        "the advisory boundary must not be behind --all, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("ripr help --all"),
+        "the first screen should route to the full reference, got:\n{stdout}"
+    );
+}
+
+/// `--all` is the escape hatch the bounded screen promises, so it has to be
+/// reachable from the binary and actually carry the commands the short screen
+/// drops.
+#[test]
+fn help_all_prints_the_full_command_reference() {
+    let output = run_ripr(&["help", "--all"]);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let short = run_ripr(&["--help"]);
+    assert_success(&short);
+    let short_stdout = String::from_utf8_lossy(&short.stdout);
+    assert!(
+        stdout.lines().count() > short_stdout.lines().count(),
+        "help --all should be longer than the default screen, got {} vs {} lines",
+        stdout.lines().count(),
+        short_stdout.lines().count()
+    );
+
+    for command in ["ripr pr-summary", "ripr annotations", "ripr gate evaluate"] {
+        assert!(
+            stdout.contains(command),
+            "help --all should document `{command}`, got:\n{stdout}"
+        );
+    }
+}
+
 #[test]
 fn unknown_command_typo_reports_nearest_known_command() {
     let output = run_ripr(&["chekc"]);

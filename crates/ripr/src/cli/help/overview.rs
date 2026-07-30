@@ -1,7 +1,66 @@
-pub(super) const HELP: &str = r#"ripr — find changed Rust code where nearby tests may not actually catch the changed behavior.
+/// The default first screen: `ripr`, `ripr --help`, `ripr -h`, `ripr help`.
+///
+/// This answers "what are you trying to do?" before "what commands exist?"
+/// (#1613). The previous overview opened with every policy, ledger, badge, and
+/// calibration command — 91 lines, with the quick start buried at line 75 — so
+/// a first-time reader had to scroll past the operator surface to find
+/// `doctor`. The exhaustive inventory now lives in [`HELP_ALL`] behind
+/// `ripr help --all`, and per-command flags behind `ripr help <command>`.
+///
+/// `help_overview_fits_one_screen` pins the envelope so this cannot silently
+/// grow back into a dump.
+///
+/// The first line is not free prose: "changed Rust code where the nearby tests
+/// may not actually catch the behavior" is the canonical description of what
+/// `ripr` looks for, listed as such in `docs/TERMINOLOGY.md` and reused in
+/// `docs/QUICKSTART.md`. Reword it there first, everywhere, or not at all —
+/// `help_runs` in `tests/cli_smoke.rs` holds this line to that vocabulary.
+pub(super) const HELP: &str = r#"ripr — find changed Rust code where nearby tests may not actually catch the
+       changed behavior.
 
 Usage:
-  ripr <command> [options]      (per-command details: ripr <command> --help)
+  ripr <command> [options]
+
+Try this first:
+  ripr doctor                     Check this workspace can produce evidence.
+  ripr check --base origin/main   Analyze the current diff, name the top gap.
+
+The loop is: ripr names one gap -> you add one focused test -> ripr records
+whether the gap closed. `ripr.toml` is optional; the zero-config run is the
+intended first interface.
+
+What are you trying to do?
+  Inspect one change     ripr check [--base REV | --diff PATH]
+                                    [--format human-full | json]
+  Understand a finding   ripr explain <finding-id>
+                         ripr context --at <finding-id>
+  Repair one gap         ripr first-pr            (write the start-here packet)
+                         ripr agent brief --json  (agent-ready work order)
+  Work in an editor      ripr lsp --stdio
+  Adopt in CI            ripr init --ci github    (advisory PR summary first)
+                         ripr gate evaluate       (only after adoption)
+
+More:
+  ripr help <command>    Options for one command.
+  ripr help --all        Every command, grouped by area.
+
+ripr is static and advisory. It reads changed code, builds mutation-shaped
+probes, and estimates whether tests reach, infect, propagate, and reveal the
+changed behavior. It does not run mutants and does not report runtime mutation
+outcomes; a real mutation runner confirms later.
+"#;
+
+/// The exhaustive command reference: `ripr help --all`.
+///
+/// Every command the parser accepts must appear here. `help_all_documents_every_
+/// public_command` enforces that against the parser's own list, because the
+/// previous overview had already drifted behind it — `pr-summary`,
+/// `annotations`, `pr-evidence`, and `impacted-evidence` were all reachable and
+/// undocumented.
+pub(super) const HELP_ALL: &str = r#"ripr — complete command reference.
+
+Task-oriented overview: ripr --help
+Options for one command: ripr help <command>
 
 Setup:
   ripr doctor
@@ -38,6 +97,10 @@ PR & Review:
   ripr start-here [same options as first-pr]
   ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
+  ripr pr-summary [--check] [--baseline <before.json>]
+  ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
+  ripr impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]
+  ripr annotations [--comments <path>] [--out <path>] [--check]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json [--existing-comments target/ripr/review/existing-comments.json] [--mode off|plan|inline] [--out target/ripr/review/comment-publish-plan.json]
   ripr pr-review front-panel [--pr-guidance target/ripr/review/comments.json] [--first-action target/ripr/reports/first-useful-action.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--assistant-health target/ripr/reports/assistant-loop-health.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/pr-review-front-panel.json]
