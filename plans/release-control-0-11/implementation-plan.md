@@ -138,6 +138,18 @@ reports that candidate construction is not performed here. Its source of truth
 is `RIPR-SPEC-0145`; the supplemental denominator and exact-candidate bundle
 remain dependent follow-up slices.
 
+## Supplemental denominator slice
+
+Status: in progress. The execution-surface decision from #2767 is merged at
+`b797cca3e63cf78d96265d9843c9ab03e8399945`. This slice adds the captured/live
+ledger validator and its deterministic JSON/Markdown report. The provisional
+ledger is intentionally not the final candidate disposition: #1609 and the
+dependent editor lane remain outstanding.
+
+Proof routes for this slice are the focused `RIPR-SPEC-0146` tests, the
+`fixtures/release_denominator/` contract, and hosted `Ripr Rust Small Result`.
+No final candidate qualification or publication claim is made here.
+
 ## Non-goals and safety boundary
 
 - no singleton active-goal restoration or automatic backlog priority;

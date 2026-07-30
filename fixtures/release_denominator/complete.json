@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_denominator_snapshot",
+  "captured_at": "2026-07-30T12:00:00Z",
+  "source": {
+    "mode": "captured",
+    "stage": "provisional",
+    "freshness": "current",
+    "historical_base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidate_ref": "candidate-fixture",
+    "candidate_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "range_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],
+    "candidate_tree_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]
+  },
+  "records": [
+    {
+      "commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "first_parent_position": 1,
+      "subject": "release: include infrastructure disposition",
+      "pr_refs": [2788], "issue_refs": [2767],
+      "theme_or_surface": "release_infrastructure",
+      "release_disposition": "include_release_infrastructure", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": ["2788"],
+      "proof_refs": ["30510628377"],
+      "source_survivor_or_swarm_exclusion_effect": "preserves the merged execution-surface decision",
+      "limitation_or_operator_decision": "provisional denominator only"
+    },
+    {
+      "commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "first_parent_position": 2,
+      "subject": "release: retain control-plane honesty",
+      "pr_refs": [2760], "issue_refs": [2613],
+      "theme_or_surface": "control_or_honesty",
+      "release_disposition": "include_control_or_honesty", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": ["2760"],
+      "proof_refs": ["release-control-fixture"],
+      "source_survivor_or_swarm_exclusion_effect": "keeps the source survivor in the supplemental denominator",
+      "limitation_or_operator_decision": "final candidate tree remains unqualified"
+    },
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "first_parent_position": 3,
+      "subject": "refactor: preserve release report structure",
+      "pr_refs": [], "issue_refs": [],
+      "theme_or_surface": "structural_no_semantic_delta",
+      "release_disposition": "structural_no_semantic_delta", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [],
+      "proof_refs": ["shape-report"],
+      "source_survivor_or_swarm_exclusion_effect": "does not remove a source commit from review",
+      "limitation_or_operator_decision": "requires ordinary candidate review"
+    },
+    {
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "first_parent_position": 4,
+      "subject": "release: defer post-0.11 follow-up",
+      "pr_refs": [], "issue_refs": [2769],
+      "theme_or_surface": "safe_defer_post_0_11",
+      "release_disposition": "safe_defer_post_0_11", "acceptance_owner": "follow-up owner",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [],
+      "proof_refs": ["2769"],
+      "source_survivor_or_swarm_exclusion_effect": "keeps deferred work visible without counting it as absent",
+      "limitation_or_operator_decision": "requires a later release decision"
+    }
+  ]
+}

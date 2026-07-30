@@ -5547,7 +5547,7 @@ or mutates GitHub state.
 | --- | --- | --- |
 | `control/release-lens` | landed | #2766 / PR #2773: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
 | `release/execution-scope` | in progress | #2767: decide whether merged verification-execution surfaces are present in the candidate tree without rewriting development `main`. |
-| `release/supplemental-denominator` | planned | #2768: enumerate and disposition every commit in the candidate range with a reproducible record-set digest. |
+| `release/supplemental-denominator` | in progress | #2768: enumerate and disposition every commit in the candidate range with a reproducible record-set digest. |
 | `release/exact-candidate-bundle` | blocked | #2769: qualify one immutable #1609 candidate only after the scope and denominator are resolved. |
 | `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
 
@@ -5556,3 +5556,4 @@ The durable sequence and first-slice acceptance criteria are in
 and the first-slice output contract is
 [`RIPR-SPEC-0144`](specs/RIPR-SPEC-0144-release-control-lens.md).
 The execution-scope contract is [`RIPR-SPEC-0145`](specs/RIPR-SPEC-0145-release-execution-scope.md).
+The supplemental denominator contract is [`RIPR-SPEC-0146`](specs/RIPR-SPEC-0146-release-denominator.md).

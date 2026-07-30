@@ -6501,6 +6501,40 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0146"
+name = "release supplemental denominator ledger"
+spec = "docs/specs/RIPR-SPEC-0146-release-denominator.md"
+tests = [
+  "xtask/src/reports/release_denominator.rs::tests::complete_provisional_ledger_is_ready_and_digest_stable",
+  "xtask/src/reports/release_denominator.rs::tests::missing_record_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::duplicate_record_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::out_of_range_record_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::wrong_order_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::wrong_tree_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::final_operator_decision_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::live_observation_mismatch_fails_closed",
+  "xtask/src/reports/release_denominator.rs::tests::report_json_and_markdown_share_the_claim_boundary",
+]
+fixtures = [
+  "fixtures/release_denominator/complete.json",
+  "fixtures/release_denominator/reconcile-required.json",
+]
+code = [
+  "xtask/src/reports/release_denominator.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/fixtures.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0146-release-denominator.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "release_denominator_ready",
+  "release_denominator_reconcile_required",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0145"
 name = "0.11 candidate execution-surface scope"
 spec = "docs/specs/RIPR-SPEC-0145-release-execution-scope.md"

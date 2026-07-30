@@ -352,6 +352,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
                     | "release_control"
+                    | "release_denominator"
                     | "release_scope"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"

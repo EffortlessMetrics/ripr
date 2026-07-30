@@ -24,6 +24,7 @@ mod receipts;
 mod recommendation;
 mod release;
 mod release_control;
+mod release_denominator;
 mod release_scope;
 pub(crate) mod release_server;
 mod repo;
@@ -102,6 +103,7 @@ pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;
 pub(crate) use release_control::release_control;
+pub(crate) use release_denominator::release_denominator;
 pub(crate) use release_scope::release_scope;
 pub(crate) use repo::{
     actionable_gap_outcomes_report, agent_seam_packets_report, evidence_health_report,
