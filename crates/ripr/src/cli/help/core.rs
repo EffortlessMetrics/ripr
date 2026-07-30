@@ -36,9 +36,9 @@ pub(super) const CONFIG_HELP: &str = r#"Validate the repository's ripr.toml with
 Usage: ripr config validate [--root PATH]
 
 Options:
-  --root PATH  Workspace root containing ripr.toml. Defaults to `.`.
+  --root PATH  Starting root for ancestor config discovery. Defaults to `.`.
 
-The command uses the same root-scoped loader as analysis and fails with the
+The command uses the same ancestor-aware loader as analysis and fails with the
 path-qualified parser or policy error. A missing ripr.toml follows the normal
 built-in-defaults path; use `ripr init` when you want to materialize those
 defaults into a file.

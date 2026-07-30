@@ -1,7 +1,8 @@
 //! Repository configuration loader for `ripr.toml`.
 //!
-//! The loader is intentionally small and repo-root scoped. It does not read
-//! user-global config, environment variables, or hidden alternate config
+//! The loader is intentionally small and repository-scoped. It walks from the
+//! selected root toward the repository boundary for `ripr.toml`; it does not
+//! read user-global config, environment variables, or hidden alternate config
 //! paths. Command adapters decide precedence by applying explicit flags or LSP
 //! initialization options after this file is loaded.
 
@@ -118,11 +119,47 @@ enabled = ["rust"]
 
 "#;
 
-pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
-    let path = root.join(CONFIG_FILE_NAME);
-    if !path.exists() {
-        return default_config_for_root(root);
+fn discover_config_path(root: &Path) -> Option<PathBuf> {
+    let direct = root.join(CONFIG_FILE_NAME);
+    if direct.exists() {
+        return std::fs::canonicalize(direct).ok();
     }
+
+    let search_root = std::fs::canonicalize(root).ok()?;
+    for ancestor in search_root.ancestors() {
+        let path = ancestor.join(CONFIG_FILE_NAME);
+        if path.exists() {
+            return Some(path);
+        }
+        if is_repository_boundary(ancestor) {
+            break;
+        }
+    }
+    None
+}
+
+fn is_repository_boundary(directory: &Path) -> bool {
+    if directory.join(".git").exists() {
+        return true;
+    }
+
+    let manifest = directory.join("Cargo.toml");
+    let Ok(contents) = std::fs::read_to_string(manifest) else {
+        return false;
+    };
+    if !contents.contains("workspace") {
+        return false;
+    }
+    let Ok(document) = toml::from_str::<toml::Value>(&contents) else {
+        return false;
+    };
+    document.get("workspace").is_some_and(toml::Value::is_table)
+}
+
+pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
+    let Some(path) = discover_config_path(root) else {
+        return default_config_for_root(root);
+    };
     let text = std::fs::read_to_string(&path)
         .map_err(|err| format!("read {} failed: {err}", path.display()))?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;

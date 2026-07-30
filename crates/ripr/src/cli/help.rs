@@ -492,6 +492,7 @@ mod tests {
         assert!(CONFIG_HELP.starts_with("Validate the repository's ripr.toml"));
         assert!(CONFIG_HELP.contains("Usage: ripr config validate"));
         assert!(CONFIG_HELP.contains("without running workspace probes"));
+        assert!(CONFIG_HELP.contains("ancestor-aware loader"));
         assert!(PILOT_HELP.starts_with("Find the top test gap in this repo"));
         assert!(PILOT_HELP.contains("Usage: ripr pilot"));
         assert!(PILOT_HELP.contains("pilot-summary.json"));

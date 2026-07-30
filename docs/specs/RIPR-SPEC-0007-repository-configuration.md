@@ -14,11 +14,14 @@ LSP, reports, and future CI policy harder to keep aligned.
 
 ## Behavior
 
-`ripr` should discover and parse a repo-root `ripr.toml` file.
+`ripr` should discover and parse the nearest repository-owned `ripr.toml` file
+from the selected root.
 
 The configuration layer should:
 
-- look for `ripr.toml` at the workspace root;
+- walk from the selected root toward its parents for the nearest `ripr.toml`;
+- stop after checking a Cargo manifest with a `[workspace]` table or at a
+  `.git` boundary; a package-only `Cargo.toml` does not stop discovery;
 - use behavior-preserving defaults when the file is absent;
 - reject malformed config with actionable errors;
 - reject unknown keys so typos do not silently change policy;
@@ -34,7 +37,7 @@ The configuration layer should:
   supports that cap;
 - make loaded, missing, and malformed config state observable through
   `ripr doctor`;
-- provide `ripr config validate [--root PATH]` for isolated root-scoped TOML
+- provide `ripr config validate [--root PATH]` for isolated ancestor-aware TOML
   validation without workspace tool probes;
 - keep output schemas stable unless a later scoped PR explicitly adds config
   metadata.
@@ -63,6 +66,8 @@ Repository configuration evidence should cover:
 
 - absent config preserving previous defaults;
 - valid config changing each supported policy surface;
+- nested selected roots discovering the nearest config and respecting
+  repository boundaries;
 - explicit CLI options overriding config values;
 - explicit LSP initialization options overriding config values;
 - malformed values returning actionable errors;

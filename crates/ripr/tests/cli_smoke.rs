@@ -761,6 +761,40 @@ fn check_from_a_directory_without_a_workspace_does_not_disclose_resolution() -> 
 }
 
 #[test]
+fn config_validate_discovers_parent_config_from_nested_directory() -> Result<(), String> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root = unique_external_workspace("config-validate-parent")?;
+    let nested = root.join("crates/member");
+    std::fs::create_dir_all(&nested)
+        .map_err(|error| format!("create nested config directory: {error}"))?;
+    let config_path = root.join("ripr.toml");
+    std::fs::write(&config_path, "[analysis]\nmode = \"not-a-mode\"\n")
+        .map_err(|error| format!("write invalid parent config: {error}"))?;
+    let expected_config_path = config_path
+        .canonicalize()
+        .map_err(|error| format!("canonicalize parent config: {error}"))?;
+
+    let output = run_command(bin, Some(&nested), &["config", "validate"])
+        .map_err(|error| format!("run nested config validate: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let success = output.status.success();
+    std::fs::remove_dir_all(&root).map_err(|error| format!("remove config fixture: {error}"))?;
+    if success {
+        return Err(format!(
+            "nested config validate unexpectedly accepted invalid parent config\nstdout:\n{}\nstderr:\n{stderr}",
+            String::from_utf8_lossy(&output.stdout)
+        ));
+    }
+    if !stderr.contains(&expected_config_path.display().to_string()) {
+        return Err(format!(
+            "nested config validate did not report parent config path {}\nstderr:\n{stderr}",
+            expected_config_path.display()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn check_human_navigation_commands_replay_custom_scope() -> Result<(), String> {
     let root = ".";
     let diff = "crates/ripr/examples/sample/example.diff";

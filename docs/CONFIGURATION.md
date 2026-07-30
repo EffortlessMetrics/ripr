@@ -1,7 +1,7 @@
 # Configuration
 
 This is the reference for every setting `ripr` reads today, including the
-repo-root `ripr.toml` file. It pairs with:
+repository `ripr.toml` file. It pairs with:
 
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md) for what the analysis modes mean.
 - [Output schema](OUTPUT_SCHEMA.md) for what each output format produces.
@@ -12,16 +12,19 @@ repo-root `ripr.toml` file. It pairs with:
 `ripr` currently reads configuration from six surfaces:
 
 1. **CLI flags** on the `ripr` binary.
-2. **Repo config** in `ripr.toml` at the workspace root.
+2. **Repo config** in the nearest `ripr.toml` at or above the selected root.
 3. **LSP `initializationOptions`** sent by an LSP client (e.g. the VS Code extension) on `initialize`.
 4. **VS Code extension settings** under the `ripr.*` namespace, which the extension translates into server arguments and LSP options.
 5. **Environment variables** for narrow runtime tuning of expensive local paths.
 6. **Repo policy files** under `.ripr/`, including static-language allowlists,
    test intent, and suppressions.
 
-`ripr.toml` is repo-root scoped only. `ripr` does not read global user config,
-or hidden alternate config files. Environment variables are process-local tuning
-knobs and are documented separately from repo policy.
+`ripr.toml` is repository-scoped. Starting at the selected root, `ripr` walks
+parent directories until it finds the nearest config, then stops at a Cargo
+workspace manifest or `.git` boundary. A package-only `Cargo.toml` does not stop
+the walk. `ripr` does not read global user config or hidden alternate config
+files. Environment variables are process-local tuning knobs and are documented
+separately from repo policy.
 
 Configuration is for policy and tuning, not a prerequisite for first value.
 `ripr.toml` is optional, and missing config is the normal first-run state — it
@@ -301,7 +304,7 @@ use:
 ripr config validate --root .
 ```
 
-This uses the same root-scoped loader as analysis. A valid file prints
+This uses the same ancestor-aware loader as analysis. A valid file prints
 `✓ ripr.toml valid`; a malformed or policy-invalid file returns its
 path-qualified validation error. A missing `ripr.toml` follows the normal
 built-in-defaults path, including any existing root-level language detection
@@ -693,10 +696,11 @@ The `context` command always returns JSON-shaped output regardless of
 
 ## `ripr.toml`
 
-`ripr` discovers `ripr.toml` at the workspace root passed by `--root` or by the
-LSP initialization root. Missing config is normal and preserves current
-built-in defaults. Unknown keys are errors so policy typos do not silently
-change analysis intent.
+`ripr` starts config discovery at the root passed by `--root` or by the LSP
+initialization root, then walks upward for the nearest `ripr.toml`. Discovery
+stops after checking an ancestor with a Cargo `[workspace]` table or at a `.git`
+boundary. Missing config is normal and preserves current built-in defaults.
+Unknown keys are errors so policy typos do not silently change analysis intent.
 
 The example file ([`ripr.toml.example`](../ripr.toml.example)) is kept in sync
 with the supported v1 shape.
