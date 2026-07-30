@@ -1,0 +1,27 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/decimal_field_observer_non_member_access/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 2 unrevealed, 0 no path, 0 unknown
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/decimal_field_observer_non_member_access/input/src/lib.rs:7
+  Static exposure: reachable_unrevealed (warning, confidence 0.79)
+  Changed behavior: retries: 1,
+  Missing discriminator: No detected assertion observes the changed value, error, field, or effect
+  Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+  Evidence:
+    - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast probe:src_lib.rs:field_construction:66b24106
+  ripr context --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast --at probe:src_lib.rs:field_construction:66b24106
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

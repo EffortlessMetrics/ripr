@@ -754,7 +754,7 @@ fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
                 || text.contains("saved")
                 || text.contains("published")
         }
-        ProbeFamily::FieldConstruction => text.contains('.'),
+        ProbeFamily::FieldConstruction => contains_member_access(text),
         ProbeFamily::CallDeletion => text.contains("assert") || text.contains("expect"),
         ProbeFamily::Predicate
         | ProbeFamily::ReturnValue
@@ -762,6 +762,20 @@ fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
         | ProbeFamily::StaticUnknown => false,
     };
     typed_match || text_match
+}
+
+/// Returns true when the assertion contains a Rust-style member access.
+///
+/// A bare dot is not enough: decimal literals such as `3.14` and range
+/// operators also contain dots without observing a constructed field.
+fn contains_member_access(text: &str) -> bool {
+    text.char_indices().any(|(index, character)| {
+        character == '.'
+            && text[index + character.len_utf8()..]
+                .chars()
+                .next()
+                .is_some_and(|next| next == '_' || next.is_alphabetic())
+    })
 }
 
 fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) -> OracleStrength {
@@ -1144,6 +1158,14 @@ mod tests {
             &ProbeFamily::FieldConstruction,
             &oracle(
                 "assert_eq!(item.id, 3);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown
+            )
+        ));
+        assert!(!oracle_matches_family(
+            &ProbeFamily::FieldConstruction,
+            &oracle(
+                "assert!(3.14_f64 > 0.0_f64);",
                 OracleKind::Unknown,
                 OracleStrength::Unknown
             )
