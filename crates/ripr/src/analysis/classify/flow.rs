@@ -519,21 +519,51 @@ fn value_is_swallowed(text: &str) -> bool {
     false
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlowEffectKind {
+    Event,
+    StateWrite,
+    Persistence,
+    Log,
+    Config,
+}
+
+impl FlowEffectKind {
+    /// Classify the normalized expression once. The order is intentional:
+    /// logging wins over configuration, persistence, event, and state-write
+    /// signals, matching the former `FlowSinkKind` selection precedence.
+    fn from_text(text: &str) -> Option<Self> {
+        if looks_like_log_effect(text) {
+            Some(Self::Log)
+        } else if looks_like_config_effect(text) {
+            Some(Self::Config)
+        } else if looks_like_persistence_effect(text) {
+            Some(Self::Persistence)
+        } else if looks_like_event_call_effect(text) {
+            Some(Self::Event)
+        } else if looks_like_state_write_effect(text) {
+            Some(Self::StateWrite)
+        } else {
+            None
+        }
+    }
+
+    fn sink_kind(self) -> FlowSinkKind {
+        match self {
+            Self::Event => FlowSinkKind::EventCall,
+            Self::StateWrite => FlowSinkKind::StateWrite,
+            Self::Persistence => FlowSinkKind::Persistence,
+            Self::Log => FlowSinkKind::LogMessage,
+            Self::Config => FlowSinkKind::ConfigChange,
+        }
+    }
+}
+
 fn effect_sink_kind(text: &str) -> FlowSinkKind {
     let normalized = text.to_ascii_lowercase();
-    if looks_like_log_effect(&normalized) {
-        FlowSinkKind::LogMessage
-    } else if looks_like_config_effect(&normalized) {
-        FlowSinkKind::ConfigChange
-    } else if looks_like_persistence_effect(&normalized) {
-        FlowSinkKind::Persistence
-    } else if looks_like_event_call_effect(&normalized) {
-        FlowSinkKind::EventCall
-    } else if looks_like_state_write_effect(&normalized) {
-        FlowSinkKind::StateWrite
-    } else {
-        FlowSinkKind::CallEffect
-    }
+    FlowEffectKind::from_text(&normalized)
+        .map(FlowEffectKind::sink_kind)
+        .unwrap_or(FlowSinkKind::CallEffect)
 }
 
 fn looks_like_event_call_effect(text: &str) -> bool {
@@ -829,6 +859,41 @@ mod tests {
                 "{expression}"
             );
         }
+    }
+
+    #[test]
+    fn flow_effect_kind_parses_each_effect_and_preserves_precedence() {
+        let cases = [
+            ("events.publish(score);", Some(FlowEffectKind::Event)),
+            (
+                "cache.insert(key, value);",
+                Some(FlowEffectKind::StateWrite),
+            ),
+            (
+                "repository.save(invoice);",
+                Some(FlowEffectKind::Persistence),
+            ),
+            ("log::info!(\"saved\");", Some(FlowEffectKind::Log)),
+            (
+                "config.set_option(\"mode\", mode);",
+                Some(FlowEffectKind::Config),
+            ),
+            ("calculate(score);", None),
+        ];
+
+        for (expression, expected_kind) in cases {
+            assert_eq!(
+                FlowEffectKind::from_text(&expression.to_ascii_lowercase()),
+                expected_kind,
+                "{expression}"
+            );
+        }
+
+        assert_eq!(
+            FlowEffectKind::from_text("log::info!(config.set_option(\"mode\", mode));"),
+            Some(FlowEffectKind::Log),
+            "log classification must retain the former precedence"
+        );
     }
 
     #[test]
