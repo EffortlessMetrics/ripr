@@ -7,7 +7,7 @@
 
 use crate::app::{CheckInput, Mode};
 use crate::domain::{LanguageId, OracleStrength};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
 mod model;
@@ -338,7 +338,7 @@ fn parse_bun_ub_profile(raw: RawBunUbProfileConfig) -> Result<BunUbProfileConfig
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
     analysis: Option<RawAnalysisConfig>,
@@ -353,19 +353,19 @@ struct RawConfig {
     perl: Option<RawPerlConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawTypescriptConfig {
     resolve_tsconfig_paths: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawPerlConfig {
     producer: Option<String>,
@@ -374,27 +374,27 @@ struct RawPerlConfig {
     cache_dir: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawProfilesConfig {
     bun_ub: Option<RawBunUbProfileConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawBunUbProfileConfig {
     test_roots: Option<Vec<String>>,
     bridge_hints: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawAnalysisConfig {
     mode: Option<String>,
     include_unchanged_tests: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawOraclePolicy {
     snapshot_strength: Option<String>,
@@ -402,33 +402,33 @@ struct RawOraclePolicy {
     broad_error_strength: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
     diagnostic_profile: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawReportsConfig {
     max_related_tests: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSuppressionsConfig {
     path: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeverityConfig {
     findings: Option<RawFindingSeverityConfig>,
     seams: Option<RawSeamSeverityConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawFindingSeverityConfig {
     exposed: Option<String>,
@@ -440,7 +440,7 @@ struct RawFindingSeverityConfig {
     static_unknown: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeamSeverityConfig {
     strongly_gripped: Option<String>,

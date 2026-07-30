@@ -4,6 +4,7 @@ use super::python::{PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS};
 use super::*;
 use crate::analysis::seams::SeamGripClass;
 use crate::domain::{ExposureClass, OracleKind};
+use proptest::prelude::*;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -963,4 +964,140 @@ fn check_artifact_config_identity_hash_tracks_finding_affecting_fields_only() ->
         );
     }
     Ok(())
+}
+
+// --- Property-based tests (#2751) ---
+//
+// The raw model is deliberately separate from the effective configuration:
+// TOML parsing applies defaults and validates policy values. These properties
+// therefore check both boundaries independently: serde must preserve a valid
+// raw document, and the production parser must accept that document.
+
+proptest! {
+    #[test]
+    fn proptest_valid_raw_configs_round_trip_and_parse(
+        mode in prop::option::of(prop::sample::select(vec![
+            "instant".to_string(),
+            "draft".to_string(),
+            "fast".to_string(),
+            "deep".to_string(),
+            "ready".to_string(),
+        ])),
+        include_unchanged_tests in prop::option::of(any::<bool>()),
+        snapshot_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        mock_expectation_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        broad_error_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        exposed in prop::option::of(prop::sample::select(valid_finding_severities())),
+        weakly_exposed in prop::option::of(prop::sample::select(valid_finding_severities())),
+        strongly_gripped in prop::option::of(prop::sample::select(valid_seam_severities())),
+        seam_diagnostics in prop::option::of(any::<bool>()),
+        diagnostic_profile in prop::option::of(prop::sample::select(vec![
+            "actionable".to_string(),
+            "full".to_string(),
+        ])),
+        max_related_tests in any::<usize>(),
+        suppression_path in valid_repository_paths(),
+        resolve_tsconfig_paths in any::<bool>(),
+        producer in any::<String>(),
+        executable in any::<String>(),
+        timeout_ms in any::<u64>(),
+        cache_dir in any::<String>(),
+    ) {
+        let raw = RawConfig {
+            analysis: Some(RawAnalysisConfig {
+                mode,
+                include_unchanged_tests,
+            }),
+            oracles: Some(RawOraclePolicy {
+                snapshot_strength,
+                mock_expectation_strength,
+                broad_error_strength,
+            }),
+            severity: Some(RawSeverityConfig {
+                findings: Some(RawFindingSeverityConfig {
+                    exposed,
+                    weakly_exposed,
+                    ..Default::default()
+                }),
+                seams: Some(RawSeamSeverityConfig {
+                    strongly_gripped,
+                    ..Default::default()
+                }),
+            }),
+            lsp: Some(RawLspConfig {
+                seam_diagnostics,
+                diagnostic_profile,
+            }),
+            reports: Some(RawReportsConfig {
+                max_related_tests: Some(max_related_tests),
+            }),
+            suppressions: Some(RawSuppressionsConfig {
+                path: Some(suppression_path),
+            }),
+            languages: Some(RawLanguagesConfig {
+                enabled: Some(vec!["rust".to_string()]),
+            }),
+            profiles: None,
+            typescript: Some(RawTypescriptConfig {
+                resolve_tsconfig_paths: Some(resolve_tsconfig_paths),
+            }),
+            perl: Some(RawPerlConfig {
+                producer: Some(producer),
+                executable: Some(executable),
+                timeout_ms: Some(timeout_ms),
+                cache_dir: Some(cache_dir),
+            }),
+        };
+
+        let serialized = match toml::to_string(&raw) {
+            Ok(serialized) => serialized,
+            Err(error) => {
+                prop_assert!(false, "valid raw config must serialize: {error}");
+                return Ok(());
+            }
+        };
+        let reparsed = match toml::from_str::<RawConfig>(&serialized) {
+            Ok(reparsed) => reparsed,
+            Err(error) => {
+                prop_assert!(false, "serialized raw config must deserialize: {error}");
+                return Ok(());
+            }
+        };
+
+        prop_assert_eq!(reparsed, raw);
+        let effective = parse_config(&serialized);
+        prop_assert!(
+            effective.is_ok(),
+            "serialized valid config must parse: {effective:?}\n{serialized}"
+        );
+    }
+}
+
+fn valid_oracle_strengths() -> Vec<String> {
+    ["strong", "medium", "weak", "smoke", "none", "unknown"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_finding_severities() -> Vec<String> {
+    ["info", "warning", "note"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_seam_severities() -> Vec<String> {
+    ["off", "info", "warning", "note"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_repository_paths() -> impl Strategy<Value = String> {
+    prop::sample::select(vec![
+        ".ripr/suppressions.toml".to_string(),
+        "config/ripr.toml".to_string(),
+        "fixtures/policy.toml".to_string(),
+    ])
 }
