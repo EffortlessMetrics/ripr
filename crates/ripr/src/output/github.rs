@@ -316,16 +316,22 @@ mod tests {
 
     #[test]
     fn render_github_paths_are_repo_relative_without_dot_prefix() {
+        // Use a platform-correct absolute root so strip_prefix works on both
+        // Unix (where /workspace/repo is absolute) and Windows (where it is
+        // drive-relative and is_absolute() returns false).
+        let abs_root = std::env::temp_dir().join("ripr_github_annotation_test");
         let mut output = output_with_unknown_finding();
-        output.root = PathBuf::from("/workspace/repo");
-        output.findings[0].probe.location.file =
-            PathBuf::from("/workspace/repo/./crates/ripr/src/lib.rs");
+        output.root = abs_root.clone();
+        output.findings[0].probe.location.file = abs_root.join(".").join("crates/ripr/src/lib.rs");
 
         let rendered = render(&output);
 
         assert!(rendered.contains("file=crates/ripr/src/lib.rs,line=13"));
         assert!(!rendered.contains("file=./"));
-        assert!(!rendered.contains("file=/workspace/repo"));
+        assert!(
+            !rendered.contains("file=") || !rendered.contains(&abs_root.display().to_string()),
+            "absolute root must not appear in the annotation file path: {rendered}"
+        );
 
         let mut nested = output_with_unknown_finding();
         nested.root = PathBuf::from("fixtures/boundary_gap/input");
