@@ -102,7 +102,8 @@ pub(super) const CHECK_HELP: &str = r#"Analyze a diff or workspace and emit find
 Usage: ripr check [OPTIONS]
 
 Options:
-  --root PATH              Workspace root. Defaults to current directory.
+  --root PATH              Workspace root. Defaults to current directory, then
+                           walks up to a Cargo.toml containing [workspace].
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
                            Use --diff - to read from stdin (e.g.

@@ -460,6 +460,7 @@ mod tests {
         assert!(CHECK_HELP.contains("repo-exposure-summary-json"));
         assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
+        assert!(CHECK_HELP.contains("walks up to a Cargo.toml containing [workspace]"));
         assert!(CHECK_HELP.contains("needs test-efficiency"));
         assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));

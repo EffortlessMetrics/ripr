@@ -165,6 +165,20 @@ fn unique_temp_workspace(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("ripr-{label}-{stamp}-{pid}-{counter}"))
 }
 
+fn unique_external_workspace(label: &str) -> Result<PathBuf, String> {
+    let workspace = workspace_root()
+        .canonicalize()
+        .map_err(|error| format!("canonicalize workspace root: {error}"))?;
+    let candidate = unique_temp_workspace(label);
+    let parent = workspace
+        .parent()
+        .ok_or_else(|| "workspace root has no parent".to_string())?;
+    let name = candidate
+        .file_name()
+        .ok_or_else(|| "temporary fixture has no file name".to_string())?;
+    Ok(parent.join(name))
+}
+
 fn assert_success(output: &Output) {
     assert!(
         output.status.success(),
@@ -656,6 +670,94 @@ fn check_human_output_reports_sample_findings() {
     assert!(stdout.contains("Next step:"));
     assert!(stdout.contains("lower-priority finding(s) omitted"));
     assert!(stdout.contains("--format human-full"));
+}
+
+#[test]
+fn check_from_a_subcrate_discloses_workspace_root_and_honors_explicit_root() -> Result<(), String> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let subcrate = workspace_root().join("crates/ripr");
+    let implicit = run_command(
+        bin,
+        Some(&subcrate),
+        &["check", "--base", "HEAD", "--format", "json"],
+    )
+    .map_err(|error| format!("run implicit-root check: {error}"))?;
+    assert_success(&implicit);
+    let expected_root = workspace_root()
+        .canonicalize()
+        .map_err(|error| format!("canonicalize workspace root: {error}"))?;
+    let expected_disclosure = format!(
+        "ripr: resolved workspace root to {} (Cargo.toml contains [workspace])",
+        expected_root.display()
+    );
+    assert!(
+        String::from_utf8_lossy(&implicit.stderr).contains(&expected_disclosure),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&implicit.stderr)
+    );
+
+    let root = workspace_root().display().to_string();
+    let explicit = run_command(
+        bin,
+        Some(&subcrate),
+        &[
+            "check", "--root", &root, "--base", "HEAD", "--format", "json",
+        ],
+    )
+    .map_err(|error| format!("run explicit-root check: {error}"))?;
+    assert_success(&explicit);
+    assert!(
+        !String::from_utf8_lossy(&explicit.stderr).contains("resolved workspace root to"),
+        "explicit --root must skip implicit resolution; stderr:\n{}",
+        String::from_utf8_lossy(&explicit.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+fn check_from_a_directory_without_a_workspace_does_not_disclose_resolution() -> Result<(), String> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root = unique_external_workspace("check-no-workspace")?;
+    std::fs::create_dir_all(root.join("src"))
+        .map_err(|error| format!("create fixture source: {error}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"check-no-workspace\"\nversion = \"0.1.0\"\n",
+    )
+    .map_err(|error| format!("write fixture manifest: {error}"))?;
+    std::fs::write(root.join("src/lib.rs"), "pub fn value() -> i32 { 1 }\n")
+        .map_err(|error| format!("write fixture source: {error}"))?;
+    let diff = root.join("change.diff");
+    std::fs::write(
+        &diff,
+        "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn value() -> i32 { 1 }\n+pub fn value() -> i32 { 2 }\n",
+    )
+    .map_err(|error| format!("write fixture diff: {error}"))?;
+
+    let diff_arg = diff.display().to_string();
+    let output = run_command(
+        bin,
+        Some(&root),
+        &["check", "--diff", &diff_arg, "--format", "json"],
+    )
+    .map_err(|error| format!("run no-workspace check: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let success = output.status.success();
+    let no_disclosure = !stderr.contains("resolved workspace root to");
+    std::fs::remove_dir_all(&root).map_err(|error| format!("remove fixture: {error}"))?;
+    if !success {
+        return Err(format!(
+            "no-workspace check failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            stderr
+        ));
+    }
+    if !no_disclosure {
+        return Err(format!(
+            "no-workspace check unexpectedly disclosed resolution\nstderr:\n{stderr}"
+        ));
+    }
+    Ok(())
 }
 
 #[test]

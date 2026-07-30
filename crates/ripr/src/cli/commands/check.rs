@@ -29,6 +29,47 @@ Use --format json for diff-scoped findings, or --format repo-exposure-summary-js
     ))
 }
 
+fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, String> {
+    let start = std::fs::canonicalize(start).map_err(|error| {
+        format!(
+            "resolve implicit workspace root from {} failed: {error}",
+            start.display()
+        )
+    })?;
+
+    for ancestor in start.ancestors() {
+        let manifest = ancestor.join("Cargo.toml");
+        let Ok(contents) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let Ok(document) = toml::from_str::<toml::Value>(&contents) else {
+            continue;
+        };
+        if document.get("workspace").is_some_and(toml::Value::is_table) {
+            return Ok(Some(ancestor.to_path_buf()));
+        }
+    }
+    Ok(None)
+}
+
+fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
+    let Some(root) = resolve_workspace_root(Path::new("."))? else {
+        return Ok(());
+    };
+    let current = std::fs::canonicalize(".")
+        .map_err(|error| format!("resolve current directory failed: {error}"))?;
+    if root == current {
+        return Ok(());
+    }
+
+    eprintln!(
+        "ripr: resolved workspace root to {} (Cargo.toml contains [workspace])",
+        root.display()
+    );
+    input.root = root;
+    Ok(())
+}
+
 fn parse_git_timeout(value: &str) -> Result<Option<std::time::Duration>, String> {
     let secs: u64 = value.parse().map_err(|_parse_err| {
         format!("--git-timeout requires a non-negative integer (seconds); got {value:?}")
@@ -82,6 +123,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
     let mut worktree_explicitly_provided = false;
+    let mut root_explicitly_provided = false;
     // RIPR-SPEC-0140: explicit artifact sink for the explain/context reuse
     // pair. No implicit cache: the user names the artifact path.
     let mut write_artifact: Option<PathBuf> = None;
@@ -92,6 +134,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             "--root" => {
                 i += 1;
                 input.root = PathBuf::from(expect_value(args, i, "--root")?);
+                root_explicitly_provided = true;
             }
             "--base" => {
                 i += 1;
@@ -159,6 +202,9 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             other => return Err(unknown_argument("check", other)),
         }
         i += 1;
+    }
+    if !root_explicitly_provided {
+        resolve_implicit_workspace_root(&mut input)?;
     }
     // RIPR-SPEC-0084: when no --base was explicitly given AND no --diff file
     // was provided, resolve the repo's real default branch instead of
@@ -429,7 +475,10 @@ fn render_check_gap_ledger_badge(
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{args, copy_sample_workspace_to_temp, unique_repo_relative_test_dir};
+    use super::super::tests::{
+        args, copy_sample_workspace_to_temp, repo_root, unique_command_test_dir,
+        unique_repo_relative_test_dir,
+    };
     use super::*;
 
     #[test]
@@ -463,6 +512,59 @@ mod tests {
         let warning = repo_scope_diff_bound_warning(OutputFormat::Json, true, None);
 
         assert!(warning.is_none());
+    }
+
+    #[test]
+    fn implicit_workspace_root_walks_up_to_a_workspace_manifest() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("workspace-root-walk");
+        let nested = root.join("crates/member/src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_workspace_root(&nested)?
+            .ok_or_else(|| "expected a workspace root from the nested path".to_string())?;
+        let expected = std::fs::canonicalize(&root).map_err(|error| error.to_string())?;
+        let mismatch = (resolved != expected).then(|| {
+            format!(
+                "resolved workspace root {} differs from expected {}",
+                resolved.display(),
+                expected.display()
+            )
+        });
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        if let Some(error) = mismatch {
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_root_walk_ignores_a_package_only_manifest() -> Result<(), String> {
+        let workspace = std::fs::canonicalize(repo_root()).map_err(|error| error.to_string())?;
+        let candidate = unique_command_test_dir("workspace-root-package");
+        let parent = workspace
+            .parent()
+            .ok_or_else(|| "workspace root has no parent".to_string())?;
+        let name = candidate
+            .file_name()
+            .ok_or_else(|| "temporary fixture has no file name".to_string())?;
+        let root = parent.join(name);
+        let nested = root.join("src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"package-only\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_workspace_root(&nested)?;
+        let found_workspace = resolved.is_some();
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        if found_workspace {
+            return Err("package-only manifest must not be treated as a workspace".to_string());
+        }
+        Ok(())
     }
 
     #[test]
