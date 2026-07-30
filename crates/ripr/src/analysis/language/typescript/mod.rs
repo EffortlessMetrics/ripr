@@ -267,6 +267,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             changed_files: changed_count,
             changed_files_by_language,
             partial_scope: None,
+            skipped_files: 0,
         })
     }
 
@@ -288,6 +289,7 @@ impl LanguageAdapter for TypeScriptAdapter {
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,
+            skipped_files: 0,
         })
     }
 }

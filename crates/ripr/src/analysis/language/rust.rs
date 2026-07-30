@@ -425,8 +425,23 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// when the same file hits both budgets the stop reason is `file_budget`
 /// with the line count recorded on the scope record; the first-file
 /// exception always wins over the simultaneous-hit rule.
+#[cfg(test)]
 fn select_partial_diff_partition(
     changed_files: &[ChangedFile],
+    budgets: &PartialDiffBudgets,
+    enabled_languages: &[LanguageId],
+) -> Option<PartialDiffScope> {
+    select_partial_diff_partition_with_identity(
+        changed_files,
+        changed_files,
+        budgets,
+        enabled_languages,
+    )
+}
+
+fn select_partial_diff_partition_with_identity(
+    changed_files: &[ChangedFile],
+    identity_files: &[ChangedFile],
     budgets: &PartialDiffBudgets,
     enabled_languages: &[LanguageId],
 ) -> Option<PartialDiffScope> {
@@ -517,7 +532,7 @@ fn select_partial_diff_partition(
         .collect();
     let mut selected_sorted = selected_files.clone();
     selected_sorted.sort();
-    let diff_identity = diff_identity_from_changed_files(changed_files);
+    let diff_identity = diff_identity_from_changed_files(identity_files);
     let canonical = partition_canonical_form(
         &diff_identity,
         budgets.file_budget,
@@ -1065,6 +1080,38 @@ fn replace_witnessed_no_path_infection_summary(finding: &mut Finding) {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RustAdapter;
 
+/// Return whether a Rust path is a conventional generated-source surface.
+///
+/// This is deliberately conservative and built in for now. A configurable
+/// pattern list needs a separate config-contract lane; the default must still
+/// avoid analyzing common generated names without inventing a config value.
+pub(crate) fn is_generated_rust_file(path: &Path) -> bool {
+    if route(path) != Some(LanguageId::Rust) {
+        return false;
+    }
+
+    let name = path
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_default();
+    let conventional_name = name == "bindings.rs"
+        || name == "generated.rs"
+        || name == "schema.rs"
+        || name.ends_with(".gen.rs")
+        || name.ends_with("_generated.rs")
+        || name.starts_with("generated_");
+    let generated_directory = path.components().any(|component| {
+        let std::path::Component::Normal(value) = component else {
+            return false;
+        };
+        matches!(
+            value.to_string_lossy().as_ref(),
+            "gen" | "generated" | "out"
+        )
+    });
+    conventional_name || generated_directory
+}
+
 impl RustAdapter {
     /// Diff analysis with the enabled-language set the pipeline will
     /// dispatch, so the partial-diff partition (RIPR-PROP-0019) never selects
@@ -1076,16 +1123,31 @@ impl RustAdapter {
         changed_files: &[ChangedFile],
         enabled_languages: &[LanguageId],
     ) -> Result<LanguageDiffResult, String> {
-        enforce_changed_rust_line_limit(changed_files, diff_changed_rust_line_limit()?)?;
+        // Exclude conventional generated surfaces before hard line limits and
+        // partial-diff budgeting so machine output cannot consume the budget
+        // that protects actionable source analysis.
+        let analyzable_changed_files = changed_files
+            .iter()
+            .filter(|file| !is_generated_rust_file(&file.path))
+            .cloned()
+            .collect::<Vec<_>>();
+        enforce_changed_rust_line_limit(
+            &analyzable_changed_files,
+            diff_changed_rust_line_limit()?,
+        )?;
         // RIPR-PROP-0019 (#1999): within the hard guards, a diff that exceeds
         // the smaller partial-selection budget is analyzed as a deterministic
         // bounded partition and reported as `limited_partial_scope` instead of
         // failing closed with zero findings. A malformed override fails closed
         // as `partial_budget_invalid`.
         let partial_budgets = partial_diff_budgets()?;
-        let partial_scope =
-            select_partial_diff_partition(changed_files, &partial_budgets, enabled_languages);
-        let changed_rust_paths = changed_files
+        let partial_scope = select_partial_diff_partition_with_identity(
+            &analyzable_changed_files,
+            changed_files,
+            &partial_budgets,
+            enabled_languages,
+        );
+        let changed_rust_paths = analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
             .filter(|file| {
@@ -1096,8 +1158,12 @@ impl RustAdapter {
             .map(|file| file.path.clone())
             .collect::<Vec<_>>();
         let rust_files = workspace::discover_rust_files(&options.root)?;
+        let analyzable_rust_files = rust_files
+            .into_iter()
+            .filter(|path| !is_generated_rust_file(path))
+            .collect::<Vec<_>>();
         let index_files = workspace::select_rust_files_for_mode(
-            &rust_files,
+            &analyzable_rust_files,
             &changed_rust_paths,
             options.mode,
             options.include_unchanged_tests,
@@ -1141,7 +1207,7 @@ impl RustAdapter {
         let mut findings = Vec::new();
         let mut changed_rust_files = 0usize;
 
-        for changed in changed_files
+        for changed in analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
             .filter(|file| {
@@ -1197,6 +1263,11 @@ impl RustAdapter {
             changed_files: changed_rust_files,
             changed_files_by_language: Vec::new(),
             partial_scope,
+            skipped_files: changed_files
+                .iter()
+                .filter(|file| self.accepts_path(&file.path))
+                .filter(|file| is_generated_rust_file(&file.path))
+                .count(),
         })
     }
 }
@@ -1236,12 +1307,21 @@ impl LanguageAdapter for RustAdapter {
         oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
         let rust_files = workspace::discover_rust_files(&options.root)?;
+        let skipped_files = rust_files
+            .iter()
+            .filter(|path| is_generated_rust_file(path))
+            .count();
+        let analyzable_rust_files = rust_files
+            .iter()
+            .filter(|path| !is_generated_rust_file(path))
+            .cloned()
+            .collect::<Vec<_>>();
         // Fail closed before the whole-workspace load (#2109): an
         // over-limit repo analysis is a named error with a repair route,
         // not an unbounded read+index that can exhaust host memory.
         let scope_limit = repo_index_file_limit_from_env(std::env::var(REPO_INDEX_FILE_LIMIT_ENV))?;
-        enforce_repo_index_file_limit(rust_files.len(), scope_limit)?;
-        let production_files = rust_files
+        enforce_repo_index_file_limit(analyzable_rust_files.len(), scope_limit)?;
+        let production_files = analyzable_rust_files
             .iter()
             .filter(|path| workspace::is_production_rust_path(path))
             .cloned()
@@ -1254,7 +1334,7 @@ impl LanguageAdapter for RustAdapter {
         // integration tests under `tests/` or `examples/`. Probe seeding
         // stays production-only so test bodies do not generate findings.
         // Use the content-addressed per-file fact cache (#1912).
-        let loaded_rust_files = rust_files
+        let loaded_rust_files = analyzable_rust_files
             .iter()
             .map(|file| {
                 let full = options.root.join(file);
@@ -1296,6 +1376,7 @@ impl LanguageAdapter for RustAdapter {
         Ok(LanguageRepoResult {
             findings,
             production_files: production_files.len(),
+            skipped_files,
         })
     }
 }
@@ -1311,10 +1392,11 @@ mod tests {
         apply_rust_macro_wrapped_assertion_limit, changed_rust_line_count,
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_identity_from_changed_files, diff_index_file_limit_from_env,
-        enforce_changed_rust_line_limit, enforce_repo_index_file_limit, macro_reach_limit_kind,
-        owner_has_ffi_attr, partial_diff_budgets_from_env, partition_canonical_form,
-        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
-        select_partial_diff_partition, sha256_hex, transitive_reach_limit_kind,
+        enforce_changed_rust_line_limit, enforce_repo_index_file_limit, is_generated_rust_file,
+        macro_reach_limit_kind, owner_has_ffi_attr, partial_diff_budgets_from_env,
+        partition_canonical_form, replace_witnessed_no_path_infection_summary,
+        repo_index_file_limit_from_env, select_partial_diff_partition,
+        select_partial_diff_partition_with_identity, sha256_hex, transitive_reach_limit_kind,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -2410,6 +2492,69 @@ let _ = (result, note, raw);"##,
             added_lines: changed_lines(added),
             removed_lines: changed_lines(removed),
         }
+    }
+
+    #[test]
+    fn generated_rust_paths_use_conservative_name_and_directory_rules() {
+        for path in [
+            "src/proto/generated.rs",
+            "src/model.gen.rs",
+            "src/model_generated.rs",
+            "src/generated_model.rs",
+            "src/bindings.rs",
+            "src/schema.rs",
+            "src/generated/model.rs",
+            "src/gen/model.rs",
+            "target/out/model.rs",
+        ] {
+            assert!(
+                is_generated_rust_file(Path::new(path)),
+                "expected generated Rust path: {path}"
+            );
+        }
+        for path in [
+            "src/lib.rs",
+            "src/engine.rs",
+            "tests/behavior.rs",
+            "src/proto/generated/data.ts",
+            "out/data.py",
+        ] {
+            assert!(
+                !is_generated_rust_file(Path::new(path)),
+                "unexpected generated Rust path: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn partial_scope_identity_includes_skipped_generated_files() -> Result<(), String> {
+        let analyzable = vec![
+            changed_file("src/a.rs", 1, 0),
+            changed_file("src/b.rs", 1, 0),
+        ];
+        let mut identity_a = analyzable.clone();
+        identity_a.push(changed_file("src/generated.rs", 1, 0));
+        let mut identity_b = analyzable.clone();
+        identity_b.push(changed_file("src/schema.rs", 1, 0));
+
+        let first = select_partial_diff_partition_with_identity(
+            &analyzable,
+            &identity_a,
+            &budgets(1, 1),
+            ALL_LANGUAGES,
+        )
+        .ok_or_else(|| "two changed files exceed the partial budget".to_string())?;
+        let second = select_partial_diff_partition_with_identity(
+            &analyzable,
+            &identity_b,
+            &budgets(1, 1),
+            ALL_LANGUAGES,
+        )
+        .ok_or_else(|| "two changed files exceed the partial budget".to_string())?;
+
+        assert_ne!(first.diff_identity, second.diff_identity);
+        assert_ne!(first.partition_identity, second.partition_identity);
+        Ok(())
     }
 
     fn changed_lines(count: usize) -> Vec<ChangedLine> {

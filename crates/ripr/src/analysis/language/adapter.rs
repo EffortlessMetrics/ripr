@@ -28,6 +28,9 @@ pub(crate) struct LanguageDiffResult {
     /// attributes `changed_files` to the adapter's own language.
     pub(crate) changed_files_by_language: Vec<(super::LanguageId, usize)>,
     pub(crate) partial_scope: Option<PartialDiffScope>,
+    /// Number of accepted-language files intentionally excluded as generated
+    /// source. The pipeline records this as a partial run disclosure.
+    pub(crate) skipped_files: usize,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
@@ -38,6 +41,9 @@ pub(crate) struct LanguageDiffResult {
 pub(crate) struct LanguageRepoResult {
     pub(crate) findings: Vec<Finding>,
     pub(crate) production_files: usize,
+    /// Number of discovered-language files intentionally excluded as generated
+    /// source. The pipeline records this as a partial run disclosure.
+    pub(crate) skipped_files: usize,
 }
 
 /// Boundary trait for per-language adapters.

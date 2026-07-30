@@ -383,16 +383,23 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
 fn render_language_runs(out: &mut String, output: &CheckOutput) {
     for run in &output.language_runs {
         let language = capitalize_first(&run.language);
+        let completion = if run.status == crate::analysis::LanguageRunStatus::Partial {
+            "returned a partial result"
+        } else {
+            "analysis did not complete"
+        };
         match &run.reason {
             Some(reason) => out.push_str(&format!(
-                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above. Reason: {}\n",
+                "\nNote: {} {} (status: {}). Other languages' findings are still shown above. Reason: {}\n",
                 language,
+                completion,
                 run.status.as_str(),
                 reason,
             )),
             None => out.push_str(&format!(
-                "\nNote: {} analysis did not complete (status: {}). Other languages' findings are still shown above.\n",
+                "\nNote: {} {} (status: {}). Other languages' findings are still shown above.\n",
                 language,
+                completion,
                 run.status.as_str(),
             )),
         }

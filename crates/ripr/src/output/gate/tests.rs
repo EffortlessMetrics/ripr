@@ -190,6 +190,9 @@ fn limited_partial_scope_detection_covers_run_state_vocabulary() {
     assert!(discloses_limited_partial_scope(&json!({
         "run_limitations": [{"run_status": run_status}]
     })));
+    assert!(discloses_limited_partial_scope(&json!({
+        "language_runs": [{"language": "rust", "status": "partial"}]
+    })));
     assert!(!discloses_limited_partial_scope(&json!({
         "schema_version": "0.1",
         "status": "advisory",

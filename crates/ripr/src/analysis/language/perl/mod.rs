@@ -201,6 +201,7 @@ impl LanguageAdapter for PerlAdapter {
             changed_files,
             changed_files_by_language: Vec::new(),
             partial_scope: None,
+            skipped_files: 0,
         })
     }
 
@@ -234,6 +235,7 @@ impl LanguageAdapter for PerlAdapter {
         Ok(LanguageRepoResult {
             findings,
             production_files,
+            skipped_files: 0,
         })
     }
 }

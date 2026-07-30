@@ -1149,6 +1149,7 @@ fn pr_guidance_producer_error(value: &Value, path: &Path) -> Option<String> {
 /// - `analysis_scope.run_status` == `limited_partial_scope`
 /// - any `run_limitations[]` entry whose `run_status` or `category` is
 ///   `limited_partial_scope`
+/// - any `language_runs[]` entry with `status` == `partial`
 fn partial_scope_input_error(value: &Value, path: &Path) -> Option<String> {
     if discloses_limited_partial_scope(value) {
         Some(format!(
@@ -1176,6 +1177,16 @@ pub(crate) fn discloses_limited_partial_scope(value: &Value) -> bool {
         .pointer("/analysis_scope/run_status")
         .and_then(Value::as_str)
         == Some(run_status)
+    {
+        return true;
+    }
+    if value
+        .get("language_runs")
+        .and_then(Value::as_array)
+        .is_some_and(|runs| {
+            runs.iter()
+                .any(|run| run.get("status").and_then(Value::as_str) == Some("partial"))
+        })
     {
         return true;
     }

@@ -187,6 +187,16 @@ fn run_pipeline_for_diff_text(
             languages,
         )?;
         cancellation::checkpoint()?;
+        if result.skipped_files > 0 {
+            language_runs.push(LanguageRun {
+                language: LanguageId::Rust.as_str().to_string(),
+                status: LanguageRunStatus::Partial,
+                reason: Some(format!(
+                    "{} generated Rust file(s) skipped from static analysis by the built-in generated-file predicate",
+                    result.skipped_files
+                )),
+            });
+        }
         partial_scope = result.partial_scope.clone();
         findings.extend(result.findings);
         rust_changed_files += result.changed_files;
@@ -351,6 +361,16 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
             // Rust (stable) failures propagate via `?`.
             let result = RustAdapter.analyze_repo(options, oracle_policy)?;
             cancellation::checkpoint()?;
+            if result.skipped_files > 0 {
+                language_runs.push(LanguageRun {
+                    language: LanguageId::Rust.as_str().to_string(),
+                    status: LanguageRunStatus::Partial,
+                    reason: Some(format!(
+                        "{} generated Rust file(s) skipped from static analysis by the built-in generated-file predicate",
+                        result.skipped_files
+                    )),
+                });
+            }
             findings.extend(result.findings);
             rust_production_files += result.production_files;
             files_by_language.push((LanguageId::Rust, result.production_files));

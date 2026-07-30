@@ -6440,6 +6440,7 @@ impl LanguageAdapter for PythonAdapter {
             changed_files: changed_count,
             changed_files_by_language: Vec::new(),
             partial_scope: None,
+            skipped_files: 0,
         })
     }
 
@@ -6457,6 +6458,7 @@ impl LanguageAdapter for PythonAdapter {
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,
+            skipped_files: 0,
         })
     }
 }
