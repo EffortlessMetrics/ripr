@@ -190,6 +190,16 @@ and the [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md).
 
 ## Required Rust Gates
 
+For one complete local review and package pass, run `cargo xtask ci-full`. It
+runs the review-ready `check-pr` lane, the evidence gates (`fixtures`,
+`goldens check`, `test-oracle-report`, `dogfood`, and `metrics`), then the
+package listing and publish dry-run. The explicit commands below remain the
+inventory for targeted reruns.
+
+The following report commands are advisory and do not independently block a
+merge: `cargo xtask pr-triage-report`, `cargo xtask metrics`,
+`cargo xtask check-pr-shape`, and `cargo xtask module-health`.
+
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
@@ -200,7 +210,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
-cargo xtask metrics
+cargo xtask metrics # advisory
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -222,7 +232,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
+cargo xtask check-pr-shape # advisory
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy

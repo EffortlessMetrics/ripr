@@ -94,18 +94,28 @@ when covered by policy metadata.
 
 Run these before claiming the branch is ready:
 
+For one complete local review and package pass, run `cargo xtask ci-full`. It
+runs the review-ready `check-pr` lane, the evidence gates (`fixtures`,
+`goldens check`, `test-oracle-report`, `dogfood`, and `metrics`), then the
+package listing and publish dry-run. The explicit commands below remain the
+inventory for targeted reruns.
+
+The following report commands are advisory and do not independently block a
+merge: `cargo xtask pr-triage-report`, `cargo xtask metrics`,
+`cargo xtask check-pr-shape`, and `cargo xtask module-health`.
+
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
-cargo xtask pr-triage-report
+cargo xtask pr-triage-report # advisory
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
-cargo xtask metrics
+cargo xtask metrics # advisory
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -132,7 +142,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
+cargo xtask check-pr-shape # advisory
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
