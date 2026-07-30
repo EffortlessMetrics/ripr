@@ -294,6 +294,19 @@ Config: not found; using built-in defaults
 Malformed config makes `doctor` fail with the config path and validation
 problem, but `doctor` does not print the config source text.
 
+For an isolated configuration check that does not probe Git, Cargo, or rustc,
+use:
+
+```console
+ripr config validate --root .
+```
+
+This uses the same root-scoped loader as analysis. A valid file prints
+`✓ ripr.toml valid`; a malformed or policy-invalid file returns its
+path-qualified validation error. A missing `ripr.toml` follows the normal
+built-in-defaults path, including any existing root-level language detection
+rules, because that remains the normal first-run configuration.
+
 ### `ripr lsp`
 
 ```text

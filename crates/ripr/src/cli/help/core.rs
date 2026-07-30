@@ -31,6 +31,18 @@ Generated GitHub workflow:
   - uses continue-on-error for advisory RIPR work and upload steps
   - does not enable baseline failure policy by default
 "#;
+pub(super) const CONFIG_HELP: &str = r#"Validate the repository's ripr.toml without running workspace probes.
+
+Usage: ripr config validate [--root PATH]
+
+Options:
+  --root PATH  Workspace root containing ripr.toml. Defaults to `.`.
+
+The command uses the same root-scoped loader as analysis and fails with the
+path-qualified parser or policy error. A missing ripr.toml follows the normal
+built-in-defaults path; use `ripr init` when you want to materialize those
+defaults into a file.
+"#;
 pub(super) const PILOT_HELP: &str = r#"Find the top test gap in this repo and write a packet you can act on.
 
 Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]

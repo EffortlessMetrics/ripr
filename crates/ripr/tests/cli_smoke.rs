@@ -3034,6 +3034,35 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
 }
 
 #[test]
+fn config_validate_rejects_missing_and_file_roots() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let missing = workspace.join("missing-root");
+    let missing_string = missing.display().to_string();
+    let missing_output = run_ripr(&["config", "validate", "--root", &missing_string]);
+    assert_failure(&missing_output);
+    assert!(
+        String::from_utf8_lossy(&missing_output.stderr).contains("is not a directory"),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&missing_output.stderr)
+    );
+
+    let file_root = workspace.join("root-file");
+    std::fs::write(&file_root, "not a directory\n")
+        .map_err(|error| format!("write file root: {error}"))?;
+    let file_string = file_root.display().to_string();
+    let file_output = run_ripr(&["config", "validate", "--root", &file_string]);
+    assert_failure(&file_output);
+    assert!(
+        String::from_utf8_lossy(&file_output.stderr).contains("is not a directory"),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&file_output.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn doctor_json_reports_current_schema() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     let root = workspace.display().to_string();

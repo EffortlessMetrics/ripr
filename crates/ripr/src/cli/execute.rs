@@ -16,6 +16,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
             Ok(())
         }
         CliCommand::Init(args) => commands::init(&args),
+        CliCommand::Config(args) => commands::config(&args),
         CliCommand::Pilot(args) => commands::pilot(&args),
         CliCommand::Outcome(args) => commands::outcome(&args),
         CliCommand::EvidenceHealth(args) => commands::evidence_health(&args),
@@ -92,6 +93,10 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Init(args(&["--root"]))),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Config(args(&["validate", "--root"]))),
             Err("missing value for --root".to_string())
         );
         assert_eq!(

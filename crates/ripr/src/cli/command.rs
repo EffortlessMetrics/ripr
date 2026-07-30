@@ -5,6 +5,7 @@ pub(super) enum CliCommand {
     HelpAll,
     Version,
     Init(Vec<String>),
+    Config(Vec<String>),
     Pilot(Vec<String>),
     Outcome(Vec<String>),
     EvidenceHealth(Vec<String>),
@@ -72,6 +73,7 @@ impl CliCommand {
             }
             Some("--version" | "-V") => Ok(Self::Version),
             Some("init") => Ok(Self::Init(command_args)),
+            Some("config") => Ok(Self::Config(command_args)),
             Some("pilot") => Ok(Self::Pilot(command_args)),
             Some("outcome") => Ok(Self::Outcome(command_args)),
             Some("evidence-health") => Ok(Self::EvidenceHealth(command_args)),
@@ -131,6 +133,7 @@ fn wants_all(args: &[String]) -> bool {
 /// reachable-but-undocumented.
 pub(super) const KNOWN_COMMANDS: &[&str] = &[
     "init",
+    "config",
     "help",
     "pilot",
     "outcome",
@@ -301,6 +304,7 @@ mod tests {
             (Some("--version"), CliCommand::Version),
             (Some("-V"), CliCommand::Version),
             (Some("init"), CliCommand::Init(Vec::new())),
+            (Some("config"), CliCommand::Config(Vec::new())),
             (Some("pilot"), CliCommand::Pilot(Vec::new())),
             (Some("outcome"), CliCommand::Outcome(Vec::new())),
             (Some("rerun"), CliCommand::Rerun(Vec::new())),

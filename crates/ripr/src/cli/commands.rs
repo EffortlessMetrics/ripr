@@ -29,6 +29,8 @@ mod agent_dispatch;
 mod agent_gap_packet;
 #[path = "commands/cache.rs"]
 mod cache_command;
+#[path = "commands/config.rs"]
+mod config_command;
 #[path = "commands/context.rs"]
 mod context;
 #[path = "commands/policy.rs"]
@@ -67,6 +69,8 @@ pub(super) fn swarm(args: &[String]) -> Result<(), String> {
 pub(super) fn cache(args: &[String]) -> Result<(), String> {
     cache_command::run(args)
 }
+
+pub(super) use config_command::config;
 
 fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
     if let Some(parent) = path
@@ -3581,6 +3585,7 @@ mod tests {
     #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
+        assert_eq!(config(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(review_comments(&args(&["--help"])), Ok(()));
         assert_eq!(gate(&args(&["--help"])), Ok(()));

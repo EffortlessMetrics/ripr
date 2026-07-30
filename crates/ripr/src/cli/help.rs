@@ -45,6 +45,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "baseline update",
     "calibrate cargo-mutants",
     "check",
+    "config validate",
     "coverage-grip frontier",
     "diff",
     "doctor",
@@ -99,6 +100,7 @@ pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
         "baseline create" | "baseline diff" | "baseline update" => BASELINE_HELP,
         "calibrate cargo-mutants" => CALIBRATE_HELP,
         "check" => CHECK_HELP,
+        "config validate" => CONFIG_HELP,
         "coverage-grip frontier" => COVERAGE_GRIP_HELP,
         "diff" => DIFF_HELP,
         "doctor" => DOCTOR_HELP,
@@ -151,6 +153,10 @@ pub(super) fn print_help_all() {
 
 pub(super) fn print_check_help() {
     println!("{CHECK_HELP}");
+}
+
+pub(super) fn print_config_help() {
+    println!("{CONFIG_HELP}");
 }
 
 pub(super) fn print_diff_help() {
@@ -302,7 +308,7 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
+        ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONFIG_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DIFF_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
         FIRST_ACTION_HELP, GATE_HELP, HELP, HELP_ALL, INIT_HELP, LSP_HELP, OUTCOME_HELP,
         PILOT_HELP, POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP,
@@ -311,12 +317,13 @@ mod tests {
         print_agent_receipt_help, print_agent_repair_help, print_agent_review_summary_help,
         print_agent_start_help, print_agent_status_help, print_agent_verify_help,
         print_assistant_loop_help, print_baseline_help, print_calibrate_help, print_check_help,
-        print_context_help, print_coverage_grip_help, print_diff_help, print_doctor_help,
-        print_evidence_health_help, print_explain_help, print_first_action_help, print_gate_help,
-        print_help, print_help_all, print_init_help, print_lsp_help, print_outcome_help,
-        print_pilot_help, print_policy_help, print_pr_comments_help, print_pr_ledger_help,
-        print_pr_review_help, print_reports_help, print_rerun_help, print_review_comments_help,
-        print_swarm_help, print_swarm_ingest_help, print_swarm_queue_help, print_zero_help,
+        print_config_help, print_context_help, print_coverage_grip_help, print_diff_help,
+        print_doctor_help, print_evidence_health_help, print_explain_help, print_first_action_help,
+        print_gate_help, print_help, print_help_all, print_init_help, print_lsp_help,
+        print_outcome_help, print_pilot_help, print_policy_help, print_pr_comments_help,
+        print_pr_ledger_help, print_pr_review_help, print_reports_help, print_rerun_help,
+        print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
+        print_swarm_queue_help, print_zero_help,
     };
     use crate::cli::command::KNOWN_COMMANDS;
 
@@ -326,6 +333,7 @@ mod tests {
     #[test]
     fn help_all_mentions_supported_commands() {
         assert!(HELP_ALL.contains("ripr init"));
+        assert!(HELP_ALL.contains("ripr config validate"));
         assert!(HELP_ALL.contains("ripr pilot"));
         assert!(HELP_ALL.contains("ripr outcome"));
         assert!(HELP_ALL.contains("ripr rerun --changed-test"));
@@ -480,6 +488,9 @@ mod tests {
         assert!(INIT_HELP.contains("--ci github"));
         assert!(INIT_HELP.contains("--dry-run"));
         assert!(INIT_HELP.contains("--force"));
+        assert!(CONFIG_HELP.starts_with("Validate the repository's ripr.toml"));
+        assert!(CONFIG_HELP.contains("Usage: ripr config validate"));
+        assert!(CONFIG_HELP.contains("without running workspace probes"));
         assert!(PILOT_HELP.starts_with("Find the top test gap in this repo"));
         assert!(PILOT_HELP.contains("Usage: ripr pilot"));
         assert!(PILOT_HELP.contains("pilot-summary.json"));
@@ -634,6 +645,7 @@ mod tests {
         // cargo-test harness.
         print_help();
         print_init_help();
+        print_config_help();
         print_pilot_help();
         print_outcome_help();
         print_rerun_help();
@@ -746,6 +758,7 @@ mod tests {
             ),
             ("gate", GATE_HELP, &["--pr-guidance", "--mode"]),
             ("doctor", DOCTOR_HELP, &["--root", "--json"]),
+            ("config validate", CONFIG_HELP, &["--root"]),
             (
                 "pilot",
                 PILOT_HELP,

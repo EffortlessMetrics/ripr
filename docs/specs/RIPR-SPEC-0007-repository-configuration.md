@@ -34,6 +34,8 @@ The configuration layer should:
   supports that cap;
 - make loaded, missing, and malformed config state observable through
   `ripr doctor`;
+- provide `ripr config validate [--root PATH]` for isolated root-scoped TOML
+  validation without workspace tool probes;
 - keep output schemas stable unless a later scoped PR explicitly adds config
   metadata.
 
@@ -68,6 +70,9 @@ Repository configuration evidence should cover:
 - unsafe relative-path shapes being rejected where paths are configurable;
 - `ripr doctor` reporting loaded config path, missing-config defaults, and
   malformed config errors without printing config source text;
+- `ripr config validate` accepting valid config, following the existing
+  missing-config defaults path, and returning path-qualified errors for
+  malformed or policy-invalid config;
 - output schemas remaining unchanged when severity or report caps come from
   config;
 - docs and example config staying aligned with supported keys.
