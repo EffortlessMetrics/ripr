@@ -1,14 +1,14 @@
 {
   "schema_version": "0.1",
   "kind": "release_denominator_snapshot",
-  "captured_at": "2026-07-30T04:45:00Z",
+  "captured_at": "2026-07-30T06:54:46Z",
   "source": {
     "mode": "captured",
     "stage": "provisional",
     "freshness": "current",
     "historical_base_sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
     "candidate_ref": "origin/main",
-    "candidate_sha": "3c08654028dcf20eb9bee5fbf3c67b3ef6111891",
+    "candidate_sha": "37cc659579f5704de7ad1f9b338a11ee276ec535",
     "range_commits": [
       "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
       "7fc0dda3dd6625f20874c3703aeaacfe65a289e7",
@@ -192,7 +192,15 @@
       "b797cca3e63cf78d96265d9843c9ab03e8399945",
       "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e",
       "ea8f7e413d31f4f30c363dd17bb8f91e5ba33b88",
-      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891"
+      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891",
+      "682b3e289e68e1847ace9ea32f2e2d4b60a87284",
+      "d44dacc9d2b925bb88ac534eaed83940fddf435d",
+      "ceacb23e2bcf1788486e94dd7875a61cfb81d2d3",
+      "58c48080aac6e85d42cf037b51840fe24dfbbf29",
+      "f55df6f67797de5d2fe4515b689aa7cea57669b4",
+      "62afe10678c93de3057153d703b41c5d2973d009",
+      "9d21a065b741d845d4eea89ad4a5afd08afb8616",
+      "37cc659579f5704de7ad1f9b338a11ee276ec535"
     ],
     "candidate_tree_commits": [
       "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
@@ -377,7 +385,15 @@
       "b797cca3e63cf78d96265d9843c9ab03e8399945",
       "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e",
       "ea8f7e413d31f4f30c363dd17bb8f91e5ba33b88",
-      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891"
+      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891",
+      "682b3e289e68e1847ace9ea32f2e2d4b60a87284",
+      "d44dacc9d2b925bb88ac534eaed83940fddf435d",
+      "ceacb23e2bcf1788486e94dd7875a61cfb81d2d3",
+      "58c48080aac6e85d42cf037b51840fe24dfbbf29",
+      "f55df6f67797de5d2fe4515b689aa7cea57669b4",
+      "62afe10678c93de3057153d703b41c5d2973d009",
+      "9d21a065b741d845d4eea89ad4a5afd08afb8616",
+      "37cc659579f5704de7ad1f9b338a11ee276ec535"
     ]
   },
   "records": [
@@ -4010,6 +4026,142 @@
         2768
       ],
       "theme_or_surface": "release(denominator)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "682b3e289e68e1847ace9ea32f2e2d4b60a87284",
+      "first_parent_position": 184,
+      "subject": "feat(cli): add isolated config validation (#2793)",
+      "pr_refs": [2793],
+      "issue_refs": [2793],
+      "theme_or_surface": "feat(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d44dacc9d2b925bb88ac534eaed83940fddf435d",
+      "first_parent_position": 185,
+      "subject": "test(json): add renderer property coverage",
+      "pr_refs": [2796],
+      "issue_refs": [2751],
+      "theme_or_surface": "test(json)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ceacb23e2bcf1788486e94dd7875a61cfb81d2d3",
+      "first_parent_position": 186,
+      "subject": "fix(release): bind boundary fixtures before agent verification (#2797)",
+      "pr_refs": [2797],
+      "issue_refs": [2797],
+      "theme_or_surface": "fix(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "58c48080aac6e85d42cf037b51840fe24dfbbf29",
+      "first_parent_position": 187,
+      "subject": "docs(contrib): document ci-full gate path",
+      "pr_refs": [2798],
+      "issue_refs": [],
+      "theme_or_surface": "docs(contrib)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f55df6f67797de5d2fe4515b689aa7cea57669b4",
+      "first_parent_position": 188,
+      "subject": "docs(release): retain current-main denominator census (#2795)",
+      "pr_refs": [2795],
+      "issue_refs": [2768],
+      "theme_or_surface": "docs(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "62afe10678c93de3057153d703b41c5d2973d009",
+      "first_parent_position": 189,
+      "subject": "test(json): cover Finding serde round trips",
+      "pr_refs": [2799],
+      "issue_refs": [2751],
+      "theme_or_surface": "test(json)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9d21a065b741d845d4eea89ad4a5afd08afb8616",
+      "first_parent_position": 190,
+      "subject": "docs(release): mark denominator census historical",
+      "pr_refs": [2802],
+      "issue_refs": [2768],
+      "theme_or_surface": "docs(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "37cc659579f5704de7ad1f9b338a11ee276ec535",
+      "first_parent_position": 191,
+      "subject": "fix(cli): resolve implicit workspace roots (#2800)",
+      "pr_refs": [2800],
+      "issue_refs": [2663],
+      "theme_or_surface": "fix(cli)",
       "release_disposition": "operator_decision_required",
       "acceptance_owner": "release-authority-2379",
       "candidate_tree_state": "present_in_candidate",

@@ -155,16 +155,14 @@ No final candidate qualification or publication claim is made here.
 PR #2790 merged at `3c08654028dcf20eb9bee5fbf3c67b3ef6111891` with deterministic
 synthetic fixtures for validator shape. PR #2795 then merged at
 `f55df6f67797de5d2fe4515b689aa7cea57669b4`, retaining the real census in
-`fixtures/release_denominator/current-main-provisional.json`: the first-parent
-range `c86807ec..3c086540` contains 183 observed commits, in order, with
-matching candidate-tree membership. That fixture is now historical evidence,
-not a current-main census: #2797 and #2799 advanced `main` to
-`62afe10678c93de3057153d703b41c5d2973d009`, and open PR #2800 still requires a
-release disposition before merge. Every retained row is explicitly
-`operator_decision_required`, so the fixture proves range completeness and
-identity only; it is not a reviewed final denominator and cannot unblock #1609
-or #2769. Refresh the range and candidate-tree record set only after the live
-open-PR disposition is resolved.
+`fixtures/release_denominator/current-main-provisional.json`. After the live
+open-PR disposition was resolved by merging #2800, this refresh rebases the
+provisional census to `origin/main` `37cc659579f5704de7ad1f9b338a11ee276ec535`:
+the first-parent range `c86807ec..37cc6595` contains 191 observed commits, in
+order, with matching candidate-tree membership. Every retained row remains
+explicitly `operator_decision_required`, so the fixture proves range
+completeness and identity only; it is not a reviewed final denominator and
+cannot unblock #1609 or #2769.
 
 ## Non-goals and safety boundary
 
