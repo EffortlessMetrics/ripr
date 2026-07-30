@@ -70,6 +70,13 @@ first-profile compatibility alias without turning preview evidence into
 runtime or repair-packet authority. Follow-up #2764 records the remaining
 producer-through-renderer placement regression. See the [Campaign 36 closeout](handoffs/2026-07-29-preview-projection-honesty-closeout.md).
 
+The next active release-control campaign is now tracked by #2766 and its
+dependent #2767/#2768/#2769 slices. It keeps the temporary 0.11 writer cutoff
+and merge eligibility bound to the live #2379 graph, with captured-input
+reports that fail closed on stale authority. It does not restore singleton
+active-goal authority or perform candidate qualification or publication. See
+the [Campaign 37 plan](../plans/release-control-0-11/implementation-plan.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from

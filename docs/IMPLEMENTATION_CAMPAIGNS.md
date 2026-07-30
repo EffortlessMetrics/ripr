@@ -5526,3 +5526,32 @@ consumer contract.
 Non-goals: new Bun taxonomy or discovery, runtime Bun execution, mutation,
 coverage or adequacy claims, public repair-packet promotion, default blocking,
 release/publish changes, `serde_json` `preserve_order`, and broad refactoring.
+
+## Campaign 37: 0.11 Release Control Lens
+
+Campaign ID: `release-control-0-11`
+
+Status: in progress
+
+Tracker: issues #2766, #2767, #2768, and #2769, under release authority
+#2379 and candidate manifest authority #1609.
+
+The campaign makes the temporary 0.11 writer cutoff and merge-eligibility
+boundary explicit without restoring singleton active-goal authority. It is
+sequenced as a read-only release lens, an execution-surface candidate scope
+decision, a deterministic supplemental denominator, and exact-candidate
+qualification evidence. No slice publishes, tags, signs, integrates source,
+or mutates GitHub state.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `control/release-lens` | in progress | #2766: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
+| `release/execution-scope` | planned | #2767: decide whether merged verification-execution surfaces are present in the candidate tree without rewriting development `main`. |
+| `release/supplemental-denominator` | planned | #2768: enumerate and disposition every commit in the candidate range with a reproducible record-set digest. |
+| `release/exact-candidate-bundle` | blocked | #2769: qualify one immutable #1609 candidate only after the scope and denominator are resolved. |
+| `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
+
+The durable sequence and first-slice acceptance criteria are in
+[`plans/release-control-0-11/implementation-plan.md`](../plans/release-control-0-11/implementation-plan.md),
+and the first-slice output contract is
+[`RIPR-SPEC-0144`](specs/RIPR-SPEC-0144-release-control-lens.md).

@@ -11815,6 +11815,77 @@ Field contract:
 The Markdown sibling prints the same check table, per-check details, artifacts,
 and next commands for release review.
 
+## Release Control Lens Report
+
+`cargo xtask release-control --input <captured-snapshot.json>` replays a
+captured temporary 0.11 release-control snapshot. `cargo xtask release-control
+--live` collects current `origin/main`, open PRs, and #2379 through bounded
+read-only adapters. Both paths write:
+
+```text
+target/ripr/reports/release-control.json
+target/ripr/reports/release-control.md
+```
+
+The JSON report has schema version `0.1` and the following stable top-level
+shape:
+
+```json
+{
+  "report": "release-control",
+  "schema_version": "0.1",
+  "status": "ready | reconcile_required",
+  "captured_at": "...",
+  "source": {
+    "mode": "captured | live",
+    "freshness": "current",
+    "main_sha": "...",
+    "authority_issue": 2379,
+    "authority_state": "open",
+    "authority_main_sha": "...",
+    "portfolio_state": "complete | unknown",
+    "open_prs_complete": true,
+    "active_claims_complete": true,
+    "worktree_inventory_complete": true,
+    "worktree_count": 1,
+    "graph_digest": "..."
+  },
+  "reconciliation_reasons": [],
+  "prs": [
+    {
+      "number": 2528,
+      "title": "...",
+      "is_draft": false,
+      "head_sha": "...",
+      "base_ref": "main",
+      "linked_issue_refs": [2528],
+      "release_disposition": "release_required",
+      "disposition_reason": "...",
+      "merge_eligible": true
+    }
+  ],
+  "next_action": "...",
+  "authority_boundary": "temporary_release_lens_only",
+  "must_not_claim": [
+    "candidate qualification",
+    "package readiness",
+    "merge approval",
+    "release publication"
+  ]
+}
+```
+
+Allowed `release_disposition` values are `release_required`,
+`release_optional_pending_decision`, `hold_post_release`, and
+`blocked_on_named_authority`. A complete current snapshot can mark only
+non-draft `release_required` rows as `merge_eligible`; any stale, missing, or
+contradictory source input clears eligibility for every row. The live collector
+does not claim portfolio or active-claim completeness from its bounded inputs;
+its report remains `reconcile_required` until those authorities are supplied.
+The Markdown report is derived from the same normalized DTO and is advisory
+only. This report never closes issues, merges PRs, selects or qualifies a
+candidate, or publishes release artifacts.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into

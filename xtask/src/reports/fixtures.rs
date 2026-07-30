@@ -351,6 +351,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "python-judged-pr-panel"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
+                    | "release_control"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
                     | "typescript-bun-ub-calibration"

@@ -76,6 +76,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
+    validate_release_control_fixture_corpus(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
@@ -137,6 +138,94 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn validate_release_control_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new("fixtures/release_control");
+    for required in ["SPEC.md", "complete.json", "reconcile-required.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "release-control fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec = root.join("SPEC.md");
+    if spec.exists() {
+        let text = read_text_lossy(&spec)?;
+        if !text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0144"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0144`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+    for name in ["complete.json", "reconcile-required.json"] {
+        let path = root.join(name);
+        if !path.exists() {
+            continue;
+        }
+        let value = match read_json_value(&path) {
+            Ok(value) => value,
+            Err(err) => {
+                violations.push(err);
+                continue;
+            }
+        };
+        if json_string_field(&value, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "{} schema_version must be 0.1",
+                normalize_path(&path)
+            ));
+        }
+        if json_string_field(&value, "kind").as_deref() != Some("release_control_snapshot") {
+            violations.push(format!(
+                "{} kind must be release_control_snapshot",
+                normalize_path(&path)
+            ));
+        }
+        match value.get("source").and_then(Value::as_object) {
+            Some(source) => {
+                if source
+                    .get("worktree_inventory_complete")
+                    .and_then(Value::as_bool)
+                    .is_none()
+                {
+                    violations.push(format!(
+                        "{} source is missing boolean worktree_inventory_complete",
+                        normalize_path(&path)
+                    ));
+                }
+                if source
+                    .get("worktree_count")
+                    .and_then(Value::as_u64)
+                    .is_none()
+                {
+                    violations.push(format!(
+                        "{} source is missing numeric worktree_count",
+                        normalize_path(&path)
+                    ));
+                }
+            }
+            None => violations.push(format!(
+                "{} is missing source object",
+                normalize_path(&path)
+            )),
+        }
+        if value.get("prs").and_then(Value::as_array).is_none() {
+            violations.push(format!("{} is missing prs array", normalize_path(&path)));
+        }
+    }
+    Ok(())
 }
 
 fn validate_python_project_detection_fixture_corpus(

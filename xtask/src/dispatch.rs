@@ -58,6 +58,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::LspCockpitReport => super::reports::lsp_cockpit_report(),
         XtaskCommand::OperatorCockpitReport => super::reports::operator_cockpit_report(),
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),
+        XtaskCommand::ReleaseControl(args) => super::reports::release_control(&args),
         XtaskCommand::ReleaseServerArchive(args) => {
             super::reports::release_server::release_server_archive(&args)
         }
