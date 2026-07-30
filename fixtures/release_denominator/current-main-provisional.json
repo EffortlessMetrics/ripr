@@ -1,0 +1,4024 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_denominator_snapshot",
+  "captured_at": "2026-07-30T04:45:00Z",
+  "source": {
+    "mode": "captured",
+    "stage": "provisional",
+    "freshness": "current",
+    "historical_base_sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+    "candidate_ref": "origin/main",
+    "candidate_sha": "3c08654028dcf20eb9bee5fbf3c67b3ef6111891",
+    "range_commits": [
+      "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
+      "7fc0dda3dd6625f20874c3703aeaacfe65a289e7",
+      "9ec0e2524a1531e8b532ca51ebeea1d1ed35739d",
+      "ce91525ba864cd29e453ebe6f06087c77f4eb63f",
+      "ab4b9d8a34bf383b2b89f1552588a05b8abbf5ad",
+      "b07e98f09ea4346d2bb6628182fe261133908d2d",
+      "40fa7da4faf788d2121f469625de332c6ac76a07",
+      "d139cf3bd907b46b4db4e0133d18fe901180d888",
+      "4ca7ad133c6df4738b70960b583690b00461f8ea",
+      "526ab408cf9b11616d29c01d722eceaab758b76b",
+      "236df22b761545926d09cab8d257afca0314a1c0",
+      "7b7d1322d5b80f2a23eeb9c0dd3af9d02883fbe6",
+      "f1bd6f712c08a90d82cf8c3b8cc6e87bf913da37",
+      "f4190461ba455abba95d8d270c54e7b32a7ef211",
+      "1630e5b236907e252c1dcfb288bee5d11077228d",
+      "7f60622525e256837ec32f6e618e64384a17bf54",
+      "162e4fd2f1b609ae4ebee6e6192f1a98c5e422ce",
+      "3241cd9e21592bc3ad630212cd53e8a8a54f9d5a",
+      "7cda1629695c8b503b1b524709a93eeaf976ca0f",
+      "c3f036048baf2e0ed1a4d32ba702321ad17ea433",
+      "f344a220fe367c3a66227bf21d945a767e152f0d",
+      "df1392899f7c3edf3c7bd025f4be1687fa515abf",
+      "526f49ff8aaa8f5ef0807d862bb1d215de082e0d",
+      "682382895df18a44f3e3cf7ab654cdd76a858675",
+      "45aed1d58d04ea9bcd4b063c1dd87ef60f635c8f",
+      "eb7302f4225c46f201416238cb2f2b38b5a9e2d6",
+      "ba7c82e48dd0da727d5fb4342e6f62fef3d456df",
+      "5fb141959df36f33eb0c0244a812ae3965ce7c3d",
+      "259ca70e02b4cf3d60fe76973222fb87dce4ae27",
+      "503bd2457830029284e3b642da4ac72b5b462370",
+      "8ae70f9f7322076fbb7f0c15a06b8c0cf28350df",
+      "fa39bc89b98a2c9c2a81edf4393b85da05b83bfc",
+      "8f65180cbdeaa3456284134dce1613cbe7e7a693",
+      "bd767f3e937c825560922940e5df97bfb0fb7880",
+      "3d8ce994b893c630d7980fcbe0750e6f59825b0a",
+      "b903aa6c2fdcd8885a10d99a4272c47ac4308100",
+      "a71535ad0d801a862a6a5effc2e2557221a9397b",
+      "1836d5beab93a1d829472e7bb3cfa7a3f7914de9",
+      "65c50a01d9a0d5987e621d8498f5383dab6f852f",
+      "a1c0055d5158f436dd8c9c8a7b4f616e56b1e0fe",
+      "f9499c2dc39b3dcfbf85f6329501286ea94366e4",
+      "7d6c3006b8f46bc6724b2b2564f7835fd673b309",
+      "745d349a13819ab3fd1b1d1a7eb186bd076d2e69",
+      "fe5fea09157efa45c3fc4eff8bdf3061e15b6dde",
+      "2cf42bb3649cc54ff006b34fda69699880219a62",
+      "2f20bfcdc7cce40fbe1fdf22af7ff4cad0a156a7",
+      "45d7b9c36244478261e366fe3c36f30b2637e5a1",
+      "e98025a5e5a401c7c67b4df2825a85a3ce17b983",
+      "b45aa7d1bfe08b9e7bea27db1ffec57b01779a5f",
+      "b97585c26671658a144a2400f29336c4e062e621",
+      "9bec2f629e4fd2f15af9770163366218b19d7045",
+      "ba93e00169ab81910b724ab9ce6f9c9bbb5bd414",
+      "231105780ab56dd41d34b44b644fc2247fc17150",
+      "8a910715fae9765a48ca3fc44c5ecc2668413c19",
+      "836df7e080849c90ed9f35427cf103253793220b",
+      "45ceeb6773c815293c38e9904ce39b710f88cfcf",
+      "6b4d0ac475a74881c5a8f63afad9b1288f20e36a",
+      "b40415fd97b94f217a2000361cb91008b80f2530",
+      "ae62a6cbe3414b9cb222b90a048c27d3cf2ffe8f",
+      "c305873db7a67429baeb3c0dd67c95014a11e719",
+      "d6338a18c57415c023e6cfd0d30eada75aaadb3b",
+      "46596ef782e0343a06b2efd2c962b0f0f5a6ea0b",
+      "d27cb97fd438f7e3c901f67e58e006b980df954f",
+      "a78e491ace95662944626c9bf59b7e078e6a960c",
+      "a14873087d35ae825c02cf28588047c6ca9be0d4",
+      "f633ec4dcddd39f6fb96dd832c1bc05dd38a1c3d",
+      "334f939e7de12341ed2be325b0bd40b4ecb87c0b",
+      "ce5867952c0e79f3b9cddb1d47c22635bf0f80da",
+      "b2e58b87f70727d9b0160d1e15640114ab776d0b",
+      "3ad9a8bb73aab12f5154fc549ed56646e41d998f",
+      "53a4dfea27da586d5c6923129b5add5365ff1453",
+      "71be5e872d6d7ccaa5c9545bb6cc107fa3f8ee84",
+      "2541195fc46ae9b9839eb5cbd918fc483e322a5c",
+      "50f779152f8946ca32a34319de11dfa6b1b0b567",
+      "48e0af3e411a6939d983626a21fd071ec205cfaf",
+      "1c0a83724f6ead06c57c70b2359800712f3dc829",
+      "a635fdfb4d68d73e2be9b2ff92bc63914fe6ea05",
+      "74f56269ea0d96de68a9f73f7214a680232a78af",
+      "412c33c3b6cf88571da4f4ffcf03172b8c005f27",
+      "f37a2f5387700516a8d5474ea6d3017cbd3fd5a0",
+      "365f7d61e27fd441e997e6e17e3f3e28859a3964",
+      "1a261fe54b2870d154833938bb3304e8d5bb267b",
+      "13b0cfc9a374d31cc20a81fcee0450cccdce1261",
+      "7d091303bb5a9c3e97afa296cb80b6bd6ecaaf9c",
+      "656fc9823de0a5385f002e07d0d3ca4ecdd9e8f4",
+      "7e8d58a856499ec0a74ae92ae1956504d6948ae4",
+      "fc8987195df9614cbe3631405203259bbc0d7a47",
+      "e7d6684b2f7dec4256b48274533fedc4628fb4b3",
+      "13fd9032f2b0e1a7dcbafe9c3868cad19a6a2a54",
+      "c3ed2425bae5d8c8b4f5fb8dd03dcd9b8c6576a2",
+      "a55934ea2138a22b014fe52b455eb9af3cf9ac3e",
+      "880cf50f27bc4a24ba3070b84b2bb42250c59bc8",
+      "4b9cdc88f151d9eae7037b3364208d1eeddde467",
+      "339eaea623608a438713fe741bcc33830eec964e",
+      "526a29b2fd4a7069513770736e8284b9484e01d9",
+      "c15d1f28e1d16dda9d527d0bc3c1f2fa50c517a8",
+      "109d7ce8c9d5e802119b6fb9af7fa9ee46964991",
+      "a5f4fcca8498ee9fe4a2f596620ff3a7276ec402",
+      "a8e604c23bf3a8c8985286e6cb3a25a42e1cfa6c",
+      "70ffd9dcb4e5e197c0887845cddb554e7ef88f88",
+      "deca667944685481f5f5d814881e52b0b3eed3b9",
+      "a8160ae998be6ffc8b55552720e3735e115c8012",
+      "c7d2d3140a03c3c1034e6d4e3038e36ed2a162a3",
+      "8f16d5ae09c9743e86896c90623e6bd0c97fb826",
+      "c83ec023d5277a83b39b310db9d211894f14ca16",
+      "463fe1958208c77b433c557d9ed03fb3dfbb062c",
+      "28512d07d240184962ce372270ff5c6149bd9515",
+      "68bbb69204262a9e37fa6fc29e6e34ac728f06d5",
+      "e7d75b43b88334fd2febb078decf55ea38d771c1",
+      "e7838e0fdfc748c30156911dedcf046324f6a415",
+      "9da210739bffd72e24d6878394d73a4b3ed0c4e7",
+      "403961298174b3fbf50a3433104c9bd6a362b381",
+      "ed16201b433873bc5df04ad5f9c0678de22abd13",
+      "56cadbe7c2a7dae285bffe195ac054ed633faaac",
+      "1721d6be8ca37ab70cb99e9960dfb0fb69cdbfa0",
+      "82fcf577dade7f4b415e4a2ad73350b71fe423a3",
+      "c4086da00f7821d9862bdc79ee808950376b4362",
+      "22b868b9f9a9264ccb4d74c38e49b245ec96e27a",
+      "9da6f5503323435deb74afa2cd7b40b0a8e6716a",
+      "4374fec89af108c4e21bde95add949a355e550ad",
+      "41b6ea88c7e8b92faeefe60538bd37b83417b868",
+      "f34a8ace9da478e6a46ed908039e94153a75287e",
+      "77e1659df35c3b7413630726a0fb135630895f4b",
+      "89ce52c6ef190f5f639605c687319c38cb0a5c25",
+      "72005a9cf9f9a7d4d505f13ff8031655d29a9987",
+      "d921c24b7552a569bfc5b191dc4d6dd7637e702c",
+      "0e5bbcd702cdc315ede1ef461de1e85eadee85ab",
+      "b07f33ba89e9f6bd2606db4da9112ebb0694a102",
+      "02ec60690e589c84656279eac8f241f5ac0543eb",
+      "c27a7071a8058ec7dc9dba217b3c35d6411f5a00",
+      "f70aea4091b4fa574d98333667b0e2c09c185fc4",
+      "05cf6158e5617f1f16ced93ff61e1fe8bb26b95e",
+      "6ae94dd1c5219329416b16cc9694f205f0abf32f",
+      "525dbd3f669a354708dc3513bcc6e1de2ce16bc1",
+      "075aa27795d3b0c9f818c25a3569d51e6791490d",
+      "3f201be67d67f5622fb6f4326b0250e0b11ecc5a",
+      "f3569af98ee8cf8b4f0efade4a686bc53b5eb958",
+      "e20a2aabc770b9776a8f1e7f2cd59cdb17590adb",
+      "d5f15338a66b1b99e1bf9387d742de735ecbc483",
+      "d2e82f0d5902da6bd60090dc7c43d9e1bbd9ce35",
+      "b06569f8fc653003b4ea98e5ca4ba8ad054c86f4",
+      "6474172d248abfc0940e979c41303aee16b596bc",
+      "bf03bc07f74c8dc748fc3fc90a775bd91359a1b6",
+      "b523398011d534b3d581f82beedc1c9e307c02aa",
+      "593b0ab2d77661245ba002c11822a4cac32f3545",
+      "30ae836694056b3de7edd0cfa31ac0d3dd0d4dfa",
+      "0a6ab9e5209ed71f12d8121447af40c94dd9066b",
+      "1d1414239e2125d4557ae344e635e1ab8bf3aa3e",
+      "507b7967e41d2c708307b1b9a7471ed3372e3f07",
+      "17560690002de21a4615a92ac13053d64b1346fe",
+      "8783582935d7ff0b23a68710c90727bc0ac57ad2",
+      "f899242422df5ec9f7d1542f6f398aee86608857",
+      "6776de2cce62c60c0e0611a90c4885cc3f7950ac",
+      "4ab8564b833cdf74c3f041a340b20349a48a6d75",
+      "5e5c183a10bd6e156e326e524cfb6d71a8f14b9f",
+      "fd3a44771e401e074abeec7833f04e12968926a1",
+      "bce3b17b926e90377eeefbc9bc1a1c067f25ecb7",
+      "400e25d32a6902ef4af785bb0e1828893b8b819c",
+      "76193cf5da5a2ab7034a95752ff05bc3061a6228",
+      "19849177ce9418d0024e4cc839eb8382e4f716a8",
+      "d1e43bbff1d7583cf276830f05bfdc445ad43d38",
+      "60228fc009c00a96b5538f8f98389701436c054f",
+      "0c30efb029942d566052d45f84491252dee3aaea",
+      "283b62cd6570120113a6a3f0610ec89e9ef653fa",
+      "10df4d938e4c7b359bfe1735890d599c04822fa2",
+      "02b2503683e9da63f7c54b589255bd2cfefb44cb",
+      "c5fe4d62cdf9e8591fffc67cbcd2741a23e17568",
+      "f66145747c689d01a8c2be807019649330de6d5b",
+      "9b71c0d7ba50f17928551e640562e0378b0ed961",
+      "90ff5e33db75683626b82b50a2b6d1411608f06f",
+      "18159e4897e88a72cf93ae01d92377776e15847f",
+      "097c593e10e677af38c30aa073751c7defb590f7",
+      "a98189d5240d03b14ac68b738744ad28790779fe",
+      "f2574f1ab5ad95d433c7c82996b40210a752c423",
+      "7c32ffabe83d91b522600a0a3dddc83acf2df8f9",
+      "5832453868f8e1a5fec9271b9c4d24eff99e3b25",
+      "b255828640426b8a4522b48dff33b60683baf929",
+      "c38ad7420df0381b45d49f6e95416d8aacb3a1bd",
+      "dbcb02f0724c83d6281b60a969d340fe01e94a88",
+      "b797cca3e63cf78d96265d9843c9ab03e8399945",
+      "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e",
+      "ea8f7e413d31f4f30c363dd17bb8f91e5ba33b88",
+      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891"
+    ],
+    "candidate_tree_commits": [
+      "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
+      "7fc0dda3dd6625f20874c3703aeaacfe65a289e7",
+      "9ec0e2524a1531e8b532ca51ebeea1d1ed35739d",
+      "ce91525ba864cd29e453ebe6f06087c77f4eb63f",
+      "ab4b9d8a34bf383b2b89f1552588a05b8abbf5ad",
+      "b07e98f09ea4346d2bb6628182fe261133908d2d",
+      "40fa7da4faf788d2121f469625de332c6ac76a07",
+      "d139cf3bd907b46b4db4e0133d18fe901180d888",
+      "4ca7ad133c6df4738b70960b583690b00461f8ea",
+      "526ab408cf9b11616d29c01d722eceaab758b76b",
+      "236df22b761545926d09cab8d257afca0314a1c0",
+      "7b7d1322d5b80f2a23eeb9c0dd3af9d02883fbe6",
+      "f1bd6f712c08a90d82cf8c3b8cc6e87bf913da37",
+      "f4190461ba455abba95d8d270c54e7b32a7ef211",
+      "1630e5b236907e252c1dcfb288bee5d11077228d",
+      "7f60622525e256837ec32f6e618e64384a17bf54",
+      "162e4fd2f1b609ae4ebee6e6192f1a98c5e422ce",
+      "3241cd9e21592bc3ad630212cd53e8a8a54f9d5a",
+      "7cda1629695c8b503b1b524709a93eeaf976ca0f",
+      "c3f036048baf2e0ed1a4d32ba702321ad17ea433",
+      "f344a220fe367c3a66227bf21d945a767e152f0d",
+      "df1392899f7c3edf3c7bd025f4be1687fa515abf",
+      "526f49ff8aaa8f5ef0807d862bb1d215de082e0d",
+      "682382895df18a44f3e3cf7ab654cdd76a858675",
+      "45aed1d58d04ea9bcd4b063c1dd87ef60f635c8f",
+      "eb7302f4225c46f201416238cb2f2b38b5a9e2d6",
+      "ba7c82e48dd0da727d5fb4342e6f62fef3d456df",
+      "5fb141959df36f33eb0c0244a812ae3965ce7c3d",
+      "259ca70e02b4cf3d60fe76973222fb87dce4ae27",
+      "503bd2457830029284e3b642da4ac72b5b462370",
+      "8ae70f9f7322076fbb7f0c15a06b8c0cf28350df",
+      "fa39bc89b98a2c9c2a81edf4393b85da05b83bfc",
+      "8f65180cbdeaa3456284134dce1613cbe7e7a693",
+      "bd767f3e937c825560922940e5df97bfb0fb7880",
+      "3d8ce994b893c630d7980fcbe0750e6f59825b0a",
+      "b903aa6c2fdcd8885a10d99a4272c47ac4308100",
+      "a71535ad0d801a862a6a5effc2e2557221a9397b",
+      "1836d5beab93a1d829472e7bb3cfa7a3f7914de9",
+      "65c50a01d9a0d5987e621d8498f5383dab6f852f",
+      "a1c0055d5158f436dd8c9c8a7b4f616e56b1e0fe",
+      "f9499c2dc39b3dcfbf85f6329501286ea94366e4",
+      "7d6c3006b8f46bc6724b2b2564f7835fd673b309",
+      "745d349a13819ab3fd1b1d1a7eb186bd076d2e69",
+      "fe5fea09157efa45c3fc4eff8bdf3061e15b6dde",
+      "2cf42bb3649cc54ff006b34fda69699880219a62",
+      "2f20bfcdc7cce40fbe1fdf22af7ff4cad0a156a7",
+      "45d7b9c36244478261e366fe3c36f30b2637e5a1",
+      "e98025a5e5a401c7c67b4df2825a85a3ce17b983",
+      "b45aa7d1bfe08b9e7bea27db1ffec57b01779a5f",
+      "b97585c26671658a144a2400f29336c4e062e621",
+      "9bec2f629e4fd2f15af9770163366218b19d7045",
+      "ba93e00169ab81910b724ab9ce6f9c9bbb5bd414",
+      "231105780ab56dd41d34b44b644fc2247fc17150",
+      "8a910715fae9765a48ca3fc44c5ecc2668413c19",
+      "836df7e080849c90ed9f35427cf103253793220b",
+      "45ceeb6773c815293c38e9904ce39b710f88cfcf",
+      "6b4d0ac475a74881c5a8f63afad9b1288f20e36a",
+      "b40415fd97b94f217a2000361cb91008b80f2530",
+      "ae62a6cbe3414b9cb222b90a048c27d3cf2ffe8f",
+      "c305873db7a67429baeb3c0dd67c95014a11e719",
+      "d6338a18c57415c023e6cfd0d30eada75aaadb3b",
+      "46596ef782e0343a06b2efd2c962b0f0f5a6ea0b",
+      "d27cb97fd438f7e3c901f67e58e006b980df954f",
+      "a78e491ace95662944626c9bf59b7e078e6a960c",
+      "a14873087d35ae825c02cf28588047c6ca9be0d4",
+      "f633ec4dcddd39f6fb96dd832c1bc05dd38a1c3d",
+      "334f939e7de12341ed2be325b0bd40b4ecb87c0b",
+      "ce5867952c0e79f3b9cddb1d47c22635bf0f80da",
+      "b2e58b87f70727d9b0160d1e15640114ab776d0b",
+      "3ad9a8bb73aab12f5154fc549ed56646e41d998f",
+      "53a4dfea27da586d5c6923129b5add5365ff1453",
+      "71be5e872d6d7ccaa5c9545bb6cc107fa3f8ee84",
+      "2541195fc46ae9b9839eb5cbd918fc483e322a5c",
+      "50f779152f8946ca32a34319de11dfa6b1b0b567",
+      "48e0af3e411a6939d983626a21fd071ec205cfaf",
+      "1c0a83724f6ead06c57c70b2359800712f3dc829",
+      "a635fdfb4d68d73e2be9b2ff92bc63914fe6ea05",
+      "74f56269ea0d96de68a9f73f7214a680232a78af",
+      "412c33c3b6cf88571da4f4ffcf03172b8c005f27",
+      "f37a2f5387700516a8d5474ea6d3017cbd3fd5a0",
+      "365f7d61e27fd441e997e6e17e3f3e28859a3964",
+      "1a261fe54b2870d154833938bb3304e8d5bb267b",
+      "13b0cfc9a374d31cc20a81fcee0450cccdce1261",
+      "7d091303bb5a9c3e97afa296cb80b6bd6ecaaf9c",
+      "656fc9823de0a5385f002e07d0d3ca4ecdd9e8f4",
+      "7e8d58a856499ec0a74ae92ae1956504d6948ae4",
+      "fc8987195df9614cbe3631405203259bbc0d7a47",
+      "e7d6684b2f7dec4256b48274533fedc4628fb4b3",
+      "13fd9032f2b0e1a7dcbafe9c3868cad19a6a2a54",
+      "c3ed2425bae5d8c8b4f5fb8dd03dcd9b8c6576a2",
+      "a55934ea2138a22b014fe52b455eb9af3cf9ac3e",
+      "880cf50f27bc4a24ba3070b84b2bb42250c59bc8",
+      "4b9cdc88f151d9eae7037b3364208d1eeddde467",
+      "339eaea623608a438713fe741bcc33830eec964e",
+      "526a29b2fd4a7069513770736e8284b9484e01d9",
+      "c15d1f28e1d16dda9d527d0bc3c1f2fa50c517a8",
+      "109d7ce8c9d5e802119b6fb9af7fa9ee46964991",
+      "a5f4fcca8498ee9fe4a2f596620ff3a7276ec402",
+      "a8e604c23bf3a8c8985286e6cb3a25a42e1cfa6c",
+      "70ffd9dcb4e5e197c0887845cddb554e7ef88f88",
+      "deca667944685481f5f5d814881e52b0b3eed3b9",
+      "a8160ae998be6ffc8b55552720e3735e115c8012",
+      "c7d2d3140a03c3c1034e6d4e3038e36ed2a162a3",
+      "8f16d5ae09c9743e86896c90623e6bd0c97fb826",
+      "c83ec023d5277a83b39b310db9d211894f14ca16",
+      "463fe1958208c77b433c557d9ed03fb3dfbb062c",
+      "28512d07d240184962ce372270ff5c6149bd9515",
+      "68bbb69204262a9e37fa6fc29e6e34ac728f06d5",
+      "e7d75b43b88334fd2febb078decf55ea38d771c1",
+      "e7838e0fdfc748c30156911dedcf046324f6a415",
+      "9da210739bffd72e24d6878394d73a4b3ed0c4e7",
+      "403961298174b3fbf50a3433104c9bd6a362b381",
+      "ed16201b433873bc5df04ad5f9c0678de22abd13",
+      "56cadbe7c2a7dae285bffe195ac054ed633faaac",
+      "1721d6be8ca37ab70cb99e9960dfb0fb69cdbfa0",
+      "82fcf577dade7f4b415e4a2ad73350b71fe423a3",
+      "c4086da00f7821d9862bdc79ee808950376b4362",
+      "22b868b9f9a9264ccb4d74c38e49b245ec96e27a",
+      "9da6f5503323435deb74afa2cd7b40b0a8e6716a",
+      "4374fec89af108c4e21bde95add949a355e550ad",
+      "41b6ea88c7e8b92faeefe60538bd37b83417b868",
+      "f34a8ace9da478e6a46ed908039e94153a75287e",
+      "77e1659df35c3b7413630726a0fb135630895f4b",
+      "89ce52c6ef190f5f639605c687319c38cb0a5c25",
+      "72005a9cf9f9a7d4d505f13ff8031655d29a9987",
+      "d921c24b7552a569bfc5b191dc4d6dd7637e702c",
+      "0e5bbcd702cdc315ede1ef461de1e85eadee85ab",
+      "b07f33ba89e9f6bd2606db4da9112ebb0694a102",
+      "02ec60690e589c84656279eac8f241f5ac0543eb",
+      "c27a7071a8058ec7dc9dba217b3c35d6411f5a00",
+      "f70aea4091b4fa574d98333667b0e2c09c185fc4",
+      "05cf6158e5617f1f16ced93ff61e1fe8bb26b95e",
+      "6ae94dd1c5219329416b16cc9694f205f0abf32f",
+      "525dbd3f669a354708dc3513bcc6e1de2ce16bc1",
+      "075aa27795d3b0c9f818c25a3569d51e6791490d",
+      "3f201be67d67f5622fb6f4326b0250e0b11ecc5a",
+      "f3569af98ee8cf8b4f0efade4a686bc53b5eb958",
+      "e20a2aabc770b9776a8f1e7f2cd59cdb17590adb",
+      "d5f15338a66b1b99e1bf9387d742de735ecbc483",
+      "d2e82f0d5902da6bd60090dc7c43d9e1bbd9ce35",
+      "b06569f8fc653003b4ea98e5ca4ba8ad054c86f4",
+      "6474172d248abfc0940e979c41303aee16b596bc",
+      "bf03bc07f74c8dc748fc3fc90a775bd91359a1b6",
+      "b523398011d534b3d581f82beedc1c9e307c02aa",
+      "593b0ab2d77661245ba002c11822a4cac32f3545",
+      "30ae836694056b3de7edd0cfa31ac0d3dd0d4dfa",
+      "0a6ab9e5209ed71f12d8121447af40c94dd9066b",
+      "1d1414239e2125d4557ae344e635e1ab8bf3aa3e",
+      "507b7967e41d2c708307b1b9a7471ed3372e3f07",
+      "17560690002de21a4615a92ac13053d64b1346fe",
+      "8783582935d7ff0b23a68710c90727bc0ac57ad2",
+      "f899242422df5ec9f7d1542f6f398aee86608857",
+      "6776de2cce62c60c0e0611a90c4885cc3f7950ac",
+      "4ab8564b833cdf74c3f041a340b20349a48a6d75",
+      "5e5c183a10bd6e156e326e524cfb6d71a8f14b9f",
+      "fd3a44771e401e074abeec7833f04e12968926a1",
+      "bce3b17b926e90377eeefbc9bc1a1c067f25ecb7",
+      "400e25d32a6902ef4af785bb0e1828893b8b819c",
+      "76193cf5da5a2ab7034a95752ff05bc3061a6228",
+      "19849177ce9418d0024e4cc839eb8382e4f716a8",
+      "d1e43bbff1d7583cf276830f05bfdc445ad43d38",
+      "60228fc009c00a96b5538f8f98389701436c054f",
+      "0c30efb029942d566052d45f84491252dee3aaea",
+      "283b62cd6570120113a6a3f0610ec89e9ef653fa",
+      "10df4d938e4c7b359bfe1735890d599c04822fa2",
+      "02b2503683e9da63f7c54b589255bd2cfefb44cb",
+      "c5fe4d62cdf9e8591fffc67cbcd2741a23e17568",
+      "f66145747c689d01a8c2be807019649330de6d5b",
+      "9b71c0d7ba50f17928551e640562e0378b0ed961",
+      "90ff5e33db75683626b82b50a2b6d1411608f06f",
+      "18159e4897e88a72cf93ae01d92377776e15847f",
+      "097c593e10e677af38c30aa073751c7defb590f7",
+      "a98189d5240d03b14ac68b738744ad28790779fe",
+      "f2574f1ab5ad95d433c7c82996b40210a752c423",
+      "7c32ffabe83d91b522600a0a3dddc83acf2df8f9",
+      "5832453868f8e1a5fec9271b9c4d24eff99e3b25",
+      "b255828640426b8a4522b48dff33b60683baf929",
+      "c38ad7420df0381b45d49f6e95416d8aacb3a1bd",
+      "dbcb02f0724c83d6281b60a969d340fe01e94a88",
+      "b797cca3e63cf78d96265d9843c9ab03e8399945",
+      "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e",
+      "ea8f7e413d31f4f30c363dd17bb8f91e5ba33b88",
+      "3c08654028dcf20eb9bee5fbf3c67b3ef6111891"
+    ]
+  },
+  "records": [
+    {
+      "commit_sha": "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
+      "first_parent_position": 1,
+      "subject": "release(0.11.0): retain and qualify the replacement freeze (#2354) (#2362)",
+      "pr_refs": [
+        2362
+      ],
+      "issue_refs": [
+        2354
+      ],
+      "theme_or_surface": "release(0.11.0)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7fc0dda3dd6625f20874c3703aeaacfe65a289e7",
+      "first_parent_position": 2,
+      "subject": "fix(release): close the 0.11 Perl and live VS Code qualification blockers (#2369) (#2374)",
+      "pr_refs": [
+        2374
+      ],
+      "issue_refs": [
+        2369
+      ],
+      "theme_or_surface": "fix(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9ec0e2524a1531e8b532ca51ebeea1d1ed35739d",
+      "first_parent_position": 3,
+      "subject": "test(lsp): isolate boundary-gap saved-workspace fixtures from checkout HEAD (#2371) (#2375)",
+      "pr_refs": [
+        2375
+      ],
+      "issue_refs": [
+        2371
+      ],
+      "theme_or_surface": "test(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ce91525ba864cd29e453ebe6f06087c77f4eb63f",
+      "first_parent_position": 4,
+      "subject": "test(doctor): publish the hanging-tool shim atomically under parallel load (#2378)",
+      "pr_refs": [
+        2378
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(doctor)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ab4b9d8a34bf383b2b89f1552588a05b8abbf5ad",
+      "first_parent_position": 5,
+      "subject": "test(cli): require concrete fixture repository HEADs (#2383)",
+      "pr_refs": [
+        2383
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b07e98f09ea4346d2bb6628182fe261133908d2d",
+      "first_parent_position": 6,
+      "subject": "test(lsp): complete boundary-gap saved-workspace fixture isolation (#2371)",
+      "pr_refs": [
+        2371
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "40fa7da4faf788d2121f469625de332c6ac76a07",
+      "first_parent_position": 7,
+      "subject": "test: fix Windows and parallel-load test-harness failures (#2390, #2391, #2409) (#2417)",
+      "pr_refs": [
+        2417
+      ],
+      "issue_refs": [
+        2390,
+        2391,
+        2409
+      ],
+      "theme_or_surface": "test",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d139cf3bd907b46b4db4e0133d18fe901180d888",
+      "first_parent_position": 8,
+      "subject": "fix(release): keep example test residue out of the packaged surface (#2422)",
+      "pr_refs": [
+        2422
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "4ca7ad133c6df4738b70960b583690b00461f8ea",
+      "first_parent_position": 9,
+      "subject": "security(analysis): reject rooted rerun scope anchors, not just is_absolute (#2392) (#2416)",
+      "pr_refs": [
+        2416
+      ],
+      "issue_refs": [
+        2392
+      ],
+      "theme_or_surface": "security(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "526ab408cf9b11616d29c01d722eceaab758b76b",
+      "first_parent_position": 10,
+      "subject": "fix(output): emit diff JSON changed-file paths with forward slashes (#2429) (#2431)",
+      "pr_refs": [
+        2431
+      ],
+      "issue_refs": [
+        2429
+      ],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "236df22b761545926d09cab8d257afca0314a1c0",
+      "first_parent_position": 11,
+      "subject": "security(agent): encode advisory command arguments as bash argv tokens (#2347)",
+      "pr_refs": [
+        2347
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "security(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7b7d1322d5b80f2a23eeb9c0dd3af9d02883fbe6",
+      "first_parent_position": 12,
+      "subject": "test(doctor): share the bounded launch retry with the atomic-publish probe (#2441)",
+      "pr_refs": [
+        2441
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(doctor)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f1bd6f712c08a90d82cf8c3b8cc6e87bf913da37",
+      "first_parent_position": 13,
+      "subject": "ci(windows): add an advisory Windows lane with evidence-aware repeated-run verdicts (#2393) (#2442)",
+      "pr_refs": [
+        2442
+      ],
+      "issue_refs": [
+        2393
+      ],
+      "theme_or_surface": "ci(windows)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f4190461ba455abba95d8d270c54e7b32a7ef211",
+      "first_parent_position": 14,
+      "subject": "docs(learnings): record the five ways a green signal covered a broken surface (#2451)",
+      "pr_refs": [
+        2451
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(learnings)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1630e5b236907e252c1dcfb288bee5d11077228d",
+      "first_parent_position": 15,
+      "subject": "ci: add an advisory Windows smoke lane (#2393)",
+      "pr_refs": [
+        2393
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ci",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7f60622525e256837ec32f6e618e64384a17bf54",
+      "first_parent_position": 16,
+      "subject": "ci: remove the duplicate Windows lane and align on windows-advisory (#2393)",
+      "pr_refs": [
+        2393
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ci",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "162e4fd2f1b609ae4ebee6e6192f1a98c5e422ce",
+      "first_parent_position": 17,
+      "subject": "fix(output): 'analyzed' field now reflects actual analysis, not just adapter enabled state (#2403) (#2482)",
+      "pr_refs": [
+        2482
+      ],
+      "issue_refs": [
+        2403
+      ],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "3241cd9e21592bc3ad630212cd53e8a8a54f9d5a",
+      "first_parent_position": 18,
+      "subject": "ux(vscode): disambiguate 'Copy Receipt Command' palette collision (#2440) (#2471)",
+      "pr_refs": [
+        2471
+      ],
+      "issue_refs": [
+        2440
+      ],
+      "theme_or_surface": "ux(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7cda1629695c8b503b1b524709a93eeaf976ca0f",
+      "first_parent_position": 19,
+      "subject": "packaging(vscode): exclude test artifacts and fixtures from VSIX (#2439) (#2472)",
+      "pr_refs": [
+        2472
+      ],
+      "issue_refs": [
+        2439
+      ],
+      "theme_or_surface": "packaging(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c3f036048baf2e0ed1a4d32ba702321ad17ea433",
+      "first_parent_position": 20,
+      "subject": "devex(cargo): add [profile.dev] debug = line-tables-only — 9% smaller debug binaries, faster links (#2420) (#2468)",
+      "pr_refs": [
+        2468
+      ],
+      "issue_refs": [
+        2420
+      ],
+      "theme_or_surface": "devex(cargo)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f344a220fe367c3a66227bf21d945a767e152f0d",
+      "first_parent_position": 21,
+      "subject": "devex(cli): make 'ripr cache status' discoverable in --help and doctor (#2426) (#2474)",
+      "pr_refs": [
+        2474
+      ],
+      "issue_refs": [
+        2426
+      ],
+      "theme_or_surface": "devex(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "df1392899f7c3edf3c7bd025f4be1687fa515abf",
+      "first_parent_position": 22,
+      "subject": "fix(analysis): flow stage now flags typed-wildcard let _: as swallowed (#2401) (#2481)",
+      "pr_refs": [
+        2481
+      ],
+      "issue_refs": [
+        2401
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "526f49ff8aaa8f5ef0807d862bb1d215de082e0d",
+      "first_parent_position": 23,
+      "subject": "fix(sarif): omit region for line-0 findings instead of fabricating startLine:1 (#2407) (#2478)",
+      "pr_refs": [
+        2478
+      ],
+      "issue_refs": [
+        2407
+      ],
+      "theme_or_surface": "fix(sarif)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "682382895df18a44f3e3cf7ab654cdd76a858675",
+      "first_parent_position": 24,
+      "subject": "security(diff): add confined old-path extractor symmetric with new-path confinement (#2402) (#2483)",
+      "pr_refs": [
+        2483
+      ],
+      "issue_refs": [
+        2402
+      ],
+      "theme_or_surface": "security(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "45aed1d58d04ea9bcd4b063c1dd87ef60f635c8f",
+      "first_parent_position": 25,
+      "subject": "ci(routed-rust): wire sccache into self-hosted jobs — RUSTC_WRAPPER + install + stats (#2453) (#2469)",
+      "pr_refs": [
+        2469
+      ],
+      "issue_refs": [
+        2453
+      ],
+      "theme_or_surface": "ci(routed-rust)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "eb7302f4225c46f201416238cb2f2b38b5a9e2d6",
+      "first_parent_position": 26,
+      "subject": "security(receipt): fail-closed on absent/unrecognized movement — default to RECEIPT_MISSING not RECEIPT_FOUND (#2404) (#2479)",
+      "pr_refs": [
+        2479
+      ],
+      "issue_refs": [
+        2404
+      ],
+      "theme_or_surface": "security(receipt)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ba7c82e48dd0da727d5fb4342e6f62fef3d456df",
+      "first_parent_position": 27,
+      "subject": "docs(agents): name the false-confidence-gate family in AGENTS.md + LEARNINGS.md (#2346) (#2489)",
+      "pr_refs": [
+        2489
+      ],
+      "issue_refs": [
+        2346
+      ],
+      "theme_or_surface": "docs(agents)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "5fb141959df36f33eb0c0244a812ae3965ce7c3d",
+      "first_parent_position": 28,
+      "subject": "fix(analysis): disclose when diff input has no parseable file changes (#2425) (#2476)",
+      "pr_refs": [
+        2476
+      ],
+      "issue_refs": [
+        2425
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "259ca70e02b4cf3d60fe76973222fb87dce4ae27",
+      "first_parent_position": 29,
+      "subject": "gate(xtask): count-based gates now check bidirectionally — stale bounds and orphaned entries flagged (#2413, #2399) (#2466)",
+      "pr_refs": [
+        2466
+      ],
+      "issue_refs": [
+        2413,
+        2399
+      ],
+      "theme_or_surface": "gate(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "503bd2457830029284e3b642da4ac72b5b462370",
+      "first_parent_position": 30,
+      "subject": "gate(xtask): enforce no-panic allowlist expires field — flag entries past their expiry date (#2344) (#2484)",
+      "pr_refs": [
+        2484
+      ],
+      "issue_refs": [
+        2344
+      ],
+      "theme_or_surface": "gate(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "8ae70f9f7322076fbb7f0c15a06b8c0cf28350df",
+      "first_parent_position": 31,
+      "subject": "test(analysis): add inline tests for analysis/diff/path.rs helpers (#2450 part 3) (#2485)",
+      "pr_refs": [
+        2485
+      ],
+      "issue_refs": [
+        2450
+      ],
+      "theme_or_surface": "test(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "fa39bc89b98a2c9c2a81edf4393b85da05b83bfc",
+      "first_parent_position": 32,
+      "subject": "fix(vscode): exclude compiled test output and test fixtures from VSIX (#2439) (#2492)",
+      "pr_refs": [
+        2492
+      ],
+      "issue_refs": [
+        2439
+      ],
+      "theme_or_surface": "fix(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "8f65180cbdeaa3456284134dce1613cbe7e7a693",
+      "first_parent_position": 33,
+      "subject": "docs(cli): fix crate README Quick Start examples that failed verbatim (#2467)",
+      "pr_refs": [
+        2467
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "bd767f3e937c825560922940e5df97bfb0fb7880",
+      "first_parent_position": 34,
+      "subject": "test(agent): add unit tests for agent-brief path confinement (#2470)",
+      "pr_refs": [
+        2470
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "3d8ce994b893c630d7980fcbe0750e6f59825b0a",
+      "first_parent_position": 35,
+      "subject": "fix(output): normalize path separators in check/context JSON to forward slashes (#2473)",
+      "pr_refs": [
+        2473
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b903aa6c2fdcd8885a10d99a4272c47ac4308100",
+      "first_parent_position": 36,
+      "subject": "fix(agent): make agent start Next: instruction path match actual artifact location (#2414) (#2475)",
+      "pr_refs": [
+        2475
+      ],
+      "issue_refs": [
+        2414
+      ],
+      "theme_or_surface": "fix(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a71535ad0d801a862a6a5effc2e2557221a9397b",
+      "first_parent_position": 37,
+      "subject": "chore(vscode): bump vscode-languageclient ^9 to ^10, drop deprecated APIs, fix shipped minimatch vuln (#2477)",
+      "pr_refs": [
+        2477
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "chore(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1836d5beab93a1d829472e7bb3cfa7a3f7914de9",
+      "first_parent_position": 38,
+      "subject": "test(analysis): pin the Exposed over-credit guard branch in classify() (#2480)",
+      "pr_refs": [
+        2480
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "65c50a01d9a0d5987e621d8498f5383dab6f852f",
+      "first_parent_position": 39,
+      "subject": "test(analysis): add async-fn owner fixture to probe async owner resolution (#2486)",
+      "pr_refs": [
+        2486
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a1c0055d5158f436dd8c9c8a7b4f616e56b1e0fe",
+      "first_parent_position": 40,
+      "subject": "fix(ci): make scratch-gc disk-guard a hard failure instead of a warning (#2488)",
+      "pr_refs": [
+        2488
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(ci)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f9499c2dc39b3dcfbf85f6329501286ea94366e4",
+      "first_parent_position": 41,
+      "subject": "fix(cli): warn on stderr when --diff produces zero findings from a possibly-malformed file (#2491)",
+      "pr_refs": [
+        2491
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7d6c3006b8f46bc6724b2b2564f7835fd673b309",
+      "first_parent_position": 42,
+      "subject": "docs: document review-thread-resolution and branch-protection merge blockers (#2493)",
+      "pr_refs": [
+        2493
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "745d349a13819ab3fd1b1d1a7eb186bd076d2e69",
+      "first_parent_position": 43,
+      "subject": "fix(lsp): use 90s ANALYSIS_TIMEOUT for refresh request in lifecycle test (#2495) (#2497)",
+      "pr_refs": [
+        2497
+      ],
+      "issue_refs": [
+        2495
+      ],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "fe5fea09157efa45c3fc4eff8bdf3061e15b6dde",
+      "first_parent_position": 44,
+      "subject": "test(receipt): add HEAD-binding tests for #1941 security check (#2329) (#2494)",
+      "pr_refs": [
+        2494
+      ],
+      "issue_refs": [
+        1941,
+        2329
+      ],
+      "theme_or_surface": "test(receipt)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "2cf42bb3649cc54ff006b34fda69699880219a62",
+      "first_parent_position": 45,
+      "subject": "fix(analysis): replace short-token length gate with word-boundary matching (#2397) (#2496)",
+      "pr_refs": [
+        2496
+      ],
+      "issue_refs": [
+        2397
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "2f20bfcdc7cce40fbe1fdf22af7ff4cad0a156a7",
+      "first_parent_position": 46,
+      "subject": "fix(ci): drop contents:write and id-token:write from droid review jobs (#2455) (#2498)",
+      "pr_refs": [
+        2498
+      ],
+      "issue_refs": [
+        2455
+      ],
+      "theme_or_surface": "fix(ci)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "45d7b9c36244478261e366fe3c36f30b2637e5a1",
+      "first_parent_position": 47,
+      "subject": "ux(xtask): show allowlist entry format in process/network policy violation messages (#2339) (#2499)",
+      "pr_refs": [
+        2499
+      ],
+      "issue_refs": [
+        2339
+      ],
+      "theme_or_surface": "ux(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "e98025a5e5a401c7c67b4df2825a85a3ce17b983",
+      "first_parent_position": 48,
+      "subject": "security(xtask): expand network-policy pattern list + scan .py/.js/.sh/.ps1 files (#2412) (#2502)",
+      "pr_refs": [
+        2502
+      ],
+      "issue_refs": [
+        2412
+      ],
+      "theme_or_surface": "security(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b45aa7d1bfe08b9e7bea27db1ffec57b01779a5f",
+      "first_parent_position": 49,
+      "subject": "fix(xtask): skip fixture CHANGELOG files in static-language scan (#2338) (#2501)",
+      "pr_refs": [
+        2501
+      ],
+      "issue_refs": [
+        2338
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b97585c26671658a144a2400f29336c4e062e621",
+      "first_parent_position": 50,
+      "subject": "ux(cli): add Performance section to explain/context help for --from flag (#2340) (#2500)",
+      "pr_refs": [
+        2500
+      ],
+      "issue_refs": [
+        2340
+      ],
+      "theme_or_surface": "ux(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9bec2f629e4fd2f15af9770163366218b19d7045",
+      "first_parent_position": 51,
+      "subject": "fix(analysis): gate detect_python_test_framework behind lang-python feature (#2418) (#2503)",
+      "pr_refs": [
+        2503
+      ],
+      "issue_refs": [
+        2418
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ba93e00169ab81910b724ab9ce6f9c9bbb5bd414",
+      "first_parent_position": 52,
+      "subject": "test(vscode): make npm test actually run tests — delegate to vscode_test_e2e (#2437) (#2505)",
+      "pr_refs": [
+        2505
+      ],
+      "issue_refs": [
+        2437
+      ],
+      "theme_or_surface": "test(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "231105780ab56dd41d34b44b644fc2247fc17150",
+      "first_parent_position": 53,
+      "subject": "gate(xtask): add integrity guards to goldens bless — JSON parse, zero-finding guard, emptiness check (#2410) (#2506)",
+      "pr_refs": [
+        2506
+      ],
+      "issue_refs": [
+        2410
+      ],
+      "theme_or_surface": "gate(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "8a910715fae9765a48ca3fc44c5ecc2668413c19",
+      "first_parent_position": 54,
+      "subject": "refactor(xtask): extract droid-review checks + yaml helpers to policy/droid_review.rs (#2119) (#2507)",
+      "pr_refs": [
+        2507
+      ],
+      "issue_refs": [
+        2119
+      ],
+      "theme_or_surface": "refactor(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "836df7e080849c90ed9f35427cf103253793220b",
+      "first_parent_position": 55,
+      "subject": "devex(cli): auto-retry pilot at 240s when default 30s timeout fires (#2424) (#2508)",
+      "pr_refs": [
+        2508
+      ],
+      "issue_refs": [
+        2424
+      ],
+      "theme_or_surface": "devex(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "45ceeb6773c815293c38e9904ce39b710f88cfcf",
+      "first_parent_position": 56,
+      "subject": "gate(xtask): dogfood exit code now reflects scenario outcomes (#2411) (#2509)",
+      "pr_refs": [
+        2509
+      ],
+      "issue_refs": [
+        2411
+      ],
+      "theme_or_surface": "gate(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "6b4d0ac475a74881c5a8f63afad9b1288f20e36a",
+      "first_parent_position": 57,
+      "subject": "refactor(xtask): extract release-server machinery to reports/release_server.rs (#2119) (#2510)",
+      "pr_refs": [
+        2510
+      ],
+      "issue_refs": [
+        2119
+      ],
+      "theme_or_surface": "refactor(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b40415fd97b94f217a2000361cb91008b80f2530",
+      "first_parent_position": 58,
+      "subject": "refactor(xtask): extract shared type definitions to types.rs (#2119 Phase 1) (#2513)",
+      "pr_refs": [
+        2513
+      ],
+      "issue_refs": [
+        2119
+      ],
+      "theme_or_surface": "refactor(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ae62a6cbe3414b9cb222b90a048c27d3cf2ffe8f",
+      "first_parent_position": 59,
+      "subject": "devex(docs): restructure docs/README.md as newcomer-first landing page (#2427) (#2512)",
+      "pr_refs": [
+        2512
+      ],
+      "issue_refs": [
+        2427
+      ],
+      "theme_or_surface": "devex(docs)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c305873db7a67429baeb3c0dd67c95014a11e719",
+      "first_parent_position": 60,
+      "subject": "ci: add --no-default-features and --all-features to Windows advisory lane (#2400) (#2511)",
+      "pr_refs": [
+        2511
+      ],
+      "issue_refs": [
+        2400
+      ],
+      "theme_or_surface": "ci",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d6338a18c57415c023e6cfd0d30eada75aaadb3b",
+      "first_parent_position": 61,
+      "subject": "api(config): expose RiprConfig and config types as public (#2458) (#2514)",
+      "pr_refs": [
+        2514
+      ],
+      "issue_refs": [
+        2458
+      ],
+      "theme_or_surface": "api(config)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "46596ef782e0343a06b2efd2c962b0f0f5a6ea0b",
+      "first_parent_position": 62,
+      "subject": "ci: auto-resolve bot review threads so they don't block merges (#2341) (#2515)",
+      "pr_refs": [
+        2515
+      ],
+      "issue_refs": [
+        2341
+      ],
+      "theme_or_surface": "ci",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d27cb97fd438f7e3c901f67e58e006b980df954f",
+      "first_parent_position": 63,
+      "subject": "deps(deps): bump tokio in the cargo-minor-patch group (#2517)",
+      "pr_refs": [
+        2517
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "deps(deps)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a78e491ace95662944626c9bf59b7e078e6a960c",
+      "first_parent_position": 64,
+      "subject": "test(cli): add flag/help parity test for key commands (#2342) (#2519)",
+      "pr_refs": [
+        2519
+      ],
+      "issue_refs": [
+        2342
+      ],
+      "theme_or_surface": "test(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a14873087d35ae825c02cf28588047c6ca9be0d4",
+      "first_parent_position": 65,
+      "subject": "fix(xtask): fix unused imports + forbidden word + missing workflow budgets (#2520)",
+      "pr_refs": [
+        2520
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f633ec4dcddd39f6fb96dd832c1bc05dd38a1c3d",
+      "first_parent_position": 66,
+      "subject": "fix(analysis): add parser-level diff file-count guard for all languages (#2398) (#2521)",
+      "pr_refs": [
+        2521
+      ],
+      "issue_refs": [
+        2398
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "334f939e7de12341ed2be325b0bd40b4ecb87c0b",
+      "first_parent_position": 67,
+      "subject": "fix(xtask): normalize single-backslash paths in golden JSON output (#2337) (#2522)",
+      "pr_refs": [
+        2522
+      ],
+      "issue_refs": [
+        2337
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ce5867952c0e79f3b9cddb1d47c22635bf0f80da",
+      "first_parent_position": 68,
+      "subject": "api(app): expose _with_config overloads as pub (#2458) (#2524)",
+      "pr_refs": [
+        2524
+      ],
+      "issue_refs": [
+        2458
+      ],
+      "theme_or_surface": "api(app)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b2e58b87f70727d9b0160d1e15640114ab776d0b",
+      "first_parent_position": 69,
+      "subject": "fix: re-apply clippy fixes reverted by #2522 merge (#2525)",
+      "pr_refs": [
+        2525
+      ],
+      "issue_refs": [
+        2522
+      ],
+      "theme_or_surface": "fix",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "3ad9a8bb73aab12f5154fc549ed56646e41d998f",
+      "first_parent_position": 70,
+      "subject": "feat(xtask): add fixture scaffold command (#2445) (#2526)",
+      "pr_refs": [
+        2526
+      ],
+      "issue_refs": [
+        2445
+      ],
+      "theme_or_surface": "feat(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "53a4dfea27da586d5c6923129b5add5365ff1453",
+      "first_parent_position": 71,
+      "subject": "perf(xtask): parallelize fixture and golden execution via rayon (#2415) (#2529)",
+      "pr_refs": [
+        2529
+      ],
+      "issue_refs": [
+        2415
+      ],
+      "theme_or_surface": "perf(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "71be5e872d6d7ccaa5c9545bb6cc107fa3f8ee84",
+      "first_parent_position": 72,
+      "subject": "fix(xtask): fix Fixtures variant type + move scaffold code before tests mod (#2530)",
+      "pr_refs": [
+        2530
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "2541195fc46ae9b9839eb5cbd918fc483e322a5c",
+      "first_parent_position": 73,
+      "subject": "feat(xtask): add diff-aware check-fast gate runner (#2343) (#2531)",
+      "pr_refs": [
+        2531
+      ],
+      "issue_refs": [
+        2343
+      ],
+      "theme_or_surface": "feat(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "50f779152f8946ca32a34319de11dfa6b1b0b567",
+      "first_parent_position": 74,
+      "subject": "fix(xtask): preserve traceability symbol suffix and emit advisory (#2345) (#2534)",
+      "pr_refs": [
+        2534
+      ],
+      "issue_refs": [
+        2345
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "48e0af3e411a6939d983626a21fd071ec205cfaf",
+      "first_parent_position": 75,
+      "subject": "fix(xtask): FixtureResult alias + useless format! (8th clippy fix for #2534) (#2536)",
+      "pr_refs": [
+        2536
+      ],
+      "issue_refs": [
+        2534
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1c0a83724f6ead06c57c70b2359800712f3dc829",
+      "first_parent_position": 76,
+      "subject": "fix(xtask): fix JSON normalization + process/allow-attributes allowlists (#2539)",
+      "pr_refs": [
+        2539
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a635fdfb4d68d73e2be9b2ff92bc63914fe6ea05",
+      "first_parent_position": 77,
+      "subject": "feat(agent): add two-phase repair command (#2443) (#2538)",
+      "pr_refs": [
+        2538
+      ],
+      "issue_refs": [
+        2443
+      ],
+      "theme_or_surface": "feat(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "74f56269ea0d96de68a9f73f7214a680232a78af",
+      "first_parent_position": 78,
+      "subject": "fix(agent): satisfy clippy + update subcommand list for repair (#2538) (#2548)",
+      "pr_refs": [
+        2548
+      ],
+      "issue_refs": [
+        2538
+      ],
+      "theme_or_surface": "fix(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "412c33c3b6cf88571da4f4ffcf03172b8c005f27",
+      "first_parent_position": 79,
+      "subject": "fix(lsp): publish profile-admitted ordinary findings (#2537)",
+      "pr_refs": [
+        2537
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f37a2f5387700516a8d5474ea6d3017cbd3fd5a0",
+      "first_parent_position": 80,
+      "subject": "refactor(lsp): deduplicate display_path and absolute_join helpers into uri.rs (#2516)",
+      "pr_refs": [
+        2516
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "refactor(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "365f7d61e27fd441e997e6e17e3f3e28859a3964",
+      "first_parent_position": 81,
+      "subject": "feat(verify): execute one producer-owned CommandSpec under bounded process policy (#2332) (#2396)",
+      "pr_refs": [
+        2396
+      ],
+      "issue_refs": [
+        2332
+      ],
+      "theme_or_surface": "feat(verify)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1a261fe54b2870d154833938bb3304e8d5bb267b",
+      "first_parent_position": 82,
+      "subject": "style: collapse Ok(()) arm to expression form for rustfmt (#2555)",
+      "pr_refs": [
+        2555
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "style",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "13b0cfc9a374d31cc20a81fcee0450cccdce1261",
+      "first_parent_position": 83,
+      "subject": "fix(xtask): keep unresolved traceability symbols advisory (#2549) (#2557)",
+      "pr_refs": [
+        2557
+      ],
+      "issue_refs": [
+        2549
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7d091303bb5a9c3e97afa296cb80b6bd6ecaaf9c",
+      "first_parent_position": 84,
+      "subject": "docs: link README to docs/DOCUMENTATION.md (#2559)",
+      "pr_refs": [
+        2559
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "656fc9823de0a5385f002e07d0d3ca4ecdd9e8f4",
+      "first_parent_position": 85,
+      "subject": "fix(xtask): use chars() instead of bytes in JSON normalization (#2556) (#2561)",
+      "pr_refs": [
+        2561
+      ],
+      "issue_refs": [
+        2556
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7e8d58a856499ec0a74ae92ae1956504d6948ae4",
+      "first_parent_position": 86,
+      "subject": "docs: remove RTK from live operating guidance (#2560) (#2563)",
+      "pr_refs": [
+        2563
+      ],
+      "issue_refs": [
+        2560
+      ],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "fc8987195df9614cbe3631405203259bbc0d7a47",
+      "first_parent_position": 87,
+      "subject": "test(xtask): add traceability advisory-vs-blocking regression tests (#2564)",
+      "pr_refs": [
+        2564
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "test(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "e7d6684b2f7dec4256b48274533fedc4628fb4b3",
+      "first_parent_position": 88,
+      "subject": "fix(lsp): make Windows refresh process-tree safe (#2551)",
+      "pr_refs": [
+        2551
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "13fd9032f2b0e1a7dcbafe9c3868cad19a6a2a54",
+      "first_parent_position": 89,
+      "subject": "docs: align live work guidance with scheduler retirement (#2565) (#2566)",
+      "pr_refs": [
+        2566
+      ],
+      "issue_refs": [
+        2565
+      ],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c3ed2425bae5d8c8b4f5fb8dd03dcd9b8c6576a2",
+      "first_parent_position": 90,
+      "subject": "feat(xtask): extend module-health to scan editors/vscode/src/*.ts files (#2544) (#2568)",
+      "pr_refs": [
+        2568
+      ],
+      "issue_refs": [
+        2544
+      ],
+      "theme_or_surface": "feat(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a55934ea2138a22b014fe52b455eb9af3cf9ac3e",
+      "first_parent_position": 91,
+      "subject": "docs: remove retired goals/check-campaign commands from live docs (#2569)",
+      "pr_refs": [
+        2569
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "880cf50f27bc4a24ba3070b84b2bb42250c59bc8",
+      "first_parent_position": 92,
+      "subject": "fix(output): stop claiming a hidden remainder that does not exist (#2567) (#2571)",
+      "pr_refs": [
+        2571
+      ],
+      "issue_refs": [
+        2567
+      ],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "4b9cdc88f151d9eae7037b3364208d1eeddde467",
+      "first_parent_position": 93,
+      "subject": "fix(xtask): restore module-health test collector (#2575)",
+      "pr_refs": [
+        2575
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "339eaea623608a438713fe741bcc33830eec964e",
+      "first_parent_position": 94,
+      "subject": "test(lsp): increase root-switch test shutdown drain to 10s (#2567) (#2577)",
+      "pr_refs": [
+        2577
+      ],
+      "issue_refs": [
+        2567
+      ],
+      "theme_or_surface": "test(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "526a29b2fd4a7069513770736e8284b9484e01d9",
+      "first_parent_position": 95,
+      "subject": "fix(lsp): visibly invalidate stale seam evidence (#2572)",
+      "pr_refs": [
+        2572
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c15d1f28e1d16dda9d527d0bc3c1f2fa50c517a8",
+      "first_parent_position": 96,
+      "subject": "fix(lsp): normalize missing seam evidence identity (#2578)",
+      "pr_refs": [
+        2578
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "109d7ce8c9d5e802119b6fb9af7fa9ee46964991",
+      "first_parent_position": 97,
+      "subject": "refactor(vscode): extract shared JSON/path helpers to packetJson.ts (#2552) (#2570)",
+      "pr_refs": [
+        2570
+      ],
+      "issue_refs": [
+        2552
+      ],
+      "theme_or_surface": "refactor(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a5f4fcca8498ee9fe4a2f596620ff3a7276ec402",
+      "first_parent_position": 98,
+      "subject": "ux: fix agent repair --help, add repair to agent overview, actionable errors, retire stale goals refs (#2579)",
+      "pr_refs": [
+        2579
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ux",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a8e604c23bf3a8c8985286e6cb3a25a42e1cfa6c",
+      "first_parent_position": 99,
+      "subject": "refactor(vscode): extract workspace/trace helpers to workspaceHelpers.ts (#2553) (#2580)",
+      "pr_refs": [
+        2580
+      ],
+      "issue_refs": [
+        2553
+      ],
+      "theme_or_surface": "refactor(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "70ffd9dcb4e5e197c0887845cddb554e7ef88f88",
+      "first_parent_position": 100,
+      "subject": "refactor(vscode): simplify workspace path joining (#2582)",
+      "pr_refs": [
+        2582
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "refactor(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "deca667944685481f5f5d814881e52b0b3eed3b9",
+      "first_parent_position": 101,
+      "subject": "fix(cli): make `ripr init --dry-run` preview the run it actually previews (#2576)",
+      "pr_refs": [
+        2576
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a8160ae998be6ffc8b55552720e3735e115c8012",
+      "first_parent_position": 102,
+      "subject": "refactor(vscode): extract status render helpers to statusRender.ts (#2554) (#2581)",
+      "pr_refs": [
+        2581
+      ],
+      "issue_refs": [
+        2554
+      ],
+      "theme_or_surface": "refactor(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c7d2d3140a03c3c1034e6d4e3038e36ed2a162a3",
+      "first_parent_position": 103,
+      "subject": "refactor(vscode): extract first-PR projection to firstPrProjection.ts (#2543) (#2586)",
+      "pr_refs": [
+        2586
+      ],
+      "issue_refs": [
+        2543
+      ],
+      "theme_or_surface": "refactor(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "8f16d5ae09c9743e86896c90623e6bd0c97fb826",
+      "first_parent_position": 104,
+      "subject": "ux: fix ripr plus error loop, format hints, diff format hint (#2587)",
+      "pr_refs": [
+        2587
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ux",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c83ec023d5277a83b39b310db9d211894f14ca16",
+      "first_parent_position": 105,
+      "subject": "ux: fix fixtures --help, make fixtures new discoverable, add selector hints (#2588)",
+      "pr_refs": [
+        2588
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ux",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "463fe1958208c77b433c557d9ed03fb3dfbb062c",
+      "first_parent_position": 106,
+      "subject": "fix(cli): remove inherited useless format lint (#2590)",
+      "pr_refs": [
+        2590
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "28512d07d240184962ce372270ff5c6149bd9515",
+      "first_parent_position": 107,
+      "subject": "fix(cli): make agent repair phases executable (#2584)",
+      "pr_refs": [
+        2584
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "68bbb69204262a9e37fa6fc29e6e34ac728f06d5",
+      "first_parent_position": 108,
+      "subject": "fix(ci): require adjudication before review-thread resolution (#2341) (#2589)",
+      "pr_refs": [
+        2589
+      ],
+      "issue_refs": [
+        2341
+      ],
+      "theme_or_surface": "fix(ci)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "e7d75b43b88334fd2febb078decf55ea38d771c1",
+      "first_parent_position": 109,
+      "subject": "fix(deps): enforce advisory suppression expiry (#1949) (#2585)",
+      "pr_refs": [
+        2585
+      ],
+      "issue_refs": [
+        1949
+      ],
+      "theme_or_surface": "fix(deps)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "e7838e0fdfc748c30156911dedcf046324f6a415",
+      "first_parent_position": 110,
+      "subject": "feat(cli): suggest the nearest flag and point at help on unknown arguments (#2583)",
+      "pr_refs": [
+        2583
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "feat(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9da210739bffd72e24d6878394d73a4b3ed0c4e7",
+      "first_parent_position": 111,
+      "subject": "docs(readme): document prerequisites (#2604)",
+      "pr_refs": [
+        2604
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(readme)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "403961298174b3fbf50a3433104c9bd6a362b381",
+      "first_parent_position": 112,
+      "subject": "ux: init next-action + --force warning, gate missing-flag hint, reports overview, config docs (#2607)",
+      "pr_refs": [
+        2607
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ux",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ed16201b433873bc5df04ad5f9c0678de22abd13",
+      "first_parent_position": 113,
+      "subject": "feat(vscode): expose targeted repair packet command (#2603)",
+      "pr_refs": [
+        2603
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "feat(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "56cadbe7c2a7dae285bffe195ac054ed633faaac",
+      "first_parent_position": 114,
+      "subject": "fix(doctor): enforce rustc minimum version (#2594) (#2619)",
+      "pr_refs": [
+        2619
+      ],
+      "issue_refs": [
+        2594
+      ],
+      "theme_or_surface": "fix(doctor)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1721d6be8ca37ab70cb99e9960dfb0fb69cdbfa0",
+      "first_parent_position": 115,
+      "subject": "fix(cli): suggest explain and context follow-ups (#2620)",
+      "pr_refs": [
+        2620
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "82fcf577dade7f4b415e4a2ad73350b71fe423a3",
+      "first_parent_position": 116,
+      "subject": "fix(doctor): align rustc schema and root validation (#2606)",
+      "pr_refs": [
+        2606
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(doctor)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c4086da00f7821d9862bdc79ee808950376b4362",
+      "first_parent_position": 117,
+      "subject": "fix(output): show language metadata in finding digests (#2631)",
+      "pr_refs": [
+        2631
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "22b868b9f9a9264ccb4d74c38e49b245ec96e27a",
+      "first_parent_position": 118,
+      "subject": "fix(vscode): register refresh diagnostics command (#2593) (#2633)",
+      "pr_refs": [
+        2633
+      ],
+      "issue_refs": [
+        2593
+      ],
+      "theme_or_surface": "fix(vscode)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9da6f5503323435deb74afa2cd7b40b0a8e6716a",
+      "first_parent_position": 119,
+      "subject": "fix(agent): warn on reversed snapshot order (#2653)",
+      "pr_refs": [
+        2653
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(agent)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "4374fec89af108c4e21bde95add949a355e550ad",
+      "first_parent_position": 120,
+      "subject": "fix(cli): list valid gate modes in errors (#2666)",
+      "pr_refs": [
+        2666
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "41b6ea88c7e8b92faeefe60538bd37b83417b868",
+      "first_parent_position": 121,
+      "subject": "fix(xtask): explain spec allocation in traceability errors (#2662)",
+      "pr_refs": [
+        2662
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f34a8ace9da478e6a46ed908039e94153a75287e",
+      "first_parent_position": 122,
+      "subject": "fix(xtask): require spec-backed golden bless reasons (#2650) (#2683)",
+      "pr_refs": [
+        2683
+      ],
+      "issue_refs": [
+        2650
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "77e1659df35c3b7413630726a0fb135630895f4b",
+      "first_parent_position": 123,
+      "subject": "fix(xtask): print policy gate pass status (#2684)",
+      "pr_refs": [
+        2684
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "89ce52c6ef190f5f639605c687319c38cb0a5c25",
+      "first_parent_position": 124,
+      "subject": "fix(cli): preserve scope in finding navigation (#2681)",
+      "pr_refs": [
+        2681
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "72005a9cf9f9a7d4d505f13ff8031655d29a9987",
+      "first_parent_position": 125,
+      "subject": "fix(test): gate unix-only symlink smoke test (#2690)",
+      "pr_refs": [
+        2690
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(test)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d921c24b7552a569bfc5b191dc4d6dd7637e702c",
+      "first_parent_position": 126,
+      "subject": "docs(campaign): close CLI navigation discoverability",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "docs(campaign)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "0e5bbcd702cdc315ede1ef461de1e85eadee85ab",
+      "first_parent_position": 127,
+      "subject": "docs(specs): reserve retired 0128 identifier (#2638) (#2700)",
+      "pr_refs": [
+        2700
+      ],
+      "issue_refs": [
+        2638
+      ],
+      "theme_or_surface": "docs(specs)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b07f33ba89e9f6bd2606db4da9112ebb0694a102",
+      "first_parent_position": 128,
+      "subject": "fix(policy): scan editor extension language files (#2703)",
+      "pr_refs": [
+        2703
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(policy)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "02ec60690e589c84656279eac8f241f5ac0543eb",
+      "first_parent_position": 129,
+      "subject": "analysis: disclose lexical fallback in repo mode (#2702)",
+      "pr_refs": [
+        2702
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "analysis",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c27a7071a8058ec7dc9dba217b3c35d6411f5a00",
+      "first_parent_position": 130,
+      "subject": "docs(campaign): close analyzer honesty visibility (#2714)",
+      "pr_refs": [
+        2714
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(campaign)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f70aea4091b4fa574d98333667b0e2c09c185fc4",
+      "first_parent_position": 131,
+      "subject": "fix(diff): disclose deletion-only changes (#2712)",
+      "pr_refs": [
+        2712
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "05cf6158e5617f1f16ced93ff61e1fe8bb26b95e",
+      "first_parent_position": 132,
+      "subject": "fix(output): normalize GitHub annotation paths (#2717)",
+      "pr_refs": [
+        2717
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "6ae94dd1c5219329416b16cc9694f205f0abf32f",
+      "first_parent_position": 133,
+      "subject": "fix(lsp): raise exposed default severity from info to warning (#2592) (#2718)",
+      "pr_refs": [
+        2718
+      ],
+      "issue_refs": [
+        2592
+      ],
+      "theme_or_surface": "fix(lsp)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "525dbd3f669a354708dc3513bcc6e1de2ce16bc1",
+      "first_parent_position": 134,
+      "subject": "fix(cli): surface first gate config_error or blocking reason inline (#2599) (#2721)",
+      "pr_refs": [
+        2721
+      ],
+      "issue_refs": [
+        2599
+      ],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "075aa27795d3b0c9f818c25a3569d51e6791490d",
+      "first_parent_position": 135,
+      "subject": "fix(xtask): map annotation severity to notice/warning instead of hardcoding warning (#2632) (#2722)",
+      "pr_refs": [
+        2722
+      ],
+      "issue_refs": [
+        2632
+      ],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "3f201be67d67f5622fb6f4326b0250e0b11ecc5a",
+      "first_parent_position": 136,
+      "subject": "fix(diff): disclose submodule pointer changes (#2720)",
+      "pr_refs": [
+        2720
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f3569af98ee8cf8b4f0efade4a686bc53b5eb958",
+      "first_parent_position": 137,
+      "subject": "fix(test): make fixed-path temp dirs unique with process ID (#2685) (#2728)",
+      "pr_refs": [
+        2728
+      ],
+      "issue_refs": [
+        2685
+      ],
+      "theme_or_surface": "fix(test)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "e20a2aabc770b9776a8f1e7f2cd59cdb17590adb",
+      "first_parent_position": 138,
+      "subject": "docs(config): correct Perl adapter guidance (#2725)",
+      "pr_refs": [
+        2725
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(config)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d5f15338a66b1b99e1bf9387d742de735ecbc483",
+      "first_parent_position": 139,
+      "subject": "fix(xtask): preserve literal warning annotation severity (#2726)",
+      "pr_refs": [
+        2726
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d2e82f0d5902da6bd60090dc7c43d9e1bbd9ce35",
+      "first_parent_position": 140,
+      "subject": "fix(diff): disclose rename-only changes (#2727)",
+      "pr_refs": [
+        2727
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b06569f8fc653003b4ea98e5ca4ba8ad054c86f4",
+      "first_parent_position": 141,
+      "subject": "docs(campaign): close operator signal integrity (#2732)",
+      "pr_refs": [
+        2732
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(campaign)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "6474172d248abfc0940e979c41303aee16b596bc",
+      "first_parent_position": 142,
+      "subject": "fix(xtask): flag detached worktrees (#2733)",
+      "pr_refs": [
+        2733
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "bf03bc07f74c8dc748fc3fc90a775bd91359a1b6",
+      "first_parent_position": 143,
+      "subject": "docs(config): document TypeScript and Perl settings (#2737)",
+      "pr_refs": [
+        2737
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(config)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b523398011d534b3d581f82beedc1c9e307c02aa",
+      "first_parent_position": 144,
+      "subject": "docs: fix stale probe ID, LSP key count, README distribution claim, VS Code settings UX (#2734)",
+      "pr_refs": [
+        2734
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "593b0ab2d77661245ba002c11822a4cac32f3545",
+      "first_parent_position": 145,
+      "subject": "fix(pilot): cancel analysis after timeout (#2739)",
+      "pr_refs": [
+        2739
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(pilot)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "30ae836694056b3de7edd0cfa31ac0d3dd0d4dfa",
+      "first_parent_position": 146,
+      "subject": "docs: reconcile roadmap ADRs and library timeline (#2740)",
+      "pr_refs": [
+        2740
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "0a6ab9e5209ed71f12d8121447af40c94dd9066b",
+      "first_parent_position": 147,
+      "subject": "fix(cache): make cache and receipt writes atomic (#2738)",
+      "pr_refs": [
+        2738
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cache)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "1d1414239e2125d4557ae344e635e1ab8bf3aa3e",
+      "first_parent_position": 148,
+      "subject": "fix(xtask): make precommit own policy gates (#2741)",
+      "pr_refs": [
+        2741
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "507b7967e41d2c708307b1b9a7471ed3372e3f07",
+      "first_parent_position": 149,
+      "subject": "fix(ts): include copy-to-unshared bridge hints (#2742)",
+      "pr_refs": [
+        2742
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(ts)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "17560690002de21a4615a92ac13053d64b1346fe",
+      "first_parent_position": 150,
+      "subject": "docs: clarify JSON object key ordering contract (#2743)",
+      "pr_refs": [
+        2743
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "8783582935d7ff0b23a68710c90727bc0ac57ad2",
+      "first_parent_position": 151,
+      "subject": "docs(campaign): define preview projection honesty (#2746)",
+      "pr_refs": [
+        2746
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(campaign)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f899242422df5ec9f7d1542f6f398aee86608857",
+      "first_parent_position": 152,
+      "subject": "fix(ci): show all blocking reasons in gate summary instead of only first (#2622) (#2748)",
+      "pr_refs": [
+        2748
+      ],
+      "issue_refs": [
+        2622
+      ],
+      "theme_or_surface": "fix(ci)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "6776de2cce62c60c0e0611a90c4885cc3f7950ac",
+      "first_parent_position": 153,
+      "subject": "fix(output): project selected Bun bridge group",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "4ab8564b833cdf74c3f041a340b20349a48a6d75",
+      "first_parent_position": 154,
+      "subject": "docs: add runnable library examples (#2709)",
+      "pr_refs": [
+        2709
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "5e5c183a10bd6e156e326e524cfb6d71a8f14b9f",
+      "first_parent_position": 155,
+      "subject": "fix(diff): disclose interrupted git operations (#2670)",
+      "pr_refs": [
+        2670
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "fd3a44771e401e074abeec7833f04e12968926a1",
+      "first_parent_position": 156,
+      "subject": "fix(output): retain multiple Bun bridge profiles (#2753)",
+      "pr_refs": [
+        2753
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "bce3b17b926e90377eeefbc9bc1a1c067f25ecb7",
+      "first_parent_position": 157,
+      "subject": "fix(cli): disclose implicit visible-only gate mode (#2754)",
+      "pr_refs": [
+        2754
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "400e25d32a6902ef4af785bb0e1828893b8b819c",
+      "first_parent_position": 158,
+      "subject": "docs: add finding triage guide",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "76193cf5da5a2ab7034a95752ff05bc3061a6228",
+      "first_parent_position": 159,
+      "subject": "docs(campaign): close preview projection honesty (#2757)",
+      "pr_refs": [
+        2757
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs(campaign)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "19849177ce9418d0024e4cc839eb8382e4f716a8",
+      "first_parent_position": 160,
+      "subject": "fix(cli): add bounded default git timeout (#2613) (#2760)",
+      "pr_refs": [
+        2760
+      ],
+      "issue_refs": [
+        2613
+      ],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "d1e43bbff1d7583cf276830f05bfdc445ad43d38",
+      "first_parent_position": 161,
+      "subject": "fix(cli): support --diff - to read diff from stdin (#2655) (#2770)",
+      "pr_refs": [
+        2770
+      ],
+      "issue_refs": [
+        2655
+      ],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "60228fc009c00a96b5538f8f98389701436c054f",
+      "first_parent_position": 162,
+      "subject": "test(typescript): add producer-backed Bun multi-profile placement regression",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "test(typescript)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "0c30efb029942d566052d45f84491252dee3aaea",
+      "first_parent_position": 163,
+      "subject": "fix(cli): install panic hook (#2771)",
+      "pr_refs": [
+        2771
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "283b62cd6570120113a6a3f0610ec89e9ef653fa",
+      "first_parent_position": 164,
+      "subject": "fix(badge): apply path suppressions consistently (#2772)",
+      "pr_refs": [
+        2772
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(badge)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "10df4d938e4c7b359bfe1735890d599c04822fa2",
+      "first_parent_position": 165,
+      "subject": "fix(analysis): lexical adapter honestly reports used_lexical_fallback (#2698) (#2775)",
+      "pr_refs": [
+        2775
+      ],
+      "issue_refs": [
+        2698
+      ],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "02b2503683e9da63f7c54b589255bd2cfefb44cb",
+      "first_parent_position": 166,
+      "subject": "test(diff): add proptest property tests for parser invariants (#2751) (#2774)",
+      "pr_refs": [
+        2774
+      ],
+      "issue_refs": [
+        2751
+      ],
+      "theme_or_surface": "test(diff)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c5fe4d62cdf9e8591fffc67cbcd2741a23e17568",
+      "first_parent_position": 167,
+      "subject": "docs: document property testing, lexical fallback, test taxonomy updates (#2777)",
+      "pr_refs": [
+        2777
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "docs",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f66145747c689d01a8c2be807019649330de6d5b",
+      "first_parent_position": 168,
+      "subject": "fix(policy): make suppression health kind aware (#2776)",
+      "pr_refs": [
+        2776
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(policy)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "9b71c0d7ba50f17928551e640562e0378b0ed961",
+      "first_parent_position": 169,
+      "subject": "build(ripr): lock proptest dependency (#2780)",
+      "pr_refs": [
+        2780
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "build(ripr)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "90ff5e33db75683626b82b50a2b6d1411608f06f",
+      "first_parent_position": 170,
+      "subject": "ci(security): pin release workflow actions",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "ci(security)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "18159e4897e88a72cf93ae01d92377776e15847f",
+      "first_parent_position": 171,
+      "subject": "build: make Linux lld linking opt-in (#2779)",
+      "pr_refs": [
+        2779
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "build",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "097c593e10e677af38c30aa073751c7defb590f7",
+      "first_parent_position": 172,
+      "subject": "deps(xtask): upgrade zip to 2.x (#2782)",
+      "pr_refs": [
+        2782
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "deps(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "a98189d5240d03b14ac68b738744ad28790779fe",
+      "first_parent_position": 173,
+      "subject": "control(release): add fail-closed 0.11 release lens (#2773)",
+      "pr_refs": [
+        2773
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "control(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "f2574f1ab5ad95d433c7c82996b40210a752c423",
+      "first_parent_position": 174,
+      "subject": "fix(analysis): skip conventional generated Rust files (#2781)",
+      "pr_refs": [
+        2781
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(analysis)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "7c32ffabe83d91b522600a0a3dddc83acf2df8f9",
+      "first_parent_position": 175,
+      "subject": "devex(release): single-source the release version in [workspace.package] (#2783)",
+      "pr_refs": [
+        2783
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "devex(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "5832453868f8e1a5fec9271b9c4d24eff99e3b25",
+      "first_parent_position": 176,
+      "subject": "fix(output): wrap advisory prose in human reports (#2786)",
+      "pr_refs": [
+        2786
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b255828640426b8a4522b48dff33b60683baf929",
+      "first_parent_position": 177,
+      "subject": "fix(output): wrap the human Changed block instead of dumping it at full width (#2787)",
+      "pr_refs": [
+        2787
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(output)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "c38ad7420df0381b45d49f6e95416d8aacb3a1bd",
+      "first_parent_position": 178,
+      "subject": "fix(xtask): guard capability matrix drift (#2785)",
+      "pr_refs": [
+        2785
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "fix(xtask)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "dbcb02f0724c83d6281b60a969d340fe01e94a88",
+      "first_parent_position": 179,
+      "subject": "ux(cli): lead `ripr --help` with tasks, move the catalog behind `help --all` (#2789)",
+      "pr_refs": [
+        2789
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "ux(cli)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "b797cca3e63cf78d96265d9843c9ab03e8399945",
+      "first_parent_position": 180,
+      "subject": "release(scope): reconcile 0.11 execution surface (#2767) (#2788)",
+      "pr_refs": [
+        2788
+      ],
+      "issue_refs": [
+        2767
+      ],
+      "theme_or_surface": "release(scope)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e",
+      "first_parent_position": 181,
+      "subject": "control(release): make `extension-version-match` compare the release version, not just the crate version (#2791)",
+      "pr_refs": [
+        2791
+      ],
+      "issue_refs": [],
+      "theme_or_surface": "control(release)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "ea8f7e413d31f4f30c363dd17bb8f91e5ba33b88",
+      "first_parent_position": 182,
+      "subject": "test(config): add property coverage for TOML parsing",
+      "pr_refs": [],
+      "issue_refs": [],
+      "theme_or_surface": "test(config)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    },
+    {
+      "commit_sha": "3c08654028dcf20eb9bee5fbf3c67b3ef6111891",
+      "first_parent_position": 183,
+      "subject": "release(denominator): retain deterministic 0.11 candidate ledger (#2768) (#2790)",
+      "pr_refs": [
+        2790
+      ],
+      "issue_refs": [
+        2768
+      ],
+      "theme_or_surface": "release(denominator)",
+      "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release-authority-2379",
+      "candidate_tree_state": "present_in_candidate",
+      "review_refs": [],
+      "proof_refs": [
+        "git:first-parent-range"
+      ],
+      "source_survivor_or_swarm_exclusion_effect": "retained in the current-main provisional census; candidate-only exclusions remain unresolved",
+      "limitation_or_operator_decision": "Provisional row; explicit release disposition review is required before final candidate freeze."
+    }
+  ]
+}

@@ -150,6 +150,17 @@ Proof routes for this slice are the focused `RIPR-SPEC-0146` tests, the
 `fixtures/release_denominator/` contract, and hosted `Ripr Rust Small Result`.
 No final candidate qualification or publication claim is made here.
 
+## Current-main provisional denominator evidence
+
+PR #2790 merged at `3c08654028dcf20eb9bee5fbf3c67b3ef6111891` with deterministic
+synthetic fixtures for validator shape. This follow-up retains the real
+current-main census in `fixtures/release_denominator/current-main-provisional.json`:
+the first-parent range `c86807ec..3c086540` contains 183 observed commits, in
+order, with matching candidate-tree membership. Every row is explicitly
+`operator_decision_required`, so this evidence proves range completeness and
+identity only; it is not a reviewed final denominator and cannot unblock #1609
+or #2769 by itself.
+
 ## Non-goals and safety boundary
 
 - no singleton active-goal restoration or automatic backlog priority;

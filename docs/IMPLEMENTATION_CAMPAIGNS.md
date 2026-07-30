@@ -5546,8 +5546,8 @@ or mutates GitHub state.
 | Work item | Status | Summary |
 | --- | --- | --- |
 | `control/release-lens` | landed | #2766 / PR #2773: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
-| `release/execution-scope` | in progress | #2767: decide whether merged verification-execution surfaces are present in the candidate tree without rewriting development `main`. |
-| `release/supplemental-denominator` | in progress | #2768: enumerate and disposition every commit in the candidate range with a reproducible record-set digest. |
+| `release/execution-scope` | landed | #2767 / PR #2788: accepted Outcome A is machine-readable as a complete candidate-only exclusion while development `main` remains unchanged. |
+| `release/supplemental-denominator` | in progress | #2768 / PR #2790 merged the fail-closed ledger validator; this follow-up adds the current-main 183-commit provisional range census, while reviewed dispositions and exact candidate binding remain. |
 | `release/exact-candidate-bundle` | blocked | #2769: qualify one immutable #1609 candidate only after the scope and denominator are resolved. |
 | `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
 

@@ -53,6 +53,14 @@ record counts, disposition/tree-state counts, reconciliation reasons, and the
 next action. Provisional output identifies the missing final candidate
 decision; final output is ready only after every record is reconciled.
 
+## Current-main evidence
+
+`fixtures/release_denominator/current-main-provisional.json` is a captured
+provisional census of `c86807ec..3c086540` at current `origin/main`. It carries
+183 first-parent records and matching candidate-tree membership. All records
+remain `operator_decision_required`; the fixture is range/identity evidence,
+not a final release disposition or candidate qualification.
+
 ## Acceptance and proof map
 
 Acceptance is limited to a deterministic supplemental denominator ledger and a
@@ -60,10 +68,11 @@ shared fail-closed validator. It does not close the final candidate decision
 tracked by #1609 or the dependent release-editor lane #2769.
 
 The implementation and fixture contract are mapped in `.ripr/traceability.toml`
-under `RIPR-SPEC-0146`. Focused proof is provided by the nine tests named there
+under `RIPR-SPEC-0146`. Focused proof is provided by the ten tests named there
 and the complete/reconcile-required fixtures under
 `fixtures/release_denominator/`; hosted CI is the authoritative execution
-proof for this PR.
+proof for this PR. The current-main census is loaded by a focused
+normalization test that pins its 183-record range and candidate-tree counts.
 
 ## Problem
 
@@ -105,9 +114,10 @@ decision in a final ledger, or disagreeing with live observations produces
 
 ## Test Mapping
 
-The nine focused tests listed in `.ripr/traceability.toml` cover deterministic
+The ten focused tests listed in `.ripr/traceability.toml` cover deterministic
 normalization, missing/duplicate/out-of-range/order/tree failures, final
-operator decisions, live drift, and JSON/Markdown claim-boundary parity.
+operator decisions, live drift, JSON/Markdown claim-boundary parity, and the
+current-main 183-record census.
 
 ## Implementation Mapping
 

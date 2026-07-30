@@ -644,6 +644,34 @@ mod tests {
     }
 
     #[test]
+    fn current_main_provisional_census_is_ready_and_pinned() -> Result<(), String> {
+        let snapshot: Snapshot = serde_json::from_str(include_str!(
+            "../../../fixtures/release_denominator/current-main-provisional.json"
+        ))
+        .map_err(|error| error.to_string())?;
+        let report = normalize_snapshot(snapshot, None)?;
+        require(
+            report.status == "ready",
+            format!(
+                "current-main census did not reconcile: {:?}",
+                report.reconciliation_reasons
+            ),
+        )?;
+        require(
+            report.records.len() == 183,
+            "current-main census record count changed",
+        )?;
+        require(
+            report.source.range_commits.len() == 183,
+            "current-main census range count changed",
+        )?;
+        require(
+            report.source.candidate_tree_commits.len() == 183,
+            "current-main census candidate-tree count changed",
+        )
+    }
+
+    #[test]
     fn missing_record_fails_closed() -> Result<(), String> {
         let mut snapshot = fixture()?;
         snapshot.records.pop();

@@ -6506,6 +6506,7 @@ name = "release supplemental denominator ledger"
 spec = "docs/specs/RIPR-SPEC-0146-release-denominator.md"
 tests = [
   "xtask/src/reports/release_denominator.rs::tests::complete_provisional_ledger_is_ready_and_digest_stable",
+  "xtask/src/reports/release_denominator.rs::tests::current_main_provisional_census_is_ready_and_pinned",
   "xtask/src/reports/release_denominator.rs::tests::missing_record_fails_closed",
   "xtask/src/reports/release_denominator.rs::tests::duplicate_record_fails_closed",
   "xtask/src/reports/release_denominator.rs::tests::out_of_range_record_fails_closed",
@@ -6517,6 +6518,7 @@ tests = [
 ]
 fixtures = [
   "fixtures/release_denominator/complete.json",
+  "fixtures/release_denominator/current-main-provisional.json",
   "fixtures/release_denominator/reconcile-required.json",
 ]
 code = [
