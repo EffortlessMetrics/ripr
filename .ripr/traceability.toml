@@ -6501,6 +6501,37 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0145"
+name = "0.11 candidate execution-surface scope"
+spec = "docs/specs/RIPR-SPEC-0145-release-execution-scope.md"
+tests = [
+  "xtask/src/reports/release_scope.rs::tests::accepted_scope_normalizes_captured_git_observation",
+  "xtask/src/reports/release_scope.rs::tests::a_missing_excluded_path_fails_closed",
+  "xtask/src/reports/release_scope.rs::tests::a_changed_commit_path_fails_closed",
+  "xtask/src/reports/release_scope.rs::tests::closed_execution_issue_fails_closed",
+  "xtask/src/reports/release_scope.rs::tests::duplicate_strictly_dependent_commits_fail_closed",
+  "xtask/src/reports/release_scope.rs::tests::report_json_has_an_explicit_authority_boundary",
+]
+fixtures = [
+  "fixtures/release_scope/accepted-outcome-a.json",
+]
+code = [
+  "xtask/src/reports/release_scope.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/fixture_contracts/mod.rs",
+  "xtask/src/reports/fixtures.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0145-release-execution-scope.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0135"
 name = "assurance state vocabulary"
 spec = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"

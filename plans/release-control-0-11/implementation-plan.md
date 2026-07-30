@@ -127,6 +127,17 @@ completeness. The live path therefore remains explicitly
 authorities; a captured snapshot can become `ready` only when all required
 identities and dispositions are present.
 
+## Execution-scope slice in progress
+
+The next slice implements #2767 Outcome A from the reconciled execution-surface
+map: the accepted 0.11 non-claim remains unchanged, while the exact #2396
+execution-only commit and its 18 changed paths are recorded as a candidate-only
+exclusion. The report validates the captured parent `origin/main` SHA and
+preserved provenance/static-assurance paths, keeps #2332 open, and explicitly
+reports that candidate construction is not performed here. Its source of truth
+is `RIPR-SPEC-0145`; the supplemental denominator and exact-candidate bundle
+remain dependent follow-up slices.
+
 ## Non-goals and safety boundary
 
 - no singleton active-goal restoration or automatic backlog priority;

@@ -15179,3 +15179,22 @@ Do not remove fields, rename fields, or change enum meanings without bumping the
 schema version.
 
 Do not emit mutation-runtime terms such as `killed` or `survived` in static JSON.
+
+## Temporary 0.11 candidate execution-scope report
+
+`cargo xtask release-scope --input <scope.json>` writes:
+
+```text
+target/ripr/reports/release-scope.json
+target/ripr/reports/release-scope.md
+```
+
+The JSON envelope has `schema_version: "0.1"`, `kind: "release-scope"`, a
+`status` of `ready` or `reconcile_required`, the captured `decision`, verified
+`source` commit/path observations, a `candidate_tree_delta`, boolean `checks`,
+`reconciliation_reasons`, and explicit `authority_boundary` and
+`must_not_claim` fields. `candidate_tree_delta.candidate_tree_constructed` is
+always `false`: this report verifies a candidate-only disposition but does not
+construct, mutate, merge, qualify, or publish a candidate tree. Markdown is a
+projection of the same normalized report and cannot strengthen a
+`reconcile_required` result.

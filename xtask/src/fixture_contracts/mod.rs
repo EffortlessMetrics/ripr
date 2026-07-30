@@ -77,6 +77,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
     validate_release_control_fixture_corpus(&mut violations)?;
+    validate_release_scope_fixture_corpus(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
@@ -223,6 +224,95 @@ fn validate_release_control_fixture_corpus(violations: &mut Vec<String>) -> Resu
         }
         if value.get("prs").and_then(Value::as_array).is_none() {
             violations.push(format!("{} is missing prs array", normalize_path(&path)));
+        }
+    }
+    Ok(())
+}
+
+fn validate_release_scope_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new("fixtures/release_scope");
+    for required in ["SPEC.md", "accepted-outcome-a.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "release-scope fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec = root.join("SPEC.md");
+    if spec.exists() {
+        let text = read_text_lossy(&spec)?;
+        if !text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0145"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0145`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+    let input = root.join("accepted-outcome-a.json");
+    if input.exists() {
+        let value = match read_json_value(&input) {
+            Ok(value) => value,
+            Err(err) => {
+                violations.push(err);
+                return Ok(());
+            }
+        };
+        for (field, expected) in [
+            ("schema_version", "0.1"),
+            ("kind", "release_execution_scope"),
+            ("outcome", "preserve_accepted_0_11"),
+        ] {
+            if json_string_field(&value, field).as_deref() != Some(expected) {
+                violations.push(format!(
+                    "{} {field} must be {expected}",
+                    normalize_path(&input)
+                ));
+            }
+        }
+        for field in [
+            "candidate_parent_sha",
+            "execution_commit",
+            "release_non_claim",
+            "issue_2332_state",
+        ] {
+            if json_string_field(&value, field).is_none() {
+                violations.push(format!(
+                    "{} is missing string {field}",
+                    normalize_path(&input)
+                ));
+            }
+        }
+        for field in [
+            "execution_only_paths",
+            "candidate_excluded_paths",
+            "preserved_paths",
+        ] {
+            if value.get(field).and_then(Value::as_array).is_none() {
+                violations.push(format!(
+                    "{} is missing array {field}",
+                    normalize_path(&input)
+                ));
+            }
+        }
+        if value
+            .get("candidate_tree")
+            .and_then(Value::as_object)
+            .is_none()
+        {
+            violations.push(format!(
+                "{} is missing candidate_tree object",
+                normalize_path(&input)
+            ));
         }
     }
     Ok(())
