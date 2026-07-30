@@ -260,12 +260,14 @@ impl TypescriptConfig {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LanguagesConfig {
     pub enabled: Vec<LanguageId>,
+    pub rust: RustLanguageConfig,
 }
 
 impl Default for LanguagesConfig {
     fn default() -> Self {
         Self {
             enabled: vec![LanguageId::Rust],
+            rust: RustLanguageConfig::default(),
         }
     }
 }
@@ -275,10 +277,34 @@ impl LanguagesConfig {
         &self.enabled
     }
 
+    pub(crate) fn generated_file_patterns(&self) -> &[String] {
+        &self.rust.generated_file_patterns
+    }
+
     #[cfg(test)]
     pub(crate) fn enabled_owned(&self) -> Vec<LanguageId> {
         self.enabled.clone()
     }
+}
+
+/// `[languages.rust]` repository configuration.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RustLanguageConfig {
+    pub generated_file_patterns: Vec<String>,
+}
+
+fn canonical_generated_file_patterns(patterns: &[String]) -> String {
+    let mut ordered = patterns.iter().collect::<Vec<_>>();
+    ordered.sort_unstable();
+
+    let mut encoded = ordered.len().to_string();
+    for pattern in ordered {
+        encoded.push('|');
+        encoded.push_str(&pattern.len().to_string());
+        encoded.push(':');
+        encoded.push_str(pattern);
+    }
+    encoded
 }
 
 /// `[perl]` repository configuration (Campaign 31 Phase D, #1407).
@@ -596,7 +622,12 @@ impl RiprConfig {
             max_related_tests: _,
         } = reports;
         let SuppressionsConfig { path: _ } = suppressions;
-        let LanguagesConfig { enabled: _ } = languages;
+        let LanguagesConfig {
+            enabled,
+            rust: RustLanguageConfig {
+                generated_file_patterns,
+            },
+        } = languages;
         let ProfilesConfig { bun_ub } = profiles;
         let TypescriptConfig {
             resolve_tsconfig_paths,
@@ -607,6 +638,11 @@ impl RiprConfig {
             timeout_ms,
             cache_dir,
         } = perl;
+        let generated_file_patterns_identity = if enabled.contains(&LanguageId::Rust) {
+            canonical_generated_file_patterns(generated_file_patterns)
+        } else {
+            String::new()
+        };
         let mut fields = vec![
             ConfigIdentityField {
                 name: "analysis.mode",
@@ -696,6 +732,12 @@ impl RiprConfig {
                 role: ConfigIdentityRole::CapturedElsewhere,
                 value: None,
                 note: "recorded as the artifact identity `enabled_languages` (resolved, including the explicit --perl-facts opt-in)",
+            },
+            ConfigIdentityField {
+                name: "languages.rust.generated_file_patterns",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(generated_file_patterns_identity),
+                note: "custom Rust generated-file patterns change which source files are analyzed",
             },
         ]);
         match bun_ub {

@@ -32,6 +32,20 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
+    run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        &[],
+    )
+}
+
+pub(crate) fn run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
     let diff_text = diff::load_diff(
         &options.root,
         options.base.as_deref(),
@@ -39,13 +53,20 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         options.git_timeout,
     )?;
     cancellation::checkpoint()?;
-    run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
+    run_pipeline_for_diff_text(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+        &diff_text,
+    )
 }
 
-pub(crate) fn run_worktree_pipeline_with_oracle_policy(
+pub(crate) fn run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
+    generated_file_patterns: &[String],
 ) -> Result<AnalysisResult, String> {
     if options.diff_file.is_some() {
         return Err("worktree diff mode cannot be combined with --diff".to_string());
@@ -53,7 +74,13 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy(
     let diff_text =
         diff::load_worktree_diff(&options.root, options.base.as_deref(), options.git_timeout)?;
     cancellation::checkpoint()?;
-    run_pipeline_for_diff_text(options, oracle_policy, languages, &diff_text)
+    run_pipeline_for_diff_text(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+        &diff_text,
+    )
 }
 
 /// The docs-only disclosure message (#2304): `Some(message)` when the diff
@@ -148,6 +175,7 @@ fn run_pipeline_for_diff_text(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
+    generated_file_patterns: &[String],
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
@@ -180,11 +208,12 @@ fn run_pipeline_for_diff_text(
     // partial_budget_invalid), not a per-language advisory gap.
     if languages.contains(&LanguageId::Rust) {
         cancellation::checkpoint()?;
-        let result = RustAdapter.analyze_diff_for_languages(
+        let result = RustAdapter.analyze_diff_for_languages_with_generated_file_patterns(
             options,
             oracle_policy,
             &analysis_changed_files,
             languages,
+            generated_file_patterns,
         )?;
         cancellation::checkpoint()?;
         if result.skipped_files > 0 {
@@ -192,7 +221,7 @@ fn run_pipeline_for_diff_text(
                 language: LanguageId::Rust.as_str().to_string(),
                 status: LanguageRunStatus::Partial,
                 reason: Some(format!(
-                    "{} generated Rust file(s) skipped from static analysis by the built-in generated-file predicate",
+                    "{} generated Rust file(s) skipped from static analysis by the configured generated-file predicate",
                     result.skipped_files
                 )),
             });
@@ -347,6 +376,20 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
+    run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        &[],
+    )
+}
+
+pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
     let mut findings: Vec<Finding> = Vec::new();
     // Same accounting as the diff loop (#2103): `changed_rust_files` carries
     // the Rust adapter's count only; every adapter records its own count.
@@ -359,14 +402,18 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         // failures are recorded, Rust failures still propagate.
         if !is_preview_language(*language) {
             // Rust (stable) failures propagate via `?`.
-            let result = RustAdapter.analyze_repo(options, oracle_policy)?;
+            let result = RustAdapter.analyze_repo_with_generated_file_patterns(
+                options,
+                oracle_policy,
+                generated_file_patterns,
+            )?;
             cancellation::checkpoint()?;
             if result.skipped_files > 0 {
                 language_runs.push(LanguageRun {
                     language: LanguageId::Rust.as_str().to_string(),
                     status: LanguageRunStatus::Partial,
                     reason: Some(format!(
-                        "{} generated Rust file(s) skipped from static analysis by the built-in generated-file predicate",
+                        "{} generated Rust file(s) skipped from static analysis by the configured generated-file predicate",
                         result.skipped_files
                     )),
                 });

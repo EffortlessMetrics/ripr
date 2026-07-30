@@ -1082,9 +1082,10 @@ pub(crate) struct RustAdapter;
 
 /// Return whether a Rust path is a conventional generated-source surface.
 ///
-/// This is deliberately conservative and built in for now. A configurable
-/// pattern list needs a separate config-contract lane; the default must still
-/// avoid analyzing common generated names without inventing a config value.
+/// This is deliberately conservative and always-on. Optional additive
+/// patterns from `[languages.rust].generated_file_patterns` are applied separately;
+/// the default still avoids analyzing common generated names without requiring
+/// a config value.
 pub(crate) fn is_generated_rust_file(path: &Path) -> bool {
     if route(path) != Some(LanguageId::Rust) {
         return false;
@@ -1112,6 +1113,134 @@ pub(crate) fn is_generated_rust_file(path: &Path) -> bool {
     conventional_name || generated_directory
 }
 
+pub(crate) fn is_generated_rust_file_with_patterns(
+    path: &Path,
+    generated_file_patterns: &[String],
+) -> bool {
+    is_generated_rust_file(path)
+        || generated_file_patterns
+            .iter()
+            .any(|pattern| generated_pattern_matches(pattern, path))
+}
+
+fn generated_pattern_matches(pattern: &str, path: &Path) -> bool {
+    if route(path) != Some(LanguageId::Rust) {
+        return false;
+    }
+
+    let normalized_path = path.to_string_lossy().replace('\\', "/");
+    if pattern.contains('/') {
+        path_glob_matches(pattern, &normalized_path)
+    } else {
+        path.file_name().is_some_and(|name| {
+            let pattern_chars = pattern.chars().collect::<Vec<_>>();
+            let name_chars = name.to_string_lossy().chars().collect::<Vec<_>>();
+            let mut memo = vec![vec![None; name_chars.len() + 1]; pattern_chars.len() + 1];
+            glob_segment_chars_match(&pattern_chars, &name_chars, 0, 0, &mut memo)
+        })
+    }
+}
+
+fn path_glob_matches(pattern: &str, path: &str) -> bool {
+    let pattern_segments = pattern
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .map(|segment| segment.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let path_segments = path
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .map(|segment| segment.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let mut memo = vec![vec![None; path_segments.len() + 1]; pattern_segments.len() + 1];
+    glob_segments_match(&pattern_segments, &path_segments, 0, 0, &mut memo)
+}
+
+fn glob_segments_match(
+    pattern: &[Vec<char>],
+    path: &[Vec<char>],
+    pattern_index: usize,
+    path_index: usize,
+    memo: &mut [Vec<Option<bool>>],
+) -> bool {
+    if let Some(result) = memo[pattern_index][path_index] {
+        return result;
+    }
+
+    let result = if pattern_index == pattern.len() {
+        path_index == path.len()
+    } else if pattern[pattern_index] == ['*', '*'] {
+        glob_segments_match(pattern, path, pattern_index + 1, path_index, memo)
+            || (path_index < path.len()
+                && glob_segments_match(pattern, path, pattern_index, path_index + 1, memo))
+    } else if path_index == path.len() {
+        false
+    } else {
+        let segment_pattern = &pattern[pattern_index];
+        let segment = &path[path_index];
+        let mut segment_memo = vec![vec![None; segment.len() + 1]; segment_pattern.len() + 1];
+        glob_segment_chars_match(segment_pattern, segment, 0, 0, &mut segment_memo)
+            && glob_segments_match(pattern, path, pattern_index + 1, path_index + 1, memo)
+    };
+
+    memo[pattern_index][path_index] = Some(result);
+    result
+}
+
+fn glob_segment_chars_match(
+    pattern: &[char],
+    segment: &[char],
+    pattern_index: usize,
+    segment_index: usize,
+    memo: &mut [Vec<Option<bool>>],
+) -> bool {
+    if let Some(result) = memo[pattern_index][segment_index] {
+        return result;
+    }
+
+    let result = if pattern_index == pattern.len() {
+        segment_index == segment.len()
+    } else {
+        match pattern[pattern_index] {
+            '*' => {
+                glob_segment_chars_match(pattern, segment, pattern_index + 1, segment_index, memo)
+                    || (segment_index < segment.len()
+                        && glob_segment_chars_match(
+                            pattern,
+                            segment,
+                            pattern_index,
+                            segment_index + 1,
+                            memo,
+                        ))
+            }
+            '?' => {
+                segment_index < segment.len()
+                    && glob_segment_chars_match(
+                        pattern,
+                        segment,
+                        pattern_index + 1,
+                        segment_index + 1,
+                        memo,
+                    )
+            }
+            expected => {
+                segment_index < segment.len()
+                    && segment[segment_index] == expected
+                    && glob_segment_chars_match(
+                        pattern,
+                        segment,
+                        pattern_index + 1,
+                        segment_index + 1,
+                        memo,
+                    )
+            }
+        }
+    };
+
+    memo[pattern_index][segment_index] = Some(result);
+    result
+}
+
 impl RustAdapter {
     /// Diff analysis with the enabled-language set the pipeline will
     /// dispatch, so the partial-diff partition (RIPR-PROP-0019) never selects
@@ -1123,12 +1252,31 @@ impl RustAdapter {
         changed_files: &[ChangedFile],
         enabled_languages: &[LanguageId],
     ) -> Result<LanguageDiffResult, String> {
+        self.analyze_diff_for_languages_with_generated_file_patterns(
+            options,
+            oracle_policy,
+            changed_files,
+            enabled_languages,
+            &[],
+        )
+    }
+
+    pub(crate) fn analyze_diff_for_languages_with_generated_file_patterns(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+        enabled_languages: &[LanguageId],
+        generated_file_patterns: &[String],
+    ) -> Result<LanguageDiffResult, String> {
         // Exclude conventional generated surfaces before hard line limits and
         // partial-diff budgeting so machine output cannot consume the budget
         // that protects actionable source analysis.
         let analyzable_changed_files = changed_files
             .iter()
-            .filter(|file| !is_generated_rust_file(&file.path))
+            .filter(|file| {
+                !is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
+            })
             .cloned()
             .collect::<Vec<_>>();
         enforce_changed_rust_line_limit(
@@ -1160,7 +1308,7 @@ impl RustAdapter {
         let rust_files = workspace::discover_rust_files(&options.root)?;
         let analyzable_rust_files = rust_files
             .into_iter()
-            .filter(|path| !is_generated_rust_file(path))
+            .filter(|path| !is_generated_rust_file_with_patterns(path, generated_file_patterns))
             .collect::<Vec<_>>();
         let index_files = workspace::select_rust_files_for_mode(
             &analyzable_rust_files,
@@ -1266,7 +1414,9 @@ impl RustAdapter {
             skipped_files: changed_files
                 .iter()
                 .filter(|file| self.accepts_path(&file.path))
-                .filter(|file| is_generated_rust_file(&file.path))
+                .filter(|file| {
+                    is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
+                })
                 .count(),
         })
     }
@@ -1306,14 +1456,25 @@ impl LanguageAdapter for RustAdapter {
         options: &AnalysisOptions,
         oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
+        self.analyze_repo_with_generated_file_patterns(options, oracle_policy, &[])
+    }
+}
+
+impl RustAdapter {
+    pub(crate) fn analyze_repo_with_generated_file_patterns(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        generated_file_patterns: &[String],
+    ) -> Result<LanguageRepoResult, String> {
         let rust_files = workspace::discover_rust_files(&options.root)?;
         let skipped_files = rust_files
             .iter()
-            .filter(|path| is_generated_rust_file(path))
+            .filter(|path| is_generated_rust_file_with_patterns(path, generated_file_patterns))
             .count();
         let analyzable_rust_files = rust_files
             .iter()
-            .filter(|path| !is_generated_rust_file(path))
+            .filter(|path| !is_generated_rust_file_with_patterns(path, generated_file_patterns))
             .cloned()
             .collect::<Vec<_>>();
         // Fail closed before the whole-workspace load (#2109): an
@@ -1393,10 +1554,11 @@ mod tests {
         cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
         diff_identity_from_changed_files, diff_index_file_limit_from_env,
         enforce_changed_rust_line_limit, enforce_repo_index_file_limit, is_generated_rust_file,
-        macro_reach_limit_kind, owner_has_ffi_attr, partial_diff_budgets_from_env,
-        partition_canonical_form, replace_witnessed_no_path_infection_summary,
-        repo_index_file_limit_from_env, select_partial_diff_partition,
-        select_partial_diff_partition_with_identity, sha256_hex, transitive_reach_limit_kind,
+        is_generated_rust_file_with_patterns, macro_reach_limit_kind, owner_has_ffi_attr,
+        partial_diff_budgets_from_env, partition_canonical_form,
+        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
+        select_partial_diff_partition, select_partial_diff_partition_with_identity, sha256_hex,
+        transitive_reach_limit_kind,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
@@ -2524,6 +2686,56 @@ let _ = (result, note, raw);"##,
                 "unexpected generated Rust path: {path}"
             );
         }
+    }
+
+    #[test]
+    fn custom_generated_rust_patterns_match_names_and_repository_paths() {
+        let patterns = vec!["*.gen.rs".to_string(), "src/generated/**/*.rs".to_string()];
+        for path in [
+            "src/proto/messages.gen.rs",
+            "src/generated/model.rs",
+            "src/generated/nested/model.rs",
+        ] {
+            assert!(
+                is_generated_rust_file_with_patterns(Path::new(path), &patterns),
+                "expected custom generated Rust path: {path}"
+            );
+        }
+        for path in ["src/model.rs", "generated/model.py", "src/not-generated.rs"] {
+            assert!(
+                !is_generated_rust_file_with_patterns(Path::new(path), &patterns),
+                "unexpected custom generated Rust path: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn custom_generated_rust_patterns_are_additive_to_builtin_rules() {
+        let patterns = vec!["src/custom/**/*.rs".to_string()];
+        assert!(is_generated_rust_file_with_patterns(
+            Path::new("src/schema.rs"),
+            &patterns
+        ));
+        assert!(is_generated_rust_file_with_patterns(
+            Path::new("src/custom/model.rs"),
+            &patterns
+        ));
+    }
+
+    #[test]
+    fn custom_generated_rust_patterns_bound_wildcard_backtracking() {
+        let patterns = vec![
+            "src/**/**/**/**/**/**/**/**/**/**/generated/*.gen.rs".to_string(),
+            "*?*?*?*?*?*?*?*?*?*?*?*?*?*?*?*?*.rs".to_string(),
+        ];
+        assert!(is_generated_rust_file_with_patterns(
+            Path::new("src/a/b/c/d/e/f/g/h/i/j/generated/messages.gen.rs"),
+            &patterns
+        ));
+        assert!(is_generated_rust_file_with_patterns(
+            Path::new("src/this_is_a_long_generated_file_name.rs"),
+            &patterns
+        ));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use super::{CheckInput, CheckOutput};
 use crate::analysis::{
-    AnalysisResult, run_analysis_with_oracle_policy, run_repo_analysis_with_oracle_policy,
-    run_worktree_analysis_with_oracle_policy,
+    AnalysisResult, run_analysis_with_oracle_policy_and_generated_file_patterns,
+    run_repo_analysis_with_oracle_policy_and_generated_file_patterns,
+    run_worktree_analysis_with_oracle_policy_and_generated_file_patterns,
 };
 use crate::config::RiprConfig;
 use crate::domain::LanguageId;
@@ -135,15 +136,26 @@ fn run_check(
     }
 
     let analysis = match mode {
-        AnalysisMode::Diff => {
-            run_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
-        }
+        AnalysisMode::Diff => run_analysis_with_oracle_policy_and_generated_file_patterns(
+            &options,
+            config.oracles(),
+            &languages,
+            config.languages().generated_file_patterns(),
+        )?,
         AnalysisMode::Worktree => {
-            run_worktree_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
+            run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+                &options,
+                config.oracles(),
+                &languages,
+                config.languages().generated_file_patterns(),
+            )?
         }
-        AnalysisMode::Repo => {
-            run_repo_analysis_with_oracle_policy(&options, config.oracles(), &languages)?
-        }
+        AnalysisMode::Repo => run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
+            &options,
+            config.oracles(),
+            &languages,
+            config.languages().generated_file_patterns(),
+        )?,
     };
 
     let suppression_policy = input.suppression_policy.clone();

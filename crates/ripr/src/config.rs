@@ -91,6 +91,12 @@ path = ".ripr/suppressions.toml"
 # available. Without a packet or available exporter, Perl analysis is
 # unavailable. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
+# Optional additive Rust generated-source globs. Built-in generated names and
+# directories remain excluded. A pattern without `/` matches any filename;
+# patterns with `/` match the repository-relative path.
+#
+# [languages.rust]
+# generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
 # repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
@@ -116,7 +122,6 @@ enabled = ["rust"]
 # executable = "perl"      # Perl binary path
 # timeout_ms = 30000       # Per-invocation timeout
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
-
 "#;
 
 fn discover_config_path(root: &Path) -> Option<PathBuf> {
@@ -286,10 +291,16 @@ impl RiprConfig {
         {
             config.suppressions.path = parse_relative_path("suppressions.path", &path)?;
         }
-        if let Some(languages) = raw.languages
-            && let Some(enabled) = languages.enabled
-        {
-            config.languages.enabled = parse_languages_enabled(&enabled)?;
+        if let Some(languages) = raw.languages {
+            if let Some(enabled) = languages.enabled {
+                config.languages.enabled = parse_languages_enabled(&enabled)?;
+            }
+            if let Some(rust) = languages.rust
+                && let Some(patterns) = rust.generated_file_patterns
+            {
+                config.languages.rust.generated_file_patterns =
+                    parse_generated_file_patterns(&patterns)?;
+            }
         }
         if let Some(profiles) = raw.profiles {
             config.profiles = parse_profiles(profiles)?;
@@ -337,6 +348,33 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             ));
         }
         parsed.push(language);
+    }
+    Ok(parsed)
+}
+
+fn parse_generated_file_patterns(values: &[String]) -> Result<Vec<String>, String> {
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        if value.chars().any(char::is_control) {
+            return Err(
+                "languages.rust.generated_file_patterns must not contain control characters"
+                    .to_string(),
+            );
+        }
+        let trimmed = value.trim();
+        parse_relative_path("languages.rust.generated_file_patterns", trimmed)?;
+        if trimmed == "." {
+            return Err(
+                "languages.rust.generated_file_patterns must identify a file pattern, not `.`"
+                    .to_string(),
+            );
+        }
+        if parsed.iter().any(|existing| existing == trimmed) {
+            return Err(format!(
+                "languages.rust.generated_file_patterns lists `{trimmed}` more than once; remove the duplicate"
+            ));
+        }
+        parsed.push(trimmed.to_string());
     }
     Ok(parsed)
 }
@@ -400,6 +438,13 @@ struct RawTypescriptConfig {
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
+    rust: Option<RawRustLanguageConfig>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawRustLanguageConfig {
+    generated_file_patterns: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]

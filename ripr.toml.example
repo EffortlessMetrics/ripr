@@ -64,6 +64,12 @@ path = ".ripr/suppressions.toml"
 # available. Without a packet or available exporter, Perl analysis is
 # unavailable. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
+# Optional additive Rust generated-source globs. Built-in generated names and
+# directories remain excluded. A pattern without `/` matches any filename;
+# patterns with `/` match the repository-relative path.
+#
+# [languages.rust]
+# generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
 # repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
@@ -89,4 +95,3 @@ enabled = ["rust"]
 # executable = "perl"      # Perl binary path
 # timeout_ms = 30000       # Per-invocation timeout
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
-

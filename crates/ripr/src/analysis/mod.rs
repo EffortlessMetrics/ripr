@@ -541,12 +541,32 @@ pub(crate) fn run_analysis_with_oracle_policy(
     pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
-pub(crate) fn run_worktree_analysis_with_oracle_policy(
+pub(crate) fn run_analysis_with_oracle_policy_and_generated_file_patterns(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_worktree_pipeline_with_oracle_policy(options, oracle_policy, languages)
+    pipeline::run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
+}
+
+pub(crate) fn run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
@@ -559,6 +579,20 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
     languages: &[language::LanguageId],
 ) -> Result<AnalysisResult, String> {
     pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy, languages)
+}
+
+pub(crate) fn run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

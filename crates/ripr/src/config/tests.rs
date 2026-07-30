@@ -157,6 +157,57 @@ enabled = ["rust"]
     Ok(())
 }
 
+#[test]
+fn languages_section_accepts_custom_generated_file_patterns() -> Result<(), String> {
+    let config = parse_config(
+        r#"
+[languages]
+enabled = ["rust"]
+
+[languages.rust]
+generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
+"#,
+    )?;
+
+    assert_eq!(
+        config.languages().generated_file_patterns(),
+        &["*.gen.rs".to_string(), "src/generated/**/*.rs".to_string()]
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_file_patterns_reject_empty_duplicate_and_escape_values() {
+    for (text, expected) in [
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"\"]\n",
+            "must not be empty",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\", \"*.gen.rs\"]\n",
+            "more than once",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"../generated/**/*.rs\"]\n",
+            "must stay within the repository",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = ['src\\generated\\*.rs']\n",
+            "uses backslashes",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\\u000A\"]\n",
+            "control characters",
+        ),
+    ] {
+        let result = parse_config(text);
+        assert!(
+            matches!(result, Err(ref message) if message.contains(expected)),
+            "expected {expected:?} in {result:?}"
+        );
+    }
+}
+
 #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
 #[test]
 fn languages_section_accepts_preview_adapters_in_order() -> Result<(), String> {
@@ -913,6 +964,7 @@ fn check_artifact_identity_fields_classify_every_config_field() -> Result<(), St
     actual.sort_by(|left, right| left.0.cmp(right.0));
 
     let finding_affecting = [
+        "languages.rust.generated_file_patterns",
         "oracles.broad_error_strength",
         "oracles.mock_expectation_strength",
         "oracles.snapshot_strength",
@@ -1018,6 +1070,35 @@ fn check_artifact_config_identity_hash_tracks_finding_affecting_fields_only() ->
         );
     }
 
+    // A finding-affecting change (custom Rust generated-file patterns) changes
+    // which source files enter the analysis and therefore changes identity.
+    let generated_patterns_changed = tests_only_parse(
+        "[languages]\nenabled = [\"rust\"]\n\n[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\"]\n",
+    )?;
+    if check_artifact_config_identity_hash(&generated_patterns_changed) == base_hash {
+        return Err(
+            "languages.rust.generated_file_patterns change must change the config identity"
+                .to_string(),
+        );
+    }
+
+    // Rust-only configuration does not affect a Python-only analysis identity.
+    let mut python_only = RiprConfig::default();
+    python_only.languages.enabled = vec![LanguageId::Python];
+    let mut python_only_with_rust_patterns = python_only.clone();
+    python_only_with_rust_patterns
+        .languages
+        .rust
+        .generated_file_patterns = vec!["*.gen.rs".to_string()];
+    if check_artifact_config_identity_hash(&python_only_with_rust_patterns)
+        != check_artifact_config_identity_hash(&python_only)
+    {
+        return Err(
+            "Rust generated-file patterns must not change a Python-only config identity"
+                .to_string(),
+        );
+    }
+
     // A render-only change (severity display) does NOT change the identity:
     // render-time knobs are honored fresh by the consuming command.
     let severity_changed = tests_only_parse("[severity.findings]\nexposed = \"warning\"\n")?;
@@ -1105,6 +1186,7 @@ proptest! {
             }),
             languages: Some(RawLanguagesConfig {
                 enabled: Some(vec!["rust".to_string()]),
+                rust: None,
             }),
             profiles: None,
             typescript: Some(RawTypescriptConfig {

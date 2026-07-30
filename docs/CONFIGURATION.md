@@ -790,6 +790,22 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 | --- | --- | --- | --- |
 | `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`, `perl`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. Perl consumes externally-produced `ripr-perl-facts-v1` packets and does not parse Perl source directly. Supply one with `--perl-facts <path>`, or configure a managed exporter under `[perl]`; without a packet or available exporter, Perl analysis is unavailable. Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md); TypeScript, Python, and Perl remain preview adapters. See [Support Tiers](status/SUPPORT_TIERS.md) and Campaign 31, #1379. |
 
+`[languages.rust]` configures the stable Rust adapter:
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names and `gen/`, `generated/`, and `out/` directories remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+
+For example:
+
+```toml
+[languages]
+enabled = ["rust"]
+
+[languages.rust]
+generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
+```
+
 `[languages]` controls runtime routing for the selected repository. The `ripr`
 binary must also be built with the corresponding adapter feature. The default
 published build includes the preview adapter features, while a Rust-only build
