@@ -71,6 +71,10 @@ Next step
   TypeScript preview advisory: method receiver relation is missing context; use a direct `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection, mocked modules, prototype aliases, and dynamic property access advisory.
 
 
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope analyzed: 1 changed expression(s) and 0 statically linked related test(s). This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
+  analyzed: 1 changed expression(s) and 0 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
 
 Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

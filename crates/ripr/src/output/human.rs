@@ -331,13 +331,51 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
             all_no_path_count, related_tests_total
         )
     };
-    out.push_str(&format!(
-        "\nNote: ripr found no static test path for any of the {} changed expression(s) in this diff. \
-{} This is not a coverage assessment. A test may already exercise these changes through macros, \
-helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, \
-add co-located tests that observe the changed behavior.\n",
+    let note = format!(
+        "Note: ripr found no static test path for any of the {} changed expression(s) in this diff. {} This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.",
         all_no_path_count, scope_summary
-    ));
+    );
+    out.push('\n');
+    out.push_str(&wrap_human_prose(&note, "", "  "));
+    out.push('\n');
+}
+
+const HUMAN_PROSE_WRAP_COLUMN: usize = 100;
+
+pub(super) fn is_wrappable_advisory_prose(value: &str) -> bool {
+    value.starts_with("ripr saw a test reaching public API that may call toward this change")
+        || value.starts_with(
+            "ripr saw a test reaching a Rust entry point whose path toward this change",
+        )
+}
+
+pub(super) fn wrap_human_prose(
+    value: &str,
+    first_prefix: &str,
+    continuation_prefix: &str,
+) -> String {
+    let mut rendered = String::new();
+    let mut line_len = first_prefix.chars().count();
+    let mut prefix = first_prefix;
+    for word in value.split_whitespace() {
+        let word_len = word.chars().count();
+        let separator_len = usize::from(line_len > prefix.chars().count());
+        if line_len + separator_len + word_len > HUMAN_PROSE_WRAP_COLUMN
+            && line_len > prefix.chars().count()
+        {
+            rendered.push('\n');
+            rendered.push_str(continuation_prefix);
+            prefix = continuation_prefix;
+            line_len = prefix.chars().count();
+        }
+        if line_len > prefix.chars().count() {
+            rendered.push(' ');
+            line_len += 1;
+        }
+        rendered.push_str(word);
+        line_len += word_len;
+    }
+    format!("{first_prefix}{rendered}")
 }
 
 /// Emit preview-language advisory notes when preview-language files were
@@ -2403,12 +2441,13 @@ mod tests {
             "expected honesty note; got:\n{rendered}"
         );
         assert!(
-            rendered.contains("A test may already exercise these changes through macros"),
+            rendered.contains("A test may already exercise these changes through")
+                && rendered.contains("macros, helper-call chains"),
             "expected honest untraced-test wording; got:\n{rendered}"
         );
         assert!(
             rendered.contains(
-                "Scope analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related test(s)."
+                "analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related"
             ),
             "expected scope-count disclosure; got:\n{rendered}"
         );
@@ -2487,10 +2526,24 @@ mod tests {
         let rendered = render(&output);
 
         assert!(
-            rendered.contains(
-                "Scope analyzed: 2 changed expression(s) and 1 statically linked related test(s)."
-            ),
+            rendered.contains("analyzed: 2 changed expression(s) and 1 statically linked related"),
             "expected related-test count disclosure; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn human_advisory_prose_wrap_preserves_words_and_fixed_width() {
+        let prose = "ripr saw a test reaching public API that may call toward this change through a transitive path it does not fully trace (pub to pub(crate) helper chains, macros, or generics). This is not a coverage assessment -- ripr cannot confirm or deny that the change is observed.";
+        let wrapped = super::wrap_human_prose(prose, "  - ", "    ");
+
+        assert!(wrapped.lines().all(|line| line.chars().count() <= 100));
+        assert_eq!(
+            wrapped
+                .trim_start_matches("  - ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            prose
         );
     }
 

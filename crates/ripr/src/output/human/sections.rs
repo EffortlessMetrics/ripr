@@ -17,6 +17,7 @@ use crate::output::typescript_preview_card::{
 };
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
+use super::{is_wrappable_advisory_prose, wrap_human_prose};
 
 pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &RiprConfig) -> String {
     let mut out = String::new();
@@ -176,7 +177,12 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
 
     out.push_str("\nEvidence\n");
     for line in evidence_path_lines(finding) {
-        out.push_str(&format!("  - {line}\n"));
+        if is_wrappable_advisory_prose(&line) {
+            out.push_str(&wrap_human_prose(&line, "  - ", "    "));
+        } else {
+            out.push_str(&format!("  - {line}"));
+        }
+        out.push('\n');
     }
 
     let weakness = weakness_lines(finding);

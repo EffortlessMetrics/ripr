@@ -252,3 +252,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: wrap long human advisory prose at a fixed 100-column boundary for #2784
+
+Command:
+`cargo xtask goldens bless python_mixed_language_no_cross_route --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
