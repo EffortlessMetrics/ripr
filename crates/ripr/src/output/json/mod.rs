@@ -168,6 +168,37 @@ mod tests {
             prop_assert_eq!(&value["tool"], &serde_json::json!(tool));
             prop_assert!(value["findings"].is_array());
         }
+
+        #[test]
+        fn proptest_finding_serde_round_trips_arbitrary_text(
+            id in any::<String>(),
+            expression in any::<String>(),
+            recommended_next_step in prop::option::of(any::<String>()),
+            missing in proptest::collection::vec(any::<String>(), 0..8),
+        ) {
+            let mut finding = unknown_finding();
+            finding.id = id;
+            finding.probe.expression = expression;
+            finding.recommended_next_step = recommended_next_step;
+            finding.missing = missing;
+
+            let serialized = match serde_json::to_string(&finding) {
+                Ok(serialized) => serialized,
+                Err(error) => {
+                    prop_assert!(false, "Finding must serialize to JSON: {error}");
+                    return Ok(());
+                }
+            };
+            let reparsed = match serde_json::from_str::<Finding>(&serialized) {
+                Ok(reparsed) => reparsed,
+                Err(error) => {
+                    prop_assert!(false, "serialized Finding must deserialize: {error}");
+                    return Ok(());
+                }
+            };
+
+            prop_assert_eq!(reparsed, finding);
+        }
     }
 
     fn partial_scope_fixture() -> crate::analysis::PartialDiffScope {
