@@ -10306,14 +10306,18 @@ fn parse_reason_rejects_missing_or_malformed_spec_ids() {
 }
 
 #[test]
-fn validate_bless_reason_rejects_unknown_spec_ids() {
-    assert_eq!(
-        validate_bless_reason("RIPR-SPEC-0001: valid existing spec"),
+fn validate_bless_reason_rejects_unknown_spec_ids() -> Result<(), String> {
+    with_repo_cwd(|| {
+        validate_bless_reason("RIPR-SPEC-0001: valid existing spec")?;
+        let error = match validate_bless_reason("RIPR-SPEC-9999: not a repository spec") {
+            Ok(()) => return Err("unknown spec id must not be accepted".to_string()),
+            Err(error) => error,
+        };
+        if !error.contains("RIPR-SPEC-9999") {
+            return Err(format!("unknown spec error omitted the id: {error}"));
+        }
         Ok(())
-    );
-    let error = validate_bless_reason("RIPR-SPEC-9999: not a repository spec")
-        .expect_err("unknown spec ids must not be accepted");
-    assert!(error.contains("RIPR-SPEC-9999"));
+    })
 }
 
 #[test]
