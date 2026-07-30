@@ -43,6 +43,7 @@ mod tests {
         RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
         Summary, SymbolId, ValueContext, ValueFact,
     };
+    use proptest::prelude::*;
     use std::path::PathBuf;
 
     #[test]
@@ -123,6 +124,50 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("\"base\": \"origin/main\""));
+    }
+
+    // --- Property-based tests (#2751) ---
+    //
+    // The JSON report is assembled by hand so that its field order stays
+    // stable for review and golden artifacts. Arbitrary text must therefore
+    // remain valid JSON after every manual escaping boundary.
+    proptest! {
+        #[test]
+        fn proptest_render_preserves_top_level_text_and_emits_valid_json(
+            schema_version in any::<String>(),
+            tool in any::<String>(),
+            base in prop::option::of(any::<String>()),
+            expression in any::<String>(),
+            recommended_next_step in prop::option::of(any::<String>()),
+            missing in proptest::collection::vec(any::<String>(), 0..8),
+        ) {
+            let mut output = sample_output(base);
+            output.schema_version = schema_version.clone();
+            output.tool = tool.clone();
+            let finding = match output.findings.first_mut() {
+                Some(finding) => finding,
+                None => {
+                    prop_assert!(false, "the sample output must contain a finding");
+                    return Ok(());
+                }
+            };
+            finding.probe.expression = expression;
+            finding.recommended_next_step = recommended_next_step;
+            finding.missing = missing;
+
+            let rendered = render(&output);
+            let value = match serde_json::from_str::<serde_json::Value>(&rendered) {
+                Ok(value) => value,
+                Err(error) => {
+                    prop_assert!(false, "rendered report must be valid JSON: {error}\n{rendered}");
+                    return Ok(());
+                }
+            };
+
+            prop_assert_eq!(&value["schema_version"], &serde_json::json!(schema_version));
+            prop_assert_eq!(&value["tool"], &serde_json::json!(tool));
+            prop_assert!(value["findings"].is_array());
+        }
     }
 
     fn partial_scope_fixture() -> crate::analysis::PartialDiffScope {
