@@ -417,9 +417,36 @@ impl AnalysisAttemptState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum AnalysisFailureKind {
+    AnalysisError,
+    TaskFailure,
+    RootProjection,
+    SnapshotCommitFailure,
+    ConfigInvalid,
+    ConfigPullFailed,
+    ConfigPullInvalid,
+    SessionStateInconsistent,
+}
+
+impl AnalysisFailureKind {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::AnalysisError => "analysis_error",
+            Self::TaskFailure => "task_failure",
+            Self::RootProjection => "root_projection",
+            Self::SnapshotCommitFailure => "snapshot_commit_failure",
+            Self::ConfigInvalid => "config_invalid",
+            Self::ConfigPullFailed => "config_pull_failed",
+            Self::ConfigPullInvalid => "config_pull_invalid",
+            Self::SessionStateInconsistent => "session_state_inconsistent",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AnalysisFailure {
-    pub(super) kind: String,
+    pub(super) kind: AnalysisFailureKind,
     pub(super) message: String,
 }
 
@@ -1183,6 +1210,33 @@ mod tests {
             analyzed_saved_digest: Some(digest_of(saved_text)),
             analyzed_input_identity: Some("input:test".to_string()),
             quarantine: None,
+        }
+    }
+
+    #[test]
+    fn analysis_failure_kinds_keep_stable_wire_names() {
+        let cases = [
+            (AnalysisFailureKind::AnalysisError, "analysis_error"),
+            (AnalysisFailureKind::TaskFailure, "task_failure"),
+            (AnalysisFailureKind::RootProjection, "root_projection"),
+            (
+                AnalysisFailureKind::SnapshotCommitFailure,
+                "snapshot_commit_failure",
+            ),
+            (AnalysisFailureKind::ConfigInvalid, "config_invalid"),
+            (AnalysisFailureKind::ConfigPullFailed, "config_pull_failed"),
+            (
+                AnalysisFailureKind::ConfigPullInvalid,
+                "config_pull_invalid",
+            ),
+            (
+                AnalysisFailureKind::SessionStateInconsistent,
+                "session_state_inconsistent",
+            ),
+        ];
+
+        for (kind, expected) in cases {
+            assert_eq!(kind.as_str(), expected);
         }
     }
 

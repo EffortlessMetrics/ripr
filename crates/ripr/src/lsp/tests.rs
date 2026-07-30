@@ -27,8 +27,8 @@ use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
 };
 use super::state::{
-    AnalysisAttemptState, AnalysisSnapshot, DocumentStore, RefreshMetadata, content_digest,
-    format_duration,
+    AnalysisAttemptState, AnalysisFailureKind, AnalysisSnapshot, DocumentStore, RefreshMetadata,
+    content_digest, format_duration,
 };
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
@@ -6994,7 +6994,7 @@ enabled = ["ruby"]
         let Some(failure) = backend.configuration_failure() else {
             return Err("invalid config should pause analysis with a typed failure".to_string());
         };
-        assert_eq!(failure.kind, "config_invalid");
+        assert_eq!(failure.kind, AnalysisFailureKind::ConfigInvalid);
         backend.invalidate_workspace_root_for_test().await;
         assert!(backend.configuration_failure().is_none());
         Ok(())
@@ -7408,10 +7408,10 @@ fn initialize_surfaces_poisoned_client_features_store_as_a_session_failure() -> 
         let failure = backend
             .configuration_failure()
             .ok_or_else(|| "poisoned profile store must surface a session failure".to_string())?;
-        if failure.kind != "session_state_inconsistent" {
+        if failure.kind != AnalysisFailureKind::SessionStateInconsistent {
             return Err(format!(
                 "poisoned profile store surfaced the wrong failure kind: {}",
-                failure.kind
+                failure.kind.as_str()
             ));
         }
         let status = backend
@@ -12284,7 +12284,7 @@ fn failed_refresh_retains_last_snapshot_and_reports_stale_health() -> Result<(),
                 &request,
                 "temporary analysis timeout at /workspace/src/pricing.rs".to_string(),
                 Duration::from_millis(25),
-                "analysis_error",
+                AnalysisFailureKind::AnalysisError,
             )
             .await;
 
@@ -14375,7 +14375,7 @@ fn work_done_progress_failed_end_carries_kind_not_paths() -> Result<(), String> 
                 &request,
                 "analysis blew up at /workspace/src/pricing.rs".to_string(),
                 Duration::from_millis(3),
-                "analysis_error",
+                AnalysisFailureKind::AnalysisError,
             )
             .await;
         backend

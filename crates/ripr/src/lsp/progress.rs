@@ -45,6 +45,7 @@ use tower_lsp_server::ls_types::{
 };
 
 use super::refresh_scheduler::RefreshRequest;
+use super::state::AnalysisFailureKind;
 
 /// Lifecycle phase of an accepted analysis request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,7 +83,7 @@ pub(super) enum AnalysisProgressEnd {
     /// Analysis or analysis task failed (carries the internal failure kind
     /// tag, e.g. `analysis_error`/`task_failure`; never the raw error, which
     /// may contain paths).
-    Failed(Option<String>),
+    Failed(Option<AnalysisFailureKind>),
     Cancelled,
     /// The physical refresh deadline (#1972) expired mid-attempt; the
     /// refresh was dropped fail-closed with no committed limited snapshot.
@@ -96,7 +97,7 @@ impl AnalysisProgressEnd {
         match self {
             Self::Complete => "analysis complete".to_string(),
             Self::Limited(run_status) => format!("analysis limited (run status: {run_status})"),
-            Self::Failed(Some(kind)) => format!("analysis failed ({kind})"),
+            Self::Failed(Some(kind)) => format!("analysis failed ({})", kind.as_str()),
             Self::Failed(None) => "analysis failed".to_string(),
             Self::Cancelled => "analysis cancelled".to_string(),
             Self::DeadlineExceeded => "analysis deadline exceeded".to_string(),
@@ -867,7 +868,7 @@ mod tests {
         let ends = vec![
             AnalysisProgressEnd::Complete,
             AnalysisProgressEnd::Limited("cache_limited".to_string()),
-            AnalysisProgressEnd::Failed(Some("task_failure".to_string())),
+            AnalysisProgressEnd::Failed(Some(AnalysisFailureKind::TaskFailure)),
             AnalysisProgressEnd::Failed(None),
             AnalysisProgressEnd::Cancelled,
             AnalysisProgressEnd::Superseded,

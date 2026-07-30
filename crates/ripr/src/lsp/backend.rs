@@ -24,10 +24,10 @@ use super::refresh_scheduler::{
     RefreshScope,
 };
 use super::state::{
-    AnalysisAttemptState, AnalysisFailure, AnalysisHealth, AnalysisSnapshot, ConfigPullState,
-    DocumentStalenessReason, DocumentStore, QuarantineTransition, WorkspaceFolderEventRejection,
-    WorkspaceFolderSelection, WorkspaceFolderSet, WorkspaceRootAuthority, WorkspaceRootState,
-    content_digest, format_duration,
+    AnalysisAttemptState, AnalysisFailure, AnalysisFailureKind, AnalysisHealth, AnalysisSnapshot,
+    ConfigPullState, DocumentStalenessReason, DocumentStore, QuarantineTransition,
+    WorkspaceFolderEventRejection, WorkspaceFolderSelection, WorkspaceFolderSet,
+    WorkspaceRootAuthority, WorkspaceRootState, content_digest, format_duration,
 };
 use super::uri::{
     absolute_join, display_path, file_uri_for_path, file_uri_is_within_root, file_uris_match,
@@ -437,7 +437,7 @@ impl Backend {
                         request,
                         err,
                         started.elapsed(),
-                        "analysis_error",
+                        AnalysisFailureKind::AnalysisError,
                     )
                     .await;
                     return RefreshAttemptOutcome::Failed;
@@ -460,7 +460,7 @@ impl Backend {
                         request,
                         format!("analysis task failed: {err}"),
                         started.elapsed(),
-                        "task_failure",
+                        AnalysisFailureKind::TaskFailure,
                     )
                     .await;
                     return RefreshAttemptOutcome::Failed;
@@ -484,7 +484,7 @@ impl Backend {
                 request,
                 "diagnostic projection escaped the selected workspace root".to_string(),
                 started.elapsed(),
-                "root_projection",
+                AnalysisFailureKind::RootProjection,
             )
             .await;
             return RefreshAttemptOutcome::Failed;
@@ -496,7 +496,7 @@ impl Backend {
                 request,
                 "diagnostic snapshot was inconsistent with publish batches".to_string(),
                 started.elapsed(),
-                "analysis_error",
+                AnalysisFailureKind::AnalysisError,
             )
             .await;
             return RefreshAttemptOutcome::Failed;
@@ -710,7 +710,7 @@ impl Backend {
                 request,
                 "could not commit the completed diagnostic snapshot".to_string(),
                 started.elapsed(),
-                "snapshot_commit_failure",
+                AnalysisFailureKind::SnapshotCommitFailure,
             )
             .await;
             return RefreshAttemptOutcome::Failed;
@@ -756,7 +756,7 @@ impl Backend {
         request: &RefreshRequest,
         message: String,
         duration: Duration,
-        kind: &str,
+        kind: AnalysisFailureKind,
     ) {
         self.client
             .log_message(
@@ -1334,7 +1334,12 @@ impl Backend {
         health.pending_scope = Some(request.scope.as_str().to_string());
     }
 
-    fn mark_attempt_failed(&self, request: &RefreshRequest, kind: &str, message: &str) {
+    fn mark_attempt_failed(
+        &self,
+        request: &RefreshRequest,
+        kind: AnalysisFailureKind,
+        message: &str,
+    ) {
         let Ok(mut health) = self.analysis_health.lock() else {
             return;
         };
@@ -1343,7 +1348,7 @@ impl Backend {
         health.reason = Some(request.reason.as_str().to_string());
         health.requested_scope = Some(request.scope.as_str().to_string());
         health.failure = Some(AnalysisFailure {
-            kind: kind.to_string(),
+            kind,
             message: bounded_failure_message(message),
         });
     }
@@ -1508,7 +1513,7 @@ impl Backend {
                 "state": pull_state.as_str(),
                 "epoch": self.config_pull_epoch.load(Ordering::Relaxed),
                 "failure": pull_state.failure().map(|failure| serde_json::json!({
-                    "kind": failure.kind,
+                    "kind": failure.kind.as_str(),
                     "message": failure.message,
                 })),
                 "recovery_route": pull_state.recovery_route(),
@@ -1541,7 +1546,7 @@ impl Backend {
                 .map(|config| config.diagnostic_profile.as_str())
                 .unwrap_or("actionable"),
             "failure": health.failure.clone().map(|failure| serde_json::json!({
-                "kind": failure.kind,
+                "kind": failure.kind.as_str(),
                 "message": failure.message,
             })),
             "pending": health.pending(),
@@ -1874,16 +1879,16 @@ impl Backend {
     }
 
     pub(super) fn set_configuration_failure(&self, message: impl Into<String>) {
-        self.record_blocking_failure("config_invalid", message);
+        self.record_blocking_failure(AnalysisFailureKind::ConfigInvalid, message);
     }
 
     /// Record a failure that pauses analysis until the session state is
     /// repaired: the typed failure lands in `configuration_failure` and the
     /// analysis health so the status payload discloses it instead of
     /// presenting an internally inconsistent session as normal.
-    fn record_blocking_failure(&self, kind: &str, message: impl Into<String>) {
+    fn record_blocking_failure(&self, kind: AnalysisFailureKind, message: impl Into<String>) {
         let failure = AnalysisFailure {
-            kind: kind.to_string(),
+            kind,
             message: bounded_failure_message(&message.into()),
         };
         if let Ok(mut current) = self.configuration_failure.lock() {
@@ -1906,7 +1911,7 @@ impl Backend {
             && health
                 .failure
                 .as_ref()
-                .is_some_and(|failure| failure.kind == "config_invalid")
+                .is_some_and(|failure| failure.kind == AnalysisFailureKind::ConfigInvalid)
         {
             health.failure = None;
             health.state = AnalysisAttemptState::Stopped;
@@ -2086,7 +2091,7 @@ impl Backend {
             Ok(uri) => uri,
             Err(error) => {
                 self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
-                    kind: "config_pull_failed".to_string(),
+                    kind: AnalysisFailureKind::ConfigPullFailed,
                     message: bounded_failure_message(&format!(
                         "workspace/configuration scope URI for the selected root is invalid: {error}"
                     )),
@@ -2120,7 +2125,7 @@ impl Backend {
                 }
                 Err(message) => {
                     self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
-                        kind: "config_pull_invalid".to_string(),
+                        kind: AnalysisFailureKind::ConfigPullInvalid,
                         message: bounded_failure_message(&message),
                     }));
                     self.publish_analysis_status().await;
@@ -2128,7 +2133,7 @@ impl Backend {
             },
             Err(error) => {
                 self.set_config_pull_state(ConfigPullState::Failed(AnalysisFailure {
-                    kind: "config_pull_failed".to_string(),
+                    kind: AnalysisFailureKind::ConfigPullFailed,
                     message: bounded_failure_message(&format!(
                         "workspace/configuration request failed: {error}"
                     )),
@@ -3273,7 +3278,7 @@ impl LanguageServer for Backend {
                 )
                 .await;
             self.record_blocking_failure(
-                "session_state_inconsistent",
+                AnalysisFailureKind::SessionStateInconsistent,
                 "client feature profile could not be stored after initialize negotiation; analysis is paused",
             );
             self.publish_analysis_status().await;
@@ -4957,7 +4962,7 @@ fn top_limitation_dto(
             health
                 .failure
                 .as_ref()
-                .map(|failure| format!("{}: {}", failure.kind, failure.message))
+                .map(|failure| format!("{}: {}", failure.kind.as_str(), failure.message))
                 .unwrap_or_else(|| why_not_actionable.to_string()),
             recovery_route,
             Vec::new(),
