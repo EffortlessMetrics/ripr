@@ -1,0 +1,40 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_long_expression_display_bound/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE fixtures/rust_long_expression_display_bound/input/src/lib.rs:10
+
+Changed
+  before: if decisions.iter().filter(|d| d.decision == "blocking").count() == 0 { "none".to_string() } else { decisions.iter().find(|d| d.decision == "blocking").map(|d| d.gate_rea
+          son.clone()).unwrap_or_else(|| fallback.to_string()) }
+  after:  decisions.iter().filter(|d| d.decision == "blocking").count() == 0
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::blocking_reason
+
+Static exposure
+  propagation_unknown (note, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests appear to reach blocking_reason: single_blocking_decision_reports_its_reason
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - related test src/lib.rs:25 single_blocking_decision_reports_its_reason uses strong exact value oracle: assert_eq!(blocking_reason(&decisions, "unknown"), "stale_baseline");
+  - observed assertion argument value "stale_baseline" at line 27
+  - observed function argument value fallback = "unknown" at line 27
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - missing discriminator decisions.iter().filter(|d| d.decision == "blocking").count() == 0: No related test call uses decisions.iter().filter(|d| d.decision equal to "blocking").count() == 0; observed decisions.iter().filter(|d| d.decision values: unknown; target "blocking").count() == 0 value: "blocking"
+
+Stop reasons:
+  - propagation_evidence_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.

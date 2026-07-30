@@ -1,0 +1,98 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_long_expression_display_bound/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:9b6a6cdb",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:9b6a6cdb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_long_expression_display_bound/input/src/lib.rs",
+        "line": 10,
+        "expression": "decisions.iter().filter(|d| d.decision == \"blocking\").count() == 0"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach blocking_reason: single_blocking_decision_reports_its_reason"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach blocking_reason: single_blocking_decision_reports_its_reason", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test src/lib.rs:25 single_blocking_decision_reports_its_reason uses strong exact value oracle: assert_eq!(blocking_reason(&decisions, \"unknown\"), \"stale_baseline\");", "observed assertion argument value \"stale_baseline\" at line 27", "observed function argument value fallback = \"unknown\" at line 27", "missing discriminator decisions.iter().filter(|d| d.decision == \"blocking\").count() == 0: No related test call uses decisions.iter().filter(|d| d.decision equal to \"blocking\").count() == 0; observed decisions.iter().filter(|d| d.decision values: unknown; target \"blocking\").count() == 0 value: \"blocking\""],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach blocking_reason: single_blocking_decision_reports_its_reason", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: decisions.iter().filter(|d| d.decision == \"blocking\").count() == 0", "No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "27": "assert_eq!(blocking_reason(&decisions, \"unknown\"), \"stale_baseline\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 27,
+            "value": "\"stale_baseline\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 27,
+            "value": "fallback = \"unknown\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "decisions.iter().filter(|d| d.decision == \"blocking\").count() == 0",
+            "reason": "No related test call uses decisions.iter().filter(|d| d.decision equal to \"blocking\").count() == 0; observed decisions.iter().filter(|d| d.decision values: unknown; target \"blocking\").count() == 0 value: \"blocking\"",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 27,
+          "value": "\"stale_baseline\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 27,
+          "value": "fallback = \"unknown\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "decisions.iter().filter(|d| d.decision == \"blocking\").count() == 0",
+          "reason": "No related test call uses decisions.iter().filter(|d| d.decision equal to \"blocking\").count() == 0; observed decisions.iter().filter(|d| d.decision values: unknown; target \"blocking\").count() == 0 value: \"blocking\"",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "single_blocking_decision_reports_its_reason",
+          "file": "src/lib.rs",
+          "line": 25,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(blocking_reason(&decisions, \"unknown\"), \"stale_baseline\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust"
+    }
+  ]
+}
