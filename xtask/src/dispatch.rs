@@ -58,6 +58,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::LspCockpitReport => super::reports::lsp_cockpit_report(),
         XtaskCommand::OperatorCockpitReport => super::reports::operator_cockpit_report(),
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),
+        XtaskCommand::BumpVersion(args) => super::version::bump_version(&args),
         XtaskCommand::ReleaseControl(args) => super::reports::release_control(&args),
         XtaskCommand::ReleaseDenominator(args) => super::reports::release_denominator(&args),
         XtaskCommand::ReleaseScope(args) => super::reports::release_scope(&args),

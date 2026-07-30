@@ -36,6 +36,7 @@ mod reports;
 mod ripr_swarm;
 mod run;
 mod verification_contracts;
+mod version;
 mod windows_advisory;
 
 use command::{

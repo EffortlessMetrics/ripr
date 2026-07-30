@@ -26,6 +26,22 @@ For every public version claim, record the boundary explicitly:
 `rehearsal | promoted | tagged | published`, with the source SHA, the public
 tag/release URL in `EffortlessMetrics/ripr`, and the promotion evidence.
 
+## Preparing a version bump
+
+From a clean swarm checkout, use the gated version command instead of editing
+the three release manifests independently:
+
+```bash
+cargo xtask bump-version 0.11.0
+```
+
+The command requires the workspace version, editors/vscode/package.json, and
+both root version fields in editors/vscode/package-lock.json to agree before
+it writes. It preserves the existing JSON formatting, validates the resulting
+Cargo workspace with cargo metadata, and restores the original files if a
+write or validation step fails. It changes files only; review and commit the
+result as a normal release-prep PR.
+
 ## Checking release state (audit contract)
 
 Any release or status audit must name the repository it queries and fail
