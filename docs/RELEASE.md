@@ -66,7 +66,10 @@ public vocabulary, asset verification) that the v0.5.0 release surfaced.
   `version.workspace = true` and declares no version of its own (#2711).
 - `editors/vscode/package.json` and its `package-lock.json` match that version.
   `cargo xtask release-readiness` checks this as `extension-version-match`; a
-  mismatch fails the marketplace publish (#1283).
+  mismatch fails the marketplace publish (#1283). The check compares all four
+  declarations — `[workspace.package] version`, `package.json`, and both places
+  `package-lock.json` records the version — against the `--version` you pass, so
+  running it before the bump lands is a hard fail rather than a pass.
 - For the defaults-first public install line, the version is newer than
   `0.3.0`; `0.3.0` predates `ripr pilot` and `ripr outcome`.
 - The root workspace uses Rust edition `2024`.
@@ -86,7 +89,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo xtask check-product-copy
 cargo xtask check-generated-clean
-cargo xtask release-readiness --version 0.8.0
+cargo xtask release-readiness --version 0.11.0   # the version you are cutting
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
