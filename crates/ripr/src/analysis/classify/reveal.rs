@@ -535,103 +535,246 @@ fn build_discriminate_evidence(
     }
 }
 
+/// Typed family/kind relationships are kept in data so the supported oracle
+/// shapes can be audited without following nested family and kind matches.
+/// Text heuristics remain below because they are intentionally conservative
+/// fallback signals, not typed oracle classifications. `ProbeFamily::StaticUnknown`
+/// has no typed relationships.
+const ORACLE_FAMILY_MATCHES: &[(ProbeFamily, OracleKind)] = &[
+    (ProbeFamily::ErrorPath, OracleKind::ExactErrorVariant),
+    (ProbeFamily::ErrorPath, OracleKind::BroadError),
+    (ProbeFamily::SideEffect, OracleKind::MockExpectation),
+    (ProbeFamily::FieldConstruction, OracleKind::ExactValue),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::WholeObjectEquality,
+    ),
+    (ProbeFamily::FieldConstruction, OracleKind::RelationalCheck),
+    (ProbeFamily::FieldConstruction, OracleKind::Snapshot),
+    (ProbeFamily::Predicate, OracleKind::ExactValue),
+    (ProbeFamily::Predicate, OracleKind::RelationalCheck),
+    (ProbeFamily::Predicate, OracleKind::ExactErrorVariant),
+    (ProbeFamily::Predicate, OracleKind::Snapshot),
+    (ProbeFamily::ReturnValue, OracleKind::ExactValue),
+    (ProbeFamily::ReturnValue, OracleKind::WholeObjectEquality),
+    (ProbeFamily::ReturnValue, OracleKind::RelationalCheck),
+    (ProbeFamily::ReturnValue, OracleKind::Snapshot),
+    (ProbeFamily::ReturnValue, OracleKind::SmokeOnly),
+    (ProbeFamily::CallDeletion, OracleKind::MockExpectation),
+    (ProbeFamily::CallDeletion, OracleKind::ExactValue),
+    (ProbeFamily::CallDeletion, OracleKind::RelationalCheck),
+    (ProbeFamily::CallDeletion, OracleKind::SmokeOnly),
+    (ProbeFamily::MatchArm, OracleKind::ExactErrorVariant),
+    (ProbeFamily::MatchArm, OracleKind::ExactValue),
+    (ProbeFamily::MatchArm, OracleKind::RelationalCheck),
+    (ProbeFamily::MatchArm, OracleKind::Snapshot),
+];
+
+/// Family-specific strength overrides. A missing entry preserves the
+/// classifier's parsed assertion strength; entries are only for kinds whose
+/// relative strength is fixed by the probe family.
+const ORACLE_FAMILY_STRENGTH_OVERRIDES: &[(ProbeFamily, OracleKind, OracleStrength)] = &[
+    (
+        ProbeFamily::ErrorPath,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ErrorPath,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Medium,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Medium,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::StaticUnknown,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+];
+
 fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
+    let typed_match = ORACLE_FAMILY_MATCHES
+        .iter()
+        .any(|(rule_family, rule_kind)| rule_family == family && rule_kind == &assertion.kind);
     let text = assertion.text.as_str();
-    match family {
-        ProbeFamily::ErrorPath => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactErrorVariant | OracleKind::BroadError
-            ) || text.contains("Error::")
-                || text.contains("Err")
-        }
+    let text_match = match family {
+        ProbeFamily::ErrorPath => text.contains("Error::") || text.contains("Err"),
         ProbeFamily::SideEffect => {
-            matches!(assertion.kind, OracleKind::MockExpectation)
-                || text.contains("expect")
+            text.contains("expect")
                 || text.contains("mock")
                 || text.contains("saved")
                 || text.contains("published")
         }
-        ProbeFamily::FieldConstruction => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactValue
-                    | OracleKind::WholeObjectEquality
-                    | OracleKind::RelationalCheck
-                    | OracleKind::Snapshot
-            ) || text.contains('.')
-        }
-        ProbeFamily::Predicate => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactValue
-                    | OracleKind::RelationalCheck
-                    | OracleKind::ExactErrorVariant
-                    | OracleKind::Snapshot
-            )
-        }
-        ProbeFamily::ReturnValue => [
-            OracleKind::ExactValue,
-            OracleKind::WholeObjectEquality,
-            OracleKind::RelationalCheck,
-            OracleKind::Snapshot,
-            OracleKind::SmokeOnly,
-        ]
-        .contains(&assertion.kind),
-        ProbeFamily::CallDeletion => {
-            matches!(
-                assertion.kind,
-                OracleKind::MockExpectation
-                    | OracleKind::ExactValue
-                    | OracleKind::RelationalCheck
-                    | OracleKind::SmokeOnly
-            ) || text.contains("assert")
-                || text.contains("expect")
-        }
-        ProbeFamily::MatchArm => [
-            OracleKind::ExactErrorVariant,
-            OracleKind::ExactValue,
-            OracleKind::RelationalCheck,
-            OracleKind::Snapshot,
-        ]
-        .contains(&assertion.kind),
-        ProbeFamily::StaticUnknown => false,
-    }
+        ProbeFamily::FieldConstruction => text.contains('.'),
+        ProbeFamily::CallDeletion => text.contains("assert") || text.contains("expect"),
+        ProbeFamily::Predicate
+        | ProbeFamily::ReturnValue
+        | ProbeFamily::MatchArm
+        | ProbeFamily::StaticUnknown => false,
+    };
+    typed_match || text_match
 }
 
 fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) -> OracleStrength {
-    match family {
-        ProbeFamily::ErrorPath => match assertion.kind {
-            OracleKind::ExactErrorVariant => OracleStrength::Strong,
-            OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            _ => assertion.strength.clone(),
-        },
-        ProbeFamily::ReturnValue
-        | ProbeFamily::Predicate
-        | ProbeFamily::FieldConstruction
-        | ProbeFamily::MatchArm => match assertion.kind {
-            OracleKind::ExactValue
-            | OracleKind::ExactErrorVariant
-            | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::Snapshot
-            | OracleKind::MockExpectation
-            | OracleKind::RelationalCheck
-            | OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            OracleKind::Unknown => OracleStrength::Unknown,
-        },
-        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => match assertion.kind {
-            OracleKind::MockExpectation => assertion.strength.clone(),
-            OracleKind::ExactValue | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::RelationalCheck | OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            OracleKind::ExactErrorVariant => OracleStrength::Medium,
-            OracleKind::Snapshot => assertion.strength.clone(),
-            OracleKind::Unknown => OracleStrength::Unknown,
-        },
-        ProbeFamily::StaticUnknown => OracleStrength::Unknown,
+    if matches!(family, ProbeFamily::StaticUnknown) {
+        return OracleStrength::Unknown;
     }
+    ORACLE_FAMILY_STRENGTH_OVERRIDES
+        .iter()
+        .find(|(rule_family, rule_kind, _)| rule_family == family && rule_kind == &assertion.kind)
+        .map_or_else(
+            || assertion.strength.clone(),
+            |(_, _, strength)| strength.clone(),
+        )
 }
 
 #[cfg(test)]
