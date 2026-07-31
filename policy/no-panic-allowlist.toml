@@ -14,7 +14,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -29,7 +29,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -44,7 +44,7 @@ family = "expect"
 classification = "test_only"
 explanation = "Test harness: expects supported test intent kinds to parse successfully"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -58,7 +58,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -73,7 +73,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -87,7 +87,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -101,7 +101,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -115,7 +115,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -129,7 +129,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -143,7 +143,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -157,7 +157,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: panic findings collection validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -171,7 +171,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 allowlist parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -185,7 +185,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.1 backward compatibility validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -199,7 +199,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 missing fields validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -213,7 +213,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-03-31"
 
 [allow.selector]
 kind = "method_call"
@@ -232,7 +232,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -251,7 +251,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories in test"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -270,7 +270,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories in test"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -289,7 +289,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories in test"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -308,7 +308,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -327,7 +327,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -346,7 +346,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -365,7 +365,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -384,7 +384,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 owner = "core/analysis"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -403,7 +403,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for running CLI tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -422,7 +422,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for finding workspace root"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -441,7 +441,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: creates temporary directories for test isolation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -456,7 +456,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: writes test files to temporary directory"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -471,7 +471,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: saves current working directory before test"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -486,7 +486,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: switches into a temporary working directory"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -501,7 +501,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test harness: restores the previous working directory"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -516,7 +516,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 owner = "test-infra"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -531,7 +531,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "Test helper for running CLI tests with extra env vars; same pattern as run_ripr"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-06-30"
 
 [allow.selector]
 kind = "method_call"
@@ -549,7 +549,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: create_dir_all src for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -568,7 +568,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git init for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -587,7 +587,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git config user.email; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -606,7 +606,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git config user.name; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -625,7 +625,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: fs::write src/lib.rs in temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -644,7 +644,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: fs::write Cargo.toml in temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -663,7 +663,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git add in temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -682,7 +682,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git commit in temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -701,7 +701,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: Command::output() in temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -720,7 +720,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: create_dir_all for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -739,7 +739,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git init for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -758,7 +758,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git config user.email; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -777,7 +777,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git config user.name; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -796,7 +796,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: fs::write src/lib.rs in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -815,7 +815,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: fs::write Cargo.toml in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -834,7 +834,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git add in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -853,7 +853,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: run_git commit in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -872,7 +872,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0083 regression guard smoke test: Command::output() with --base scope; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -891,7 +891,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: create_dir_all src for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -910,7 +910,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: git init in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -929,7 +929,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: git config user.email in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -948,7 +948,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: git config user.name in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-09-30"
 
 [allow.selector]
 kind = "method_call"
@@ -967,7 +967,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: write src/lib.rs baseline in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -986,7 +986,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: write Cargo.toml in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1005,7 +1005,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: git add . in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1024,7 +1024,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: git commit initial in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1043,7 +1043,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: write uncommitted edit to src/lib.rs; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1062,7 +1062,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: run ripr check --base HEAD --json; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1081,7 +1081,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 smoke test: run ripr check --base HEAD (human); canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1100,7 +1100,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: create_dir_all src for temp git repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1119,7 +1119,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git init in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1138,7 +1138,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git config user.email in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1157,7 +1157,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git config user.name in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1176,7 +1176,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: write src/lib.rs in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1195,7 +1195,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: write Cargo.toml in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1214,7 +1214,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git add . in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1233,7 +1233,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: git commit initial in temp repo; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -1252,7 +1252,7 @@ family = "unwrap"
 classification = "test_only"
 explanation = "RIPR-SPEC-0112 clean-worktree smoke test: run ripr check --base HEAD --json; canonical fail-fast pattern for binary integration tests"
 owner = "core/cli"
-expires = "2026-12-31"
+expires = "2027-12-31"
 
 [allow.selector]
 kind = "method_call"
