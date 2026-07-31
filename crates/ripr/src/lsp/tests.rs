@@ -48,6 +48,7 @@ use crate::domain::{
     RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
     StaticLimitKind, ValueContext, ValueFact,
 };
+use serial_test::serial;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7679,6 +7680,7 @@ fn framed_lsp_configuration_pull_applies_and_discloses_pull_state() -> Result<()
 }
 
 #[test]
+#[serial]
 fn framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_release()
 -> Result<(), String> {
     // Regression pin for the deferred-pull deadlock (#2031 review): the pull
@@ -7898,6 +7900,7 @@ fn framed_lsp_deferred_configuration_pull_runs_after_root_transition_guard_relea
 }
 
 #[test]
+#[serial]
 fn framed_lsp_root_switch_repulls_scoped_to_new_root() -> Result<(), String> {
     // Regression pin for the root-switch re-pull (#2031 review): pulled
     // settings are scoped to the root URI, so leaving a selected root in
@@ -8143,6 +8146,7 @@ fn framed_lsp_root_switch_repulls_scoped_to_new_root() -> Result<(), String> {
 }
 
 #[test]
+#[serial]
 fn framed_lsp_direct_root_switch_repulls_on_reselection() -> Result<(), String> {
     // Regression pin for the direct A -> B root switch (#2031 review): one
     // didChangeWorkspaceFolders returning [B] rewrites the authority to the
