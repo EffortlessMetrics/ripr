@@ -39,6 +39,7 @@ What are you trying to do?
   Work in an editor      ripr lsp --stdio
   Adopt in CI            ripr init --ci github    (advisory PR summary first)
                          ripr gate evaluate       (only after adoption)
+  Validate config        ripr config validate     (check ripr.toml without running analysis)
 
 More:
   ripr help <command>    Options for one command.
