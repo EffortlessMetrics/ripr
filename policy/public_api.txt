@@ -14,7 +14,7 @@ pub use analysis::PartialDiffStopReason;
 pub use analysis::PreviewLanguageAdvisory;
 pub use app::{
 pub use app::{Mode, OutputFormat};
-pub use domain::{LanguageFileCount, Summary};
 pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
+pub use domain::{LanguageFileCount, Summary};
 pub use output::suppressions::CheckSuppressionOutcome;
 pub use output::suppressions::SuppressedCheckFinding;
