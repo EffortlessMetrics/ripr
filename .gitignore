@@ -1,4 +1,5 @@
 /target
+/a.out
 fixtures/**/target/
 .ripr/release/
 *.profraw
