@@ -876,21 +876,13 @@ fn check_navigation_replays_explicit_draft_over_configured_ready() -> Result<(),
         .ok_or_else(|| format!("explain line has no probe selector:\n{explain_line}"))?
         .to_string();
     let explain_args: Vec<&str> = vec![
-        "explain",
-        "--root", &root_arg,
-        "--diff", &diff_arg,
-        "--mode", "draft",
-        &selector,
+        "explain", "--root", &root_arg, "--diff", &diff_arg, "--mode", "draft", &selector,
     ];
     let explain = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &explain_args)
         .map_err(|err| format!("run explicit-draft explain command: {err}"))?;
     assert_success(&explain);
     let context_args: Vec<&str> = vec![
-        "context",
-        "--root", &root_arg,
-        "--diff", &diff_arg,
-        "--mode", "draft",
-        "--at", &selector,
+        "context", "--root", &root_arg, "--diff", &diff_arg, "--mode", "draft", "--at", &selector,
     ];
     let context = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &context_args)
         .map_err(|err| format!("run explicit-draft context command: {err}"))?;
