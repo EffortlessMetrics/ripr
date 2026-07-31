@@ -7,30 +7,39 @@ import {
   RiprSuggestedAssertionTarget,
   RiprTargetedTestBriefTarget,
 } from './client';
+import {
+  DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS,
+  ExtensionLifecycleCoordinator,
+} from './lifecycleCoordinator';
 
 let controller: RiprClientController | undefined;
-let coalescedStart: Promise<void> | undefined;
+let lifecycleCoordinator = new ExtensionLifecycleCoordinator();
+
+/** Test-only reset for suites that exercise activation-scoped helpers with
+ * independent fake controllers in one extension-host process. Production
+ * activation resets the coordinator before constructing its controller. */
+export function resetLifecycleCoordinatorForTests(): void {
+  lifecycleCoordinator = new ExtensionLifecycleCoordinator();
+}
 
 export async function startServerOnce(
   currentController: Pick<RiprClientController, 'start'> | undefined
 ): Promise<void> {
-  if (!currentController) {
-    return;
-  }
-  if (coalescedStart) {
-    await coalescedStart;
-    return;
-  }
+  await lifecycleCoordinator.start(currentController);
+}
 
-  const start = currentController.start();
-  coalescedStart = start;
-  try {
-    await start;
-  } finally {
-    if (coalescedStart === start) {
-      coalescedStart = undefined;
-    }
-  }
+export async function restartServerOnce(
+  currentController: Pick<RiprClientController, 'start' | 'stop'> | undefined,
+  startSettleBudgetMs = DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS
+): Promise<void> {
+  await lifecycleCoordinator.restart(currentController, startSettleBudgetMs);
+}
+
+export async function stopServerOnce(
+  currentController: Pick<RiprClientController, 'start' | 'stop'> | undefined,
+  startSettleBudgetMs = DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS
+): Promise<void> {
+  await lifecycleCoordinator.stop(currentController, startSettleBudgetMs);
 }
 
 export async function startAfterWorkspaceTrust(
@@ -42,12 +51,23 @@ export async function startAfterWorkspaceTrust(
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('ripr', { log: true });
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  lifecycleCoordinator = new ExtensionLifecycleCoordinator();
   controller = new RiprClientController(context, output, undefined, status);
 
   context.subscriptions.push(
     output,
     status,
-    vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
+    vscode.commands.registerCommand('ripr.restartServer', async () => {
+      try {
+        await restartServerOnce(controller);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        output.appendLine(`ripr server restart failed: ${message}`);
+        void vscode.window.showErrorMessage(
+          `ripr could not restart the server: ${message} Open ripr: Show Output, then retry.`
+        );
+      }
+    }),
     vscode.commands.registerCommand('ripr.refreshDiagnostics', async () =>
       controller?.refreshDiagnostics()
     ),
@@ -208,7 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (zeroToFolderTransition && !controller?.isRunning()) {
         output.appendLine('ripr workspace folder added; starting server session.');
         try {
-          await controller?.start();
+          await startServerOnce(controller);
         } catch (error) {
           output.appendLine(`ripr server start after workspace folder added failed: ${String(error)}`);
         }
@@ -221,7 +241,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         event.affectsConfiguration('ripr.check') ||
         event.affectsConfiguration('ripr.baseRef')
       ) {
-        await controller?.restart();
+        try {
+          await restartServerOnce(controller);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          output.appendLine(`ripr server restart after configuration change failed: ${message}`);
+        }
         return;
       }
       if (event.affectsConfiguration('ripr.trace')) {
@@ -238,6 +263,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
-  await controller?.stop();
+  const currentController = controller;
   controller = undefined;
+  await stopServerOnce(currentController);
 }

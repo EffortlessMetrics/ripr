@@ -2,25 +2,38 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { RiprClientController, RiprClientRuntime } from '../../src/client';
 import { RiprConfig } from '../../src/config';
-import { startAfterWorkspaceTrust, startServerOnce } from '../../src/extension';
+import {
+  resetLifecycleCoordinatorForTests,
+  startAfterWorkspaceTrust,
+  startServerOnce
+} from '../../src/extension';
 
 suite('Workspace Trust Transition', () => {
+  setup(() => {
+    resetLifecycleCoordinatorForTests();
+  });
+
   test('concurrent trust-grant starts coalesce into one controller start', async () => {
     let releaseStart: (() => void) | undefined;
     const startGate = new Promise<void>((resolve) => {
       releaseStart = resolve;
     });
+    let signalStartEntered: (() => void) | undefined;
+    const startEntered = new Promise<void>((resolve) => {
+      signalStartEntered = resolve;
+    });
     let startCalls = 0;
     const controller = {
       start: async () => {
         startCalls += 1;
+        signalStartEntered?.();
         await startGate;
       }
     } as Pick<RiprClientController, 'start'>;
 
     const first = startAfterWorkspaceTrust(controller);
     const second = startAfterWorkspaceTrust(controller);
-    await Promise.resolve();
+    await startEntered;
 
     assert.strictEqual(startCalls, 1);
     releaseStart?.();
