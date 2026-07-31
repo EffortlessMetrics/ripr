@@ -864,12 +864,35 @@ fn check_navigation_replays_explicit_draft_over_configured_ready() -> Result<(),
             "explicit draft override was omitted:\n{explain_line}\n{context_line}"
         ));
     }
-    let explain_args = explain_line.split_whitespace().collect::<Vec<_>>();
-    let context_args = context_line.split_whitespace().collect::<Vec<_>>();
-    let explain = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &explain_args[1..])
+    // #2816: Do NOT split_whitespace the Bash-rendered display line into argv.
+    // On Windows, backslash paths are POSIX-single-quoted by the shell_arg
+    // encoder; split_whitespace preserves those quotes as literal bytes,
+    // producing an invalid path (OS error 123). Instead, construct the argv
+    // from known typed values and extract only the finding selector from the
+    // display (it is a simple `probe:...` token with no shell quoting).
+    let selector = explain_line
+        .split_whitespace()
+        .find(|token| token.starts_with("probe:"))
+        .ok_or_else(|| format!("explain line has no probe selector:\n{explain_line}"))?
+        .to_string();
+    let explain_args: Vec<&str> = vec![
+        "explain",
+        "--root", &root_arg,
+        "--diff", &diff_arg,
+        "--mode", "draft",
+        &selector,
+    ];
+    let explain = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &explain_args)
         .map_err(|err| format!("run explicit-draft explain command: {err}"))?;
     assert_success(&explain);
-    let context = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &context_args[1..])
+    let context_args: Vec<&str> = vec![
+        "context",
+        "--root", &root_arg,
+        "--diff", &diff_arg,
+        "--mode", "draft",
+        "--at", &selector,
+    ];
+    let context = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &context_args)
         .map_err(|err| format!("run explicit-draft context command: {err}"))?;
     assert_success(&context);
     Ok(())
