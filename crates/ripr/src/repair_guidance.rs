@@ -1087,6 +1087,93 @@ mod tests {
     }
 
     #[test]
+    fn concrete_guidance_round_trips_with_example_kind_and_basis() -> Result<(), String> {
+        // The one case where a packet legitimately emits paste-ready guidance.
+        // Everything else in this module is about refusing to; this pins that
+        // the permitted path still projects and survives a round trip intact.
+        let discriminator = DiscriminatorAvailability::from_gap_route(GapRouteGuidanceFacts {
+            missing_discriminator: Some("amount == discount_threshold"),
+            ..GapRouteGuidanceFacts::default()
+        })?;
+        let assertion = AssertionGuidance::from_seam_facts(SeamAssertionFacts {
+            basis: Some(AssertionBasis::ObservedValueFact),
+            ..seam_facts(Some("assert_eq!(discounted_total(100), 90)"))
+        })?;
+
+        let view = assertion.view();
+        assert_eq!(view.state, AssertionState::Concrete);
+        assert_eq!(
+            view.example.as_deref(),
+            Some("assert_eq!(discounted_total(100), 90)")
+        );
+        assert_eq!(view.kind, Some(AssertionKind::ExactReturnValue));
+        assert_eq!(view.basis, Some(AssertionBasis::ObservedValueFact));
+        assert_eq!(view.observer_kind, None);
+        assert_eq!(view.reason, None);
+        assert_eq!(view.recovery, None);
+
+        let expected = RepairGuidance::new(&discriminator, &assertion)?;
+        let json = serde_json::to_string(&expected)
+            .map_err(|error| format!("serialize concrete guidance failed: {error}"))?;
+        let actual: RepairGuidance = serde_json::from_str(&json)
+            .map_err(|error| format!("parse concrete guidance failed: {error}"))?;
+        assert_eq!(actual, expected);
+        assert_eq!(actual.semantic_digest()?, expected.semantic_digest()?);
+        Ok(())
+    }
+
+    #[test]
+    fn every_assertion_kind_has_a_distinct_stable_wire_token() -> Result<(), String> {
+        let kinds = [
+            (AssertionKind::ExactReturnValue, "exact_return_value"),
+            (AssertionKind::ExactErrorVariant, "exact_error_variant"),
+            (AssertionKind::FieldEquality, "field_equality"),
+            (AssertionKind::SideEffectObserver, "side_effect_observer"),
+            (AssertionKind::MatchResult, "match_result"),
+            (AssertionKind::CallExpectation, "call_expectation"),
+        ];
+        for (kind, token) in kinds {
+            let guidance = AssertionGuidance::from_seam_facts(SeamAssertionFacts {
+                kind,
+                basis: Some(AssertionBasis::SeamRequiredDiscriminator),
+                ..seam_facts(Some("assert_eq!(actual, 0)"))
+            })?;
+            let json = serde_json::to_value(guidance.view())
+                .map_err(|error| format!("serialize assertion view failed: {error}"))?;
+            assert_eq!(json["kind"], serde_json::json!(token));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_stale_snapshot_suppresses_the_classified_seam_fact_too() -> Result<(), String> {
+        // The gap-ledger adapter's staleness precedence is covered elsewhere;
+        // the classified-seam adapter has the same rule and must not diverge.
+        let fact = MissingDiscriminatorFact {
+            value: "boundary value 0".to_string(),
+            reason: "no test observes the boundary".to_string(),
+            flow_sink: None,
+        };
+        let stale = DiscriminatorAvailability::from_missing_discriminator_fact(Some(&fact), true)?;
+        assert_eq!(
+            stale,
+            DiscriminatorAvailability::Stale {
+                reason: GuidanceReason::SnapshotStale,
+                refresh: GuidanceRecovery::RefreshAnalysis,
+            }
+        );
+        assert_eq!(stale.view().text, None);
+
+        let stale_via_gap = DiscriminatorAvailability::from_gap_route(GapRouteGuidanceFacts {
+            missing_discriminator: Some("boundary value 0"),
+            stale: true,
+            ..GapRouteGuidanceFacts::default()
+        })?;
+        assert_eq!(stale, stale_via_gap);
+        Ok(())
+    }
+
+    #[test]
     fn non_concrete_assertion_states_serialize_example_as_null() -> Result<(), String> {
         let cases = [
             AssertionGuidance::from_seam_facts(SeamAssertionFacts {
