@@ -1,190 +1,356 @@
-# CLAUDE.md
+# Claude Code Instructions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This repository is the product repository for `ripr`, a static
+mutation-exposure analyzer for Rust/Cargo workspaces. This file is the complete
+Claude root instruction set. Do not import or route through `AGENTS.md` or
+`.agents/skills/**`; Codex has its own separate file set.
 
-## Product Contract
+Claude procedures live under `.claude/skills/**`:
 
-`ripr` answers exactly one draft-time question:
-
-> For the behavior changed in this diff, do the current tests appear to contain a discriminator that would notice if that behavior were wrong?
-
-It is a **static** RIPR (Reach-Infect-Propagate-Observe-Discriminate) exposure analyzer. It does **not** run mutants. Keep work aligned with this contract — do not turn `ripr` into a full mutation engine, coverage dashboard, proof system, second rust-analyzer, or generic test generator.
-
-### Language rules (enforced by `cargo xtask check-static-language`)
-
-Findings must use conservative static language only:
-
-- Allowed: `exposed`, `weakly_exposed`, `reachable_unrevealed`, `no_static_path`, `infection_unknown`, `propagation_unknown`, `static_unknown`.
-- Forbidden in static output: `killed`, `survived`, `untested`, `proven`, `adequate`. These belong to runtime mutation testing, not `ripr`.
-
-## Workspace Shape
-
-One published package, one binary, one library — do **not** split into `ripr-core` / `ripr-cli` / `ripr-lsp` / `ripr-engine` / `ripr-schema` until there is a real external contract. The shape is enforced by `cargo xtask check-workspace-shape` against `policy/workspace_shape.txt`.
-
-```
-crates/ripr        # the only published package (lib + bin "ripr")
-xtask              # repo automation, unpublished
-editors/vscode     # VS Code extension that hosts `ripr lsp --stdio`
-docs/              # specs, ADRs, capability matrix, plans, learnings
-fixtures/          # input diffs + expected outputs for golden tests
-policy/            # allowlists for non-Rust files, deps, processes, network, generated files, public API, architecture
-.ripr/             # in-repo state: traceability.toml and allow attribute lists
+```text
+high-level outcome  → deliver-goal
+selected issue/claim or existing PR → deliver-pr
+missing or stale issue premise → prepare-issue
+missing or weak oracle → prepare-proof
+implementation/hardening → build-candidate
+published or existing PR → finish-pr
 ```
 
-### Internal modules (under `crates/ripr/src/`, enforced by `cargo xtask check-architecture`)
+Use the narrowest skill that matches the current state. Enter existing work at
+the earliest missing or stale judgment rather than recreating completed
+ceremony.
 
-- `domain/` — `Probe`, `RiprEvidence`, `OracleStrength`, `ExposureClass`. Pure data, no I/O.
-- `app.rs` — public library API (`check_workspace`, `explain_finding`, `collect_context`) and `CheckInput` / `CheckOutput` / `Mode` / `OutputFormat`.
-- `analysis/` — diff loading (`diff.rs`), syntax index (`rust_index.rs`), probe generation (`probes.rs`), classification (`classifier.rs`), workspace discovery.
-- `output/` — `human`, `json`, `github` renderers. JSON shape is versioned; do not change without updating `docs/OUTPUT_SCHEMA.md`, fixtures, and golden expectations.
-- `cli/` — argv adapter only. All real work goes through `app::*`.
-- `lsp/` — experimental `tower-lsp-server` sidecar (`backend.rs`, `diagnostics.rs`, `hover.rs`, `state.rs`, `actions.rs`).
+## Product contract
 
-Each module has a single product responsibility — parsing, fact extraction, probe generation, classification, orchestration, or rendering. Don't blur seams.
+`ripr` asks:
 
-## Rust Baseline
+```text
+For the behavior changed in this diff, do the current tests appear to contain
+a discriminator that would notice if that behavior were wrong?
+```
 
-- Edition 2024, MSRV `1.95` (pinned in `rust-toolchain.toml` to `1.95.0`).
-- `unsafe_code = "forbid"` workspace-wide. Also denied: `dbg_macro`, `todo`, `unimplemented`, `const_item_interior_mutations`, `function_casts_as_integer`.
-- No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in production or test code (enforced by `cargo xtask check-no-panic-family` against `.ripr/no-panic-allowlist.txt`).
-- Allow-attributes need an entry in `.ripr/allow-attributes.txt` (enforced by `cargo xtask check-allow-attributes`).
+Do not turn RIPR into a full mutation engine, coverage dashboard, proof system,
+second rust-analyzer, or generic test generator.
 
-### Rust-first file policy
+Static findings use conservative vocabulary such as:
 
-Rust is the default for production logic, repo automation, fixture runners, release checks, and policy checks. Adding a non-Rust programming file (shell / Python / JS / TS) requires updating `policy/non_rust_allowlist.txt` and explaining the exception in the PR. The VS Code extension, GitHub Actions YAML, fixture inputs, doc examples, and generated outputs are explicit exceptions covered by policy metadata.
+- `exposed`;
+- `weakly_exposed`;
+- `reachable_unrevealed`;
+- `no_static_path`;
+- `infection_unknown`;
+- `propagation_unknown`;
+- `static_unknown`.
 
-Prefer `cargo xtask <command>` for repo automation rather than scripts.
+Do not claim runtime mutation outcomes or sufficiency from static evidence.
+Real mutation testing remains a later independent authority.
 
-## Common Commands
+## Architecture
 
-### Build, test, lint
+Keep one published package:
+
+```text
+Package: ripr
+Binary:  ripr
+Library: ripr
+Automation: xtask, unpublished
+```
+
+Internal responsibilities:
+
+- `domain`: evidence, oracle strength, classification, repair state, relations;
+- `app`: use cases and public library API;
+- `analysis`: diff/syntax/probe/classification/seam/test-grip production;
+- `output`: human, JSON, SARIF, GitHub, gate, packet, receipt, badge rendering;
+- `cli`: command-line adapter;
+- `lsp`: editor sidecar, diagnostics, hover, actions, budgets, refresh, identity;
+- `agent`: bounded repair-loop command production and provenance;
+- `config`: typed configuration and language detection.
+
+Use the existing semantic owner. Do not fork a parallel validator or move a
+decision into a renderer, transport, policy facade, or test helper merely
+because that path is convenient.
+
+Rust baseline:
+
+- Rust 2024;
+- MSRV 1.95;
+- `unsafe_code = "forbid"`;
+- Rust-first repository automation;
+- non-Rust programming files only in approved policy surfaces.
+
+## Operating law
+
+```text
+many distinct claims may be in flight
+one current candidate per coherent claim
+one writer mutates each candidate branch/worktree at a time
+readers, researchers, reviewers, and tools may inspect it
+Git and focused integration proof surface real interactions when they occur
+```
+
+Do not inspect sibling worktrees, reserve files/crates/semantic surfaces,
+maintain overlap maps, or monitor sibling implementations. Check other work
+only for:
+
+- an equivalent PR implementing the same claim;
+- an explicit prerequisite;
+- a concrete Git conflict;
+- a failed combined-tree proof;
+- a material fact communicated through an issue or PR comment.
+
+A behind-only branch needs no update. The affected lane owns its own conflict
+repair and affected re-proof after a real interaction appears.
+
+## High-level goal delivery
+
+Preserve the user's original goal, current interpretation, constraints,
+non-goals, assumptions, and acceptance predicates. Do not substitute the first
+plausible issue for the actual outcome.
+
+Evaluate goal predicates as:
+
+```text
+pass
+failed
+limited
+not_applicable
+not_established
+```
+
+“No more issues found” is not `pass`.
+
+When a PR reaches a remote-owned state such as required CI, external review,
+auto-merge, or merge queue, leave it in flight and advance another distinct
+required claim when useful. Resume only after a material transition.
+
+## Judgment passes and subagents
+
+Research, adversarial challenge, proof design, implementation, test hardening,
+simplification, review, repair, integration proof, and reconciliation are
+meaningful passes. They are not mandatory identities.
+
+The lead Claude context may perform several passes directly. Use Claude
+subagents or Agent Teams only when they materially improve evidence, context,
+tools, failure perspective, cost, or elapsed time.
+
+Focused subagents are normally read-only and capability-oriented, for example:
+
+- repository and semantic-owner mapping;
+- test-oracle challenge;
+- correctness or compatibility review;
+- security/privacy review;
+- external semantic research;
+- product/editor behavior inspection.
+
+A delegated prompt names the selected issue/PR/candidate, exact question,
+governing artifacts, non-goals, write boundary, and expected evidence-backed
+result. The lead context verifies every load-bearing citation and integrates one
+candidate.
+
+Do not require separate Scout, Adversary, Builder, Verifier, Reviewer, or
+Cleanup Auditor identities. A different persona is not automatically
+independent. Independence comes from a different oracle, source, context,
+threat model, tool, or verification method where risk warrants it.
+
+## Candidate boundary
+
+One coherent claim normally has one branch, worktree, candidate, and PR. Do not
+create rival implementations merely to consume parallel capacity. Disjoint
+pieces may be delegated only through one integrating candidate owner.
+
+Do not create repository-global active-goal, current-writer, current-stage,
+liveness, lease, lock, candidate-frontier, or worker-state files. GitHub issues,
+PRs, reviews, checks, and committed evidence are durable state. Claude sessions,
+subagent lifetimes, and local planning notes are not.
+
+## Engineering decisions
+
+The existence of alternatives does not require a stop.
+
+```text
+inspect current authority
+→ research material alternatives
+→ choose the strongest reversible option
+→ document the rationale
+→ proceed
+→ let proof and review correct the candidate
+```
+
+Ask for an owner decision only when materially different viable outcomes remain
+after safe research and reversible engineering experiments, or when the choice
+changes external commitment, destructive action, exposure, or a non-derivable
+product preference.
+
+## Evidence and actionability
+
+Treat subagent and automated-review findings as leads until verified against
+current source and executable evidence.
+
+- Verify the retained production path, not only helper output.
+- Assert fixture construction and intended parsed subjects before downstream
+  claims.
+- Use positive and discriminating negative or alternate proof.
+- Keep missing, skipped, unobserved, stale, opaque, unsupported, and
+  incomparable evidence explicit.
+- Separate source failure, test/oracle failure, instrument failure,
+  infrastructure failure, and not-established state.
+- Use an independent corpus or invariant when a golden could encode an
+  incorrect promotion.
+- Platform-specific branches require platform-capable proof.
+- Process success, static movement, semantic correctness, mutation adequacy,
+  receipt issuance, gate result, and merge readiness remain separate axes.
+
+The actionability flip is load-bearing. A wrong actionable repair signal is
+worse than several missed advisories. Keep it fail-closed and let the shared
+owning validator be the only authority.
+
+A gate, field, or command whose stated contract exceeds its real enforcement is
+a false-confidence surface. Bind every control to a negative experiment and the
+actual required decision path.
+
+## Review and currentness
+
+Keep separate:
+
+```text
+PR head             implementation and review subject
+integration basis   current base or queued predecessors
+squash result       combined-tree interaction subject
+```
+
+Review and proof currentness are dimensional:
+
+- production implementation;
+- test stimulus;
+- test oracle;
+- public claim;
+- generated relationships;
+- conflict resolution;
+- integration basis.
+
+Refresh only the dimensions affected by the latest change. Unrelated movement
+on `main` invalidates nothing by itself.
+
+Automated findings are hypotheses. Repair valid findings through the same
+candidate. Reply to incorrect findings with source-backed evidence. Resolve only
+after a repair or reply exists.
+
+Quota, unavailable, skipped, failed, or stale review-provider output means
+review is missing; it is not a clean review.
+
+## Local validation
+
+Use focused proof during implementation. Before publication, run:
 
 ```bash
-cargo check --workspace --all-targets
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --check
-cargo doc --workspace --no-deps
+cargo xtask precommit
 ```
 
-Run a single test: `cargo test -p ripr <test_name>` (e.g. `cargo test -p ripr check_human_output_reports_sample_findings`). The integration smoke tests live in `crates/ripr/tests/cli_smoke.rs` and shell out to the built binary.
+`precommit` is the authoritative local shift-left command. It preserves
+repository policy checks and selects Rust linting from the actual local change
+set. Full-workspace and release qualification remain separate fixed-candidate
+steps.
 
-Package / publish dry-run:
+Do not run broad workspace Clippy or tests after every edit. Hooks, if used,
+remain thin conveniences around canonical repository commands and do not own
+policy.
 
-```bash
-cargo package -p ripr --list
-cargo publish -p ripr --dry-run
-```
+For Rust, on-diff Clippy means compiling the complete impacted package and
+relevant targets, not scanning changed lines without crate context.
 
-### Run the binary against the in-repo sample
+Run one Cargo command at a time per candidate worktree. Do not kill unrelated
+Cargo processes. Report lock, timeout, runner, or capacity failures as
+infrastructure state rather than source failure.
 
-```bash
-cargo run -p ripr -- --version
-cargo run -p ripr -- doctor
-cargo run -p ripr -- check  --diff crates/ripr/examples/sample/example.diff
-cargo run -p ripr -- check  --diff crates/ripr/examples/sample/example.diff --json
-cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250
-cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250 --json
-cargo run -p ripr -- lsp --stdio
-```
-
-### `cargo xtask` automation surface
-
-The xtask crate is a single binary (`xtask/src/main.rs`) hosting all repo automation. It is the contributor and CI entrypoint — prefer these over remembering individual gates.
-
-Shaping & PR hygiene:
+Focused and fixed-candidate commands include, as appropriate:
 
 ```bash
-cargo xtask shape          # safe local normalization: cargo fmt, sort policy/.ripr allowlists, ensure target/ripr/reports, write shape.md
-cargo xtask fix-pr         # shape + refresh pr-summary + write fix-pr.md (the safe-repair entrypoint)
-cargo xtask pr-summary     # write target/ripr/reports/pr-summary.md from git diff/status
-cargo xtask precommit      # cheap non-mutating guardrail
-cargo xtask check-pr       # review-ready non-release gate
-```
-
-Evidence:
-
-```bash
-cargo xtask fixtures              # run fixture diffs, compare actual vs expected, write target/ripr/fixtures/<name>/
-cargo xtask goldens check         # fail on golden drift without mutating files
-cargo xtask goldens bless <fixture> --reason <reason>   # explicit, recorded re-bless
-cargo xtask golden-drift          # advisory drift report (does not fail on drift)
-cargo xtask test-oracle-report    # advisory baseline of ripr's own oracle strength
-cargo xtask test-efficiency-report
-cargo xtask dogfood               # ripr check --mode fast against in-repo fixture diffs
-cargo xtask critic                # advisory adversarial review packet
-cargo xtask reports index         # write target/ripr/reports/index.md (reviewer front door)
-cargo xtask receipts              # machine-readable evidence receipts; pair with `receipts check`
-cargo xtask metrics
-cargo xtask windows-advisory-summary --run1 <log> --run1-status <f> --run2 <log> --run2-status <f>   # Windows lane verdict; absence is never a pass
-```
-
-Policy / shape gates (all run in CI):
-
-```bash
-cargo xtask check-static-language        # bans killed/survived/etc. in static output
-cargo xtask check-no-panic-family        # bans panic/unwrap/expect/todo/unimplemented outside allowlist
-cargo xtask check-allow-attributes       # tracks #[allow(..)] via .ripr/allow-attributes.txt
+cargo fmt --all -- --check
+cargo xtask precommit
+cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask test-oracle-report
+cargo xtask dogfood
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
-cargo xtask check-file-policy            # non-Rust file allowlist
-cargo xtask check-executable-files
+cargo xtask check-file-policy
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
-cargo xtask check-traceability           # spec -> tests -> code mapping in .ripr/traceability.toml
-cargo xtask check-capabilities
-cargo xtask check-workspace-shape        # one-package surface
-cargo xtask check-architecture           # internal module boundaries
-cargo xtask check-public-api             # public symbol allowlist (policy/public_api.txt)
+cargo xtask check-traceability
+cargo xtask check-architecture
+cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
-cargo xtask check-generated
-cargo xtask check-dependencies           # policy/dependency_allowlist.txt
+cargo xtask check-generated-clean
+cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
-cargo xtask check-supply-chain
+cargo xtask check-command-catalog
 ```
 
-Outputs land under `target/ripr/{reports,receipts,fixtures,dogfood}/` — these directories are reviewer artifacts, not source.
+Do not claim a gate passed when it did not run, timed out, or consumed zero
+subjects.
 
-### VS Code extension
+## PR convergence
 
-```bash
-cd editors/vscode
-npm ci
-npm run compile
-npm run package
+Use `.claude/skills/finish-pr/SKILL.md` for publication, review repair, CI,
+integration, merge, and reconciliation.
+
+Useful remote-owned outcomes:
+
+```text
+PR_IN_FLIGHT
+AUTO_MERGE_ARMED
+WAITING_REQUIRED_CHECKS
+WAITING_EXTERNAL_REVIEW
+WAITING_INTEGRATION_PROOF
 ```
 
-The extension resolves the `ripr` LSP server in this fixed order: `ripr.server.path` setting → bundled binary → cached download → verified first-run GitHub Release download → `ripr` on `PATH` → actionable error. **Do not** make `cargo install ripr` a requirement for the normal install path; it is the offline / pinned fallback.
+Do not poll unchanged remote state. Resume after a substantive finding,
+required failure, candidate-head change, concrete conflict, changed prerequisite,
+merge, or closure.
 
-## PR Doctrine
+After merge:
 
-PR size is measured by **production risk**, not line count. A scoped PR changes one production behavior, public contract, or architectural seam, plus the complete evidence package needed to make it reviewable: specs, fixtures, tests, golden outputs, docs, metrics, ADRs, learnings, traceability.
-
-Every material behavior change should preserve this chain:
-
+```text
+verify current main
+→ update delivered and remaining issue acceptance
+→ update parent goal/campaign
+→ refresh generated evidence where required
+→ close only acceptance-complete issues
+→ remove completed worktree and stale branch
 ```
-spec -> test or fixture -> code -> output contract -> metric
-```
 
-Make production delta, evidence delta, acceptance criterion, and non-goals explicit in PRs and planning docs. Large fixture / golden / spec / docs / ADR diffs are welcome when they make one production behavior reviewable. A small code diff is **not** acceptable if it changes multiple contracts without a spec-test-code trail.
+Deferred, partial, blocked, or superseded work remains visible with an accurate
+disposition.
 
-Avoid: bundling unrelated behaviors, mixing schema changes with analyzer rewrites, mixing LSP/UI changes with classifier changes, mixing cleanup with behavior changes.
+## Durable repository sources
 
-## Long-Context Workflow
+Resume from artifacts, not chat history:
 
-This repo is intentionally organized so agents can resume long-running goals from repository artifacts instead of chat history. When picking up unfamiliar work:
+- GitHub issues and PRs for live claim/candidate/review/merge state;
+- `docs/ROADMAP.md` for product direction;
+- `docs/IMPLEMENTATION_PLAN.md` for current implementation direction;
+- `docs/IMPLEMENTATION_CAMPAIGNS.md` for history and multi-PR context, not a
+  global selector;
+- `.allow/spec-system/slices/` for PR-sized claim boundaries;
+- `docs/specs/` and `.ripr/traceability.toml` for spec-test-code relationships;
+- `docs/LEARNINGS.md` for durable failure modes and hidden invariants;
+- `.claude/skills/**` for Claude procedures.
 
-- `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md` — current direction and checkpoints
-- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active multi-PR campaigns (GitHub issues + `.allow/spec-system/slices/` are the live work-selection model; the retired scheduler is historical context in #1701)
-- `docs/CAPABILITY_MATRIX.md` — current capability status per area
-- `docs/PR_AUTOMATION.md` — the shape/check/guide model
-- `docs/CODEX_GOALS.md`, `docs/SCOPED_PR_CONTRACT.md` — the PR-shaping contract
-- `docs/specs/` + `.ripr/traceability.toml` — spec → tests → code map
-- `docs/STATIC_EXPOSURE_MODEL.md`, `docs/OUTPUT_SCHEMA.md` — domain model and stable JSON shape
-- `docs/LEARNINGS.md` — repo knowledge worth surviving across sessions; update it when you learn something durable
-- `AGENTS.md` — terse rules of engagement for agents (read it once at session start)
+## Explicit exclusions
 
-Choose the smallest vertical slice with one production delta and one evidence package.
+- no Codex skill imports or routing;
+- no Kiro skill, overlay, lifecycle route, handoff, or provider entry;
+- no executor DAG or permanent role roster;
+- no candidate tournament for one claim;
+- no sibling-lane telemetry or reservation system;
+- no mandatory approval pause for ordinary engineering decisions;
+- no lifecycle state encoded in issue comments or labels;
+- no release, publication, tag, signing, marketplace, or secret operation
+  without the existing explicit repository authority.

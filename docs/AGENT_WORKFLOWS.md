@@ -1,166 +1,300 @@
 # Agent Workflows
 
-This repository is intentionally structured so humans and coding agents can work
-on long-context goals without relying on chat history.
-
-The core idea is:
+This repository supports high-level goal delivery through two complete provider
+sets:
 
 ```text
-objective -> roadmap slice -> implementation-plan item -> spec -> fixture/test
--> code module -> output contract -> metric -> changelog/learning
+Codex:  AGENTS.md + .agents/skills/**
+Claude: CLAUDE.md + .claude/skills/**
 ```
 
-An agent should be able to resume from repository artifacts, choose a safe work
-item, produce one scoped PR or blocked report for that item, and leave enough
-evidence for the next agent to continue.
+Select the provider's own skill file. Do not route one provider through the
+other provider's files.
 
-## Why This Exists
-
-`ripr` asks whether changed behavior appears to have a meaningful discriminator
-in tests. The repository should be built the same way:
-
-- claims are backed by specs and tests
-- unknowns are explicit
-- behavior is traceable to code
-- output contracts have goldens
-- capability progress is visible in metrics
-- decisions survive in ADRs
-- lessons survive in learnings
-
-This is especially important for long-running, agent-assisted work. Chat context
-expires, but repository artifacts remain.
-
-## Starting Work
-
-1. Check the live GitHub board first: open PRs, open issues, required checks,
-   bot comments, linked plans/specs, and current branch state.
-2. Read [Roadmap](ROADMAP.md) for sequence.
-3. Read [Implementation plan](IMPLEMENTATION_PLAN.md) for the next scoped PR.
-4. Read [Capability matrix](CAPABILITY_MATRIX.md) for current status.
-5. Read [PR automation](PR_AUTOMATION.md) for the local shape/check/report loop.
-6. Read [Codex Goals](CODEX_GOALS.md) and
-   [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) when the task is part
-   of a long implementation campaign.
-7. Choose campaign work from the live GitHub board (open issues, PRs, and
-   required checks) and the linked plan/spec. The `.ripr/goals/` manifests were
-   deleted (#1701 PR 3 / #2056); historical campaign records in
-   `docs/IMPLEMENTATION_CAMPAIGNS.md` are context only and never select work.
-   If the linked work is blocked, treat that as a stop sign for that item, not
-   as a claim that no useful PR or issue exists elsewhere on the live board.
-8. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
-   evidence bar.
-9. Read the relevant spec in [Specs](specs/README.md).
-10. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
-   `.ripr/traceability.toml`.
-11. Inspect existing tests, fixtures, and goldens before editing code.
-
-When the work is to add a focused test from RIPR evidence, use the
-[LLM operator guide](LLM_OPERATOR_GUIDE.md). It defines the source-edit-free
-status, workflow packet, verify, receipt, and reviewer-summary loop that humans
-and external LLM tools should consume.
-
-## Codex Goals
-
-Codex Goals is the autonomous loop. The repository provides the harness.
-
-A Codex Goals run should:
-
-- recover state from repo artifacts and the live GitHub board, not chat history
-- `.ripr/goals/active.toml` was deleted (#2056); do not look for it
-- pick the next unblocked work item from open GitHub issues, PRs, and the
-  linked implementation plan, scoped by a PR-local implementation slice
-- produce one scoped PR, blocked report, or explicit planning update per work
-  item
-- run `cargo xtask shape`, `cargo xtask fix-pr`, `cargo xtask check-pr`, and
-  `cargo xtask pr-summary`
-- continue only to independent or explicitly stackable work items
-- stop on policy, architecture, credential, or scope decisions that are not
-  covered by the current lane instructions
-- leave durable learnings only when future agents should not rediscover them
-
-Agents are expected to carry a scoped PR through review repair, validation,
-merge, and post-merge verification when the current lane instructions cover the
-work. Do not wait for a separate manual check when the remaining work is to
-review the PR, address findings, rerun validation, or merge a ready branch.
-Stop only when a live user instruction, hosted branch protection, credential
-requirement, unresolved review finding, or out-of-scope decision makes that
-necessary.
-
-Merge ownership is ordinary scoped work. Campaign manifests should describe
-whether work items are independent or stackable, not create a special merge
-boundary that prevents an agent from finishing a green, in-scope PR.
-
-## Choosing A Subset
-
-When a task is large, choose the smallest vertical slice that can produce a
-complete evidence package.
-
-Good subset:
+The normal outer flow is:
 
 ```text
-one probe family
-one fixture
-one output contract
-one metric row
-one implementation module seam
+high-level goal
+→ deliver-goal
+→ one distinct PR claim
+→ deliver-pr
+→ prepare-issue / prepare-proof / build-candidate / finish-pr as needed
+→ merge or durable in-flight state
+→ reconcile
+→ continue until the actual goal is satisfied
 ```
 
-Bad subset:
+---
+
+## Starting from a high-level goal
+
+Use `deliver-goal` when the user states an outcome rather than one scoped issue.
+
+1. Preserve the goal verbatim.
+2. State the current interpretation, constraints, non-goals, assumptions, and
+   acceptance predicates.
+3. Read current `main`, GitHub issues and PRs, required checks, and the governing
+   product, architecture, policy, spec, and production paths.
+4. Identify the distinct claims required to satisfy the predicates.
+5. Resume an equivalent existing PR or issue before creating new work.
+6. Advance one coherent claim with `deliver-pr`.
+7. When a PR reaches CI, external review, auto-merge, or merge queue, leave it
+   in flight and advance another distinct required claim when useful.
+8. Reconcile after every merge or deliberate closure.
+9. Stop only when predicates pass, a real external blocker covers all remaining
+   work, a material owner decision remains, or the result is not established.
+
+Do not substitute “finish this issue” for the larger requested end state unless
+that issue's acceptance actually equals the goal.
+
+---
+
+## Starting from an issue
+
+Use `deliver-pr`.
+
+1. Read the issue and every linked governing artifact.
+2. Verify the premise against current source and the real consumer.
+3. Search for an equivalent existing PR.
+4. Enter at the earliest missing or stale judgment:
+   - issue/premise;
+   - proof;
+   - implementation;
+   - test hardening;
+   - simplification;
+   - candidate review;
+   - review repair;
+   - integration proof;
+   - reconciliation.
+5. Continue through publication, review, CI, merge, and reconciliation unless a
+   real stop condition exists.
+
+Filing or correcting the issue is not a reason to stop when implementation was
+the requested job.
+
+---
+
+## Starting from an existing PR
+
+Use `deliver-pr` or `finish-pr` depending on candidate maturity.
+
+- Read the complete current-head diff and PR body.
+- Read every current review thread and required check.
+- Verify findings against source and behavior.
+- Repair valid findings through the same candidate.
+- Refute invalid findings with evidence.
+- Resolve only after repair or reply.
+- Refresh only affected proof and review dimensions.
+- Leave a behind-only branch alone.
+- Reconcile a real conflict or failed integration proof when it occurs.
+- Yield when GitHub owns the next event instead of polling unchanged state.
+
+A PR waiting on CI is still useful in-flight work. It does not normally block a
+larger goal.
+
+---
+
+## The six public skills
+
+### `deliver-goal`
+
+Owns the original goal, acceptance predicates, distinct required claims,
+in-flight PRs, and final satisfaction judgment.
+
+### `deliver-pr`
+
+Owns one coherent claim from current premise to merge or deliberate closure.
+
+### `prepare-issue`
+
+Researches or corrects the issue, semantic owner, acceptance, dependencies, and
+non-goals, then returns to delivery.
+
+### `prepare-proof`
+
+Designs positive, negative, production-path, currentness, and claim-boundary
+proof before or during implementation.
+
+### `build-candidate`
+
+Implements, tests, simplifies, challenges, and repairs one current candidate.
+
+### `finish-pr`
+
+Publishes or resumes the PR, repairs review and CI findings, yields remote waits,
+merges the exact ready candidate, and reconciles repository state.
+
+Each provider's file contains the complete procedure and valid outcomes.
+
+---
+
+## Claim and candidate rules
 
 ```text
-parser rewrite plus classifier changes plus LSP hovers plus schema redesign
+many distinct claims may be in flight
+one claim normally has one current candidate
+one writer mutates that candidate branch/worktree at a time
 ```
 
-Use production delta and evidence delta:
+Agents do not inspect sibling worktrees, reserve files or crates, maintain
+an overlap ledger, or watch sibling implementations.
 
-- production delta: the narrow behavior or seam changed
-- evidence delta: specs, fixtures, tests, goldens, docs, metrics, ADRs, and
-  learnings that make the production delta reviewable
+Before creating work, check only for:
 
-## Finishing Work
+- an equivalent PR for the same claim;
+- an explicit prerequisite;
+- a superseding implementation.
 
-Before opening a PR, update the durable artifacts:
+During integration, react only to:
 
-- specs for behavior contracts
-- tests and fixtures for behavior proof
-- goldens for output contracts
-- capability matrix and traceability for progress tracking
-- README only for headline capability changes
-- changelog for user-visible, workflow, or public-doc changes
-- ADRs for durable decisions
-- learnings for repo knowledge future agents should not rediscover
+- a concrete Git conflict;
+- a changed explicit prerequisite;
+- a failed combined-tree proof;
+- a repository rule that genuinely applies to this candidate.
 
-Then run:
+The later lane owns its own conflict repair and affected re-proof.
+
+---
+
+## Subagents
+
+The accountable root may execute directly or use focused provider-native
+subagents.
+
+Useful subagent questions include:
+
+- Where is the semantic owner and production consumer?
+- What current issue or PR already owns this claim?
+- What is the strongest counterexample to the proposed proof?
+- Does the test reach the real production branch?
+- What security, privacy, compatibility, or product boundary is at risk?
+
+Subagents are normally read-only. They return evidence-backed findings, not
+lifecycle authority. The root verifies their citations, resolves contradictions,
+and integrates one candidate.
+
+Do not create one permanent actor for every judgment pass. Research, adversarial
+challenge, implementation, test hardening, simplification, and formal review are
+passes; the same accountable root may perform several of them.
+
+---
+
+## Decisions and escalation
+
+Make the strongest source-backed reversible decision and proceed.
+
+Escalate only when:
+
+- materially different viable outcomes remain after research and safe
+  experiments;
+- the choice changes external commitment, destructive action, exposure, or a
+  non-derivable product preference;
+- credentials or permissions are genuinely unavailable;
+- the selected claim exceeds its accepted authority boundary.
+
+Do not stop merely because design judgment exists.
+
+---
+
+## Local proof and precommit
+
+Run focused proof while developing. Before publication, run:
 
 ```bash
-cargo xtask shape
-cargo xtask fix-pr
-cargo xtask pr-summary
-cargo xtask worktree doctor
-cargo xtask check-pr
-cargo fmt --check
-cargo check --workspace --all-targets
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo xtask check-static-language
-cargo xtask check-no-panic-family
+cargo xtask precommit
 ```
 
-Run the full release/package gates before marking a branch ready.
+`precommit` is the authoritative local shift-left entry point. It must preserve
+repository policy checks and select Rust linting from the actual local change
+set. Full workspace and release qualification remain separate fixed-candidate
+steps.
 
-After validation, commit the scoped branch, push it, and open or update the PR
-unless the work has hit a real stop condition. Human review requirements apply
-at merge time.
+Do not use broad post-edit hooks that run workspace-wide Clippy or tests while
+the code is intentionally incomplete. Hooks may invoke canonical repository
+commands at explicit lifecycle points; they do not own policy.
 
-## Handoff Notes
+For changed Rust, “on-diff Clippy” means compiling the complete impacted package
+and relevant targets, not parsing changed lines without crate context.
 
-Every PR should leave a clear handoff:
+Run one Cargo command at a time per candidate worktree. Lock contention or a
+runner failure is infrastructure state, not source failure.
 
-- what changed
-- what evidence proves it
-- what remains out of scope
-- what the next roadmap item is
-- which metric should move next
+---
 
-If work stops midstream, update [Learnings](LEARNINGS.md) or the relevant spec
-with the blocker and current evidence. Do not rely on chat state.
+## PR currentness and merge
+
+Keep separate:
+
+- candidate head;
+- integration basis;
+- squash or merge-group result.
+
+Do not rebase because `main` moved. Reconcile only real conflicts or interactions.
+
+Useful remote-owned outcomes include:
+
+```text
+PR_IN_FLIGHT
+AUTO_MERGE_ARMED
+WAITING_REQUIRED_CHECKS
+WAITING_EXTERNAL_REVIEW
+WAITING_INTEGRATION_PROOF
+```
+
+A substantive review finding, required failure, head change, conflict, changed
+prerequisite, merge, or closure is a material transition. Unchanged remote state
+is not.
+
+After merge:
+
+1. verify current `main`;
+2. update issue acceptance as delivered, partial, blocked, or residual;
+3. update parent goals or campaigns;
+4. refresh generated evidence where required;
+5. close only acceptance-complete issues;
+6. remove the worktree and stale branch.
+
+---
+
+## Durable sources
+
+Resume from artifacts, not model memory:
+
+| Artifact | Use |
+| --- | --- |
+| GitHub issue | Claim, acceptance, owner, dependencies, residual work |
+| GitHub PR | Current candidate, review, CI, integration state |
+| `docs/ROADMAP.md` | Product direction |
+| `docs/IMPLEMENTATION_PLAN.md` | Current implementation direction |
+| `docs/IMPLEMENTATION_CAMPAIGNS.md` | Historical and multi-PR context, not a global active queue |
+| `.allow/spec-system/slices/` | PR-sized claim boundaries |
+| `docs/specs/` and `.ripr/traceability.toml` | Spec-test-code relationships |
+| `docs/LEARNINGS.md` | Durable failure modes and hidden invariants |
+| Provider skill roots | Executable procedure for the current provider |
+
+No `.ripr/goals/active.toml`, current-writer file, stage file, or agent-liveness
+record selects ordinary work.
+
+---
+
+## Honest stopping conditions
+
+Valid terminal or yielding conditions are:
+
+- goal satisfied;
+- PR merged;
+- PR durably in flight while GitHub owns the next event;
+- real external blocker;
+- material owner decision;
+- deliberate closure or supersession with residual work preserved;
+- not established.
+
+Invalid stopping conditions include:
+
+- an issue was filed;
+- one plausible PR was opened;
+- CI is merely still running;
+- another branch is behind;
+- a different design was conceivable;
+- no more issues were found;
+- an automated reviewer was unavailable.
