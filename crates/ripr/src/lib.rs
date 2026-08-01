@@ -62,6 +62,17 @@
 )]
 mod analysis_outcome;
 mod atomic_file;
+// Shared internal repair-guidance availability vocabulary for the agent packet
+// children under #2830. The public Rust API remains unchanged until those
+// consumers adopt and deliberately expose the contract.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "staged internal contract; #2657 connects the first producer before public projection"
+    )
+)]
+mod repair_guidance;
 
 #[cfg(not(feature = "lang-rust"))]
 compile_error!(
