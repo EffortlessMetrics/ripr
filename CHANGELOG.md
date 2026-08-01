@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `Cargo.lock` now resolves the current workspace manifest. The `serial_test`
+  dev-dependency was added without refreshing the lock, so `cargo` commands
+  that pass `--locked` — including release qualification and lock-resolving
+  package commands — failed to resolve. No declared manifest dependency
+  requirement changed; the refresh only records the missing resolution.
+
 - An unexpected panic now produces a recognizable `ripr: internal error`
   message and exits with code 2, not the default Rust panic output with
   exit code 101. The message includes the panic location when available and
