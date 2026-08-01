@@ -658,15 +658,15 @@ mod tests {
             ),
         )?;
         require(
-            report.records.len() == 191,
+            report.records.len() == 224,
             "current-main census record count changed",
         )?;
         require(
-            report.source.range_commits.len() == 191,
+            report.source.range_commits.len() == 224,
             "current-main census range count changed",
         )?;
         require(
-            report.source.candidate_tree_commits.len() == 191,
+            report.source.candidate_tree_commits.len() == 219,
             "current-main census candidate-tree count changed",
         )
     }

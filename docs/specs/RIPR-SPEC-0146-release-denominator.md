@@ -56,11 +56,15 @@ decision; final output is ready only after every record is reconciled.
 ## Current-main evidence
 
 `fixtures/release_denominator/current-main-provisional.json` is a captured
-provisional census of `c86807ec..37cc6595` at `origin/main` as observed on
-2026-07-30. It carries 191 first-parent records and matching candidate-tree
-membership. All records remain `operator_decision_required`; the fixture is
-range/identity evidence, not a final release disposition or candidate
-qualification.
+provisional census of `c86807ec..5576c533` at `origin/main` as observed on
+2026-08-01. It carries 224 first-parent records and 219 candidate-tree
+records. The development-main merges for #2842, #2844, corrective #2858/#2859,
+and corrective #2862 are retained in
+the denominator with `safe_defer_post_0_11` / `hold_post_release` disposition
+and `absent_by_candidate_only_exclusion` tree state; the later corrective
+commits inherit that disposition unless #2379 changes the release graph. The
+fixture is range/identity and explicitly reconciled disposition evidence, not
+a final release qualification.
 
 ## Acceptance and proof map
 
@@ -73,7 +77,8 @@ under `RIPR-SPEC-0146`. Focused proof is provided by the ten tests named there
 and the complete/reconcile-required fixtures under
 `fixtures/release_denominator/`; hosted CI is the authoritative execution
 proof for this PR. The current-main census is loaded by a focused
-normalization test that pins its 191-record range and candidate-tree counts.
+normalization test that pins its 224-record range and 219-record candidate-tree
+count.
 
 ## Problem
 
@@ -118,7 +123,7 @@ decision in a final ledger, or disagreeing with live observations produces
 The ten focused tests listed in `.ripr/traceability.toml` cover deterministic
 normalization, missing/duplicate/out-of-range/order/tree failures, final
 operator decisions, live drift, JSON/Markdown claim-boundary parity, and the
-current-main 191-record census.
+current-main 224-record census with the five candidate-only exclusions.
 
 ## Implementation Mapping
 

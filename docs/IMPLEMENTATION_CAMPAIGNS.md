@@ -5547,7 +5547,7 @@ or mutates GitHub state.
 | --- | --- | --- |
 | `control/release-lens` | landed | #2766 / PR #2773: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
 | `release/execution-scope` | landed | #2767 / PR #2788: accepted Outcome A is machine-readable as a complete candidate-only exclusion while development `main` remains unchanged. |
-| `release/supplemental-denominator` | in progress | #2768 / PR #2790 merged the fail-closed ledger validator and PR #2795 retained the initial provisional census; the refresh now records 191 first-parent commits through `37cc6595` after #2800 merged. All rows remain `operator_decision_required`; reviewed dispositions and exact candidate binding remain. |
+| `release/supplemental-denominator` | in progress | #2768 / PR #2790 merged the fail-closed ledger validator and the current-main refresh now records 224 first-parent commits through `5576c533`. PRs #2842 and #2844 plus corrective #2858/#2859/#2862 are present in development history but retain `safe_defer_post_0_11` / prior `hold_post_release` disposition and `absent_by_candidate_only_exclusion` tree state while #2840/#2841 remain partial. Any later corrective commits for those lanes inherit the same disposition unless #2379 explicitly changes the release graph; the ledger remains provisional and does not unblock #1609. |
 | `release/exact-candidate-bundle` | blocked | #2769: qualify one immutable #1609 candidate only after the scope and denominator are resolved. |
 | `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
 
