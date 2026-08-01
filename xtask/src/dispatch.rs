@@ -1,5 +1,8 @@
 use crate::command::{XtaskCommand, print_help, unknown_command_message};
 
+#[path = "precommit_v2.rs"]
+mod precommit_v2;
+
 pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
     match command {
         XtaskCommand::Shape => super::shape(),
@@ -18,7 +21,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
         XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
-        XtaskCommand::Precommit => super::precommit(),
+        XtaskCommand::Precommit => precommit_v2::run(),
         XtaskCommand::CheckFast => super::check_fast(),
         XtaskCommand::CheckPr => super::check_pr(),
         XtaskCommand::Fixtures(args) => super::reports::fixtures_with_args(&args),
