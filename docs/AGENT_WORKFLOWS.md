@@ -209,6 +209,11 @@ repository policy checks and select Rust linting from the actual local change
 set. Full workspace and release qualification remain separate fixed-candidate
 steps.
 
+`check-fast` is retained as an advisory, diff-aware shortcut for callers that
+explicitly need a cheaper subset. It is not an alias for `precommit`, does not
+establish a complete-change denominator, and cannot replace the authoritative
+precommit result for local handoff or routed CI.
+
 Do not use broad post-edit hooks that run workspace-wide Clippy or tests while
 the code is intentionally incomplete. Hooks may invoke canonical repository
 commands at explicit lifecycle points; they do not own policy.

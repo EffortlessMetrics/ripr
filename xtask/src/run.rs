@@ -26,6 +26,65 @@ pub(crate) struct CapturedOutput {
     pub(crate) stderr: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ProcessErrorKind {
+    Launch,
+    Exit,
+}
+
+#[derive(Debug)]
+pub(crate) struct ProcessError {
+    pub(crate) kind: ProcessErrorKind,
+    pub(crate) message: String,
+}
+
+pub(crate) fn capture_process_output(
+    program: &str,
+    args: &[String],
+) -> Result<Vec<u8>, ProcessError> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|error| ProcessError {
+            kind: ProcessErrorKind::Launch,
+            message: format!("failed to launch {program}: {error}"),
+        })?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Err(ProcessError {
+            kind: ProcessErrorKind::Exit,
+            message: format!(
+                "{program} {} failed with {}; stdout: {}; stderr: {}",
+                args.join(" "),
+                output.status,
+                stdout,
+                stderr
+            ),
+        })
+    }
+}
+
+pub(crate) fn run_process_status(program: &str, args: &[String]) -> Result<(), ProcessError> {
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|error| ProcessError {
+            kind: ProcessErrorKind::Launch,
+            message: format!("failed to launch {program}: {error}"),
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(ProcessError {
+            kind: ProcessErrorKind::Exit,
+            message: format!("{program} {} failed with {status}", args.join(" ")),
+        })
+    }
+}
+
 pub(crate) struct TimedOutput {
     pub(crate) status: Option<ExitStatus>,
     pub(crate) stdout: String,
@@ -92,15 +151,7 @@ pub(crate) fn command_success_owned(program: &str, args: &[String]) -> Result<bo
 }
 
 pub(crate) fn run_owned(program: &str, args: &[String]) -> Result<(), String> {
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{program} {} failed with {status}", args.join(" ")))
-    }
+    run_process_status(program, args).map_err(|error| error.message)
 }
 
 pub(crate) fn run_in_dir(program: &Path, args: &[&str], cwd: &Path) -> Result<ExitStatus, String> {
@@ -170,22 +221,8 @@ pub(crate) fn run_output(program: &str, args: &[&str]) -> Result<String, String>
 }
 
 pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
-            args.join(" "),
-            output.status,
-            stdout.trim(),
-            stderr.trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let output = capture_process_output(program, args).map_err(|error| error.message)?;
+    Ok(String::from_utf8_lossy(&output).into_owned())
 }
 
 /// Default deadline for building the ripr binary inside PR-evidence commands.
