@@ -71,6 +71,11 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let cache_dir = cache_dir_for_root(&current_dir, std::env::var(CACHE_DIR_ENV));
     let status = inspect_cache_dir(&cache_dir);
     println!("{}", render_status(&cache_dir, &status, is_json)?);
+    if !is_json {
+        eprintln!(
+            "To clean up the cache, use: cargo xtask cache gc [--dry-run] [--max-size-gb N] [--ttl-days N]"
+        );
+    }
 
     Ok(())
 }
