@@ -860,10 +860,12 @@ export class RiprClientController {
           probe_id: target.probe_id,
           seam_id: target.seam_id,
           seam_kind: target.seam_kind,
-          evidence_identity: target.evidence_identity,
           uri: target.uri,
           line: target.line,
         };
+        if (target.evidence_identity !== undefined) {
+          collectContextTarget.evidence_identity = target.evidence_identity;
+        }
         if (target.gap_id) {
           collectContextTarget.gap_id = target.gap_id;
           collectContextTarget.canonical_gap_id = target.canonical_gap_id;
