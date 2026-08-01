@@ -34,6 +34,10 @@ import {
   firstPrPathIsWorkspaceLocal
 } from './firstPrProjection';
 import type { RiprFirstPrPacketState, RiprFirstPrPacketStatus } from './firstPrProjection';
+import {
+  DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS,
+  waitForLifecyclePromise
+} from './lifecycleCoordinator';
 
 // Re-export for backward compatibility: the picker test imports these symbols
 // from '../../src/client'. They now live in workspaceHelpers.ts (#2553).
@@ -254,6 +258,21 @@ interface RiprLanguageClient {
   stop(): Promise<void>;
 }
 
+export type RiprClientLifecycleWait = (
+  operation: Promise<void>,
+  budgetMs: number,
+  description: string
+) => Promise<void>;
+
+export class RiprClientLifecycleTimeoutError extends Error {
+  constructor(description: string, budgetMs: number) {
+    super(
+      `${description} did not settle within ${budgetMs}ms; refusing an unsafe ripr lifecycle transition.`
+    );
+    this.name = 'RiprClientLifecycleTimeoutError';
+  }
+}
+
 export interface RiprClientRuntime {
   getConfig(): RiprConfig;
   workspaceRootState(): RiprWorkspaceRootState;
@@ -280,6 +299,7 @@ export interface RiprClientRuntime {
   showInformationMessage(message: string): Thenable<string | undefined>;
   showWarningMessage(message: string, ...items: string[]): Thenable<string | undefined>;
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
+  waitForLifecycle?: RiprClientLifecycleWait;
 }
 
 export type RiprWorkspaceRootKind =
@@ -699,18 +719,31 @@ export class RiprClientController {
 
   async stop(): Promise<void> {
     const client = this.client;
-    this.client = undefined;
-    // Clear any in-flight start dedup so the next start() can proceed fresh.
-    // If a start() is mid-flight when stop() is called, that start's finally
-    // block will see startingPromise !== its own promise and leave the field
-    // cleared.
-    this.startingPromise = undefined;
+    const starting = this.startingPromise;
     // Bump the generation so any in-flight startOnce() detects that stop()
-    // ran during its async setup window and aborts before assigning
-    // this.client. This prevents the late assignment from overwriting the
-    // fresh client that the caller's subsequent start() installed after
-    // stop(). (#2123)
+    // ran during its async setup window. The captured start is awaited before
+    // the client is cleared or stopped, so a stop during startup cannot lose
+    // ownership of a client that may have started successfully. (#2822)
     this.startGeneration++;
+
+    if (starting) {
+      const waitForLifecycle = this.runtime.waitForLifecycle ?? waitForLifecyclePromise;
+      await waitForLifecycle(
+        starting.catch(() => undefined),
+        DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS,
+        'ripr server startup'
+      );
+    }
+
+    // The captured start's finally block clears this when it completes. A
+    // completed start has no remaining deduplication authority here.
+    if (this.startingPromise === starting) {
+      this.startingPromise = undefined;
+    }
+    if (client && this.client === client) {
+      await client.stop();
+      this.client = undefined;
+    }
     this.server = undefined;
     this.receivedTypedAnalysisStatus = false;
     this.typedAnalysisStatusState = undefined;
@@ -718,9 +751,6 @@ export class RiprClientController {
     this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
       this.notificationDisposables.pop()?.dispose();
-    }
-    if (client) {
-      await client.stop();
     }
     this.updateStatus({
       kind: 'stopped',

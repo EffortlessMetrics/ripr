@@ -278,6 +278,37 @@ suite('RiprClientController Lifecycle', () => {
     assert.strictEqual(controller.isRunning(), false);
   });
 
+  test('a failed client stop retains ownership and permits a later stop retry', async () => {
+    let stopCalls = 0;
+    const runtime = trustedRuntime(() => ({
+      onNotification: () => ({ dispose: () => undefined }),
+      sendRequest: async () => undefined,
+      setTrace: () => undefined,
+      start: async () => undefined,
+      stop: async () => {
+        stopCalls += 1;
+        if (stopCalls === 1) {
+          throw new Error('sentinel client stop failure');
+        }
+      }
+    }));
+    const controller = new RiprClientController(
+      {} as unknown as vscode.ExtensionContext,
+      outputChannel([]),
+      runtime
+    );
+
+    await controller.start();
+    await assert.rejects(controller.stop(), /sentinel client stop failure/);
+
+    assert.strictEqual(stopCalls, 1);
+    assert.strictEqual(controller.isRunning(), true);
+    await controller.stop();
+
+    assert.strictEqual(stopCalls, 2);
+    assert.strictEqual(controller.isRunning(), false);
+  });
+
   test('a rejected real controller start leaves no stale client and the retry re-initializes', async () => {
     let createClientCalls = 0;
     let clientStartCalls = 0;
