@@ -159,6 +159,14 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 // --mode is a speed tier on the diff path, not a scope provider.
                 // `ripr check --mode fast` with no --diff/--base analyzes nothing
                 // and must still trigger the no-scope disclosure (RIPR-SPEC-0083).
+                // #2644: `fast` is currently behaviorally identical to `draft`.
+                // Warn the user so the no-op is visible.
+                if input.mode == app::Mode::Fast {
+                    eprintln!(
+                        "ripr: --mode fast is currently identical to --mode draft; \
+                         there is no behavioral difference. Use --mode draft or --mode deep."
+                    );
+                }
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {
