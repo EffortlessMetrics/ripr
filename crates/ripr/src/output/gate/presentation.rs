@@ -1,7 +1,7 @@
 use super::exception_policy::ExceptionPolicyReport;
 use super::model::{
-    CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePolicy,
-    GateRepairRoute, GateRepairTarget, GateSummary, NewUnsuppressed,
+    CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePlacement,
+    GatePolicy, GateRepairRoute, GateRepairTarget, GateSummary, NewUnsuppressed,
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use crate::app::causal_projection::insert_canonical_delta_fields;
@@ -406,16 +406,9 @@ fn push_decision_section(
     }
     out.push_str(&format!("## {title}\n\n"));
     for decision in section {
-        let path = decision.placement.path.as_deref().unwrap_or("<no path>");
-        let line = decision
-            .placement
-            .line
-            .map(|line| line.to_string())
-            .unwrap_or_else(|| "?".to_string());
         out.push_str(&format!(
-            "- {}:{} {} — {}\n",
-            md_escape(path),
-            line,
+            "- {} {} — {}\n",
+            decision_location(&decision.placement),
             md_escape(decision.static_class.as_deref().unwrap_or("unknown")),
             md_escape(&decision.gate_reason)
         ));
@@ -517,6 +510,27 @@ fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
 
 fn md_inline_code(value: &str) -> String {
     md_escape(value).replace('`', "\\`")
+}
+
+/// Render the decision's source location for the Markdown report.
+///
+/// A decision does not always have a changed-line anchor: `path` and `line`
+/// come from independent producer fallbacks and any combination is reachable.
+/// The absent cases previously rendered as `<no path>:?`, which reads as a
+/// broken renderer rather than as a decision that has no line to anchor on
+/// (#2641). Each case now names the fact the renderer actually holds.
+///
+/// This states only what the placement contains. The *reason* a decision is
+/// summary-only lives in `GateCandidate::summary_reason`, which is not carried
+/// onto `GateDecision`; inferring it from an absent path here would be renderer
+/// guesswork. The per-decision `gate_reason` already carries that explanation.
+fn decision_location(placement: &GatePlacement) -> String {
+    match (placement.path.as_deref(), placement.line) {
+        (Some(path), Some(line)) => format!("{}:{}", md_escape(path), line),
+        (Some(path), None) => format!("{} (no line anchor)", md_escape(path)),
+        (None, Some(line)) => format!("(no file anchor):{line}"),
+        (None, None) => "(no changed-line anchor)".to_string(),
+    }
 }
 
 fn md_escape(value: &str) -> String {

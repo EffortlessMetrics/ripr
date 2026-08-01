@@ -1402,6 +1402,61 @@ fn gate_markdown_projects_incomplete_route_limitation_without_fabricated_command
 }
 
 #[test]
+fn gate_markdown_names_an_absent_anchor_instead_of_rendering_a_broken_location()
+-> Result<(), String> {
+    let input = fixture_input(GateMode::Acknowledgeable);
+    let report = build_gate_decision_report(&input)?;
+
+    // A decision with a complete placement is untouched. This is why no
+    // checked gate-decision.md golden moves with this change.
+    let complete = render_gate_decision_markdown(&report);
+    require_contains(
+        &complete,
+        "- src/pricing.rs:88 weakly_gripped",
+        "complete placement",
+    )?;
+
+    // `path` and `line` come from independent producer fallbacks, so every
+    // combination is reachable. None of them may render as `<no path>:?`.
+    for (label, placement, expected) in [
+        (
+            "no path and no line",
+            GatePlacement {
+                path: None,
+                line: None,
+            },
+            "- (no changed-line anchor) weakly_gripped",
+        ),
+        (
+            "path without line",
+            GatePlacement {
+                path: Some("src/pricing.rs".to_string()),
+                line: None,
+            },
+            "- src/pricing.rs (no line anchor) weakly_gripped",
+        ),
+        (
+            "line without path",
+            GatePlacement {
+                path: None,
+                line: Some(88),
+            },
+            "- (no file anchor):88 weakly_gripped",
+        ),
+    ] {
+        let mut variant = report.clone();
+        for decision in &mut variant.decisions {
+            decision.placement = placement.clone();
+        }
+        let rendered = render_gate_decision_markdown(&variant);
+        require_contains(&rendered, expected, label)?;
+        require_not_contains(&rendered, "<no path>", label)?;
+        require_not_contains(&rendered, ":?", label)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String> {
     let cases = [
         GateFixtureCase {
