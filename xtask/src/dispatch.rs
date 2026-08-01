@@ -104,6 +104,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CiFast => super::ci_fast(),
         XtaskCommand::CiFull => super::ci_full(),
         XtaskCommand::CheckStaticLanguage => super::check_static_language(),
+        XtaskCommand::CheckAgentSkills => super::agent_skills::check(),
         XtaskCommand::CheckNoPanicFamily(args) => {
             super::no_panic::check_no_panic_family_with_args(&args)
         }

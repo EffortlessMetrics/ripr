@@ -545,232 +545,35 @@ When reviewing or repairing code, read these files first:
 - `docs/agent-context/review-invariants.md`
 - `docs/agent-context/validation.md`
 
-## Orchestration Operating Model
 
-Orchestrated work is a staged pipeline, not one monolithic session:
+## Goal delivery and candidate workflow
 
-```text
-reconcile current repo and work-item truth
--> compile bounded context
--> run read-only discovery and adversarial checks
--> root-thread synthesis and decision
--> isolated implementation
--> independent verification
--> integration, review, and targeted proof
--> cleanup and durable handoff
-```
+Preserve the user's original goal, constraints, non-goals, assumptions, and
+acceptance predicates. The durable issue, specification, plan, policy, receipt,
+and closeout graph is the repository's source of truth for long-running work.
 
-The main or root session is the **orchestrator and integrator**. It owns the
-objective, accepted premises, constraints, non-goals, dependency order,
-acceptance coverage, contradictions, product or architecture decisions, PR
-scope, and final integration judgment. Broad file searches, CI logs, broad
-diffs, test inventories, and failed hypotheses belong in subagents that return
-bounded structured results, not in the root context. During verification, the
-root may inspect targeted evidence directly when binding a claim to an exact
-head, command, denominator, artifact, or changed line; this targeted inspection
-does not turn the root into a raw-log sink.
+Use the six Codex procedures under `.agents/skills/**` as the operational
+entrypoints. Select the narrowest procedure for the current claim, and keep one
+current branch/worktree/PR per coherent claim. A waiting PR is still in flight;
+advance a distinct claim when useful and revisit it after a material transition.
 
-### When to delegate
+Use focused readers or reviewers only when they add a different source,
+oracle, context, threat model, or verification method. Their findings are leads
+until checked against current repository and GitHub evidence. Reasonable,
+reversible engineering choices should proceed without an owner pause.
 
-Prefer subagents when:
+Keep PR head, integration basis, squash result, proof, review, and release
+state as separate judgments. Refresh only the proof dimensions affected by a
+changed head, conflict, implementation, oracle, public claim, generated
+relationship, or integration basis. Unrelated movement on `main` does not
+invalidate proof or review by itself.
 
-- two or more independent read-heavy questions can be answered in parallel;
-- a log, diff, search, or inventory would otherwise flood the root context;
-- an independent adversarial or verification pass materially changes trust;
-- a broad audit separates naturally by surface, risk, or evidence family;
-- two write tasks have already-proven disjoint edit cages and semantic resources,
-  plus real worktree, CI, review, and merge capacity.
+Before publication use `cargo xtask precommit`, then the required changed-
+surface and release gates. After merge, verify current `main`, reconcile the
+issue and campaign predicates, refresh generated evidence, capture genuine
+follow-ups, and remove only lane-created worktrees, branches, and residue.
 
-Stay single-agent when:
-
-- the task is one narrow edit or one serial decision chain;
-- the root still needs product, architecture, security, policy, release, or
-  public-contract judgment before decomposition;
-- context or premises are stale, contradictory, or incomplete;
-- writers would share source, schema, golden, fixture, policy, workflow,
-  release, active-goal, traceability, report-root, or Cargo-target resources;
-- CI, review, or merge capacity is already saturated;
-- coordination would cost more than doing the bounded task directly.
-
-Do not treat the client or model's maximum thread count as a target. Cap each
-wave by useful independent work and the repository's integration capacity.
-Read-only fan-out comes before write fan-out. One writer is the default.
-
-### Subagent roles
-
-Use role-specific workers instead of generic "help with this" prompts:
-
-- **Scout:** read-only inventory, repository/PR surface mapping, schema/spec
-  tracing, test discovery, log summarization, and premise checks. Returns
-  observations, evidence references, missing proof, risks, and next questions;
-  never claims implementation or verification complete.
-- **Adversary:** read-only challenge to one named premise, plan, result, or claim.
-  Returns concrete discrepancies with references, or `none_found` plus the exact
-  inspected scope. One supported contradiction is enough to stop dependent work.
-- **Builder:** implements exactly one accepted production/evidence delta in a
-  prepared isolated worktree and explicit edit cage. Returns the actual changed
-  files, diff/commit identity, commands attempted, artifacts, blockers, and
-  author claims; never self-verifies.
-- **Verifier:** checks the exact builder diff/commit with the named proof routes.
-  Does not repair source. Records actual exit status, denominator, output
-  artifact, harness identity, residue, and whether the claim is supported,
-  contradicted, limited, or not run.
-- **Reviewer:** independently inspects the scoped diff and evidence contract for
-  correctness, boundary violations, unsupported claims, and missing tests. A
-  clean result still lists inspected surfaces, risks, invariants, validation
-  signals, and residual assumptions.
-- **Cleanup auditor:** read-only inventory of claims, worktrees, branches,
-  generated output, caches, and temporary residue. Produces a cleanup plan; the
-  root/operator performs any destructive cleanup explicitly.
-
-Root-to-direct-child delegation is the supported default. Do not ask subagents
-to spawn descendants unless a future measured repository contract explicitly
-authorizes recursive fan-out.
-
-### Wave discipline
-
-Before spawning a wave:
-
-1. Reconcile live Git, open PRs, open issues, linked plans/specs, current
-   base/head, and working-tree state. Live source beats transcript or stale
-   planning prose. `.ripr/goals/` was deleted; goal files never select or
-   authorize work.
-2. Give every subtask one bounded objective, decision contribution, input/base
-   identity, read scope, edit policy, dependency list, conflict resources,
-   stop conditions, expected evidence, and result budget.
-3. Run independent read-only scouts and adversaries first. Do not start a
-   builder while its premise or contract remains disputed.
-4. Have the root synthesize results. A contradiction, stale identity, missing
-   required contract, or scope expansion forces stop/recompile/replan; do not
-   smooth it into consensus.
-5. Start a writer only after its exact base, worktree, edit cage, forbidden
-   paths, and semantic single-writer resources are known.
-6. Run a separate verifier after the builder stops mutating the result.
-7. Integrate only current, in-cage, independently verified work. Then run the
-   normal review/CI/PR/merge flow and clean up every orchestration artifact.
-
-The durable campaign and work-item authority remains the existing issue/spec/
-plan graph. Subtasks are ephemeral execution detail inside one work
-item; do not create a second committed task hierarchy from subagent threads.
-
-### Context and result discipline
-
-Keep subagent packets reference-first and role-scoped. Inline only the facts
-needed for that role. Large documents, logs, search dumps, complete diffs, and
-reports stay in the child thread or an ignored artifact path; return stable
-path/line, JSON-pointer, command, digest, or issue/PR references instead.
-
-A useful bounded result contains:
-
-```text
-status and role
-input/base identity actually consumed
-short summary
-observations or claims with claim type
-exact evidence references
-contradictions and assumptions
-missing evidence and stop reason
-files read and files changed
-commands attempted with actual status and denominator
-produced artifact references
-selected / omitted / total counts when bounded
-one recommended next action
-```
-
-Do not return raw chain-of-thought. Do not paste full logs into the root summary.
-If output is truncated or stored out of band, name the omitted counts and the
-complete retrieval route. Repeated unchanged packets/results should remain
-byte-stable once the planned tooling exists; until then, preserve deterministic
-ordering and omit timestamps or volatile paths from semantic summaries.
-
-### Verification and synthesis rules
-
-- A subagent report is a lead, not authority. Verify control-flow and behavioral
-  claims against current source and executable evidence.
-- A builder's "fixed" or "tests pass" is an `author_claim`, not a verified fact.
-- Verification must bind the exact diff/commit, command, denominator, harness,
-  and produced artifact. A pass with zero tests or subjects is `not_run`.
-- Repetition is not independent evidence when agents consumed the same source.
-  Do not majority-vote truth or average confidence prose.
-- Preserve contradictions, stale/rejected results, partial coverage, and missing
-  evidence as first-class states. One concrete contradiction blocks dependent
-  work until the root resolves or recompiles it.
-- Task completion count is not acceptance coverage. The root tracks each
-  acceptance requirement, proof obligation, non-goal, verification state, and
-  unresolved gap explicitly.
-- The root owns final synthesis and judgment. Subagents do not change campaign
-  order, schemas, policy, architecture, release state, credentials, or merge
-  authority silently.
-
-### Writer isolation and semantic conflicts
-
-**Background workflow agents may share the main working directory.** Even a
-read-only-by-intent worker can have shell access and create or modify files.
-Therefore:
-
-- prompts for shared-tree research must explicitly forbid file creation and
-  mutation, and the root must compare `git status --short` before and after;
-- every source-editing builder and any command that may mutate repository state
-  uses a task-specific worktree at the exact declared base;
-- parallel writers require disjoint path cages **and** disjoint semantic
-  resources; different files do not make two tasks independent;
-- treat output schemas and their goldens, fixture corpora, spec-number
-  allocation, traceability, policy ledgers,
-  workflows, release assets, and default mutable report/Cargo/npm roots as
-  single-writer resources;
-- never run `git add -A` while a background workflow is live; stage explicit
-  paths and inspect all tracked/untracked changes before commit;
-- workers must not run `git checkout`, `git switch`, `git stash`,
-  `git reset --hard`, branch deletion, or worktree removal to repair unexpected
-  state. Stop and report the mismatch instead;
-- a stale base, changed work item, conflicting landed PR, unexpected file, or
-  boundary violation invalidates the worker result until the root replans;
-- builder and verifier must not mutate the same worktree concurrently.
-
-Every fan-out ends with cleanup: worker threads/results accounted for,
-worktrees and branches dispositioned, locks/claims released when present,
-`target/ripr` growth inspected, temporary/generated/npm/Cargo residue reviewed,
-and the root worktree proven uncontaminated.
-
-The typed orchestration tooling described by issue #1631 and the child issue
-range 1632–1639 is not yet an assumed command surface. Apply these rules manually
-until each command and schema lands; do not invent or cite planned commands as
-current evidence. See `docs/AGENT_OPERATING_MODEL.md`,
-`docs/CODEX_GOALS.md`, `docs/agent-context/CONTEXT_SYSTEM.md`, and
-`docs/reference/AGENT_HANDOFF_PROTOCOL.md` for the durable surrounding model.
-
-## Long-Context Agent Workflow
-
-This repo is intentionally organized so agents can resume long-running goals
-from repository artifacts instead of chat history.
-
-When picking up work:
-
-- start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
-- use `docs/IMPLEMENTATION_CAMPAIGNS.md` for campaign history
-- use `docs/CAPABILITY_MATRIX.md` to identify current capability status
-- use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
-- use `docs/CODEX_GOALS.md` for the multi-PR campaign model
-- use `docs/SCOPED_PR_CONTRACT.md` for one work item's PR-sized evidence bar
-- use `.allow/spec-system/slices/` for one PR's scope of record: each
-  behavior-changing PR owns a small PR-local `ImplementationSliceV1` there
-  (requirement IDs, change class, seams, evidence obligations, non-goals,
-  claim boundary) — never worker, branch, CI, or progress state
-- use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
-- choose the smallest vertical slice with one production delta and one evidence
-  package
-- update `docs/LEARNINGS.md` when repo knowledge or blockers should survive
-
-See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.
-
-See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
-agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
-for why constraints enable autonomy.
-
-See `docs/LSP_AGENT_REPAIR_WORKFLOW.md` for the end-to-end LSP-first
-repair/receipt loop: Show Status → Copy Top Repair Packet → edit in cage →
-verify → receipt → Show Receipt Status → Show Route Quality.
-
-See `docs/LIBRARY.md` for the curated knowledge library: agentic learnings,
-repo domain learnings, and a dated timeline of major learning milestones across
-all campaigns.
+Do not create fixed actor rosters, repository-global goal or writer state,
+reservation systems, candidate tournaments, provider-crossing skill wrappers,
+or Kiro lifecycle routes. GitHub and committed repository artifacts carry
+durable state; transient model context does not.

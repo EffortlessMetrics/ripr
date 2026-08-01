@@ -18,6 +18,7 @@ use ripr::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED,
 };
 
+mod agent_skills;
 mod branch_inventory;
 mod cache;
 mod command;
