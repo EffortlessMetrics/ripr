@@ -165,12 +165,31 @@ corrective #2858/#2859, and corrective #2862, plus later corrective follow-ups, 
 proves current range identity and reconciled disposition only; it is not a
 reviewed final denominator and cannot unblock #1609 or #2769.
 
+## Live reconciliation boundary (2026-08-02)
+
+The release-control checkout was refreshed from `origin/main`
+`d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb` after independently owned PR #2861
+merged the typed diff-limitation parser correction on top of PR #2860's
+process/CWD harness correction and PR #2870's earlier test-only harness
+correction. The captured provisional fixture
+above remains historical until #2831 PR B imports a fresh GitHub-backed census;
+its 224/219 counts are not the current release denominator. PR #2831 A owns
+only the typed reference-authority schema, offline validator, compatibility
+projection checks, and representative fixture proof. Concurrent product and
+release lanes remain independently owned and are not required to close for
+this plan slice. The production repair commit is
+`2a20da216428aa5ea13757d68f9fe9eed8cb6be1`; the focused denominator suite has
+25 tests, including the fail-closed candidate-tree-subset regression. The local
+wrapper/clippy relink remains unverified because the Windows volume exhausted
+space; hosted required proof is authoritative for the pushed candidate.
+
 ## Non-goals and safety boundary
 
 - no singleton active-goal restoration or automatic backlog priority;
-- no issue closure, relabeling, PR merge, branch creation/deletion, rebase,
-  force-push, source integration, version bump, tag, publish, signing,
-  marketplace, or secret operation;
+- no issue closure, relabeling, merge of concurrent PRs, branch deletion,
+  rebase, force-push, source integration, version bump, tag, publish, signing,
+  marketplace, or secret operation; the scoped #2831 A branch is the only
+  implementation branch created by this slice;
 - no replacement for GitHub state, #2379, #1609, #1704, or #1706;
 - no exact-candidate qualification until the later dependent slices are
   complete and the candidate identity is immutable.

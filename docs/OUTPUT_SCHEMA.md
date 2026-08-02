@@ -11917,6 +11917,26 @@ reviewed record per range commit. Missing, duplicate, out-of-range, wrongly
 ordered, wrong-tree, stale-live, and unresolved-final-decision cases produce
 `reconcile_required`; no report status qualifies or publishes a candidate.
 
+Each record may retain typed reference authority in `references[]`:
+
+```json
+{
+  "kind": "merge_pr | issue | pull_request | reviewed_manual_mapping",
+  "number": 2788,
+  "source": "associated_pull_request | closing_reference | body_reference | explicit_review",
+  "evidence_url": "https://github.com/...",
+  "github_identity": null,
+  "observed_for_commit_sha": "...",
+  "reviewed": true,
+  "limitation": ""
+}
+```
+
+Exactly one of `evidence_url` or `github_identity` is required. The legacy
+`pr_refs` and `issue_refs` fields are compatibility projections and cannot
+establish final denominator authority by themselves. Final ledgers reject
+unreviewed references and legacy-only projections.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into
