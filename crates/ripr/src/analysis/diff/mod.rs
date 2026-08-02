@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod limitations_tests;
 mod load;
 mod model;
 mod parse;

@@ -1,6 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
+
 use super::model::{ChangedFile, ChangedLine};
 use super::path::{
     is_dev_null_new_path_marker, is_new_path_marker, parse_git_old_path, parse_new_path_marker,
@@ -109,6 +114,18 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
         // and is consumed as a removed line.  A file-section separator starts
         // with `--- ` (three dashes + space) and is always followed immediately
         // by `+++ <path>`.  We peek at the next line before committing.
+        if state.combined_quarantine()
+            && parse_old_path_marker(raw)
+            && lines
+                .get(i + 1)
+                .is_some_and(|next| is_new_path_marker(next))
+        {
+            // A plain `---`/`+++` pair can follow a combined hunk without a
+            // `diff --git` boundary. Combined source text carries parent
+            // prefix columns and cannot match these unprefixed markers.
+            state.close_combined_quarantine();
+        }
+
         if state.in_hunk()
             && parse_old_path_marker(raw)
             && lines
@@ -141,6 +158,7 @@ pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
         renamed_file_count: state.renamed_file_count(),
         pure_rename_file_count: state.pure_rename_file_count(),
         pure_rename_paths: state.pure_rename_paths(),
+        limitations: state.limitations(),
     }
 }
 
@@ -152,6 +170,17 @@ pub(crate) struct ParsedDiff {
     pub(crate) renamed_file_count: usize,
     pub(crate) pure_rename_file_count: usize,
     pub(crate) pure_rename_paths: Vec<PathBuf>,
+    /// Typed record of diff regions this parser deliberately refused to read as
+    /// ordinary source (#2828). An empty vector means the parser read the whole
+    /// input; it never means "no such region existed but we said nothing".
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "producer-owned parser limitations; #2829 connects the public projection"
+        )
+    )]
+    pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
 fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
@@ -173,13 +202,46 @@ fn parse_start(segment: &str) -> Option<usize> {
 
 mod parser_state {
     use super::{
-        ChangedFile, ChangedLine, is_dev_null_new_path_marker, is_new_path_marker,
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage, ChangedFile, ChangedLine, is_dev_null_new_path_marker, is_new_path_marker,
         parse_git_old_path, parse_hunk_header, parse_new_path_marker,
         parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
         parse_rename_to_path,
     };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
+
+    /// The single-character diff side a conflict region was opened on. A region
+    /// opened on `+` is only closed by a `+` terminator, so an unrelated `-`
+    /// line cannot silently end the quarantine.
+    #[derive(Clone, Copy, Eq, PartialEq)]
+    enum ConflictSide {
+        Added,
+        Removed,
+        Context,
+    }
+
+    /// Git conflict markers use at least seven repeated marker characters,
+    /// optionally followed by a space and a label (`<<<<<<< ours`). A bare
+    /// `=======` is deliberately NOT an opener: it appears verbatim in
+    /// ordinary source (Markdown rules, comment banners) and treating it as
+    /// one would quarantine real changes. Git's `conflict-marker-size` setting
+    /// can increase the repeated marker width.
+    fn is_conflict_marker(payload: &str, marker: &str) -> bool {
+        let Some(marker_char) = marker.chars().next() else {
+            return false;
+        };
+        let marker_width = marker.chars().count();
+        let repeated_width = payload
+            .chars()
+            .take_while(|character| *character == marker_char)
+            .count();
+        if repeated_width < marker_width {
+            return false;
+        }
+        let rest = &payload[repeated_width..];
+        rest.is_empty() || rest.starts_with(' ')
+    }
 
     #[derive(Default)]
     pub(super) struct ParserState {
@@ -204,12 +266,22 @@ mod parser_state {
         pure_rename_counted: bool,
         pure_rename_file_count: usize,
         pure_rename_paths: Vec<PathBuf>,
+        /// Set while an n-way (`@@@`) hunk body is being skipped. Cleared at the
+        /// next file boundary or the next ordinary `@@` header.
+        combined_quarantine: bool,
+        conflict_region: Option<ConflictSide>,
+        combined_hunks: BTreeMap<Option<PathBuf>, u64>,
+        conflict_regions: BTreeMap<Option<PathBuf>, u64>,
     }
 
     impl ParserState {
         /// Whether the parser is currently inside a hunk body.
         pub(super) fn in_hunk(&self) -> bool {
             self.in_hunk
+        }
+
+        pub(super) fn combined_quarantine(&self) -> bool {
+            self.combined_quarantine
         }
 
         pub(super) fn deleted_file_count(&self) -> usize {
@@ -232,12 +304,81 @@ mod parser_state {
             self.pure_rename_paths.clone()
         }
 
+        /// Advance line coordinates for a line the parser deliberately skipped,
+        /// so lines after a quarantined region keep honest numbers.
+        fn advance_quarantined_line(&mut self, side: Option<ConflictSide>) {
+            match side {
+                Some(ConflictSide::Added) => match self.new_line.checked_add(1) {
+                    Some(next) => self.new_line = next,
+                    None => self.close_hunk(),
+                },
+                Some(ConflictSide::Removed) => match self.old_line.checked_add(1) {
+                    Some(next) => self.old_line = next,
+                    None => self.close_hunk(),
+                },
+                Some(ConflictSide::Context) => self.advance_quarantined_line(None),
+                None => match (self.old_line.checked_add(1), self.new_line.checked_add(1)) {
+                    (Some(old), Some(new)) => {
+                        self.old_line = old;
+                        self.new_line = new;
+                    }
+                    _ => self.close_hunk(),
+                },
+            }
+        }
+
+        /// Typed record of every region this parser refused to read as ordinary
+        /// source. Deterministic: both maps are ordered by path.
+        pub(super) fn limitations(&self) -> Vec<AnalysisLimitation> {
+            let combined = self.combined_hunks.iter().map(|(path, count)| {
+                (
+                    AnalysisLimitationKind::CombinedHunkUnsupported,
+                    AnalysisRecoveryKind::UseTwoWayDiff,
+                    "An n-way merge hunk carries one prefix column per parent, so its body is not read as ordinary source. Re-run against a two-way diff of the merge result to analyze these lines.",
+                    path,
+                    *count,
+                )
+            });
+            let conflicts = self.conflict_regions.iter().map(|(path, count)| {
+                (
+                    AnalysisLimitationKind::UnresolvedConflictMarkers,
+                    AnalysisRecoveryKind::ResolveConflicts,
+                    "A conflict region holds two rival source states rather than one changed program, so its lines are not read as changes. Resolve the conflict and re-run to analyze these lines.",
+                    path,
+                    *count,
+                )
+            });
+
+            combined
+                .chain(conflicts)
+                .filter_map(|(kind, recovery_kind, detail, path, count)| {
+                    let Ok(recovery) = AnalysisRecovery::new(recovery_kind, detail) else {
+                        return None;
+                    };
+                    let mut limitation =
+                        AnalysisLimitation::new(kind, AnalysisStage::DiffParse, recovery);
+                    // A path or count the typed contract rejects must not delete
+                    // the limitation itself: an unattributed limitation is still
+                    // honest, a dropped one is not.
+                    if let Some(path) = path
+                        && let Ok(located) = limitation.clone().with_path(path.to_string_lossy())
+                    {
+                        limitation = located;
+                    }
+                    if let Ok(counted) = limitation.clone().with_affected_items(count) {
+                        limitation = counted;
+                    }
+                    Some(limitation)
+                })
+                .collect()
+        }
+
         pub(super) fn handle_rename_metadata(
             &mut self,
             raw: &str,
             files: &mut BTreeMap<PathBuf, ChangedFile>,
         ) -> bool {
-            if self.in_hunk {
+            if self.in_hunk || self.combined_quarantine {
                 return false;
             }
             if let Some(percent) = raw.strip_prefix("similarity index ") {
@@ -327,6 +468,15 @@ mod parser_state {
         pub(super) fn close_hunk(&mut self) {
             self.in_hunk = false;
             self.saw_old_path_marker = false;
+            self.conflict_region = None;
+        }
+
+        pub(super) fn close_combined_quarantine(&mut self) {
+            self.combined_quarantine = false;
+            self.current_path = None;
+            self.in_hunk = false;
+            self.saw_old_path_marker = false;
+            self.conflict_region = None;
         }
 
         pub(super) fn register_path_marker(
@@ -334,7 +484,11 @@ mod parser_state {
             raw: &str,
             files: &mut BTreeMap<PathBuf, ChangedFile>,
         ) -> bool {
-            if self.in_hunk {
+            // While a combined hunk body is quarantined its prefix columns can
+            // mimic a `--- `/`+++ ` file marker (`--` parent columns plus text).
+            // Ignoring them here keeps the quarantined body from re-pointing
+            // `current_path` at a file it does not describe (#2828).
+            if self.in_hunk || self.combined_quarantine {
                 return false;
             }
 
@@ -426,6 +580,8 @@ mod parser_state {
             self.rename_from_path = None;
             self.rename_counted = false;
             self.pure_rename_counted = false;
+            self.combined_quarantine = false;
+            self.conflict_region = None;
             true
         }
 
@@ -434,6 +590,26 @@ mod parser_state {
                 return false;
             }
             self.saw_old_path_marker = false;
+            self.conflict_region = None;
+
+            // An n-way hunk header (`@@@` for a two-parent merge, `@@@@` for an
+            // octopus) carries one prefix column per parent, so its body cannot
+            // be read with the two-way `+`/`-` rules. Previously the coordinate
+            // parse simply failed, `in_hunk` went false, and the body vanished
+            // with no record - indistinguishable from a supported file with no
+            // changed lines. Quarantine it and record why (#2828).
+            if raw.chars().take_while(|c| *c == '@').count() > 2 {
+                self.in_hunk = false;
+                self.combined_quarantine = true;
+                let path = self
+                    .current_path
+                    .clone()
+                    .or_else(|| self.section_old_path.clone());
+                let count = self.combined_hunks.entry(path).or_insert(0);
+                *count = count.saturating_add(1);
+                return true;
+            }
+            self.combined_quarantine = false;
             if let Some((old_start, new_start)) = parse_hunk_header(raw) {
                 // Overflow guard: if either start coordinate is at usize::MAX,
                 // the counter cannot advance and every line in this hunk would
@@ -497,6 +673,38 @@ mod parser_state {
             let Some(file) = files.get_mut(&path) else {
                 return;
             };
+
+            // Unresolved conflict markers describe two rival source states, not
+            // one changed program. Emitting their lines as ordinary changes
+            // invents behavior that exists in neither parent, so quarantine the
+            // region and record it instead (#2828). Coordinates still advance so
+            // that lines after the region keep honest line numbers.
+            let side = match raw.as_bytes().first() {
+                Some(b'+') => Some(ConflictSide::Added),
+                Some(b'-') => Some(ConflictSide::Removed),
+                Some(b' ') => Some(ConflictSide::Context),
+                _ => None,
+            };
+            let payload = if side.is_some() { &raw[1..] } else { raw };
+
+            match (self.conflict_region, side) {
+                (Some(open_side), _) => {
+                    let closes = side == Some(open_side) && is_conflict_marker(payload, ">>>>>>>");
+                    if closes {
+                        self.conflict_region = None;
+                    }
+                    self.advance_quarantined_line(side);
+                    return;
+                }
+                (None, Some(open_side)) if is_conflict_marker(payload, "<<<<<<<") => {
+                    self.conflict_region = Some(open_side);
+                    let count = self.conflict_regions.entry(Some(path.clone())).or_insert(0);
+                    *count = count.saturating_add(1);
+                    self.advance_quarantined_line(side);
+                    return;
+                }
+                _ => {}
+            }
 
             if let Some(text) = raw.strip_prefix('+') {
                 file.added_lines.push(ChangedLine {
