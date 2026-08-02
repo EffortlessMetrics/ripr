@@ -315,6 +315,16 @@ mod tests {
     fn self_reexec_command(env_key: &str) -> Result<Command, String> {
         let exe = std::env::current_exe().map_err(|err| err.to_string())?;
         let mut command = Command::new(exe);
+        // Run only the harness test that consumes this mode. Without the
+        // exact filter the child starts the entire 3,990-test binary before
+        // reaching `reexec_harness`, so the parent can falsely report a pipe
+        // deadlock under normal parallel workspace load.
+        let test_name = match env_key {
+            HANG_ENV => "git::tests::deadline_kills_and_reaps_a_hung_invocation",
+            FLOOD_ENV => "git::tests::output_larger_than_the_pipe_buffer_does_not_deadlock",
+            _ => return Err(format!("unknown git test harness mode: {env_key}")),
+        };
+        command.args([test_name, "--exact"]);
         command.env(env_key, "1");
         Ok(command)
     }
@@ -361,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn deadline_kills_and_reaps_a_hung_invocation() -> Result<(), String> {
         if reexec_harness() {
             return Ok(());
@@ -482,11 +493,17 @@ mod tests {
         if reexec_harness() {
             return Ok(());
         }
+        let marker_path =
+            std::env::temp_dir().join(format!("ripr-pipe-descendant-{}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&marker_path);
+        let marker_path_text = marker_path.display().to_string().replace('\'', "''");
         let mut command = Command::new("powershell");
         command.args([
             "-NoProfile",
             "-Command",
-            "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru; Wait-Process -Id $p.Id",
+            &format!(
+                "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 60') -NoNewWindow -PassThru; Set-Content -LiteralPath '{marker_path_text}' -Value $p.Id; Wait-Process -Id $p.Id"
+            ),
         ]);
         let started = Instant::now();
         let result = collect_output_with_deadline(
@@ -504,7 +521,37 @@ mod tests {
         if !is_git_invocation_timeout(&err) {
             return Err(format!("expected the named timeout error, got: {err}"));
         }
-        if elapsed >= Duration::from_secs(20) {
+        let descendant_pid = std::fs::read_to_string(&marker_path)
+            .map_err(|read_error| format!("descendant PID marker was not written: {read_error}"))?
+            .trim()
+            .parse::<u32>()
+            .map_err(|parse_error| format!("descendant PID marker was invalid: {parse_error}"))?;
+        let process_check = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {descendant_pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+                ),
+            ])
+            .status()
+            .map_err(|check_error| format!("failed to inspect descendant process: {check_error}"))?;
+        let _ = std::fs::remove_file(&marker_path);
+        if process_check.success() {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &descendant_pid.to_string(), "/T", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            return Err(format!(
+                "pipe-inheriting descendant {descendant_pid} remained alive after timeout; tree termination was not established"
+            ));
+        }
+        // The descendant lives for 60 seconds, while a correct process-tree
+        // kill must complete this proof below the 30-second bound. The PID
+        // check is the discriminator: bounded pipe draining alone can return
+        // without proving that the inherited writer was terminated.
+        if elapsed >= Duration::from_secs(30) {
             return Err(format!(
                 "pipe-inheriting timeout took {elapsed:?}; reader drain was not bounded"
             ));
@@ -535,6 +582,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn cancellation_wins_over_a_long_deadline() -> Result<(), String> {
         if reexec_harness() {
             return Ok(());

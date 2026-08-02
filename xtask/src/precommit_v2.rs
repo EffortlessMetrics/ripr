@@ -1447,10 +1447,16 @@ mod tests {
 
     struct TestRepo {
         path: PathBuf,
+        // Fixture tests launch cargo/git without an explicit current
+        // directory. Keep the process cwd stable while those commands run;
+        // a concurrent cwd-writing test can otherwise delete the inherited
+        // directory between spawn and cargo metadata initialization.
+        _cwd_guard: std::sync::RwLockReadGuard<'static, ()>,
     }
 
     impl TestRepo {
         fn new() -> Result<Self, String> {
+            let cwd_guard = crate::acquire_test_cwd_read_guard();
             let nonce = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|error| error.to_string())?
@@ -1460,7 +1466,10 @@ mod tests {
                 std::process::id()
             ));
             fs::create_dir_all(&path).map_err(|error| format!("create fixture: {error}"))?;
-            let fixture = Self { path };
+            let fixture = Self {
+                path,
+                _cwd_guard: cwd_guard,
+            };
             fixture.git(&["init", "-q", "--initial-branch=main"])?;
             fixture.git(&["config", "user.email", "fixture@example.invalid"])?;
             fixture.git(&["config", "user.name", "fixture"])?;
